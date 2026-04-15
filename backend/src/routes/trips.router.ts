@@ -48,7 +48,7 @@ router.get('/my-history', requireAuth, async (req: Request, res: Response): Prom
 router.get('/:groupId/qr', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { groupId } = req.params;
-    const { data: grupo, error } = await (await import('../infrastructure/db/supabase.client')).supabase
+    const { data: grupo, error } = await (await import('../infrastructure/db/supabase.client.js')).supabase
       .from('grupos_viaje')
       .select('id, nombre, codigo_invitacion')
       .eq('id', groupId)

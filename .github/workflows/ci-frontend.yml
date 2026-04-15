@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -32,7 +32,7 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
-      - name: Build
+      - name: Build (Vite)
         run: npm run build
 
   request-copilot-review:
@@ -50,4 +50,4 @@ jobs:
           gh pr review ${{ github.event.pull_request.number }} \
             --repo ${{ github.repository }} \
             --request-review "copilot-pull-request-reviewer" \
-            || echo "Copilot review request skipped (may not be enabled yet)"
+            || echo "Copilot review request skipped"

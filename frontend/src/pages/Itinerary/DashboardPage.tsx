@@ -1,18 +1,10 @@
 import { useState, useRef, useCallback } from 'react'
-import { Navbar } from '../../components/layout/Navbar'
+import { AppLayout, SidebarDashboard, RightPanelDashboard } from '../../components/layout/AppLayout'
 import { DayView } from '../../components/ui/DayView'
 import type { Activity as DayActivity, DayViewHandle } from '../../components/ui/DayView'
 import { ITINERARY_DAYS } from '../../mock/itinerary.mock'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface Participant {
-  id: string
-  name: string
-  role: 'Organizador' | 'Miembro'
-  color: string
-  isOnline: boolean
-}
 
 interface ActivityMeta {
   time?: string
@@ -39,27 +31,7 @@ interface TripDay {
   activityCount: number
 }
 
-interface ChatMessage {
-  id: string
-  text: string
-  isOwn: boolean
-  author?: string
-  timestamp: string
-}
-
-interface BudgetItem {
-  label: string
-  amount: string
-}
-
 // ── Mock data ─────────────────────────────────────────────────────────────────
-
-const PARTICIPANTS: Participant[] = [
-  { id: '1', name: 'Bryan A.',    role: 'Organizador', color: '#1E6FD9', isOnline: true  },
-  { id: '2', name: 'Ana L.',      role: 'Miembro',     color: '#35C56A', isOnline: true  },
-  { id: '3', name: 'Luis R.',     role: 'Miembro',     color: '#7A4FD6', isOnline: true  },
-  { id: '4', name: 'Mariana G.', role: 'Miembro',     color: '#F59E0B', isOnline: false },
-]
 
 const DAYS: TripDay[] = [
   { id: 1, shortDate: '16 JUN', label: 'Día 1', activityCount: 3 },
@@ -111,17 +83,6 @@ const ACTIVITIES: Activity[] = [
     proposedBy: 'Ana L.',
     meta: { time: '20:00 hrs', votes: 3 },
   },
-]
-
-const BUDGET_ITEMS: BudgetItem[] = [
-  { label: 'Vuelos',      amount: '$5,600' },
-  { label: 'Hospedaje',   amount: '$6,300' },
-  { label: 'Actividades', amount: '$2,300' },
-]
-
-const INITIAL_MESSAGES: ChatMessage[] = [
-  { id: '1', text: 'El hotel confirmó check-in a las 2 pm', isOwn: false, author: 'Ana L.',  timestamp: '10:42 am' },
-  { id: '2', text: 'Perfecto, ya agregué el traslado',       isOwn: true,  author: 'Bryan A.', timestamp: '10:44 am' },
 ]
 
 // ── Inline icons ──────────────────────────────────────────────────────────────
@@ -277,164 +238,6 @@ function getSectionLabel(category: Activity['category'], hasPending?: boolean) {
   if (category === 'transport') return { icon: <IconPlane size={12} />, text: 'TRANSPORTE' }
   if (category === 'lodging')   return { icon: <IconBed size={12} />, text: 'HOSPEDAJE' }
   return { icon: <IconStar size={12} />, text: hasPending ? 'ACTIVIDADES – POR CONFIRMAR' : 'ACTIVIDADES' }
-}
-
-// ── LeftSidebar ───────────────────────────────────────────────────────────────
-
-interface LeftSidebarProps {
-  activeDay: number | null
-  showDaySelector: boolean
-  onDayChange: (day: number) => void
-  onToggleDaySelector: () => void
-  isOpen: boolean
-}
-
-function LeftSidebar({ activeDay, showDaySelector, onDayChange, onToggleDaySelector, isOpen }: LeftSidebarProps) {
-  const activeItineraryDay = activeDay !== null
-    ? ITINERARY_DAYS.find((d) => d.dayNumber === activeDay) ?? null
-    : null
-
-  return (
-    <aside
-      className={[
-        'shrink-0 bg-purpleNavbar overflow-hidden transition-all duration-300 ease-in-out',
-        isOpen ? 'w-[240px]' : 'w-0',
-      ].join(' ')}
-    >
-    <div className="w-[240px] flex flex-col h-full px-4 pt-6 pb-4 overflow-y-auto">
-      {/* Trip name */}
-      <div className="mb-4">
-        <h2 className="font-heading font-bold text-white text-base leading-tight">Cancún 2025</h2>
-        <p className="font-body text-xs text-white/50 mt-0.5">Riviera Maya, México</p>
-      </div>
-
-      {/* Metadata pills */}
-      <div className="flex flex-wrap gap-2 mb-5">
-        <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1">
-          <span className="text-white/70"><IconCalendar /></span>
-          <span className="font-body text-[11px] text-white/70">15–18 Jun</span>
-        </div>
-        <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1">
-          <span className="text-white/70"><IconUsers /></span>
-          <span className="font-body text-[11px] text-white/70">4 personas</span>
-        </div>
-      </div>
-
-      {/* Itinerary section */}
-      <p className="font-body text-[10px] text-white/40 uppercase tracking-widest mb-2">Itinerario</p>
-
-      {/* ── Toggle button "Ver todos los días" ── */}
-      <button
-        onClick={onToggleDaySelector}
-        className="w-full flex items-center justify-between bg-white/10 rounded-xl px-4 py-2.5 mb-2 transition-all duration-200 hover:bg-white/15"
-      >
-        <span className="font-body text-[13px] text-white/70">Ver todos los días</span>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          aria-hidden="true"
-          className={`text-white/50 transition-transform duration-200 ${showDaySelector ? 'rotate-180' : ''}`}
-        >
-          <polyline points="6 9 12 15 18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-
-      {/* ── Expandable day list ── */}
-      <div
-        className="overflow-hidden transition-all duration-300 ease-in-out"
-        style={{ maxHeight: showDaySelector ? '600px' : 0 }}
-      >
-        <ul className="flex flex-col gap-1 mb-2">
-          {ITINERARY_DAYS.map((day) => {
-            const isActive = day.dayNumber === activeDay
-            const count    = day.activities.length
-            return (
-              <li key={day.dayNumber}>
-                <button
-                  onClick={() => onDayChange(day.dayNumber)}
-                  className={[
-                    'w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all duration-200',
-                    isActive ? 'bg-bluePrimary' : 'hover:bg-white/10',
-                  ].join(' ')}
-                >
-                  <div>
-                    <p className={`font-body text-[13px] ${isActive ? 'font-bold text-white' : 'font-normal text-white/60'} leading-none`}>
-                      Día {day.dayNumber}
-                    </p>
-                    <p className={`font-body text-xs mt-0.5 leading-none ${isActive ? 'text-white/70' : 'text-white/40'}`}>
-                      {day.date} · {count} actividad{count !== 1 ? 'es' : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={`font-body text-xs ${isActive ? 'text-white/70' : 'text-white/40'}`}>
-                      {count}
-                    </span>
-                    {isActive && (
-                      <span className="w-2 h-2 rounded-full bg-greenAccent shrink-0" />
-                    )}
-                  </div>
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      </div>
-
-      {/* ── Active day pill (when selector is closed and a day is selected) ── */}
-      {!showDaySelector && activeItineraryDay !== null && (
-        <div className="flex items-center justify-between bg-bluePrimary rounded-xl px-3 py-2.5 mb-2">
-          <div>
-            <p className="font-body text-[13px] font-bold text-white leading-none">
-              Día {activeItineraryDay.dayNumber}
-            </p>
-            <p className="font-body text-xs text-white/70 mt-0.5 leading-none">
-              {activeItineraryDay.date}
-            </p>
-          </div>
-          <button
-            onClick={() => onDayChange(activeItineraryDay.dayNumber)}
-            className="w-6 h-6 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 transition-colors shrink-0"
-            aria-label="Deseleccionar día"
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-              <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-      )}
-
-      {/* Divider */}
-      <div className="border-t border-white/10 mb-4 mt-3" />
-
-      {/* Budget */}
-      <p className="font-body text-[10px] text-white/40 uppercase tracking-widest mb-2">Presupuesto Grupal</p>
-      <p className="font-heading font-bold text-white text-2xl leading-none">$14,200</p>
-      <p className="font-body text-xs text-white/40 mt-0.5 mb-3">de $24,000 MXN</p>
-
-      {/* Progress bar */}
-      <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-1">
-        <div
-          className="h-full rounded-full"
-          style={{ width: '59%', background: 'linear-gradient(90deg, #1E6FD9, #7A4FD6)' }}
-        />
-      </div>
-      <p className="font-body text-[11px] text-white/40 text-right mb-3">59%</p>
-
-      {/* Breakdown */}
-      <div className="flex flex-col gap-2">
-        {BUDGET_ITEMS.map((item) => (
-          <div key={item.label} className="flex items-center justify-between">
-            <span className="font-body text-[11px] text-white/60">{item.label}</span>
-            <span className="font-body text-[11px] font-semibold text-white/80">{item.amount}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-    </aside>
-  )
 }
 
 // ── HeroCard ──────────────────────────────────────────────────────────────────
@@ -874,211 +677,6 @@ function BottomNavbar({ activeTab, onTabChange }: BottomNavbarProps) {
   )
 }
 
-// ── Chat helpers ─────────────────────────────────────────────────────────────
-
-function getParticipantColor(authorName?: string): string {
-  const found = PARTICIPANTS.find((p) => p.name === authorName)
-  return found?.color ?? '#7A4FD6'
-}
-
-// ── RightPanel ────────────────────────────────────────────────────────────────
-
-interface RightPanelProps {
-  chatMessages: ChatMessage[]
-  chatInput: string
-  onChatChange: (v: string) => void
-  onChatSend: () => void
-}
-
-function RightPanel({ chatMessages, chatInput, onChatChange, onChatSend }: RightPanelProps) {
-  const onlineCount = PARTICIPANTS.filter((p) => p.isOnline).length
-
-  return (
-    <aside className="hidden xl:flex flex-col w-[280px] shrink-0 bg-surface-light border-l border-[#E2E8F0] px-5 py-5 overflow-hidden gap-4">
-      {/* Participants */}
-      <section className="shrink-0">
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest">
-            Participantes
-          </span>
-          <span className="font-body text-[11px] font-semibold text-greenAccent bg-greenAccent/10 rounded-full px-2 py-0.5">
-            {onlineCount} en línea
-          </span>
-        </div>
-
-        {/* Overlapping avatars */}
-        <div className="flex -space-x-2 mb-3">
-          {PARTICIPANTS.map((p) => (
-            <div
-              key={p.id}
-              className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white font-body font-bold text-xs shrink-0"
-              style={{ backgroundColor: p.color }}
-              title={p.name}
-            >
-              {p.name[0]}
-            </div>
-          ))}
-        </div>
-
-        {/* Participant list */}
-        <ul className="flex flex-col gap-2.5">
-          {PARTICIPANTS.map((p) => (
-            <li key={p.id} className="flex items-center gap-2.5">
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-body font-bold text-xs shrink-0"
-                style={{ backgroundColor: p.color }}
-              >
-                {p.name[0]}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-body text-xs font-semibold text-gray700 truncate leading-none">{p.name}</p>
-                <p className="font-body text-[11px] mt-0.5 leading-none" style={{ color: p.color }}>
-                  {p.role}
-                </p>
-              </div>
-              {p.isOnline && (
-                <span className="w-2 h-2 rounded-full bg-greenAccent shrink-0" />
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      {/* Mini map */}
-      <section className="shrink-0">
-        <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest mb-2">
-          Destino
-        </p>
-        <div className="relative rounded-xl h-28 overflow-hidden mb-2 bg-[#D4E9F7]">
-          {/* Stylised map placeholder */}
-          <div
-            className="absolute inset-0"
-            style={{
-              background: 'linear-gradient(135deg, #B8D9F0 0%, #7EC8E3 40%, #4AA8D8 70%, #2A7DB5 100%)',
-            }}
-          />
-          {/* Grid lines */}
-          <div
-            className="absolute inset-0 opacity-20"
-            style={{
-              backgroundImage: 'linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px)',
-              backgroundSize: '24px 24px',
-            }}
-          />
-          {/* Pin */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex flex-col items-center drop-shadow-lg">
-              <div className="w-8 h-8 rounded-full bg-bluePrimary flex items-center justify-center shadow-lg">
-                <IconMapPin size={14} />
-              </div>
-              <div className="w-0.5 h-3 bg-bluePrimary" />
-            </div>
-          </div>
-        </div>
-        <p className="font-body text-xs font-bold text-purpleNavbar leading-none">Cancún, Q.R.</p>
-        <p className="font-body text-[11px] text-gray500 mt-0.5 leading-none">Riviera Maya · México</p>
-        <button className="font-body text-[11px] text-bluePrimary mt-1.5 hover:underline">
-          Ver en mapa completo →
-        </button>
-      </section>
-
-      {/* Group chat */}
-      <section className="flex flex-col gap-2 flex-1 min-h-0">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest">
-            Chat del Grupo
-          </p>
-          {/* Online participant mini-avatars */}
-          <div className="flex -space-x-1">
-            {PARTICIPANTS.filter((p) => p.isOnline).map((p) => (
-              <div
-                key={p.id}
-                className="w-5 h-5 rounded-full border border-surface-light flex items-center justify-center text-white font-body font-bold text-[9px] shrink-0"
-                style={{ backgroundColor: p.color }}
-                title={p.name}
-              >
-                {p.name[0]}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Chat card */}
-        <div className="bg-surface border border-purpleMedium/20 rounded-2xl p-4 flex flex-col gap-3 flex-1 min-h-0">
-          {/* Messages */}
-          <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto scrollbar-hide">
-            {chatMessages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex gap-2 ${msg.isOwn ? 'justify-end' : 'justify-start'}`}
-              >
-                {/* Avatar — solo mensajes recibidos */}
-                {!msg.isOwn && (
-                  <div
-                    className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-white font-body font-bold text-[10px] mt-4"
-                    style={{ backgroundColor: getParticipantColor(msg.author) }}
-                  >
-                    {msg.author?.[0] ?? '?'}
-                  </div>
-                )}
-
-                <div className={`flex flex-col ${msg.isOwn ? 'items-end' : 'items-start'} max-w-[80%]`}>
-                  {/* Nombre remitente */}
-                  {!msg.isOwn && msg.author && (
-                    <span className="font-body text-[10px] text-gray500 mb-0.5 ml-1">
-                      {msg.author}
-                    </span>
-                  )}
-
-                  {/* Burbuja */}
-                  <div
-                    className={[
-                      'font-body text-[13px] px-3 py-2 leading-relaxed',
-                      msg.isOwn
-                        ? 'text-white rounded-2xl rounded-tr-sm shadow-md'
-                        : 'bg-white text-gray700 border border-[#E2E8F0] rounded-2xl rounded-tl-sm shadow-sm',
-                    ].join(' ')}
-                    style={msg.isOwn ? { background: 'linear-gradient(135deg, #1E6FD9, #7A4FD6)' } : {}}
-                  >
-                    {msg.text}
-                    <p className={`text-[9px] mt-1 text-right leading-none ${msg.isOwn ? 'text-white/50' : 'text-gray500/60'}`}>
-                      {msg.timestamp}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Divider */}
-          <div className="border-t border-purpleMedium/10" />
-
-          {/* Input row */}
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(e) => onChatChange(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') onChatSend() }}
-              placeholder="Escribe un mensaje..."
-              className="flex-1 bg-white border border-[#E2E8F0] focus:border-bluePrimary rounded-xl px-3 h-9 font-body text-[12px] text-gray700 placeholder-gray500 outline-none shadow-sm transition-colors"
-            />
-            <button
-              onClick={onChatSend}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 hover:opacity-90 transition-opacity shadow-md p-2"
-              style={{ background: 'linear-gradient(135deg, #1E6FD9, #7A4FD6)' }}
-              aria-label="Enviar mensaje"
-            >
-              <IconSend size={13} />
-            </button>
-          </div>
-        </div>
-      </section>
-    </aside>
-  )
-}
-
 // ── Skeleton loader ───────────────────────────────────────────────────────────
 
 function SkeletonPulse({ className = '' }: { className?: string }) {
@@ -1202,14 +800,11 @@ function ActivitiesContent({ activities, onAccept, onDelete }: ActivitiesContent
 // ── DashboardPage ─────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
-  const [activeDay,        setActiveDay]        = useState<number | null>(null)
-  const [showDaySelector,  setShowDaySelector]  = useState(false)
-  const [activeTab,        setActiveTab]        = useState('pagar')
-  const [isLoading,        setIsLoading]        = useState(false)
-  const [activities,       setActivities]       = useState<Activity[]>(ACTIVITIES)
-  const [chatMessages,     setChatMessages]     = useState<ChatMessage[]>(INITIAL_MESSAGES)
-  const [chatInput,        setChatInput]        = useState('')
-  const [sidebarOpen,      setSidebarOpen]      = useState(() => window.innerWidth >= 1024)
+  const [activeDay,       setActiveDay]       = useState<number | null>(null)
+  const [showDaySelector, setShowDaySelector] = useState(false)
+  const [activeTab,       setActiveTab]       = useState('pagar')
+  const [isLoading,       setIsLoading]       = useState(false)
+  const [activities,      setActivities]      = useState<Activity[]>(ACTIVITIES)
 
   const dayRefs = useRef<Record<number, DayViewHandle | null>>({})
 
@@ -1236,88 +831,58 @@ export function DashboardPage() {
     setActivities((prev) => prev.filter((a) => a.id !== id))
   }
 
-  function handleChatSend() {
-    const text = chatInput.trim()
-    if (!text) return
-    const now = new Date()
-    const timestamp = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: true })
-    setChatMessages((prev) => [
-      ...prev,
-      { id: String(Date.now()), text, isOwn: true, author: 'Bryan A.', timestamp },
-    ])
-    setChatInput('')
-  }
-
   // Demo toggle for skeleton / empty states (dev helper, hidden in UI)
   void setIsLoading
 
   return (
-    <div className="h-screen flex flex-col bg-surface overflow-hidden font-body">
-      {/* Fixed top navbar */}
-      <Navbar
-        variant="dashboard"
-        trip={{ name: 'Cancún 2025', subtitle: 'Riviera Maya, México' }}
-        user={{ name: 'Bryan A.', role: 'Organizador', initials: 'BA', color: '#1E6FD9' }}
-        notificationCount={3}
-        isOnline
-        onToggleSidebar={() => setSidebarOpen((o) => !o)}
-      />
-
-      {/* Main layout — three columns */}
-      <div className="flex flex-1 overflow-hidden pt-20">
-        {/* ── Left sidebar ── */}
-        <LeftSidebar
+    <AppLayout
+      trip={{ name: 'Cancún 2025', subtitle: 'Riviera Maya, México', dates: '15–18 Jun', people: '4 personas' }}
+      user={{ name: 'Bryan A.', role: 'Organizador', initials: 'BA', color: '#1E6FD9' }}
+      notificationCount={3}
+      isOnline
+      sidebarContent={
+        <SidebarDashboard
           activeDay={activeDay}
           showDaySelector={showDaySelector}
           onDayChange={handleDayChange}
           onToggleDaySelector={() => setShowDaySelector((v) => !v)}
-          isOpen={sidebarOpen}
         />
-
-        {/* ── Central content ── */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {isLoading ? (
-            <SkeletonView />
-          ) : isEmpty ? (
-            <EmptyState onAdd={() => {}} />
-          ) : (
-            <div className="flex-1 overflow-y-auto px-6 py-6 bg-surface">
-              <HeroCard activeDay={activeDay} />
-              <InfoBanner />
-              <TimelineStrip
-                activeDay={activeDay}
-                date={activeDay !== null ? ITINERARY_DAYS.find((d) => d.dayNumber === activeDay)?.date : undefined}
-                activities={activeDay !== null ? ITINERARY_DAYS.find((d) => d.dayNumber === activeDay)?.activities : undefined}
+      }
+      rightPanel={<RightPanelDashboard />}
+    >
+      {/* ── Central content ── */}
+      {isLoading ? (
+        <SkeletonView />
+      ) : isEmpty ? (
+        <EmptyState onAdd={() => {}} />
+      ) : (
+        <div className="flex-1 overflow-y-auto px-6 py-6 bg-surface">
+          <HeroCard activeDay={activeDay} />
+          <InfoBanner />
+          <TimelineStrip
+            activeDay={activeDay}
+            date={activeDay !== null ? ITINERARY_DAYS.find((d) => d.dayNumber === activeDay)?.date : undefined}
+            activities={activeDay !== null ? ITINERARY_DAYS.find((d) => d.dayNumber === activeDay)?.activities : undefined}
+          />
+          <div className="flex flex-col gap-3">
+            {ITINERARY_DAYS.map((day) => (
+              <DayView
+                key={day.dayNumber}
+                ref={(handle) => { dayRefs.current[day.dayNumber] = handle }}
+                dayNumber={day.dayNumber}
+                date={day.date}
+                activities={day.activities}
+                isActive={day.dayNumber === activeDay}
+                isExpanded={activeDay !== null && day.dayNumber === activeDay}
+                onSelect={handleDayChange}
               />
-              <div className="flex flex-col gap-3">
-                {ITINERARY_DAYS.map((day) => (
-                  <DayView
-                    key={day.dayNumber}
-                    ref={(handle) => { dayRefs.current[day.dayNumber] = handle }}
-                    dayNumber={day.dayNumber}
-                    date={day.date}
-                    activities={day.activities}
-                    isActive={day.dayNumber === activeDay}
-                    isExpanded={activeDay !== null && day.dayNumber === activeDay}
-                    onSelect={handleDayChange}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
+      )}
 
-          {/* Bottom nav */}
-          <BottomNavbar activeTab={activeTab} onTabChange={setActiveTab} />
-        </main>
-
-        {/* ── Right panel ── */}
-        <RightPanel
-          chatMessages={chatMessages}
-          chatInput={chatInput}
-          onChatChange={setChatInput}
-          onChatSend={handleChatSend}
-        />
-      </div>
-    </div>
+      {/* Bottom nav */}
+      <BottomNavbar activeTab={activeTab} onTabChange={setActiveTab} />
+    </AppLayout>
   )
 }

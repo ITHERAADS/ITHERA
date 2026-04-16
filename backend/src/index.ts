@@ -5,6 +5,9 @@ import { env } from './config/env';
 import { errorHandler } from './middlewares/errorHandler.middleware';
 import authRouter from './routes/auth.router';
 import tripsRouter from './routes/trips.router';
+import flightsRouter from './routes/flights.router';
+import hotelsRouter from './routes/hotels.router';
+import mapsRouter from './routes/maps.router';
 
 const app = express();
 
@@ -27,6 +30,9 @@ app.get('/health', (_req: any, res: any) => {
 // ── Rutas ─────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
 app.use('/api/groups', tripsRouter);
+app.use('/api/flights', flightsRouter);
+app.use('/api/hotels', hotelsRouter);
+app.use('/api/maps', mapsRouter);
 
 // ── Error handler global ──────────────────────────────────────────
 app.use(errorHandler);

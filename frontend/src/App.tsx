@@ -3,6 +3,7 @@ import { LandingPage } from './pages/Landing'
 import { LoginPage } from './pages/Login'
 import { RegisterPage } from './pages/Register'
 import { DashboardPage } from './pages/Itinerary'
+import { GroupPanelPage } from './pages/GroupPanel'
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/grouppanel" element={<GroupPanelPage />} />
       </Routes>
     </BrowserRouter>
   )

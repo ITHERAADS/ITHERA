@@ -1,0 +1,1 @@
+export { supabase } from '../infrastructure/db/supabase.client';

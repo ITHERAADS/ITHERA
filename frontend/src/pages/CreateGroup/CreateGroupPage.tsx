@@ -1,0 +1,564 @@
+import { useState } from 'react'
+import { Navbar } from '../../components/layout/Navbar/Navbar'
+import { Sidebar } from '../../components/layout/Sidebar/Sidebar'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface Member {
+  id: string
+  email: string
+  name?: string
+}
+
+interface FormData {
+  name: string
+  destination: string
+  startDate: string
+  endDate: string
+  maxMembers: string
+  description: string
+  isPublic: boolean
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const DESTINATIONS = [
+  'Cancún, México',
+  'Ciudad de México',
+  'Oaxaca, México',
+  'Los Cabos, México',
+  'Puerto Vallarta, México',
+  'Tulum, México',
+  'Guadalajara, México',
+  'Monterrey, México',
+  'Mérida, México',
+  'San Cristóbal de las Casas',
+]
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function InputField({
+  label,
+  type = 'text',
+  placeholder,
+  value,
+  onChange,
+  error,
+  hint,
+}: {
+  label: string
+  type?: string
+  placeholder: string
+  value: string
+  onChange: (v: string) => void
+  error?: string
+  hint?: string
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="font-body text-xs text-[#7A8799] uppercase tracking-wider">{label}</label>
+      <input
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-full font-body text-sm text-[#1E0A4E] placeholder-[#C4CDD6] border rounded-xl px-4 py-3 outline-none transition-all duration-200 bg-white
+          ${error
+            ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+            : 'border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10'
+          }
+        `}
+      />
+      {hint && !error && <p className="font-body text-[11px] text-[#7A8799]">{hint}</p>}
+      {error && <p className="font-body text-xs text-red-500">{error}</p>}
+    </div>
+  )
+}
+
+function DestinationSelect({
+  value,
+  onChange,
+  error,
+}: {
+  value: string
+  onChange: (v: string) => void
+  error?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+
+  const filtered = DESTINATIONS.filter((d) =>
+    d.toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
+    <div className="flex flex-col gap-1.5 relative">
+      <label className="font-body text-xs text-[#7A8799] uppercase tracking-wider">Destino</label>
+      <div
+        className={`w-full font-body text-sm border rounded-xl px-4 py-3 cursor-pointer flex items-center justify-between bg-white transition-all duration-200
+          ${error ? 'border-red-400' : value ? 'border-[#1E6FD9] ring-2 ring-[#1E6FD9]/10' : 'border-[#E2E8F0] hover:border-[#1E6FD9]/50'}
+        `}
+        onClick={() => setOpen(!open)}
+      >
+        <span className={value ? 'text-[#1E0A4E]' : 'text-[#C4CDD6]'}>
+          {value || 'Selecciona un destino'}
+        </span>
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none"
+          className={`text-[#7A8799] transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <polyline points="6 9 12 15 18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E2E8F0] rounded-xl shadow-lg z-20 overflow-hidden">
+          <div className="p-2 border-b border-[#E2E8F0]">
+            <input
+              type="text"
+              placeholder="Buscar destino..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full font-body text-sm text-[#1E0A4E] placeholder-[#C4CDD6] px-3 py-2 rounded-lg border border-[#E2E8F0] outline-none focus:border-[#1E6FD9]"
+              autoFocus
+            />
+          </div>
+          <div className="max-h-44 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="font-body text-xs text-[#7A8799] px-4 py-3">Sin resultados</p>
+            ) : (
+              filtered.map((dest) => (
+                <div
+                  key={dest}
+                  onClick={() => { onChange(dest); setOpen(false); setSearch('') }}
+                  className={`font-body text-sm px-4 py-2.5 cursor-pointer transition-colors hover:bg-[#F4F6F8]
+                    ${value === dest ? 'text-[#1E6FD9] bg-[#1E6FD9]/5' : 'text-[#3D4A5C]'}
+                  `}
+                >
+                  {dest}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+      {error && <p className="font-body text-xs text-red-500">{error}</p>}
+    </div>
+  )
+}
+
+function MembersSection({
+  members,
+  onAdd,
+  onRemove,
+}: {
+  members: Member[]
+  onAdd: (m: Member) => void
+  onRemove: (id: string) => void
+}) {
+  const [email, setEmail] = useState('')
+  const [error, setError] = useState('')
+
+  const handleAdd = () => {
+    if (!email.trim()) return setError('Ingresa un correo electrónico.')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setError('Correo inválido.')
+    if (members.find((m) => m.email === email)) return setError('Ya fue agregado.')
+    onAdd({ id: crypto.randomUUID(), email })
+    setEmail('')
+    setError('')
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="font-body text-xs text-[#7A8799] uppercase tracking-wider">
+        Invitar miembros (opcional)
+      </label>
+
+      <div className="flex gap-2">
+        <input
+          type="email"
+          placeholder="correo@ejemplo.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+          className={`flex-1 font-body text-sm text-[#1E0A4E] placeholder-[#C4CDD6] border rounded-xl px-4 py-3 outline-none transition-all duration-200 bg-white
+            ${error ? 'border-red-400' : 'border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10'}
+          `}
+        />
+        <button
+          onClick={handleAdd}
+          type="button"
+          className="font-body text-sm font-medium bg-[#1E0A4E] text-white rounded-xl px-4 py-3 hover:opacity-90 transition-opacity whitespace-nowrap flex items-center gap-1.5"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+          Agregar
+        </button>
+      </div>
+      {error && <p className="font-body text-xs text-red-500">{error}</p>}
+
+      {members.length > 0 && (
+        <div className="space-y-2">
+          {members.map((m) => (
+            <div
+              key={m.id}
+              className="flex items-center justify-between bg-[#F4F6F8] rounded-xl px-4 py-2.5 border border-[#E2E8F0]"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-[#1E6FD9]/10 flex items-center justify-center">
+                  <span className="font-heading font-bold text-[#1E6FD9] text-[11px] uppercase">
+                    {m.email[0]}
+                  </span>
+                </div>
+                <span className="font-body text-sm text-[#3D4A5C]">{m.email}</span>
+              </div>
+              <button
+                onClick={() => onRemove(m.id)}
+                className="text-[#7A8799] hover:text-red-500 transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Section Header ────────────────────────────────────────────────────────────
+function SectionLabel({ icon, title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-4">
+      <div className="w-7 h-7 bg-[#1E0A4E] rounded-lg flex items-center justify-center">
+        {icon}
+      </div>
+      <h3 className="font-heading font-semibold text-[#1E0A4E] text-sm">{title}</h3>
+    </div>
+  )
+}
+
+const CREATE_GROUP_NAV = [
+  { href: '/dashboard', label: 'Mis viajes' },
+  { href: '/create-group', label: 'Crear grupo' },
+]
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+export function CreateGroupPage() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [form, setForm] = useState<FormData>({
+    name: '',
+    destination: '',
+    startDate: '',
+    endDate: '',
+    maxMembers: '10',
+    description: '',
+    isPublic: false,
+  })
+  const [members, setMembers] = useState<Member[]>([])
+  const [errors, setErrors] = useState<Partial<FormData>>({})
+  const [loading, setLoading] = useState(false)
+  const [created, setCreated] = useState(false)
+  const [groupCode, setGroupCode] = useState('')
+
+  const set = (key: keyof FormData) => (val: string | boolean) =>
+    setForm((f) => ({ ...f, [key]: val }))
+
+  const validate = () => {
+    const e: Partial<FormData> = {}
+    if (!form.name.trim()) e.name = 'El nombre del grupo es requerido.'
+    if (!form.destination) e.destination = 'Selecciona un destino.'
+    if (!form.startDate) e.startDate = 'Fecha de inicio requerida.'
+    if (!form.endDate) e.endDate = 'Fecha de regreso requerida.'
+    if (form.startDate && form.endDate && form.startDate > form.endDate)
+      e.endDate = 'La fecha de regreso debe ser después de la de inicio.'
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  const handleCreate = async () => {
+    if (!validate()) return
+    setLoading(true)
+    await new Promise((r) => setTimeout(r, 1400))
+    setLoading(false)
+    setGroupCode('ITHERA-' + Math.random().toString(36).slice(2, 7).toUpperCase())
+    setCreated(true)
+  }
+
+  // ── Success State ────────────────────────────────────────────────────────
+  if (created) {
+    return (
+      <div className="min-h-screen bg-[#F4F6F8]">
+        <Navbar
+          variant="dashboard"
+          trip={{ name: form.name || 'Nuevo grupo', subtitle: form.destination || 'Configurando viaje' }}
+          user={{ name: 'Bryan A.', role: 'Organizador', initials: 'BA', color: '#1E6FD9' }}
+          onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+        />
+        <Sidebar
+          navItems={CREATE_GROUP_NAV}
+          activeHref="/create-group"
+          isCollapsed={isSidebarCollapsed}
+        />
+        <main
+          className={`flex items-center justify-center min-h-screen px-4 py-12 pt-28 transition-all duration-300 ${
+            isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
+          }`}
+        >
+        <div
+          className="fixed inset-0 opacity-40 pointer-events-none"
+          style={{
+            backgroundImage: 'radial-gradient(circle, rgba(30,10,78,0.04) 1px, transparent 1px)',
+            backgroundSize: '24px 24px',
+          }}
+        />
+        <div className="relative w-full max-w-md">
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-8 text-center">
+            <div className="w-16 h-16 bg-[#35C56A]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-[#35C56A]">
+                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <polyline points="22 4 12 14.01 9 11.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <h2 className="font-heading font-bold text-[#1E0A4E] text-2xl mb-2">
+              ¡Grupo creado!
+            </h2>
+            <p className="font-body text-sm text-[#7A8799] mb-6">
+              Comparte este código con tu equipo para que se unan al viaje.
+            </p>
+
+            <div className="bg-[#1E0A4E] rounded-2xl p-5 mb-6">
+              <p className="font-body text-xs text-white/40 uppercase tracking-wider mb-2">Código del grupo</p>
+              <p className="font-heading font-bold text-white text-2xl tracking-widest">{groupCode}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => navigator.clipboard.writeText(groupCode)}
+                className="font-body text-sm border border-[#E2E8F0] text-[#3D4A5C] rounded-xl px-4 py-3 hover:border-[#1E6FD9] hover:text-[#1E6FD9] transition-colors flex items-center justify-center gap-2"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="2" />
+                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                Copiar código
+              </button>
+              <a
+                href="/dashboard"
+                className="font-body font-medium text-sm bg-[#1E6FD9] text-white rounded-xl px-4 py-3 hover:opacity-90 transition-opacity flex items-center justify-center"
+              >
+                Ir al grupo →
+              </a>
+            </div>
+          </div>
+        </div>
+        </main>
+      </div>
+    )
+  }
+
+  // ── Form ─────────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-[#F4F6F8]">
+      <Navbar
+        variant="dashboard"
+        trip={{ name: 'Nuevo grupo', subtitle: 'Configura tu viaje grupal' }}
+        user={{ name: 'Bryan A.', role: 'Organizador', initials: 'BA', color: '#1E6FD9' }}
+        onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+      />
+      <Sidebar
+        navItems={CREATE_GROUP_NAV}
+        activeHref="/create-group"
+        isCollapsed={isSidebarCollapsed}
+      />
+
+      <main
+        className={`pb-10 pt-24 px-4 transition-all duration-300 ${
+          isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
+        }`}
+      >
+      <div
+        className="fixed inset-0 opacity-40 pointer-events-none"
+        style={{
+          backgroundImage: 'radial-gradient(circle, rgba(30,10,78,0.04) 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
+        }}
+      />
+
+      <div className="relative max-w-2xl mx-auto">
+        <div className="mb-8">
+          <h1 className="font-heading font-bold text-[#1E0A4E] text-3xl mb-2">Crear nuevo grupo</h1>
+          <p className="font-body text-sm text-[#7A8799]">
+            Configura tu viaje grupal y empieza a planear juntos.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {/* Section 1: Basic Info */}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
+            <SectionLabel
+              title="Información básica"
+              icon={
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-white">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                  <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              }
+            />
+            <div className="space-y-4">
+              <InputField
+                label="Nombre del grupo"
+                placeholder="Ej: Cancún Squad 2025 🌴"
+                value={form.name}
+                onChange={set('name') as (v: string) => void}
+                error={errors.name}
+                hint="Elige un nombre que identifique a tu grupo"
+              />
+              <DestinationSelect
+                value={form.destination}
+                onChange={set('destination') as (v: string) => void}
+                error={errors.destination}
+              />
+              <InputField
+                label="Descripción (opcional)"
+                placeholder="¿De qué trata este viaje?"
+                value={form.description}
+                onChange={set('description') as (v: string) => void}
+              />
+            </div>
+          </div>
+
+          {/* Section 2: Dates & Members */}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
+            <SectionLabel
+              title="Fechas y capacidad"
+              icon={
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-white">
+                  <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
+                </svg>
+              }
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <InputField
+                label="Fecha de salida"
+                type="date"
+                placeholder=""
+                value={form.startDate}
+                onChange={set('startDate') as (v: string) => void}
+                error={errors.startDate}
+              />
+              <InputField
+                label="Fecha de regreso"
+                type="date"
+                placeholder=""
+                value={form.endDate}
+                onChange={set('endDate') as (v: string) => void}
+                error={errors.endDate}
+              />
+            </div>
+            <div className="mt-4">
+              <label className="font-body text-xs text-[#7A8799] uppercase tracking-wider block mb-1.5">
+                Máximo de miembros
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={2}
+                  max={50}
+                  value={form.maxMembers}
+                  onChange={(e) => set('maxMembers')(e.target.value)}
+                  className="flex-1 accent-[#1E6FD9]"
+                />
+                <div className="w-14 h-10 bg-[#F4F6F8] border border-[#E2E8F0] rounded-xl flex items-center justify-center">
+                  <span className="font-heading font-bold text-[#1E0A4E] text-sm">{form.maxMembers}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 3: Members */}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
+            <SectionLabel
+              title="Invitar al grupo"
+              icon={
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-white">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+                  <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              }
+            />
+            <MembersSection
+              members={members}
+              onAdd={(m) => setMembers((prev) => [...prev, m])}
+              onRemove={(id) => setMembers((prev) => prev.filter((m) => m.id !== id))}
+            />
+          </div>
+
+          {/* Section 4: Privacy */}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-heading font-semibold text-[#1E0A4E] text-sm mb-0.5">
+                  Grupo público
+                </h3>
+                <p className="font-body text-xs text-[#7A8799]">
+                  Cualquiera con el código puede unirse sin aprobación
+                </p>
+              </div>
+              <button
+                onClick={() => set('isPublic')(!form.isPublic)}
+                className={`w-12 h-6 rounded-full relative transition-colors duration-200 ${
+                  form.isPublic ? 'bg-[#1E6FD9]' : 'bg-[#E2E8F0]'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
+                    form.isPublic ? 'translate-x-7' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Create Button */}
+          <button
+            onClick={handleCreate}
+            disabled={loading}
+            className="w-full font-body font-medium text-sm bg-[#1E6FD9] text-white rounded-xl px-6 py-4 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.3" />
+                  <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                Creando grupo...
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+                  <line x1="19" y1="8" x2="19" y2="14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="22" y1="11" x2="16" y2="11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+                Crear grupo
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+      </main>
+    </div>
+  )
+}
+
+export default CreateGroupPage

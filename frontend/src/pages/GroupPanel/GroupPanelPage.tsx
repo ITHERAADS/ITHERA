@@ -59,7 +59,6 @@ export function GroupPanelPage() {
         navItems={sidebarItems}
         activeHref="/grupo"
         isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
       />
 
       <main

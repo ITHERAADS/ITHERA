@@ -92,7 +92,7 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
 
   const { error: insertError } = await supabase
     .from('grupo_miembros')
-    .insert({ grupo_id: grupo.id, usuario_id: usuarioId, rol: 'colaborador' });
+    .insert({ grupo_id: grupo.id, usuario_id: usuarioId, rol: 'viajero' });
 
   if (insertError) throw new Error(insertError.message);
 
@@ -132,7 +132,7 @@ export const getMyTravelHistory = async (authUserId: string) => {
   if (error) throw new Error(error.message);
 
   const activos = data?.filter((item: any) => item.grupos_viaje?.estado === 'activo') ?? [];
-  const pasados = data?.filter((item: any) => item.grupos_viaje?.estado === 'finalizado') ?? [];
+  const pasados = data?.filter((item: any) => item.grupos_viaje?.estado === 'cerrado' || item.grupos_viaje?.estado === 'archivado') ?? [];
 
   return { activos, pasados };
 };

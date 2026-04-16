@@ -12,10 +12,10 @@ export interface GrupoMiembro {
   id: string;
   grupo_id: string;
   usuario_id: string;
-  rol: 'admin' | 'colaborador';
+  rol: 'admin' | 'viajero';
 }
 
-export type MemberRole = 'admin' | 'colaborador';
+export type MemberRole = 'admin' | 'viajero';
 
 export interface CreateGroupPayload {
   nombre: string;

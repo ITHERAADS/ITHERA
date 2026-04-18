@@ -7,7 +7,8 @@ import facebookIcon from "../../assets/facebook.png";
 export function RegisterPage() {
   const [form, setForm] = useState({
     name: "",
-    lastName: "",
+    lastNamePaterno: "",
+    lastNameMaterno: "",
     email: "",
     password: "",
     confirmPassword: "",
@@ -15,7 +16,8 @@ export function RegisterPage() {
 
   const [errors, setErrors] = useState({
     name: "",
-    lastName: "",
+    lastNamePaterno: "",
+    lastNameMaterno: "",
     email: "",
     password: "",
     confirmPassword: "",
@@ -33,7 +35,8 @@ export function RegisterPage() {
   const validate = () => {
     const newErrors = {
       name: "",
-      lastName: "",
+      lastNamePaterno: "",
+      lastNameMaterno: "",
       email: "",
       password: "",
       confirmPassword: "",
@@ -47,8 +50,13 @@ export function RegisterPage() {
       isValid = false;
     }
 
-    if (!form.lastName.trim()) {
-      newErrors.lastName = "Apellido requerido";
+    if (!form.lastNamePaterno.trim()) {
+      newErrors.lastNamePaterno = "Apellido paterno requerido";
+      isValid = false;
+    }
+
+    if (!form.lastNameMaterno.trim()) {
+      newErrors.lastNameMaterno = "Apellido materno requerido";
       isValid = false;
     }
 
@@ -139,6 +147,16 @@ export function RegisterPage() {
 
         <section className="flex items-center justify-center bg-[#F4F6F8] px-6 py-10 sm:px-10 lg:px-16">
           <div className="w-full max-w-[470px]">
+            <Link
+              to="/"
+              className="mb-8 inline-flex items-center gap-1.5 text-[13px] text-[#98A2B3] transition hover:text-[#667085]"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Volver al inicio
+            </Link>
+
             <div className="mb-7 flex items-center justify-center gap-8 text-[15px]">
               <Link
                 to="/login"
@@ -194,43 +212,63 @@ export function RegisterPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="mb-2 block text-[15px] font-semibold text-[#344054]">
+                  Nombre(s)
+                </label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => handleChange("name", e.target.value)}
+                  placeholder="Ej. María"
+                  className={`${inputBase} ${
+                    errors.name ? "border-[#EF4444]" : ""
+                  }`}
+                />
+                {errors.name && (
+                  <p className="mt-1 text-[12px] text-[#EF4444]">
+                    {errors.name}
+                  </p>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-[15px] font-semibold text-[#344054]">
-                    Nombre
+                    Apellido paterno
                   </label>
                   <input
                     type="text"
-                    value={form.name}
-                    onChange={(e) => handleChange("name", e.target.value)}
-                    placeholder="Ej. Ximena"
+                    value={form.lastNamePaterno}
+                    onChange={(e) => handleChange("lastNamePaterno", e.target.value)}
+                    placeholder="Ej. García"
                     className={`${inputBase} ${
-                      errors.name ? "border-[#EF4444]" : ""
+                      errors.lastNamePaterno ? "border-[#EF4444]" : ""
                     }`}
                   />
-                  {errors.name && (
+                  {errors.lastNamePaterno && (
                     <p className="mt-1 text-[12px] text-[#EF4444]">
-                      {errors.name}
+                      {errors.lastNamePaterno}
                     </p>
                   )}
                 </div>
 
                 <div>
                   <label className="mb-2 block text-[15px] font-semibold text-[#344054]">
-                    Apellido P y M
+                    Apellido materno
                   </label>
                   <input
                     type="text"
-                    value={form.lastName}
-                    onChange={(e) => handleChange("lastName", e.target.value)}
-                    placeholder="Ej. Cárdenas Hdz"
+                    value={form.lastNameMaterno}
+                    onChange={(e) => handleChange("lastNameMaterno", e.target.value)}
+                    placeholder="Ej. López"
                     className={`${inputBase} ${
-                      errors.lastName ? "border-[#EF4444]" : ""
+                      errors.lastNameMaterno ? "border-[#EF4444]" : ""
                     }`}
                   />
-                  {errors.lastName && (
+                  {errors.lastNameMaterno && (
                     <p className="mt-1 text-[12px] text-[#EF4444]">
-                      {errors.lastName}
+                      {errors.lastNameMaterno}
                     </p>
                   )}
                 </div>
@@ -244,7 +282,7 @@ export function RegisterPage() {
                   type="email"
                   value={form.email}
                   onChange={(e) => handleChange("email", e.target.value)}
-                  placeholder="ximcaher20@gmail.com"
+                  placeholder="nombre@correo.com"
                   className={`${inputBase} ${
                     errors.email ? "border-[#EF4444]" : ""
                   }`}

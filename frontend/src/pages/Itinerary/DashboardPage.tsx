@@ -800,23 +800,20 @@ function ActivitiesContent({ activities, onAccept, onDelete }: ActivitiesContent
 // ── DashboardPage ─────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
-  const [activeDay,       setActiveDay]       = useState<number | null>(null)
-  const [showDaySelector, setShowDaySelector] = useState(false)
-  const [activeTab,       setActiveTab]       = useState('pagar')
+  const [activeDay,   setActiveDay]   = useState<number | null>(null)
+  const [expandedDay, setExpandedDay] = useState<number | null>(null)
+  const [activeTab,   setActiveTab]   = useState('pagar')
   const [isLoading,       setIsLoading]       = useState(false)
   const [activities,      setActivities]      = useState<Activity[]>(ACTIVITIES)
 
   const dayRefs = useRef<Record<number, DayViewHandle | null>>({})
 
   const handleDayChange = useCallback((dayNumber: number) => {
-    setActiveDay((prev) => {
-      const next = prev === dayNumber ? null : dayNumber
-      if (next !== null) {
-        setShowDaySelector(false)
-        setTimeout(() => dayRefs.current[next]?.scrollIntoView(), 60)
-      }
-      return next
-    })
+    setActiveDay((prev) => prev === dayNumber ? null : dayNumber)
+  }, [])
+
+  const handleDayExpand = useCallback((dayNumber: number) => {
+    setExpandedDay((prev) => prev === dayNumber ? null : dayNumber)
   }, [])
 
   const isEmpty = activities.length === 0
@@ -843,9 +840,7 @@ export function DashboardPage() {
       sidebarContent={
         <SidebarDashboard
           activeDay={activeDay}
-          showDaySelector={showDaySelector}
           onDayChange={handleDayChange}
-          onToggleDaySelector={() => setShowDaySelector((v) => !v)}
         />
       }
       rightPanel={<RightPanelDashboard />}
@@ -873,8 +868,8 @@ export function DashboardPage() {
                 date={day.date}
                 activities={day.activities}
                 isActive={day.dayNumber === activeDay}
-                isExpanded={activeDay !== null && day.dayNumber === activeDay}
-                onSelect={handleDayChange}
+                isExpanded={day.dayNumber === expandedDay}
+                onSelect={handleDayExpand}
               />
             ))}
           </div>

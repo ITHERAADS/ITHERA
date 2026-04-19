@@ -9,6 +9,7 @@ import flightsRouter from './routes/flights.router';
 import hotelsRouter from './routes/hotels.router';
 import mapsRouter from './routes/maps.router';
 import proposalsRouter from './routes/proposals.router';
+import votesCommentsRouter from './routes/votesComments.router';
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use('/api/flights', flightsRouter);
 app.use('/api/hotels', hotelsRouter);
 app.use('/api/maps', mapsRouter);
 app.use('/api/proposals', proposalsRouter);
+app.use('/api/proposals', votesCommentsRouter);
 
 // ── Error handler global ──────────────────────────────────────────
 app.use(errorHandler);

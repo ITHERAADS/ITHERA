@@ -365,7 +365,6 @@ export function GroupSettingsPage() {
       trip={{ name: settings.name, subtitle: settings.destination, dates: '10–17 Jul', people: `${members.length} personas` }}
       user={{ name: 'Bryan A.', role: 'Admin', initials: 'BA', color: '#7A4FD6' }}
       showTripSelector={false}
-      centerTitle={settings.name}
       showRightPanel={false}
     >
       <div className="flex-1 overflow-y-auto">

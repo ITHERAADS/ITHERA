@@ -374,7 +374,6 @@ export function GroupPanelPage() {
       notificationCount={3}
       isOnline
       showTripSelector={false}
-      centerTitle="Cancún 2025"
       showRightPanel={false}
     >
       <div className="flex-1 overflow-y-auto">

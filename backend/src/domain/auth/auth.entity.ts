@@ -16,10 +16,16 @@ export interface UsuarioLocal {
 export interface SignupPayload {
   email: string;
   password: string;
-  nombre?: string;
+  name: string;
+  lastNamePaterno: string;
+  lastNameMaterno: string;
 }
 
 export interface LoginPayload {
   email: string;
   password: string;
+}
+
+export interface ForgotPasswordPayload {
+  email: string;
 }

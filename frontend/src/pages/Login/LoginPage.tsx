@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import logoWhite from "../../assets/logo-white.png";
 import googleIcon from "../../assets/google.png";
 import facebookIcon from "../../assets/facebook.png";
+import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -11,8 +12,10 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
+  const { login, loginWithGoogle, loginWithFacebook } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
 
@@ -26,17 +29,17 @@ export function LoginPage() {
       return;
     }
 
-    setLoading(true);
-
-    setTimeout(() => {
+    try {
+      setLoading(true);
+      await login(email, password);
+      navigate("/dashboard");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No se pudo iniciar sesión";
+      setError(message);
+    } finally {
       setLoading(false);
-
-      if (email !== "test@test.com" || password !== "123456") {
-        setError("Correo o contraseña incorrectos");
-      } else {
-        alert("Login correcto");
-      }
-    }, 1500);
+    }
   };
 
   const inputBase =
@@ -123,6 +126,17 @@ export function LoginPage() {
             <div className="mb-8 grid grid-cols-2 gap-4">
               <button
                 type="button"
+                onClick={async () => {
+                  try {
+                    setLoading(true);
+                    await loginWithGoogle();
+                  } catch (err) {
+                    const message =
+                      err instanceof Error ? err.message : "No se pudo iniciar con Google";
+                    setError(message);
+                    setLoading(false);
+                  }
+                }}
                 className="flex h-[54px] items-center justify-center gap-3 rounded-[14px] border border-[#D9DEE7] bg-white text-[16px] font-medium text-[#344054] transition hover:border-[#2C8BE6]"
               >
                 <img
@@ -135,6 +149,17 @@ export function LoginPage() {
 
               <button
                 type="button"
+                onClick={async () => {
+                  try {
+                    setLoading(true);
+                    await loginWithFacebook();
+                  } catch (err) {
+                    const message =
+                      err instanceof Error ? err.message : "No se pudo iniciar con Facebook";
+                    setError(message);
+                    setLoading(false);
+                  }
+                }}
                 className="flex h-[54px] items-center justify-center gap-3 rounded-[14px] border border-[#D9DEE7] bg-white text-[16px] font-medium text-[#344054] transition hover:border-[#2C8BE6]"
               >
                 <img

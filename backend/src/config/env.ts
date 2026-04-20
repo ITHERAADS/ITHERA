@@ -4,9 +4,11 @@ dotenv.config();
 
 interface EnvConfig {
   SUPABASE_URL: string;
-  SUPABASE_KEY: string;
+  SUPABASE_ANON_KEY: string;
+  SUPABASE_SECRET_KEY: string;
   PORT: number;
   NODE_ENV: string;
+  FRONTEND_URL: string;
 }
 
 function requireEnv(key: string): string {
@@ -19,7 +21,9 @@ function requireEnv(key: string): string {
 
 export const env: EnvConfig = {
   SUPABASE_URL: requireEnv('SUPABASE_URL'),
-  SUPABASE_KEY: requireEnv('SUPABASE_KEY'),
+  SUPABASE_ANON_KEY: requireEnv('SUPABASE_ANON_KEY'),
+  SUPABASE_SECRET_KEY: requireEnv('SUPABASE_SECRET_KEY'),
   PORT: parseInt(process.env.PORT ?? '3001', 10),
   NODE_ENV: process.env.NODE_ENV ?? 'development',
+  FRONTEND_URL: process.env.FRONTEND_URL ?? 'http://localhost:5173',
 };

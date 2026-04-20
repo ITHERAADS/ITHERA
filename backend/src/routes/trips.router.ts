@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as GroupsService from '../domain/groups/groups.service';
 import { MemberRole } from '../domain/groups/groups.entity';
+import { supabase } from '../infrastructure/db/supabase.client';
 
 const router = Router();
 
@@ -48,7 +49,7 @@ router.get('/my-history', requireAuth, async (req: Request, res: Response): Prom
 router.get('/:groupId/qr', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { groupId } = req.params;
-    const { data: grupo, error } = await (await import('../infrastructure/db/supabase.client.js')).supabase
+    const { data: grupo, error } = await supabase
       .from('grupos_viaje')
       .select('id, nombre, codigo_invitacion')
       .eq('id', groupId)

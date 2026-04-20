@@ -77,3 +77,45 @@ export interface UpdateProposalPayload {
     payload?: Record<string, unknown>;
   };
 }
+
+export interface Proposal {
+  id_propuesta: string;
+  grupo_id: string;
+  tipo_item: 'vuelo' | 'hospedaje';
+  titulo?: string;
+  descripcion?: string;
+  fecha_creacion?: string;
+}
+
+export interface ProposalVote {
+  id_voto: string;
+  id_propuesta: string;
+  id_usuario: string;
+  created_at?: string;
+}
+
+export interface CreateVotePayload {}
+
+export interface ProposalVoteResult {
+  id_propuesta: string;
+  tipo_item: 'vuelo' | 'hospedaje';
+  titulo: string;
+  votos: number;
+}
+
+export interface ProposalComment {
+  id_comentario: string;
+  id_propuesta: string;
+  id_usuario: string;
+  contenido: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CreateCommentPayload {
+  contenido: string;
+}
+
+export interface UpdateCommentPayload {
+  contenido: string;
+}

@@ -37,7 +37,7 @@ export const getLocalUserId = async (authUserId: string): Promise<string> => {
     .single();
 
   if (error || !data) throw new Error('Usuario no encontrado en tabla local');
-  return data.id_usuario as string;
+  return String(data.id_usuario);
 };
 
 // ── Service functions ──────────────────────────────────────────────────────────

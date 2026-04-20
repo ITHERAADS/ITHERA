@@ -4,6 +4,10 @@ import {
   SaveFlightProposalPayload,
   SaveHotelProposalPayload,
   UpdateProposalPayload,
+  CreateCommentPayload,
+  CreateVotePayload,
+  ProposalVoteResult,
+  UpdateCommentPayload,
 } from './proposals.entity';
 
 const isPresent = (value: unknown): boolean => value !== undefined;
@@ -328,4 +332,249 @@ export const deleteProposal = async (proposalId: number, authUserId: string) => 
   if (error) throw new Error(error.message);
 
   return true;
+};
+
+type ServiceError = Error & { statusCode?: number };
+
+const createError = (message: string, statusCode: number): ServiceError => {
+	const err = new Error(message) as ServiceError;
+	err.statusCode = statusCode;
+	return err;
+};
+
+const ensureProposalBelongsToGroup = async (groupId: string, proposalId: string): Promise<void> => {
+	const { data, error } = await supabase
+		.from('propuestas')
+		.select('id_propuesta, grupo_id')
+		.eq('id_propuesta', proposalId)
+		.eq('grupo_id', groupId)
+		.maybeSingle();
+
+	if (error) throw createError(error.message, 500);
+	if (!data) throw createError('La propuesta no existe en el viaje/grupo indicado', 404);
+};
+
+const ensureUserBelongsToGroup = async (groupId: string, localUserId: string): Promise<void> => {
+	const { data, error } = await supabase
+		.from('grupo_miembros')
+		.select('id')
+		.eq('grupo_id', groupId)
+		.eq('usuario_id', localUserId)
+		.maybeSingle();
+
+	if (error) throw createError(error.message, 500);
+	if (!data) throw createError('No autorizado: no perteneces a este viaje/grupo', 403);
+};
+
+export const castSingleVote = async (
+	authUserId: string,
+	groupId: string,
+	proposalId: string,
+	_payload: CreateVotePayload,
+) => {
+	const localUserId = await getLocalUserId(authUserId);
+	const localUserIdStr = String(localUserId);
+	await ensureUserBelongsToGroup(groupId, localUserId);
+	await ensureProposalBelongsToGroup(groupId, proposalId);
+
+	const { data: existingVote, error: existingVoteError } = await supabase
+		.from('voto')
+		.select('id_voto')
+		.eq('id_propuesta', proposalId)
+		.eq('id_usuario', localUserId)
+		.maybeSingle();
+
+	if (existingVoteError) throw createError(existingVoteError.message, 500);
+	if (existingVote) {
+		throw createError('Ya emitiste tu voto para esta propuesta', 409);
+	}
+
+	const { data: newVote, error: insertError } = await supabase
+		.from('voto')
+		.insert({ id_propuesta: proposalId, id_usuario: localUserId })
+		.select('id_voto, id_propuesta, id_usuario, created_at')
+		.single();
+
+	if (insertError) throw createError(insertError.message, 500);
+
+	return {
+		vote: newVote,
+		message: 'Voto registrado correctamente',
+	};
+};
+
+export const getProposalVoteResults = async (
+	authUserId: string,
+	groupId: string,
+) => {
+	const localUserId = await getLocalUserId(authUserId);
+	await ensureUserBelongsToGroup(groupId, localUserId);
+
+	const { data: proposals, error: proposalsError } = await supabase
+		.from('propuestas')
+		.select('id_propuesta, tipo_item, titulo')
+		.eq('grupo_id', groupId);
+
+	if (proposalsError) throw createError(proposalsError.message, 500);
+
+	if (!proposals || proposals.length === 0) {
+		return {
+			tripId: groupId,
+			totalVotes: 0,
+			results: [] as ProposalVoteResult[],
+		};
+	}
+
+	const proposalIds = proposals.map((p: any) => p.id_propuesta);
+	const { data: votes, error: votesError } = await supabase
+		.from('voto')
+		.select('id_propuesta')
+		.in('id_propuesta', proposalIds);
+
+	if (votesError) throw createError(votesError.message, 500);
+
+	const counts = new Map<string, number>();
+	for (const row of votes ?? []) {
+		const idPropuesta = String((row as { id_propuesta: string | number }).id_propuesta);
+		counts.set(idPropuesta, (counts.get(idPropuesta) ?? 0) + 1);
+	}
+
+	const results: ProposalVoteResult[] = proposals
+		.map((proposal: any) => ({
+			id_propuesta: String(proposal.id_propuesta),
+			tipo_item: proposal.tipo_item as 'vuelo' | 'hospedaje',
+			titulo: String(proposal.titulo ?? ''),
+			votos: counts.get(String(proposal.id_propuesta)) ?? 0,
+		}))
+		.sort((a, b) => b.votos - a.votos || a.id_propuesta.localeCompare(b.id_propuesta));
+
+	return {
+		tripId: groupId,
+		totalVotes: votes?.length ?? 0,
+		results,
+	};
+};
+
+export const createComment = async (
+	authUserId: string,
+	groupId: string,
+	proposalId: string,
+	payload: CreateCommentPayload,
+) => {
+	if (!payload.contenido || !payload.contenido.trim()) {
+		throw createError('contenido es requerido', 400);
+	}
+
+	const localUserId = await getLocalUserId(authUserId);
+	const localUserIdStr = String(localUserId);
+	await ensureUserBelongsToGroup(groupId, localUserId);
+	await ensureProposalBelongsToGroup(groupId, proposalId);
+
+	const { data, error } = await supabase
+		.from('comentario')
+		.insert({
+			id_propuesta: proposalId,
+			id_usuario: localUserId,
+			contenido: payload.contenido.trim(),
+		})
+		.select('id_comentario, id_propuesta, id_usuario, contenido, created_at, updated_at')
+		.single();
+
+	if (error) throw createError(error.message, 500);
+	return data;
+};
+
+export const listComments = async (
+	authUserId: string,
+	groupId: string,
+	proposalId: string,
+) => {
+	const localUserId = await getLocalUserId(authUserId);
+	const localUserIdStr = String(localUserId);
+	await ensureUserBelongsToGroup(groupId, localUserId);
+	await ensureProposalBelongsToGroup(groupId, proposalId);
+
+	const { data, error } = await supabase
+		.from('comentario')
+		.select('id_comentario, id_propuesta, id_usuario, contenido, created_at, updated_at')
+		.eq('id_propuesta', proposalId)
+		.order('created_at', { ascending: true });
+
+	if (error) throw createError(error.message, 500);
+	return data ?? [];
+};
+
+export const updateComment = async (
+	authUserId: string,
+	groupId: string,
+	proposalId: string,
+	commentId: string,
+	payload: UpdateCommentPayload,
+) => {
+	if (!payload.contenido || !payload.contenido.trim()) {
+		throw createError('contenido es requerido', 400);
+	}
+
+	const localUserId = await getLocalUserId(authUserId);
+	const localUserIdStr = String(localUserId);
+	await ensureUserBelongsToGroup(groupId, localUserId);
+	await ensureProposalBelongsToGroup(groupId, proposalId);
+
+	const { data: existing, error: existingError } = await supabase
+		.from('comentario')
+		.select('id_comentario, id_usuario, id_propuesta')
+		.eq('id_comentario', commentId)
+		.maybeSingle();
+
+	if (existingError) throw createError(existingError.message, 500);
+	if (!existing || String((existing as { id_propuesta: string | number }).id_propuesta) !== proposalId) {
+		throw createError('Comentario no encontrado', 404);
+	}
+	if (String((existing as { id_usuario: string | number }).id_usuario) !== localUserIdStr) {
+		throw createError('No puedes editar comentarios de otro usuario', 403);
+	}
+
+	const { data, error } = await supabase
+		.from('comentario')
+		.update({ contenido: payload.contenido.trim(), updated_at: new Date().toISOString() })
+		.eq('id_comentario', commentId)
+		.select('id_comentario, id_propuesta, id_usuario, contenido, created_at, updated_at')
+		.single();
+
+	if (error) throw createError(error.message, 500);
+	return data;
+};
+
+export const deleteComment = async (
+	authUserId: string,
+	groupId: string,
+	proposalId: string,
+	commentId: string,
+) => {
+	const localUserId = await getLocalUserId(authUserId);
+	const localUserIdStr = String(localUserId);
+	await ensureUserBelongsToGroup(groupId, localUserId);
+	await ensureProposalBelongsToGroup(groupId, proposalId);
+
+	const { data: existing, error: existingError } = await supabase
+		.from('comentario')
+		.select('id_comentario, id_usuario, id_propuesta')
+		.eq('id_comentario', commentId)
+		.maybeSingle();
+
+	if (existingError) throw createError(existingError.message, 500);
+	if (!existing || String((existing as { id_propuesta: string | number }).id_propuesta) !== proposalId) {
+		throw createError('Comentario no encontrado', 404);
+	}
+	if (String((existing as { id_usuario: string | number }).id_usuario) !== localUserIdStr) {
+		throw createError('No puedes eliminar comentarios de otro usuario', 403);
+	}
+
+	const { error } = await supabase
+		.from('comentario')
+		.delete()
+		.eq('id_comentario', commentId);
+
+	if (error) throw createError(error.message, 500);
+	return { deleted: true, commentId };
 };

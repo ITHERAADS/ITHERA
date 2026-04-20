@@ -9,6 +9,12 @@ import {
 
 const router = Router();
 
+const getStatusCode = (err: unknown): number => {
+  const statusCode = (err as { statusCode?: number })?.statusCode;
+  if (typeof statusCode === 'number') return statusCode;
+  return 500;
+};
+
 router.post('/flights', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const body = req.body as SaveFlightProposalPayload;
@@ -123,6 +129,103 @@ router.delete('/:proposalId', requireAuth, async (req: Request, res: Response): 
     const msg = err instanceof Error ? err.message : 'Error desconocido';
     const status = (err as { statusCode?: number }).statusCode ?? 500;
     res.status(status).json({ ok: false, error: msg });
+  }
+});
+
+// POST /api/proposals/groups/:tripId/:proposalId/vote
+router.post('/groups/:tripId/:proposalId/vote', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { tripId, proposalId } = req.params as { tripId: string; proposalId: string };
+
+    const result = await ProposalsService.castSingleVote(req.user!.id, tripId, proposalId, {});
+    res.status(200).json({ ok: true, ...result });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(getStatusCode(err)).json({ ok: false, error: msg });
+  }
+});
+
+// GET /api/proposals/groups/:tripId/vote-results
+router.get('/groups/:tripId/vote-results', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { tripId } = req.params as { tripId: string };
+    const result = await ProposalsService.getProposalVoteResults(req.user!.id, tripId);
+    res.status(200).json({ ok: true, ...result });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(getStatusCode(err)).json({ ok: false, error: msg });
+  }
+});
+
+// POST /api/proposals/groups/:tripId/:proposalId/comments
+router.post('/groups/:tripId/:proposalId/comments', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { tripId, proposalId } = req.params as { tripId: string; proposalId: string };
+    const { contenido } = req.body as { contenido?: string };
+
+    if (!contenido) {
+      res.status(400).json({ ok: false, error: 'contenido es requerido' });
+      return;
+    }
+
+    const comment = await ProposalsService.createComment(req.user!.id, tripId, proposalId, { contenido });
+    res.status(201).json({ ok: true, message: 'Comentario creado correctamente', comment });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(getStatusCode(err)).json({ ok: false, error: msg });
+  }
+});
+
+// GET /api/proposals/groups/:tripId/:proposalId/comments
+router.get('/groups/:tripId/:proposalId/comments', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { tripId, proposalId } = req.params as { tripId: string; proposalId: string };
+
+    const comments = await ProposalsService.listComments(req.user!.id, tripId, proposalId);
+    res.status(200).json({ ok: true, comments });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(getStatusCode(err)).json({ ok: false, error: msg });
+  }
+});
+
+// PATCH /api/proposals/groups/:tripId/:proposalId/comments/:commentId
+router.patch('/groups/:tripId/:proposalId/comments/:commentId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { tripId, proposalId, commentId } = req.params as {
+      tripId: string;
+      proposalId: string;
+      commentId: string;
+    };
+    const { contenido } = req.body as { contenido?: string };
+
+    if (!contenido) {
+      res.status(400).json({ ok: false, error: 'contenido es requerido' });
+      return;
+    }
+
+    const comment = await ProposalsService.updateComment(req.user!.id, tripId, proposalId, commentId, { contenido });
+    res.status(200).json({ ok: true, message: 'Comentario actualizado correctamente', comment });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(getStatusCode(err)).json({ ok: false, error: msg });
+  }
+});
+
+// DELETE /api/proposals/groups/:tripId/:proposalId/comments/:commentId
+router.delete('/groups/:tripId/:proposalId/comments/:commentId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { tripId, proposalId, commentId } = req.params as {
+      tripId: string;
+      proposalId: string;
+      commentId: string;
+    };
+
+    const result = await ProposalsService.deleteComment(req.user!.id, tripId, proposalId, commentId);
+    res.status(200).json({ ok: true, message: 'Comentario eliminado correctamente', ...result });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(getStatusCode(err)).json({ ok: false, error: msg });
   }
 });
 

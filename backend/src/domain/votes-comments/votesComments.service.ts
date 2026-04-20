@@ -45,7 +45,7 @@ const getGroupVoteRanking = async (groupId: number) => {
   if (proposalsError) throw new Error(proposalsError.message);
 
   const ranking = await Promise.all(
-    (proposals ?? []).map(async (item) => {
+    (proposals ?? []).map(async (item: { id_propuesta: number; titulo: string | null }) => {
       const { count, error: countError } = await supabase
         .from('voto')
         .select('*', { count: 'exact', head: true })
@@ -61,7 +61,11 @@ const getGroupVoteRanking = async (groupId: number) => {
     }),
   );
 
-  return ranking.sort((a, b) => {
+  return ranking.sort(
+    (
+      a: { proposalId: number; titulo: string | null; totalVotes: number },
+      b: { proposalId: number; titulo: string | null; totalVotes: number }
+    ) => {
     if (b.totalVotes !== a.totalVotes) return b.totalVotes - a.totalVotes;
     return a.proposalId - b.proposalId;
   });

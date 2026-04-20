@@ -209,7 +209,11 @@ export const listGroupProposals = async (groupId: number, authUserId: string) =>
 
   if (error) throw new Error(error.message);
 
-  const enriched = await Promise.all((proposals ?? []).map((item) => buildProposalResponse(item.id_propuesta)));
+  const enriched = await Promise.all(
+    (proposals ?? []).map((item: { id_propuesta: number }) =>
+      buildProposalResponse(item.id_propuesta)
+    )
+  );
   return enriched;
 };
 

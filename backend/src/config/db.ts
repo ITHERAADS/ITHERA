@@ -1,1 +1,1 @@
-export { supabase } from '../infrastructure/db/supabase.client';
+export { supabase, supabaseAdmin, supabaseAuth } from '../infrastructure/db/supabase.client';

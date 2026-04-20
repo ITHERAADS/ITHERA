@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import logoWhite from "../../assets/logo-white.png";
 import googleIcon from "../../assets/google.png";
 import facebookIcon from "../../assets/facebook.png";
+import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from '../../context/useAuth';
 
 export function RegisterPage() {
   const [form, setForm] = useState({
@@ -26,6 +27,9 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const navigate = useNavigate();
+  const { register, loginWithGoogle, loginWithFacebook } = useAuth();
+  const [serverMessage, setServerMessage] = useState("");
 
   const handleChange = (field: string, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -88,17 +92,39 @@ export function RegisterPage() {
     return isValid;
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    setServerMessage("");
 
     if (!validate()) return;
 
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    setTimeout(() => {
+      const result = await register({
+        name: form.name,
+        lastNamePaterno: form.lastNamePaterno,
+        lastNameMaterno: form.lastNameMaterno,
+        email: form.email,
+        password: form.password,
+      });
+
+      if (result.requiresEmailConfirmation) {
+        setServerMessage(
+          "Tu cuenta fue creada correctamente. Te enviamos un enlace de verificación a tu correo. Debes abrir ese enlace antes de iniciar sesión."
+        );
+        return;
+      }
+
+      navigate("/dashboard");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "No se pudo registrar la cuenta";
+      setServerMessage(message);
+    } finally {
       setLoading(false);
-      console.log("Registro exitoso", form);
-    }, 1500);
+    }
   };
 
   const inputBase =
@@ -180,6 +206,18 @@ export function RegisterPage() {
             <div className="mb-8 grid grid-cols-2 gap-4">
               <button
                 type="button"
+                  onClick={async () => {
+                  try {
+                    setServerMessage("");
+                    await loginWithGoogle();
+                  } catch (err) {
+                    const message =
+                      err instanceof Error
+                        ? err.message
+                        : "No se pudo iniciar sesión con Facebook";
+                    setServerMessage(message);
+                  }
+                }}
                 className="flex h-[54px] items-center justify-center gap-3 rounded-[14px] border border-[#D9DEE7] bg-white text-[16px] font-medium text-[#344054] transition hover:border-[#2C8BE6]"
               >
                 <img
@@ -192,6 +230,18 @@ export function RegisterPage() {
 
               <button
                 type="button"
+                  onClick={async () => {
+                  try {
+                    setServerMessage("");
+                    await loginWithFacebook();
+                  } catch (err) {
+                    const message =
+                      err instanceof Error
+                        ? err.message
+                        : "No se pudo iniciar sesión con Facebook";
+                    setServerMessage(message);
+                  }
+                }}
                 className="flex h-[54px] items-center justify-center gap-3 rounded-[14px] border border-[#D9DEE7] bg-white text-[16px] font-medium text-[#344054] transition hover:border-[#2C8BE6]"
               >
                 <img
@@ -471,6 +521,23 @@ export function RegisterPage() {
                 </span>
               </p>
             </form>
+            {serverMessage && (
+              <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 text-green-600">
+                    ✓
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-green-800">
+                      Revisa tu correo
+                    </p>
+                    <p className="text-sm text-green-700">
+                      {serverMessage}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       </div>

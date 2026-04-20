@@ -494,7 +494,6 @@ export function Navbar(props: NavbarProps) {
           showTripSelector={props.showTripSelector ?? true}
           centerTitle={props.centerTitle ?? ''}
           onTripSelect={props.onTripSelect}
-          onNotifications={props.onNotifications}
         />
       ) : (
         <LandingNavContent

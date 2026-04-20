@@ -170,10 +170,8 @@ function Toggle({
 export function ProfilePage() {
   const { localUser } = useAuth()
 
-  const fullName   = localUser?.nombre ?? 'Usuario'
-  const email      = localUser?.email  ?? ''
-  const initials   = getInitials(fullName)
-
+  const fullName  = localUser?.nombre ?? 'Usuario'
+  const email     = localUser?.email  ?? ''
   const nameParts = fullName.trim().split(/\s+/)
 
   // ── Personal data state ───────────────────────────────────────────────────

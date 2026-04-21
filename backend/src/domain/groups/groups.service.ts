@@ -1,7 +1,14 @@
+import { sendEmail } from '../../services/email.service';
+import crypto from 'crypto';
 import { supabase } from '../../infrastructure/db/supabase.client';
-import { CreateGroupPayload, JoinGroupPayload, MemberRole } from './groups.entity';
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
+import {
+  CreateGroupInvitationsPayload,
+  CreateGroupPayload,
+  GroupInvitePreview,
+  JoinGroupPayload,
+  MemberRole,
+  UpdateGroupPayload,
+} from './groups.entity';
 
 const generateGroupCode = (length = 8): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -29,18 +36,111 @@ const generateUniqueCode = async (): Promise<string> => {
   return code;
 };
 
-export const getLocalUserId = async (authUserId: string): Promise<string> => {
+const normalizeInviteCode = (code: string): string => code.trim().toUpperCase();
+
+const generateInviteToken = (): string =>
+  `${Date.now()}_${crypto.randomBytes(12).toString('hex')}`;
+
+const getFrontendJoinLink = (code: string): string => {
+  const baseUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+  return `${baseUrl}/join-group?code=${encodeURIComponent(code)}`;
+};
+
+const getLocalUserRecord = async (
+  authUserId: string
+): Promise<{ id_usuario: number; email: string | null; nombre: string | null }> => {
   const { data, error } = await supabase
     .from('usuarios')
-    .select('id_usuario')
+    .select('id_usuario, email, nombre')
     .eq('auth_user_id', authUserId)
     .single();
 
-  if (error || !data) throw new Error('Usuario no encontrado en tabla local');
-  return String(data.id_usuario);
+  if (error || !data) {
+    throw new Error('Usuario no encontrado en tabla local');
+  }
+
+  return {
+    id_usuario: Number(data.id_usuario),
+    email: data.email ?? null,
+    nombre: data.nombre ?? null,
+  };
 };
 
-// ── Service functions ──────────────────────────────────────────────────────────
+export const getLocalUserId = async (authUserId: string): Promise<string> => {
+  const user = await getLocalUserRecord(authUserId);
+  return String(user.id_usuario);
+};
+
+const getGroupById = async (groupId: string) => {
+  const { data, error } = await supabase
+    .from('grupos_viaje')
+    .select('*')
+    .eq('id', groupId)
+    .single();
+
+  if (error || !data) {
+    throw Object.assign(new Error('Grupo no encontrado'), { statusCode: 404 });
+  }
+
+  return data;
+};
+
+const getMembership = async (groupId: string, usuarioId: string) => {
+  const { data, error } = await supabase
+    .from('grupo_miembros')
+    .select('id, rol, usuario_id, grupo_id')
+    .eq('grupo_id', groupId)
+    .eq('usuario_id', usuarioId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+const ensureGroupMember = async (authUserId: string, groupId: string) => {
+  const usuarioId = await getLocalUserId(authUserId);
+  const membership = await getMembership(groupId, usuarioId);
+
+  if (!membership) {
+    throw Object.assign(new Error('No perteneces a este grupo'), { statusCode: 403 });
+  }
+
+  return { usuarioId, membership };
+};
+
+const ensureGroupAdmin = async (authUserId: string, groupId: string) => {
+  const { usuarioId, membership } = await ensureGroupMember(authUserId, groupId);
+
+  if (membership.rol !== 'admin') {
+    throw Object.assign(new Error('Solo un administrador puede realizar esta acción'), {
+      statusCode: 403,
+    });
+  }
+
+  return { usuarioId, membership };
+};
+
+const countMembers = async (groupId: string): Promise<number> => {
+  const { count, error } = await supabase
+    .from('grupo_miembros')
+    .select('id', { count: 'exact', head: true })
+    .eq('grupo_id', groupId);
+
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+};
+
+export const getGroupDetails = async (authUserId: string, groupId: string) => {
+  const { membership } = await ensureGroupMember(authUserId, groupId);
+  const grupo = await getGroupById(groupId);
+  const memberCount = await countMembers(groupId);
+
+  return {
+    ...grupo,
+    memberCount,
+    myRole: membership.rol,
+  };
+};
 
 export const createGroup = async (authUserId: string, payload: CreateGroupPayload) => {
   const usuarioId = await getLocalUserId(authUserId);
@@ -51,18 +151,24 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
     .insert({
       nombre: payload.nombre,
       descripcion: payload.descripcion ?? null,
+      destino: payload.destino ?? null,
+      fecha_inicio: payload.fecha_inicio ?? null,
+      fecha_fin: payload.fecha_fin ?? null,
+      maximo_miembros: payload.maximo_miembros ?? null,
       codigo_invitacion: codigo,
-      creado_por: usuarioId,
+      creado_por: Number(usuarioId),
       estado: 'activo',
     })
-    .select()
+    .select('*')
     .single();
 
-  if (groupError || !grupo) throw new Error(groupError?.message ?? 'Error al crear grupo');
+  if (groupError || !grupo) {
+    throw new Error(groupError?.message ?? 'Error al crear grupo');
+  }
 
   const { error: memberError } = await supabase
     .from('grupo_miembros')
-    .insert({ grupo_id: grupo.id, usuario_id: usuarioId, rol: 'admin' });
+    .insert({ grupo_id: grupo.id, usuario_id: Number(usuarioId), rol: 'admin' });
 
   if (memberError) throw new Error(memberError.message);
 
@@ -70,46 +176,110 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
 };
 
 export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayload) => {
-  const usuarioId = await getLocalUserId(authUserId);
+  const localUser = await getLocalUserRecord(authUserId);
+  const usuarioId = String(localUser.id_usuario);
+  const normalizedCode = normalizeInviteCode(payload.codigo);
 
   const { data: grupo, error: groupError } = await supabase
     .from('grupos_viaje')
     .select('*')
-    .eq('codigo_invitacion', payload.codigo)
+    .eq('codigo_invitacion', normalizedCode)
     .eq('estado', 'activo')
     .single();
 
-  if (groupError || !grupo) throw new Error('Grupo no encontrado o inactivo');
+  if (groupError || !grupo) {
+    throw Object.assign(new Error('Grupo no encontrado o inactivo'), { statusCode: 404 });
+  }
 
-  const { data: existente } = await supabase
+  const { data: existente, error: existingError } = await supabase
     .from('grupo_miembros')
     .select('id')
     .eq('grupo_id', grupo.id)
     .eq('usuario_id', usuarioId)
     .maybeSingle();
 
-  if (existente) throw Object.assign(new Error('El usuario ya pertenece a este grupo'), { statusCode: 409 });
+  if (existingError) throw new Error(existingError.message);
+
+  if (existente) {
+    throw Object.assign(new Error('El usuario ya pertenece a este grupo'), { statusCode: 409 });
+  }
+
+  if (grupo.maximo_miembros) {
+    const miembrosActuales = await countMembers(String(grupo.id));
+    if (miembrosActuales >= grupo.maximo_miembros) {
+      throw Object.assign(new Error('El grupo alcanzó el máximo de miembros'), {
+        statusCode: 409,
+      });
+    }
+  }
 
   const { error: insertError } = await supabase
     .from('grupo_miembros')
-    .insert({ grupo_id: grupo.id, usuario_id: usuarioId, rol: 'viajero' });
+    .insert({ grupo_id: grupo.id, usuario_id: localUser.id_usuario, rol: 'viajero' });
 
   if (insertError) throw new Error(insertError.message);
+
+  if (localUser.email) {
+    await supabase
+      .from('grupo_invitaciones')
+      .update({
+        estado: 'aceptada',
+        accepted_by: localUser.id_usuario,
+        accepted_at: new Date().toISOString(),
+      })
+      .eq('grupo_id', grupo.id)
+      .eq('email', localUser.email.toLowerCase())
+      .eq('estado', 'pendiente');
+  }
 
   return grupo;
 };
 
-export const getGroupMembers = async (groupId: string) => {
+export const getGroupMembers = async (authUserId: string, groupId: string) => {
+  await ensureGroupMember(authUserId, groupId);
+
   const { data, error } = await supabase
     .from('grupo_miembros')
-    .select(`id, rol, usuarios ( id_usuario, nombre, email )`)
+    .select(`
+      id,
+      usuario_id,
+      rol,
+      usuarios (
+        id_usuario,
+        nombre,
+        email
+      )
+    `)
     .eq('grupo_id', groupId);
 
   if (error) throw new Error(error.message);
-  return data;
+
+  return (data ?? []).map((item: any) => ({
+    id: String(item.id),
+    usuario_id: String(item.usuario_id),
+    rol: item.rol,
+    nombre: item.usuarios?.nombre ?? '',
+    email: item.usuarios?.email ?? '',
+  }));
 };
 
-export const updateMemberRole = async (memberId: string, rol: MemberRole) => {
+export const updateMemberRole = async (
+  authUserId: string,
+  memberId: string,
+  rol: MemberRole
+) => {
+  const { data: targetMember, error: memberLookupError } = await supabase
+    .from('grupo_miembros')
+    .select('id, grupo_id, usuario_id, rol')
+    .eq('id', memberId)
+    .single();
+
+  if (memberLookupError || !targetMember) {
+    throw Object.assign(new Error('Miembro no encontrado'), { statusCode: 404 });
+  }
+
+  await ensureGroupAdmin(authUserId, String(targetMember.grupo_id));
+
   const { data, error } = await supabase
     .from('grupo_miembros')
     .update({ rol })
@@ -121,18 +291,310 @@ export const updateMemberRole = async (memberId: string, rol: MemberRole) => {
   return data;
 };
 
+export const removeMember = async (
+  authUserId: string,
+  groupId: string,
+  memberId: string
+) => {
+  const { membership } = await ensureGroupAdmin(authUserId, groupId);
+
+  const { data: targetMember, error: targetError } = await supabase
+    .from('grupo_miembros')
+    .select('id, usuario_id, rol, grupo_id')
+    .eq('id', memberId)
+    .eq('grupo_id', groupId)
+    .single();
+
+  if (targetError || !targetMember) {
+    throw Object.assign(new Error('Miembro no encontrado en este grupo'), { statusCode: 404 });
+  }
+
+  if (String(targetMember.usuario_id) === String(membership.usuario_id)) {
+    throw Object.assign(new Error('No puedes expulsarte a ti mismo'), { statusCode: 400 });
+  }
+
+  const { error } = await supabase
+    .from('grupo_miembros')
+    .delete()
+    .eq('id', memberId)
+    .eq('grupo_id', groupId);
+
+  if (error) throw new Error(error.message);
+
+  return { ok: true };
+};
+
+export const getInviteInfo = async (authUserId: string, groupId: string) => {
+  await ensureGroupMember(authUserId, groupId);
+  const grupo = await getGroupById(groupId);
+
+  const inviteLink = getFrontendJoinLink(grupo.codigo_invitacion);
+
+  return {
+    groupId: String(grupo.id),
+    codigo: grupo.codigo_invitacion,
+    inviteLink,
+  };
+};
+
+export const getInvitePreviewByCode = async (
+  codigo: string
+): Promise<GroupInvitePreview> => {
+  const normalizedCode = normalizeInviteCode(codigo);
+
+  const { data: grupo, error } = await supabase
+    .from('grupos_viaje')
+    .select('*')
+    .eq('codigo_invitacion', normalizedCode)
+    .eq('estado', 'activo')
+    .single();
+
+  if (error || !grupo) {
+    throw Object.assign(new Error('Invitación no encontrada o grupo inactivo'), {
+      statusCode: 404,
+    });
+  }
+
+  const memberCount = await countMembers(String(grupo.id));
+  const canJoin = grupo.maximo_miembros ? memberCount < grupo.maximo_miembros : true;
+
+  return {
+    groupId: String(grupo.id),
+    nombre: grupo.nombre,
+    descripcion: grupo.descripcion ?? null,
+    destino: grupo.destino ?? null,
+    fecha_inicio: grupo.fecha_inicio ?? null,
+    fecha_fin: grupo.fecha_fin ?? null,
+    estado: grupo.estado,
+    codigo: grupo.codigo_invitacion,
+    memberCount,
+    maximo_miembros: grupo.maximo_miembros ?? null,
+    canJoin,
+  };
+};
+
+export const createGroupInvitations = async (
+  authUserId: string,
+  groupId: string,
+  payload: CreateGroupInvitationsPayload
+) => {
+  const { usuarioId } = await ensureGroupAdmin(authUserId, groupId);
+  const grupo = await getGroupById(groupId);
+
+  const emails = Array.from(
+    new Set(
+      payload.emails
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  if (!emails.length) {
+    throw Object.assign(new Error('Debes enviar al menos un correo válido'), {
+      statusCode: 400,
+    });
+  }
+
+  const { data: miembros, error: membersError } = await supabase
+    .from('grupo_miembros')
+    .select(`
+      usuario_id,
+      usuarios (
+        email
+      )
+    `)
+    .eq('grupo_id', groupId);
+
+  if (membersError) throw new Error(membersError.message);
+
+  const memberEmails = new Set(
+    (miembros ?? [])
+      .map((item: any) => item.usuarios?.email?.toLowerCase?.())
+      .filter(Boolean)
+  );
+
+  const { data: pendingInvites, error: pendingError } = await supabase
+    .from('grupo_invitaciones')
+    .select('id, email, token, estado')
+    .eq('grupo_id', groupId)
+    .eq('estado', 'pendiente');
+
+  if (pendingError) throw new Error(pendingError.message);
+
+  const pendingByEmail = new Map(
+    (pendingInvites ?? []).map((invite: any) => [invite.email.toLowerCase(), invite])
+  );
+
+  const results: Array<{
+    id?: string;
+    email: string;
+    status: 'existing_member' | 'already_invited' | 'created';
+    inviteLink?: string;
+    codigo: string;
+  }> = [];
+
+  for (const email of emails) {
+    if (memberEmails.has(email)) {
+      results.push({
+        email,
+        status: 'existing_member',
+        codigo: grupo.codigo_invitacion,
+      });
+      continue;
+    }
+
+    const existingInvite = pendingByEmail.get(email);
+
+    if (existingInvite) {
+      results.push({
+        id: String(existingInvite.id),
+        email,
+        status: 'already_invited',
+        codigo: grupo.codigo_invitacion,
+        inviteLink: getFrontendJoinLink(grupo.codigo_invitacion),
+      });
+      continue;
+    }
+
+    const token = generateInviteToken();
+
+    const { data: createdInvite, error: insertError } = await supabase
+      .from('grupo_invitaciones')
+      .insert({
+        grupo_id: grupo.id,
+        email,
+        codigo_invitacion: grupo.codigo_invitacion,
+        token,
+        estado: 'pendiente',
+        creada_por: Number(usuarioId),
+      })
+      .select('id, email')
+      .single();
+
+    if (insertError) throw new Error(insertError.message);
+
+    results.push({
+      id: String(createdInvite.id),
+      email,
+      status: 'created',
+      codigo: grupo.codigo_invitacion,
+      inviteLink: getFrontendJoinLink(grupo.codigo_invitacion),
+    });
+    
+    sendEmail({
+      to: email,
+      subject: `Invitación a grupo: ${grupo.nombre}`,
+      html: `
+        <h2>Te invitaron a un grupo</h2>
+        <p><strong>${grupo.nombre}</strong></p>
+        <p>${grupo.descripcion ?? ''}</p>
+
+        <p>Da clic aquí para unirte:</p>
+
+        <a href="${getFrontendJoinLink(grupo.codigo_invitacion)}"
+          style="
+            display:inline-block;
+            padding:10px 20px;
+            background:#4CAF50;
+            color:white;
+            text-decoration:none;
+            border-radius:5px;
+          ">
+          Unirme al grupo
+        </a>
+
+        <p style="margin-top:20px;font-size:12px;color:#888;">
+          Si no esperabas esta invitación, puedes ignorar este correo.
+        </p>
+      `,
+    }).catch((err) => {
+      console.error('Error enviando invitación:', err);
+    });
+  }
+
+  return {
+    groupId: String(grupo.id),
+    codigo: grupo.codigo_invitacion,
+    invitations: results,
+  };
+};
+
 export const getMyTravelHistory = async (authUserId: string) => {
   const usuarioId = await getLocalUserId(authUserId);
 
   const { data, error } = await supabase
     .from('grupo_miembros')
-    .select(`rol, grupos_viaje ( id, nombre, descripcion, codigo_invitacion, estado, created_at )`)
+    .select(`
+      rol,
+      grupos_viaje (
+        id,
+        nombre,
+        descripcion,
+        destino,
+        fecha_inicio,
+        fecha_fin,
+        maximo_miembros,
+        codigo_invitacion,
+        estado,
+        created_at
+      )
+    `)
     .eq('usuario_id', usuarioId);
 
   if (error) throw new Error(error.message);
 
-  const activos = data?.filter((item: any) => item.grupos_viaje?.estado === 'activo') ?? [];
-  const pasados = data?.filter((item: any) => item.grupos_viaje?.estado === 'cerrado' || item.grupos_viaje?.estado === 'archivado') ?? [];
+  const activos =
+    data?.filter((item: any) => item.grupos_viaje?.estado === 'activo') ?? [];
+
+  const pasados =
+    data?.filter((item: any) =>
+      ['finalizado', 'cerrado', 'archivado'].includes(item.grupos_viaje?.estado)
+    ) ?? [];
 
   return { activos, pasados };
+};
+
+export const updateGroup = async (
+  authUserId: string,
+  groupId: string,
+  payload: UpdateGroupPayload
+) => {
+  await ensureGroupAdmin(authUserId, groupId);
+
+  const updateData = {
+    ...(payload.nombre !== undefined ? { nombre: payload.nombre } : {}),
+    ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion || null } : {}),
+    ...(payload.destino !== undefined ? { destino: payload.destino || null } : {}),
+    ...(payload.fecha_inicio !== undefined ? { fecha_inicio: payload.fecha_inicio || null } : {}),
+    ...(payload.fecha_fin !== undefined ? { fecha_fin: payload.fecha_fin || null } : {}),
+    ...(payload.maximo_miembros !== undefined
+      ? { maximo_miembros: payload.maximo_miembros }
+      : {}),
+  };
+
+  const { data, error } = await supabase
+    .from('grupos_viaje')
+    .update(updateData)
+    .eq('id', groupId)
+    .select('*')
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? 'No se pudo actualizar el grupo');
+  }
+
+  return data;
+};
+
+export const deleteGroup = async (authUserId: string, groupId: string) => {
+  await ensureGroupAdmin(authUserId, groupId);
+
+  const { error } = await supabase
+    .from('grupos_viaje')
+    .delete()
+    .eq('id', groupId);
+
+  if (error) throw new Error(error.message);
+
+  return { ok: true };
 };

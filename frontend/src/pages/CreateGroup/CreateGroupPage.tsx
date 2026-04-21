@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
+import { useAuth } from '../../context/useAuth'
+import { groupsService, saveCurrentGroup } from '../../services/groups'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Member {
@@ -243,6 +245,9 @@ function SectionLabel({ icon, title }: { icon: React.ReactNode; title: string })
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export function CreateGroupPage() {
+  const { accessToken, localUser } = useAuth()
+  const [serverError, setServerError] = useState('')
+  const [createdGroupId, setCreatedGroupId] = useState('')
   const navigate = useNavigate()
   const [form, setForm] = useState<FormData>({
     name: '',
@@ -276,18 +281,49 @@ export function CreateGroupPage() {
 
   const handleCreate = async () => {
     if (!validate()) return
-    setLoading(true)
-    await new Promise((r) => setTimeout(r, 1400))
-    setLoading(false)
-    setGroupCode('ITHERA-' + Math.random().toString(36).slice(2, 7).toUpperCase())
-    setCreated(true)
+
+    if (!accessToken) {
+      setServerError('Tu sesión expiró. Vuelve a iniciar sesión.')
+      return
+    }
+
+    try {
+      setServerError('')
+      setLoading(true)
+
+      const response = await groupsService.createGroup(
+        {
+          nombre: form.name.trim(),
+          descripcion: form.description.trim() || undefined,
+          destino: form.destination || undefined,
+          fecha_inicio: form.startDate || undefined,
+          fecha_fin: form.endDate || undefined,
+          maximo_miembros: Number(form.maxMembers),
+        },
+        accessToken
+      )
+
+      saveCurrentGroup(response.group)
+      setGroupCode(response.group.codigo_invitacion)
+      setCreatedGroupId(response.group.id)
+      setCreated(true)
+    } catch (error) {
+      setServerError(error instanceof Error ? error.message : 'No se pudo crear el grupo')
+    } finally {
+      setLoading(false)
+    }
   }
 
   // ── Success State ────────────────────────────────────────────────────────
   if (created) {
     return (
       <AppLayout
-        user={{ name: 'Bryan A.', role: 'Organizador', initials: 'BA', color: '#1E6FD9' }}
+        user={{
+          name: localUser?.nombre || 'Usuario',
+          role: 'Organizador',
+          initials: (localUser?.nombre || 'U').slice(0, 2).toUpperCase(),
+          color: '#1E6FD9',
+        }}
         showTripSelector={false}
         showRightPanel={false}
       >
@@ -327,11 +363,12 @@ export function CreateGroupPage() {
                   Copiar código
                 </button>
                 <button
-                  onClick={() => navigate('/dashboard')}
+                  onClick={() => navigate(`/grouppanel?groupId=${encodeURIComponent(createdGroupId)}`)}
                   className="font-body font-medium text-sm bg-[#1E6FD9] text-white rounded-xl px-4 py-3 hover:opacity-90 transition-opacity flex items-center justify-center"
                 >
                   Ir al grupo →
                 </button>
+
               </div>
             </div>
           </div>
@@ -343,7 +380,12 @@ export function CreateGroupPage() {
   // ── Form ─────────────────────────────────────────────────────────────────
   return (
     <AppLayout
-      user={{ name: 'Bryan A.', role: 'Organizador', initials: 'BA', color: '#1E6FD9' }}
+      user={{
+        name: localUser?.nombre || 'Usuario',
+        role: 'Organizador',
+        initials: (localUser?.nombre || 'U').slice(0, 2).toUpperCase(),
+        color: '#1E6FD9',
+      }}
       showTripSelector={false}
       showRightPanel={false}
     >
@@ -533,6 +575,9 @@ export function CreateGroupPage() {
               </>
             )}
           </button>
+          {serverError && (
+            <p className="mt-3 font-body text-sm text-red-500 text-center">{serverError}</p>
+          )}
         </div>
       </div>
       </div>

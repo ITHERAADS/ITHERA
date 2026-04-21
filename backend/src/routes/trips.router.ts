@@ -3,16 +3,41 @@ import QRCode from 'qrcode';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as GroupsService from '../domain/groups/groups.service';
 import { MemberRole } from '../domain/groups/groups.entity';
-import { supabase } from '../infrastructure/db/supabase.client';
 
 const router = Router();
 
-// POST /api/groups
 router.post('/', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { nombre, descripcion } = req.body as { nombre?: string; descripcion?: string };
-    if (!nombre) { res.status(400).json({ ok: false, error: 'El nombre del grupo es requerido' }); return; }
-    const grupo = await GroupsService.createGroup(req.user!.id, { nombre, descripcion });
+    const {
+      nombre,
+      descripcion,
+      destino,
+      fecha_inicio,
+      fecha_fin,
+      maximo_miembros,
+    } = req.body as {
+      nombre?: string;
+      descripcion?: string;
+      destino?: string;
+      fecha_inicio?: string;
+      fecha_fin?: string;
+      maximo_miembros?: number;
+    };
+
+    if (!nombre) {
+      res.status(400).json({ ok: false, error: 'El nombre del grupo es requerido' });
+      return;
+    }
+
+    const grupo = await GroupsService.createGroup(req.user!.id, {
+      nombre,
+      descripcion,
+      destino,
+      fecha_inicio,
+      fecha_fin,
+      maximo_miembros,
+    });
+
     res.status(201).json({ ok: true, message: 'Grupo creado correctamente', group: grupo });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
@@ -20,21 +45,24 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
   }
 });
 
-// POST /api/groups/join
 router.post('/join', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { codigo } = req.body as { codigo?: string };
-    if (!codigo) { res.status(400).json({ ok: false, error: 'El código de invitación es requerido' }); return; }
+
+    if (!codigo) {
+      res.status(400).json({ ok: false, error: 'El código de invitación es requerido' });
+      return;
+    }
+
     const grupo = await GroupsService.joinGroupByCode(req.user!.id, { codigo });
     res.status(200).json({ ok: true, message: 'Te uniste al grupo correctamente', group: grupo });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode === 409 ? 409 : msg.includes('no encontrado') ? 404 : 500;
+    const status = (err as any).statusCode ?? 500;
     res.status(status).json({ ok: false, error: msg });
   }
 });
 
-// GET /api/groups/my-history
 router.get('/my-history', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const history = await GroupsService.getMyTravelHistory(req.user!.id);
@@ -45,51 +73,173 @@ router.get('/my-history', requireAuth, async (req: Request, res: Response): Prom
   }
 });
 
-// GET /api/groups/:groupId/qr
-router.get('/:groupId/qr', requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get('/invite-preview/:code', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { groupId } = req.params;
-    const { data: grupo, error } = await supabase
-      .from('grupos_viaje')
-      .select('id, nombre, codigo_invitacion')
-      .eq('id', groupId)
-      .single();
-
-    if (error || !grupo) { res.status(404).json({ ok: false, error: 'Grupo no encontrado' }); return; }
-
-    const inviteLink = `tripapp://join-group?code=${(grupo as any).codigo_invitacion}`;
-    const qrBase64 = await QRCode.toDataURL(inviteLink);
-    res.status(200).json({ ok: true, message: 'QR generado correctamente', inviteLink, qrBase64 });
+    const preview = await GroupsService.getInvitePreviewByCode(req.params.code);
+    res.status(200).json({ ok: true, preview });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
-    res.status(500).json({ ok: false, error: 'Error al generar QR', details: msg });
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
   }
 });
 
-// GET /api/groups/:groupId/members
+router.get('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const group = await GroupsService.getGroupDetails(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, group });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
+router.get('/:groupId/invite', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const payload = await GroupsService.getInviteInfo(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, ...payload });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
+router.post('/:groupId/invitations', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { emails } = req.body as { emails?: string[] };
+
+    if (!Array.isArray(emails) || emails.length === 0) {
+      res.status(400).json({
+        ok: false,
+        error: 'Debes enviar un arreglo de correos en el campo emails',
+      });
+      return;
+    }
+
+    const invalidEmails = emails.filter(
+      (email) =>
+        typeof email !== 'string' ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+    );
+
+    if (invalidEmails.length > 0) {
+      res.status(400).json({
+        ok: false,
+        error: 'Uno o más correos no tienen un formato válido',
+        invalidEmails,
+      });
+      return;
+    }
+
+    const result = await GroupsService.createGroupInvitations(
+      req.user!.id,
+      req.params.groupId,
+      { emails }
+    );
+
+    res.status(201).json({
+      ok: true,
+      message: 'Invitaciones generadas correctamente',
+      ...result,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
+router.get('/:groupId/qr', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const inviteInfo = await GroupsService.getInviteInfo(req.user!.id, req.params.groupId);
+    const qrBase64 = await QRCode.toDataURL(inviteInfo.inviteLink);
+
+    res.status(200).json({
+      ok: true,
+      ...inviteInfo,
+      qrBase64,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
 router.get('/:groupId/members', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const members = await GroupsService.getGroupMembers(req.params.groupId);
+    const members = await GroupsService.getGroupMembers(req.user!.id, req.params.groupId);
     res.status(200).json({ ok: true, members });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
-    res.status(500).json({ ok: false, error: 'Error al consultar miembros', details: msg });
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
   }
 });
 
-// PATCH /api/groups/members/:memberId/role
 router.patch('/members/:memberId/role', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { rol } = req.body as { rol?: string };
+
     if (!rol || !['admin', 'viajero'].includes(rol)) {
-      res.status(400).json({ ok: false, error: 'Rol inválido. Valores permitidos: admin, viajero' });
+      res.status(400).json({
+        ok: false,
+        error: 'Rol inválido. Valores permitidos: admin, viajero',
+      });
       return;
     }
-    const member = await GroupsService.updateMemberRole(req.params.memberId, rol as MemberRole);
+
+    const member = await GroupsService.updateMemberRole(
+      req.user!.id,
+      req.params.memberId,
+      rol as MemberRole
+    );
+
     res.status(200).json({ ok: true, message: 'Rol actualizado correctamente', member });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
-    res.status(500).json({ ok: false, error: 'Error al actualizar rol', details: msg });
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
+router.delete('/:groupId/members/:memberId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await GroupsService.removeMember(
+      req.user!.id,
+      req.params.groupId,
+      req.params.memberId
+    );
+
+    res.status(200).json({...result, message: 'Miembro eliminado correctamente' });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
+router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const group = await GroupsService.updateGroup(req.user!.id, req.params.groupId, req.body);
+    res.status(200).json({ ok: true, message: 'Grupo actualizado correctamente', group });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
+router.delete('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await GroupsService.deleteGroup(req.user!.id, req.params.groupId);
+    res.status(200).json({...result, message: 'Grupo eliminado correctamente' });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
   }
 });
 

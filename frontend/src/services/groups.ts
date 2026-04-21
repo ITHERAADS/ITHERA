@@ -1,0 +1,100 @@
+import { apiClient } from './apiClient';
+import type {
+  CreateGroupPayload,
+  Group,
+  GroupHistoryItem,
+  GroupMember,
+  UpdateGroupPayload,
+} from '../types/groups';
+
+const CURRENT_GROUP_STORAGE_KEY = 'ithera_current_group';
+
+export const groupsService = {
+  createGroup: async (payload: CreateGroupPayload, token: string) => {
+    return apiClient.post<{ ok: boolean; message: string; group: Group }>(
+      '/groups',
+      payload,
+      token
+    );
+  },
+
+  getMyHistory: async (token: string) => {
+    return apiClient.get<{
+      ok: boolean;
+      activos: GroupHistoryItem[];
+      pasados: GroupHistoryItem[];
+    }>('/groups/my-history', token);
+  },
+
+  getMembers: async (groupId: string, token: string) => {
+    return apiClient.get<{ ok: boolean; members: GroupMember[] }>(
+      `/groups/${groupId}/members`,
+      token
+    );
+  },
+
+  getInvite: async (groupId: string, token: string) => {
+    return apiClient.get<{
+      ok: boolean;
+      groupId: string;
+      codigo: string;
+      inviteLink: string;
+    }>(`/groups/${groupId}/invite`, token);
+  },
+
+  getQr: async (groupId: string, token: string) => {
+    return apiClient.get<{
+      ok: boolean;
+      groupId: string;
+      codigo: string;
+      inviteLink: string;
+      qrBase64: string;
+    }>(`/groups/${groupId}/qr`, token);
+  },
+
+  updateMemberRole: async (memberId: string, rol: 'admin' | 'viajero', token: string) => {
+    return apiClient.patch<{ ok: boolean }>(
+      `/groups/members/${memberId}/role`,
+      { rol },
+      token
+    );
+  },
+
+  removeMember: async (groupId: string, memberId: string, token: string) => {
+    return apiClient.delete<{ ok: boolean }>(
+      `/groups/${groupId}/members/${memberId}`,
+      token
+    );
+  },
+
+  updateGroup: async (groupId: string, payload: UpdateGroupPayload, token: string) => {
+    return apiClient.patch<{ ok: boolean; group: Group }>(
+      `/groups/${groupId}`,
+      payload,
+      token
+    );
+  },
+
+  deleteGroup: async (groupId: string, token: string) => {
+    return apiClient.delete<{ ok: boolean }>(`/groups/${groupId}`, token);
+  },
+};
+
+export function saveCurrentGroup(group: Group) {
+  localStorage.setItem(CURRENT_GROUP_STORAGE_KEY, JSON.stringify(group));
+}
+
+export function getCurrentGroup(): Group | null {
+  const raw = localStorage.getItem(CURRENT_GROUP_STORAGE_KEY);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as Group;
+  } catch {
+    return null;
+  }
+}
+
+export function clearCurrentGroup() {
+  localStorage.removeItem(CURRENT_GROUP_STORAGE_KEY);
+}

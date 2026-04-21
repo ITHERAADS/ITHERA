@@ -213,7 +213,7 @@ router.delete('/:groupId/members/:memberId', requireAuth, async (req: Request, r
       req.params.memberId
     );
 
-    res.status(200).json({ ok: true, ...result, message: 'Miembro eliminado correctamente' });
+    res.status(200).json({...result, message: 'Miembro eliminado correctamente' });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
     const status = (err as any).statusCode ?? 500;
@@ -235,7 +235,7 @@ router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Prom
 router.delete('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const result = await GroupsService.deleteGroup(req.user!.id, req.params.groupId);
-    res.status(200).json({ ok: true, ...result, message: 'Grupo eliminado correctamente' });
+    res.status(200).json({...result, message: 'Grupo eliminado correctamente' });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
     const status = (err as any).statusCode ?? 500;

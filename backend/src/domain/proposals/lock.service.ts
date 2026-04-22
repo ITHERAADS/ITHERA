@@ -6,6 +6,7 @@ export interface LockResult {
   success: boolean;
   lockedBy?: string;
   lockedByName?: string;
+  grupoId?: string;
 }
 
 export interface ReleasedLock {
@@ -26,62 +27,86 @@ const createError = (message: string, statusCode: number): ServiceError => {
 // ── Lock Operations ─────────────────────────────────────────────────────
 
 /**
- * Intenta adquirir un bloqueo sobre una propuesta.
- * 
+ * Intenta adquirir un bloqueo sobre una propuesta de forma ATÓMICA.
+ *
+ * Usa UPDATE condicional con .is('bloqueado_por', null) para evitar
+ * race conditions: solo una petición concurrent podrá setear el lock.
+ *
  * Flujo:
- * 1. Si bloqueado_por IS NULL → bloquea y retorna success
- * 2. Si bloqueado_por === userId → idempotente, retorna success
- * 3. Si bloqueado_por !== userId → retorna failure con info del bloqueador
+ * 1. UPDATE WHERE bloqueado_por IS NULL → si afecta filas, lock adquirido
+ * 2. Si no afecta filas, consultar quién lo tiene:
+ *    a. Si es el mismo usuario → idempotente, retorna success
+ *    b. Si es otro → retorna failure con info del bloqueador
  */
 export const acquireLock = async (
   propuestaId: string,
   userId: string,
 ): Promise<LockResult> => {
-  // Consultar estado actual del bloqueo
-  const { data: proposal, error } = await supabase
+  // Intento atómico: UPDATE solo si bloqueado_por IS NULL
+  const { data: updated, error: updateError } = await supabase
     .from('propuestas')
-    .select('id_propuesta, grupo_id, bloqueado_por, fecha_bloqueo')
+    .update({
+      bloqueado_por: userId,
+      fecha_bloqueo: new Date().toISOString(),
+    })
+    .eq('id_propuesta', propuestaId)
+    .is('bloqueado_por', null)
+    .select('id_propuesta, grupo_id')
+    .maybeSingle();
+
+  if (updateError) throw createError(updateError.message, 500);
+
+  // Si el UPDATE tuvo efecto → lock adquirido
+  if (updated) {
+    return { success: true, grupoId: String(updated.grupo_id) };
+  }
+
+  // Si no tuvo efecto, la propuesta ya está bloqueada. Consultar quién.
+  const { data: proposal, error: selectError } = await supabase
+    .from('propuestas')
+    .select('id_propuesta, grupo_id, bloqueado_por')
     .eq('id_propuesta', propuestaId)
     .single();
 
-  if (error || !proposal) {
+  if (selectError || !proposal) {
     throw createError('Propuesta no encontrada', 404);
   }
 
-  const currentLock = proposal.bloqueado_por;
-
-  // Caso 1: Libre → bloquear
-  if (currentLock === null || currentLock === undefined) {
-    const { error: updateError } = await supabase
-      .from('propuestas')
-      .update({
-        bloqueado_por: userId,
-        fecha_bloqueo: new Date().toISOString(),
-      })
-      .eq('id_propuesta', propuestaId);
-
-    if (updateError) throw createError(updateError.message, 500);
-
-    return { success: true };
+  // Caso idempotente: el mismo usuario ya lo tiene bloqueado
+  if (String(proposal.bloqueado_por) === String(userId)) {
+    return { success: true, grupoId: String(proposal.grupo_id) };
   }
 
-  // Caso 2: Ya bloqueado por el mismo usuario (idempotente)
-  if (String(currentLock) === String(userId)) {
-    return { success: true };
-  }
-
-  // Caso 3: Bloqueado por otro usuario → obtener nombre
+  // Bloqueado por otro usuario → obtener nombre
   const { data: blocker } = await supabase
     .from('usuarios')
     .select('id_usuario, nombre')
-    .eq('id_usuario', currentLock)
+    .eq('id_usuario', proposal.bloqueado_por)
     .single();
 
   return {
     success: false,
-    lockedBy: String(currentLock),
+    lockedBy: String(proposal.bloqueado_por),
     lockedByName: blocker?.nombre ?? 'Otro usuario',
+    grupoId: String(proposal.grupo_id),
   };
+};
+
+/**
+ * Verifica que una propuesta pertenezca al grupo indicado.
+ */
+export const validateProposalBelongsToGroup = async (
+  propuestaId: string,
+  tripId: string,
+): Promise<boolean> => {
+  const { data, error } = await supabase
+    .from('propuestas')
+    .select('id_propuesta')
+    .eq('id_propuesta', propuestaId)
+    .eq('grupo_id', tripId)
+    .maybeSingle();
+
+  return !error && !!data;
 };
 
 /**
@@ -92,30 +117,33 @@ export const releaseLock = async (
   propuestaId: string,
   userId: string,
 ): Promise<boolean> => {
-  const { data: proposal, error } = await supabase
-    .from('propuestas')
-    .select('id_propuesta, bloqueado_por')
-    .eq('id_propuesta', propuestaId)
-    .single();
-
-  if (error || !proposal) {
-    throw createError('Propuesta no encontrada', 404);
-  }
-
-  // Solo el usuario que bloqueó puede desbloquear
-  if (proposal.bloqueado_por !== null && String(proposal.bloqueado_por) !== String(userId)) {
-    throw createError('No puedes desbloquear una propuesta bloqueada por otro usuario', 403);
-  }
-
-  const { error: updateError } = await supabase
+  // UPDATE atómico: solo libera si bloqueado_por === userId
+  const { data: updated, error: updateError } = await supabase
     .from('propuestas')
     .update({
       bloqueado_por: null,
       fecha_bloqueo: null,
     })
-    .eq('id_propuesta', propuestaId);
+    .eq('id_propuesta', propuestaId)
+    .eq('bloqueado_por', userId)
+    .select('id_propuesta')
+    .maybeSingle();
 
   if (updateError) throw createError(updateError.message, 500);
+
+  if (!updated) {
+    // Verificar si la propuesta existe
+    const { data: exists } = await supabase
+      .from('propuestas')
+      .select('id_propuesta, bloqueado_por')
+      .eq('id_propuesta', propuestaId)
+      .single();
+
+    if (!exists) throw createError('Propuesta no encontrada', 404);
+    if (exists.bloqueado_por !== null && String(exists.bloqueado_por) !== String(userId)) {
+      throw createError('No puedes desbloquear una propuesta bloqueada por otro usuario', 403);
+    }
+  }
 
   return true;
 };
@@ -162,27 +190,35 @@ export const releaseAllUserLocks = async (
 
 /**
  * Limpia bloqueos huérfanos (TTL expirado).
- * Bloqueos con fecha_bloqueo más antigua que `ttlMinutes` minutos.
- * Se ejecuta periódicamente por el scheduler.
+ * Incluye bloqueos donde:
+ *  - fecha_bloqueo < cutoff (TTL expirado)
+ *  - fecha_bloqueo IS NULL pero bloqueado_por IS NOT NULL (datos legacy/inconsistentes)
  */
 export const cleanExpiredLocks = async (
   ttlMinutes: number,
 ): Promise<ReleasedLock[]> => {
   const cutoff = new Date(Date.now() - ttlMinutes * 60 * 1000).toISOString();
 
-  // Buscar bloqueos expirados
-  const { data: expired, error: selectError } = await supabase
+  // Buscar bloqueos expirados por tiempo
+  const { data: expiredByTime, error: err1 } = await supabase
     .from('propuestas')
     .select('id_propuesta, grupo_id, bloqueado_por')
     .not('bloqueado_por', 'is', null)
+    .not('fecha_bloqueo', 'is', null)
     .lt('fecha_bloqueo', cutoff);
 
-  if (selectError) {
-    console.error('[lock-service] Error buscando bloqueos expirados:', selectError.message);
-    return [];
-  }
+  // Buscar bloqueos inconsistentes (bloqueado_por sin fecha_bloqueo)
+  const { data: orphanedNoDate, error: err2 } = await supabase
+    .from('propuestas')
+    .select('id_propuesta, grupo_id, bloqueado_por')
+    .not('bloqueado_por', 'is', null)
+    .is('fecha_bloqueo', null);
 
-  if (!expired || expired.length === 0) return [];
+  if (err1) console.error('[lock-service] Error buscando bloqueos expirados:', err1.message);
+  if (err2) console.error('[lock-service] Error buscando bloqueos huérfanos:', err2.message);
+
+  const expired = [...(expiredByTime ?? []), ...(orphanedNoDate ?? [])];
+  if (expired.length === 0) return [];
 
   // Liberar los expirados
   const expiredIds = expired.map((p: any) => p.id_propuesta);

@@ -112,6 +112,20 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
         return;
       }
 
+      // Validar que el usuario pertenece a este viaje
+      const isMember = await validateMembership(user.localUserId, tripId);
+      if (!isMember) {
+        socket.emit('lock_error', { propuestaId, message: 'No perteneces a este viaje' });
+        return;
+      }
+
+      // Validar que la propuesta pertenece a este grupo
+      const belongs = await LockService.validateProposalBelongsToGroup(propuestaId, tripId);
+      if (!belongs) {
+        socket.emit('lock_error', { propuestaId, message: 'La propuesta no pertenece a este viaje' });
+        return;
+      }
+
       const result = await LockService.acquireLock(propuestaId, user.localUserId);
 
       if (result.success) {
@@ -151,6 +165,20 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
 
       if (!propuestaId || !tripId) {
         socket.emit('error_event', { message: 'propuestaId y tripId son requeridos' });
+        return;
+      }
+
+      // Validar que el usuario pertenece a este viaje
+      const isMember = await validateMembership(user.localUserId, tripId);
+      if (!isMember) {
+        socket.emit('error_event', { message: 'No perteneces a este viaje' });
+        return;
+      }
+
+      // Validar que la propuesta pertenece a este grupo
+      const belongs = await LockService.validateProposalBelongsToGroup(propuestaId, tripId);
+      if (!belongs) {
+        socket.emit('error_event', { message: 'La propuesta no pertenece a este viaje' });
         return;
       }
 

@@ -42,16 +42,12 @@ app.use('/api/proposals', votesCommentsRouter);
 
 app.use(errorHandler);
 
-<<<<<<< Updated upstream
-app.listen(env.PORT, () => {
-=======
 // ── Socket.IO + Scheduler ─────────────────────────────────────────
 const io = initSocketServer(httpServer);
 startLockScheduler(io);
 
 // ── Arranque ──────────────────────────────────────────────────────
 httpServer.listen(env.PORT, () => {
->>>>>>> Stashed changes
   console.log(`ITHERA backend corriendo en http://localhost:${env.PORT}`);
   console.log(`Entorno: ${env.NODE_ENV}`);
   console.log(`Socket.IO corriendo en el mismo puerto (${env.PORT})`);

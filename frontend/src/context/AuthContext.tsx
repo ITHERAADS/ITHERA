@@ -179,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/create-group`,
+        redirectTo: `${window.location.origin}/my-trips`,
       },
     });
 
@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'facebook',
       options: {
-        redirectTo: `${window.location.origin}/create-group`,
+        redirectTo: `${window.location.origin}/my-trips`,
       },
     });
 

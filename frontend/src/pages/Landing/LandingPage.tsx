@@ -89,9 +89,21 @@ function LandingNavbar() {
 function HeroSection() {
   const [tripName, setTripName] = useState('')
   const [dates, setDates] = useState('')
-  const [destination, setDestination] = useState('')
-  const [people, setPeople] = useState('')
+  const [origin, setOrigin] = useState('')
+  const [people, setPeople] = useState('2')
   const groupCount = useCountUp(1200)
+
+  const handlePeopleChange = (value: string) => {
+    if (value === '') {
+      setPeople('')
+      return
+    }
+
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return
+    const safeValue = Math.min(30, Math.max(1, Math.trunc(parsed)))
+    setPeople(String(safeValue))
+  }
 
   return (
     <section className="relative bg-primary-dark min-h-screen flex flex-col items-center justify-center text-center px-4 pt-24 pb-20">
@@ -151,18 +163,19 @@ function HeroSection() {
       </p>
 
       {/* Search form */}
-      <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl p-2 flex flex-col sm:flex-row gap-2">
-        <div className="flex-1 flex flex-col px-3 py-2 border-b sm:border-b-0 sm:border-r border-gray-100">
+      <div className="relative w-full max-w-5xl rounded-2xl border border-white/20 bg-white/95 p-2 shadow-2xl backdrop-blur-md">
+        <div className="grid gap-2 sm:grid-cols-[1.35fr_1fr_.85fr_.55fr_auto]">
+        <div className="flex min-w-0 flex-col rounded-xl px-3 py-2 transition-colors hover:bg-[#F7FAFF]">
           <label className="font-body text-[10px] text-gray-400 uppercase tracking-wider mb-1">Nombre del viaje</label>
           <input
             type="text"
-            placeholder="Mi aventura 2025"
+            placeholder="Aventura verano 2026"
             value={tripName}
             onChange={e => setTripName(e.target.value)}
             className="font-body text-sm text-primary-dark placeholder-gray-300 outline-none"
           />
         </div>
-        <div className="flex-1 flex flex-col px-3 py-2 border-b sm:border-b-0 sm:border-r border-gray-100">
+        <div className="flex min-w-0 flex-col rounded-xl px-3 py-2 transition-colors hover:bg-[#F7FAFF] sm:border-l sm:border-gray-100">
           <label className="font-body text-[10px] text-gray-400 uppercase tracking-wider mb-1">Fechas</label>
           <input
             type="text"
@@ -172,29 +185,37 @@ function HeroSection() {
             className="font-body text-sm text-primary-dark placeholder-gray-300 outline-none"
           />
         </div>
-        <div className="w-24 flex flex-col px-3 py-2 border-b sm:border-b-0 sm:border-r border-gray-100">
+        <div className="flex min-w-0 flex-col rounded-xl px-3 py-2 transition-colors hover:bg-[#F7FAFF] sm:border-l sm:border-gray-100">
           <label className="font-body text-[10px] text-gray-400 uppercase tracking-wider mb-1">Desde</label>
           <input
             type="text"
-            placeholder="Agregar"
-            value={destination}
-            onChange={e => setDestination(e.target.value)}
+            placeholder="Ciudad origen"
+            value={origin}
+            onChange={e => setOrigin(e.target.value)}
             className="font-body text-sm text-primary-dark placeholder-gray-300 outline-none"
           />
         </div>
-        <div className="w-20 flex flex-col px-3 py-2">
+        <div className="flex min-w-0 flex-col rounded-xl px-3 py-2 transition-colors hover:bg-[#F7FAFF] sm:border-l sm:border-gray-100">
           <label className="font-body text-[10px] text-gray-400 uppercase tracking-wider mb-1">Personas</label>
           <input
             type="number"
+            min={1}
+            max={30}
+            step={1}
+            inputMode="numeric"
             placeholder="2"
             value={people}
-            onChange={e => setPeople(e.target.value)}
+            onChange={e => handlePeopleChange(e.target.value)}
+            onBlur={() => {
+              if (!people) setPeople('2')
+            }}
             className="font-body text-sm text-primary-dark placeholder-gray-300 outline-none w-full"
           />
         </div>
-        <button className="font-body font-medium text-sm bg-blue text-white rounded-xl px-5 py-3 hover:bg-blue/90 transition-colors whitespace-nowrap">
+        <button className="font-body font-semibold text-sm bg-blue text-white rounded-xl px-6 py-3 hover:bg-blue/90 hover:shadow-lg transition-all whitespace-nowrap">
           Crear Itinerario
         </button>
+      </div>
       </div>
 
       {/* Social proof */}

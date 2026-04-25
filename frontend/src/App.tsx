@@ -12,6 +12,7 @@ import { ProfilePage } from './pages/Profile';
 import { NotFoundPage } from './pages/NotFound';
 import { MyTripsPage } from './pages/MyTrips/MyTripsPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { JoinGroupPage } from './pages/JoinGroup'
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/join-group" element={<JoinGroupPage />} />
 
         <Route
           path="/my-trips"

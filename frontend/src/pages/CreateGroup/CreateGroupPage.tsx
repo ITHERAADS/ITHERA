@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { groupsService, saveCurrentGroup } from '../../services/groups'
+import { DestinationSearch } from '../../components/DestinationSearch/DestinationSearch'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Member {
@@ -20,20 +21,6 @@ interface FormData {
   description: string
   isPublic: boolean
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const DESTINATIONS = [
-  'Cancún, México',
-  'Ciudad de México',
-  'Oaxaca, México',
-  'Los Cabos, México',
-  'Puerto Vallarta, México',
-  'Tulum, México',
-  'Guadalajara, México',
-  'Monterrey, México',
-  'Mérida, México',
-  'San Cristóbal de las Casas',
-]
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -70,78 +57,6 @@ function InputField({
         `}
       />
       {hint && !error && <p className="font-body text-[11px] text-[#1E0A4E]/40">{hint}</p>}
-      {error && <p className="font-body text-xs text-red-500">{error}</p>}
-    </div>
-  )
-}
-
-function DestinationSelect({
-  value,
-  onChange,
-  error,
-}: {
-  value: string
-  onChange: (v: string) => void
-  error?: string
-}) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
-
-  const filtered = DESTINATIONS.filter((d) =>
-    d.toLowerCase().includes(search.toLowerCase())
-  )
-
-  return (
-    <div className="flex flex-col gap-1.5 relative">
-      <label className="font-body text-xs font-semibold text-[#1E0A4E]/60 uppercase tracking-wide">Destino</label>
-      <div
-        className={`w-full font-body text-sm border rounded-xl px-4 py-3 cursor-pointer flex items-center justify-between bg-white transition-all duration-200
-          ${error ? 'border-red-400' : value ? 'border-[#1E6FD9] ring-2 ring-[#1E6FD9]/10' : 'border-[#E2E8F0] hover:border-[#1E6FD9]/50'}
-        `}
-        onClick={() => setOpen(!open)}
-      >
-        <span className={value ? 'text-[#1E0A4E]' : 'text-gray-400'}>
-          {value || 'Selecciona un destino'}
-        </span>
-        <svg
-          width="16" height="16" viewBox="0 0 24 24" fill="none"
-          className={`text-[#7A8799] transition-transform ${open ? 'rotate-180' : ''}`}
-        >
-          <polyline points="6 9 12 15 18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      </div>
-
-      {open && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E2E8F0] rounded-xl shadow-lg z-20 overflow-hidden">
-          <div className="p-2 border-b border-[#E2E8F0]">
-            <input
-              type="text"
-              placeholder="Buscar destino..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full font-body text-sm text-[#1E0A4E] placeholder-[#C4CDD6] px-3 py-2 rounded-lg border border-[#E2E8F0] outline-none focus:border-[#1E6FD9]"
-              autoFocus
-            />
-          </div>
-          <div className="max-h-44 overflow-y-auto">
-            {filtered.length === 0 ? (
-              <p className="font-body text-xs text-[#7A8799] px-4 py-3">Sin resultados</p>
-            ) : (
-              filtered.map((dest) => (
-                <div
-                  key={dest}
-                  onClick={() => { onChange(dest); setOpen(false); setSearch('') }}
-                  className={`font-body text-sm px-4 py-2.5 cursor-pointer transition-colors hover:bg-[#F8FAFC]
-                    ${value === dest ? 'text-[#1E6FD9] bg-[#1E6FD9]/5' : 'text-[#1E0A4E]'}
-                  `}
-                >
-                  {dest}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
       {error && <p className="font-body text-xs text-red-500">{error}</p>}
     </div>
   )
@@ -263,6 +178,7 @@ export function CreateGroupPage() {
   const [loading, setLoading] = useState(false)
   const [created, setCreated] = useState(false)
   const [groupCode, setGroupCode] = useState('')
+  const [invitedCount, setInvitedCount] = useState(0)
 
   const set = (key: keyof FormData) => (val: string | boolean) =>
     setForm((f) => ({ ...f, [key]: val }))
@@ -306,7 +222,21 @@ export function CreateGroupPage() {
       saveCurrentGroup(response.group)
       setGroupCode(response.group.codigo_invitacion)
       setCreatedGroupId(response.group.id)
+
+      if (members.length > 0) {
+        const emails = members.map((member) => member.email)
+
+        const invitationsResponse = await groupsService.sendInvitations(
+          response.group.id,
+          emails,
+          accessToken
+        )
+
+        setInvitedCount(invitationsResponse.invitations.length)
+      }
+
       setCreated(true)
+
     } catch (error) {
       setServerError(error instanceof Error ? error.message : 'No se pudo crear el grupo')
     } finally {
@@ -345,7 +275,9 @@ export function CreateGroupPage() {
               </div>
               <h2 className="font-heading font-bold text-[#1E0A4E] text-2xl mb-2">¡Grupo creado!</h2>
               <p className="font-body text-sm text-[#7A8799] mb-6">
-                Comparte este código con tu equipo para que se unan al viaje.
+                {invitedCount > 0
+                ? `Grupo creado correctamente. También se generaron ${invitedCount} invitación(es) por correo.`
+                : 'Comparte este código con tu equipo para que se unan al viaje.'}
               </p>
               <div className="bg-[#1E0A4E] rounded-2xl p-5 mb-6">
                 <p className="font-body text-xs text-white/40 uppercase tracking-wider mb-2">Código del grupo</p>
@@ -437,10 +369,11 @@ export function CreateGroupPage() {
                 error={errors.name}
                 hint="Elige un nombre que identifique a tu grupo"
               />
-              <DestinationSelect
+              <DestinationSearch
                 value={form.destination}
                 onChange={set('destination') as (v: string) => void}
                 error={errors.destination}
+                token={accessToken}
               />
               <InputField
                 label="Descripción (opcional)"

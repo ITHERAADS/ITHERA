@@ -1,4 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { getCurrentGroup } from '../../services/groups'
+import { useAuth } from '../../context/useAuth'
 import { AppLayout, RightPanelDashboard, SidebarDashboard } from '../../components/layout/AppLayout'
 import { DayView } from '../../components/ui/DayView'
 import type { Activity as DayActivity, DayViewHandle } from '../../components/ui/DayView'
@@ -301,6 +304,22 @@ function BottomNavbar({
 }
 
 export function DashboardPage() {
+
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const { localUser } = useAuth()
+
+  const groupId = searchParams.get('groupId')
+  const currentGroup = getCurrentGroup()
+
+  const userName = localUser?.nombre || localUser?.email || 'Usuario'
+  const initials = userName
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
   const [activeDay,   setActiveDay]   = useState<number | null>(null)
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
   const [activeTab,   setActiveTab]   = useState('pagar')
@@ -326,8 +345,18 @@ export function DashboardPage() {
 
   return (
     <AppLayout
-      trip={{ name: 'Cancún 2025', subtitle: 'Riviera Maya, México', dates: '15–18 Jun', people: '4 personas' }}
-      user={{ name: 'Bryan A.', role: 'Organizador', initials: 'BA', color: '#1E6FD9' }}
+      trip={{
+        name: currentGroup?.nombre || 'Itinerario',
+        subtitle: currentGroup?.destino || 'Destino pendiente',
+        dates: `${currentGroup?.fecha_inicio || '—'} – ${currentGroup?.fecha_fin || '—'}`,
+        people: currentGroup?.maximo_miembros ? `${currentGroup.maximo_miembros} personas máx.` : 'Miembros por definir',
+      }}
+      user={{
+        name: userName,
+        role: currentGroup?.myRole === 'admin' ? 'Organizador' : 'Viajero',
+        initials,
+        color: '#1E6FD9',
+      }}
       notificationCount={3}
       isOnline
       sidebarContent={
@@ -348,6 +377,14 @@ export function DashboardPage() {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
+          <div className="mb-4 flex justify-end">
+            <button
+              onClick={() => navigate(`/grouppanel?groupId=${encodeURIComponent(groupId || currentGroup?.id || '')}`)}
+              className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#1E0A4E] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+            >
+              Panel del grupo
+            </button>
+          </div>
           <HeroCard activeDay={activeDay} />
           <InfoBanner />
           <TimelineStrip activeDay={activeDay} date={selectedDay?.date} activities={selectedDay?.activities} />

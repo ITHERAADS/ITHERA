@@ -9,6 +9,7 @@ import {
   saveCurrentGroup,
 } from '../../services/groups'
 import type { Group } from '../../types/groups'
+import { DestinationSearch } from '../../components/DestinationSearch/DestinationSearch'
 
 type SettingsForm = {
   name: string
@@ -65,7 +66,7 @@ export function GroupSettingsPage() {
 
         const history = await groupsService.getMyHistory(accessToken)
         const allGroups = [...history.activos, ...history.pasados].map((item) => item.grupos_viaje)
-        const foundGroup = allGroups.find((item) => item.id === groupId) || null
+        const foundGroup = allGroups.find((item) => String(item.id) === String(groupId)) || null
 
         if (!foundGroup) {
           throw new Error('No se encontró el grupo solicitado')
@@ -96,8 +97,18 @@ export function GroupSettingsPage() {
       return
     }
 
+    if (!form.destination.trim()) {
+      setError('Selecciona un destino válido.')
+      return
+    }
+
     if (form.startDate && form.endDate && form.startDate > form.endDate) {
       setError('La fecha final no puede ser menor a la inicial')
+      return
+    }
+
+    if (!form.maxMembers || Number(form.maxMembers) < 2) {
+      setError('El máximo de miembros debe ser al menos 2.')
       return
     }
 
@@ -140,7 +151,7 @@ export function GroupSettingsPage() {
       setError('')
       await groupsService.deleteGroup(group.id, accessToken)
       clearCurrentGroup()
-      navigate('/dashboard')
+      navigate('/my-trips')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo eliminar el grupo')
     } finally {
@@ -166,10 +177,10 @@ export function GroupSettingsPage() {
             <h2 className="font-heading text-xl text-[#1E0A4E] mb-2">No se pudo abrir configuración</h2>
             <p className="font-body text-sm text-red-500">{error}</p>
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/my-trips')}
               className="mt-4 bg-[#1E6FD9] text-white rounded-xl px-4 py-3 text-sm"
             >
-              Volver al dashboard
+              Volver a mis viajes
             </button>
           </div>
         </div>
@@ -223,13 +234,10 @@ export function GroupSettingsPage() {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-[#1E0A4E]/60 uppercase tracking-wide mb-1.5">
-                  Destino
-                </label>
-                <input
+                <DestinationSearch
                   value={form.destination}
-                  onChange={(e) => setField('destination', e.target.value)}
-                  className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
+                  onChange={(value) => setField('destination', value)}
+                  token={accessToken}
                 />
               </div>
 

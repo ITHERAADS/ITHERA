@@ -434,6 +434,26 @@ export const getInvitePreviewByCode = async (
   };
 };
 
+export const getGroupInvitations = async (authUserId: string, groupId: string) => {
+  await ensureGroupAdmin(authUserId, groupId);
+
+  const { data, error } = await supabase
+    .from('grupo_invitaciones')
+    .select('id, email, codigo_invitacion, estado, created_at')
+    .eq('grupo_id', groupId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((item) => ({
+    id: String(item.id),
+    email: item.email,
+    codigo_invitacion: item.codigo_invitacion,
+    estado: item.estado,
+    created_at: item.created_at,
+  }));
+};
+
 export const createGroupInvitations = async (
   authUserId: string,
   groupId: string,

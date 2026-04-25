@@ -106,6 +106,24 @@ router.get('/:groupId/invite', requireAuth, async (req: Request, res: Response):
   }
 });
 
+router.get('/:groupId/invitations', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const invitations = await GroupsService.getGroupInvitations(
+      req.user!.id,
+      req.params.groupId
+    );
+
+    res.status(200).json({
+      ok: true,
+      invitations,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
 router.post('/:groupId/invitations', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { emails } = req.body as { emails?: string[] };

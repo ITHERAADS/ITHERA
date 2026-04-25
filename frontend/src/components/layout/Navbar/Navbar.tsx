@@ -200,7 +200,12 @@ function LandingNavContent({
 // ── Dashboard variant ─────────────────────────────────────────────────────────
 
 const DEFAULT_TRIP: TripInfo    = { name: 'Cancún 2025', subtitle: 'Riviera Maya, México' }
-const DEFAULT_USER: NavUserInfo = { name: 'Bryan A.', role: 'Organizador', initials: 'BA', color: '#1E6FD9' }
+const DEFAULT_USER: NavUserInfo = {
+  name: 'Cargando...',
+  role: '',
+  initials: '--',
+  color: '#1E6FD9',
+}
 
 function DashboardMobileMenu({ trip, user }: { trip: TripInfo; user: NavUserInfo }) {
   return (

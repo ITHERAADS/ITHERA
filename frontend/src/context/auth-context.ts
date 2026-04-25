@@ -34,8 +34,8 @@ export type AuthContextType = {
   login: (email: string, password: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<RegisterResult>;
   forgotPassword: (email: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
-  loginWithFacebook: () => Promise<void>;
+  loginWithGoogle: (redirectTo?: string) => Promise<void>;
+  loginWithFacebook: (redirectTo?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshMe: (token?: string) => Promise<void>;
 };

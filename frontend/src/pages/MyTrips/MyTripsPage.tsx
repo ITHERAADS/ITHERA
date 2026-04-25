@@ -2,35 +2,14 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout/AppLayout'
 import { useAuth } from '../../context/useAuth'
-import { apiClient } from '../../services/apiClient'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface TripGroup {
-  rol: string
-  grupos_viaje: {
-    id: string
-    nombre: string
-    descripcion: string | null
-    destino: string | null
-    fecha_inicio: string | null
-    fecha_fin: string | null
-    maximo_miembros: number | null
-    codigo_invitacion: string
-    estado: string
-    created_at: string
-  }
-}
-
-interface MyHistoryResponse {
-  ok: boolean
-  activos: TripGroup[]
-  pasados: TripGroup[]
-}
+import { groupsService, saveCurrentGroup } from '../../services/groups'
+import type { GroupHistoryItem } from '../../types/groups'
 
 // ── Date helper ───────────────────────────────────────────────────────────────
-
-function formatRange(start: string | null, end: string | null): string {
+  function formatRange(
+    start: string | null | undefined,
+    end: string | null | undefined
+  ): string {
   if (!start && !end) return 'Fechas por definir'
 
   const fmt = (iso: string, withYear: boolean) =>
@@ -147,7 +126,14 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
     setError('')
     setLoading(true)
     try {
-      await apiClient.post('/groups/join', { codigo: code.trim().toUpperCase() }, accessToken ?? undefined)
+      if (!accessToken) {
+        setError('Tu sesión expiró. Vuelve a iniciar sesión.')
+        return
+      }
+
+      const response = await groupsService.joinGroup(code.trim().toUpperCase(), accessToken)
+      saveCurrentGroup(response.group)
+
       onJoined()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Código inválido o expirado.')
@@ -198,24 +184,33 @@ function StatusChip({ estado }: { estado: string }) {
   )
 }
 
-function RolBadge({ rol }: { rol: string }) {
+function RolBadge({ rol, dark = false }: { rol: string; dark?: boolean }) {
   const isAdmin = rol === 'admin'
+
   return (
-    <span className={`inline-block rounded-full px-2.5 py-0.5 font-body text-[10px] font-bold text-white ${isAdmin ? 'bg-[#7A4FD6]' : 'bg-[#1E6FD9]'}`}>
-      {isAdmin ? 'Admin' : 'Viajero'}
+    <span
+      className={`inline-block rounded-full px-2.5 py-0.5 font-body text-[10px] font-bold ${
+        isAdmin
+          ? dark
+            ? 'bg-white text-[#1E0A4E]'
+            : 'bg-[#1E0A4E] text-white'
+          : 'bg-[#1E6FD9] text-white'
+      }`}
+    >
+      {isAdmin ? 'Organizador' : 'Viajero'}
     </span>
   )
 }
 
 // ── Featured active card ──────────────────────────────────────────────────────
 
-function FeaturedCard({ item, onClick }: { item: TripGroup; onClick: () => void }) {
+function FeaturedCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => void }) {
   const g = item.grupos_viaje
   return (
     <div className="rounded-2xl bg-[#1E0A4E] p-5 shadow-lg">
       <div className="mb-3 flex items-center justify-between">
         <StatusChip estado="activo"/>
-        <RolBadge rol={item.rol}/>
+        <RolBadge rol={item.rol} dark />
       </div>
       <h2 className="font-heading text-xl font-bold text-white leading-tight mb-1">
         {g.nombre}
@@ -244,28 +239,69 @@ function FeaturedCard({ item, onClick }: { item: TripGroup; onClick: () => void 
 
 // ── Secondary trip card ───────────────────────────────────────────────────────
 
-function TripCard({ item, onClick }: { item: TripGroup; onClick: () => void }) {
+function TripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => void }) {
   const g = item.grupos_viaje
+  const isAdmin = item.rol === 'admin'
+
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-white border border-gray-200 rounded-2xl p-4 shadow-sm hover:shadow-md hover:border-[#1E6FD9]/30 transition-all"
+      className={`w-full text-left rounded-2xl p-5 shadow-sm transition-all hover:shadow-md ${
+        isAdmin
+          ? 'bg-[#1E0A4E] text-white border border-[#1E0A4E]'
+          : 'bg-white text-[#1E0A4E] border border-[#E2E8F0] hover:border-[#1E6FD9]/40'
+      }`}
     >
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <p className="font-heading text-[15px] font-semibold text-[#1E0A4E] leading-tight">
-          {g.nombre}
-        </p>
-        <StatusChip estado={g.estado}/>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <StatusChip estado={g.estado} />
+        <RolBadge rol={item.rol} />
       </div>
+
+      <h2 className={`font-heading text-lg font-bold leading-tight mb-1 ${
+        isAdmin ? 'text-white' : 'text-[#1E0A4E]'
+      }`}>
+        {g.nombre}
+      </h2>
+
       {g.destino && (
-        <div className="flex items-center gap-1 mb-1">
-          <span className="text-[#9CA3AF]"><IconMap /></span>
-          <p className="font-body text-xs text-[#6B7280]">{g.destino}</p>
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className={isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'}>
+            <IconMap />
+          </span>
+          <p className={`font-body text-[13px] ${
+            isAdmin ? 'text-white/70' : 'text-[#6B7280]'
+          }`}>
+            {g.destino}
+          </p>
         </div>
       )}
-      <p className="font-body text-xs text-[#9CA3AF]">
-        {formatRange(g.fecha_inicio, g.fecha_fin)}
-      </p>
+
+      <div className="flex items-center gap-1.5 mb-4">
+        <span className={isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'}>
+          <IconClock />
+        </span>
+        <p className={`font-body text-[12px] ${
+          isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'
+        }`}>
+          {formatRange(g.fecha_inicio, g.fecha_fin)}
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className={`font-body text-xs ${
+          isAdmin ? 'text-white/60' : 'text-[#6B7280]'
+        }`}>
+          {isAdmin ? 'Tú organizas este viaje' : 'Participas como viajero'}
+        </span>
+
+        <span className={`rounded-full px-4 py-2 font-body text-xs font-semibold ${
+          isAdmin
+            ? 'bg-white text-[#1E0A4E]'
+            : 'bg-[#1E6FD9]/10 text-[#1E6FD9]'
+        }`}>
+          Abrir →
+        </span>
+      </div>
     </button>
   )
 }
@@ -296,44 +332,66 @@ export function MyTripsPage() {
   const { accessToken, localUser } = useAuth()
   const navigate = useNavigate()
 
-  const [activos, setActivos] = useState<TripGroup[]>([])
-  const [pasados, setPasados] = useState<TripGroup[]>([])
+  const [activos, setActivos] = useState<GroupHistoryItem[]>([])
+  const [pasados, setPasados] = useState<GroupHistoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(false)
   const [showJoin, setShowJoin] = useState(false)
 
   async function fetchTrips() {
-    setLoading(true)
-    setError(false)
-    try {
-      const data = await apiClient.get<MyHistoryResponse>(
-        '/groups/my-history',
-        accessToken ?? undefined
-      )
-      setActivos(data.activos ?? [])
-      setPasados(data.pasados ?? [])
-    } catch {
-      setError(true)
-    } finally {
-      setLoading(false)
-    }
+  if (!accessToken) return
+
+  setLoading(true)
+  setError(false)
+
+  try {
+    const data = await groupsService.getMyHistory(accessToken)
+    setActivos(data.activos ?? [])
+    setPasados(data.pasados ?? [])
+  } catch {
+    setError(true)
+  } finally {
+    setLoading(false)
   }
+}
 
   useEffect(() => {
     fetchTrips()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken])
 
-  function openTrip(groupId: string) {
-    navigate('/dashboard', { state: { groupId } })
+
+  function openTrip(item: GroupHistoryItem) {
+    saveCurrentGroup({
+      ...item.grupos_viaje,
+      myRole: item.rol,
+    })
+
+    navigate(`/dashboard?groupId=${encodeURIComponent(item.grupos_viaje.id)}`)
   }
 
   const hasTrips = activos.length > 0 || pasados.length > 0
-  const [featured, ...extraActivos] = activos
+  const featured = activos.find((item) => item.rol === 'admin') ?? activos[0]
+  const extraActivos = activos.filter(
+    (item) => item.grupos_viaje.id !== featured?.grupos_viaje.id
+  )
   const firstName = getFirstName(localUser?.nombre)
+  const fullName = localUser?.nombre || localUser?.email || 'Usuario'
+  const initials = fullName
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
+  const navUser = {
+    name: fullName,
+    role: 'Viajero',
+    initials,
+  }
 
   return (
-    <AppLayout showTripSelector={false}>
+    <AppLayout showTripSelector={false} user={navUser}>
       {loading ? (
         <SkeletonCards/>
       ) : error ? (
@@ -427,9 +485,9 @@ export function MyTripsPage() {
             {featured && (
               <section>
                 <p className="mb-2 font-body text-[11px] font-semibold uppercase tracking-wider text-[#6B7280]">
-                  Viaje activo
+                  {featured.rol === 'admin' ? 'Viaje que organizas' : 'Viaje activo'}
                 </p>
-                <FeaturedCard item={featured} onClick={() => openTrip(featured.grupos_viaje.id)}/>
+                <FeaturedCard item={featured} onClick={() => openTrip(featured)}/>
               </section>
             )}
 
@@ -440,7 +498,7 @@ export function MyTripsPage() {
                   <TripCard
                     key={item.grupos_viaje.id}
                     item={item}
-                    onClick={() => openTrip(item.grupos_viaje.id)}
+                    onClick={() => openTrip(item)}
                   />
                 ))}
               </div>
@@ -457,7 +515,7 @@ export function MyTripsPage() {
                     <TripCard
                       key={item.grupos_viaje.id}
                       item={item}
-                      onClick={() => openTrip(item.grupos_viaje.id)}
+                      onClick={() => openTrip(item)}
                     />
                   ))}
                 </div>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import logoWhite from "../../assets/logo-white.png";
 import googleIcon from "../../assets/google.png";
 import facebookIcon from "../../assets/facebook.png";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useAuth } from '../../context/useAuth';
 
 export function LoginPage() {
@@ -13,6 +13,8 @@ export function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get('redirect') || '/my-trips';
   const { login, loginWithGoogle, loginWithFacebook } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -32,7 +34,7 @@ export function LoginPage() {
     try {
       setLoading(true);
       await login(email, password);
-      navigate("/my-trips");
+      navigate(redirect);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "No se pudo iniciar sesión";
@@ -129,7 +131,7 @@ export function LoginPage() {
                 onClick={async () => {
                   try {
                     setLoading(true);
-                    await loginWithGoogle();
+                    await loginWithGoogle(redirect);
                   } catch (err) {
                     const message =
                       err instanceof Error ? err.message : "No se pudo iniciar con Google";
@@ -152,7 +154,7 @@ export function LoginPage() {
                 onClick={async () => {
                   try {
                     setLoading(true);
-                    await loginWithFacebook();
+                    await loginWithFacebook(redirect);
                   } catch (err) {
                     const message =
                       err instanceof Error ? err.message : "No se pudo iniciar con Facebook";

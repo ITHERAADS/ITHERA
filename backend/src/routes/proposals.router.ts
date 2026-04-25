@@ -53,8 +53,9 @@ router.post('/hotels', requireAuth, async (req: Request, res: Response): Promise
 
 router.get('/groups/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const groupId = Number(req.params.groupId);
-    if (Number.isNaN(groupId)) {
+    const groupId = req.params.groupId;
+
+    if (!groupId) {
       res.status(400).json({ ok: false, error: 'groupId inválido' });
       return;
     }

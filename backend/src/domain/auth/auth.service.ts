@@ -89,3 +89,15 @@ export const getUserByAuthId = async (authUserId: string) => {
     .eq('auth_user_id', authUserId)
     .single();
 };
+
+export const updateUserByAuthId = async (
+  authUserId: string,
+  payload: { nombre: string }
+) => {
+  return supabaseAdmin
+    .from('usuarios')
+    .update({ nombre: payload.nombre })
+    .eq('auth_user_id', authUserId)
+    .select('*')
+    .single();
+};

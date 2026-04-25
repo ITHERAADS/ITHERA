@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as GroupsService from '../domain/groups/groups.service';
 import { MemberRole } from '../domain/groups/groups.entity';
+import itineraryRouter from './itinerary.router';
 
 const router = Router();
 
@@ -83,6 +84,8 @@ router.get('/invite-preview/:code', async (req: Request, res: Response): Promise
     res.status(status).json({ ok: false, error: msg });
   }
 });
+
+router.use('/:groupId/itinerary', itineraryRouter);
 
 router.get('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {

@@ -9,8 +9,15 @@ import type {
   UpdateGroupPayload,
   GroupInvitation,
 } from '../types/groups'
+import type { Activity } from '../components/ui/DayView/DayView'
 
 const CURRENT_GROUP_STORAGE_KEY = 'ithera_current_group'
+
+export interface ItineraryDay {
+  dayNumber: number
+  date: string
+  activities: Activity[]
+}
 
 export const groupsService = {
   createGroup: async (payload: CreateGroupPayload, token: string) => {
@@ -118,6 +125,14 @@ export const groupsService = {
       `/groups/${groupId}/invitations`,
       token
     )
+  },
+
+  getItinerary: async (groupId: string, token: string) => {
+    return apiClient.get<{
+      ok: boolean
+      itinerary: unknown | null
+      days: ItineraryDay[]
+    }>(`/groups/${groupId}/itinerary`, token)
   },
 }
 

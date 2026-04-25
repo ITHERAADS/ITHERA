@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { getCurrentGroup } from '../../services/groups'
+import { getCurrentGroup, groupsService } from '../../services/groups'
 import { useAuth } from '../../context/useAuth'
 import { AppLayout, RightPanelDashboard, SidebarDashboard } from '../../components/layout/AppLayout'
 import { DayView } from '../../components/ui/DayView'
@@ -8,6 +8,8 @@ import type { Activity as DayActivity, DayViewHandle } from '../../components/ui
 import { ProposalCard } from '../../components/ProposalCard/ProposalCard'
 import { ComparisonPage } from '../Comparison/ComparisonPage'
 import { ITINERARY_DAYS } from '../../mock/itinerary.mock'
+
+
 
 function IconDownload({ size = 14 }: { size?: number }) {
   return (
@@ -307,7 +309,7 @@ export function DashboardPage() {
 
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { localUser } = useAuth()
+  const { localUser, accessToken } = useAuth()
 
   const groupId = searchParams.get('groupId')
   const currentGroup = getCurrentGroup()
@@ -341,7 +343,43 @@ export function DashboardPage() {
   const isEmpty = days.length === 0
   const selectedDay = activeDay !== null ? days.find((day) => day.dayNumber === activeDay) : undefined
 
-  void setIsLoading
+  useEffect(() => {
+    const resolvedGroupId = groupId || currentGroup?.id
+
+    if (!resolvedGroupId || !accessToken) return
+
+    let isMounted = true
+
+    const loadItinerary = async () => {
+      try {
+        if (isMounted) {
+          setIsLoading(true)
+        }
+
+        const response = await groupsService.getItinerary(resolvedGroupId, accessToken)
+
+        if (isMounted) {
+          setDays(response.days)
+        }
+      } catch (error) {
+        console.error('Error cargando itinerario:', error)
+
+        if (isMounted) {
+          setDays([])
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    void loadItinerary()
+
+    return () => {
+      isMounted = false
+    }
+  }, [groupId, currentGroup?.id, accessToken])
 
   return (
     <AppLayout
@@ -363,8 +401,12 @@ export function DashboardPage() {
         <SidebarDashboard
           activeDay={activeDay}
           onDayChange={handleDayChange}
+          onOpenGroupPanel={() =>
+            navigate(`/grouppanel?groupId=${encodeURIComponent(groupId || currentGroup?.id || '')}`)
+          }
         />
       }
+
       rightPanel={<RightPanelDashboard />}
     >
       {isLoading ? (
@@ -377,14 +419,6 @@ export function DashboardPage() {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
-          <div className="mb-4 flex justify-end">
-            <button
-              onClick={() => navigate(`/grouppanel?groupId=${encodeURIComponent(groupId || currentGroup?.id || '')}`)}
-              className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#1E0A4E] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-            >
-              Panel del grupo
-            </button>
-          </div>
           <HeroCard activeDay={activeDay} />
           <InfoBanner />
           <TimelineStrip activeDay={activeDay} date={selectedDay?.date} activities={selectedDay?.activities} />

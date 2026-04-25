@@ -13,6 +13,7 @@ const BUDGET_ITEMS = [
 export interface SidebarDashboardProps {
   activeDay: number | null
   onDayChange: (day: number) => void
+  onOpenGroupPanel?: () => void
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -20,6 +21,7 @@ export interface SidebarDashboardProps {
 export function SidebarDashboard({
   activeDay,
   onDayChange,
+  onOpenGroupPanel,
 }: SidebarDashboardProps) {
   return (
     <div className="flex flex-col">
@@ -102,6 +104,25 @@ export function SidebarDashboard({
           </div>
         ))}
       </div>
+
+      {/* Divider */}
+      <div className="border-t border-white/10 mb-4 mt-4" />
+
+      {/* Group panel */}
+      <p className="font-body text-[10px] text-white/40 uppercase tracking-widest mb-2">
+        Panel del grupo
+      </p>
+
+      <button
+        onClick={onOpenGroupPanel}
+        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all duration-200 hover:bg-white/10"
+      >
+        <div>
+          <p className="font-body text-xs mt-0.5 leading-none text-white/40">
+            Configuración y miembros
+          </p>
+        </div>
+      </button>
     </div>
   )
 }

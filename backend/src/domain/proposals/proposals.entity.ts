@@ -2,7 +2,7 @@ export type ProposalItemType = 'vuelo' | 'hospedaje';
 export type ProposalStatus = 'guardada' | 'aprobada' | 'rechazada';
 
 export interface SaveFlightProposalPayload {
-  grupoId: number;
+  grupoId: string;
   fuente: string;
   titulo: string;
   descripcion?: string;
@@ -25,7 +25,7 @@ export interface SaveFlightProposalPayload {
 }
 
 export interface SaveHotelProposalPayload {
-  grupoId: number;
+  grupoId: string;
   fuente: string;
   titulo: string;
   descripcion?: string;

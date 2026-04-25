@@ -237,4 +237,65 @@ router.get('/me', requireAuth, async (req: Request, res: Response): Promise<void
   }
 });
 
+router.patch('/me', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const {
+      nombre,
+      name,
+      apellido_paterno,
+      apellido_materno,
+      lastNamePaterno,
+      lastNameMaterno,
+    } = req.body as {
+      nombre?: string;
+      name?: string;
+      apellido_paterno?: string;
+      apellido_materno?: string;
+      lastNamePaterno?: string;
+      lastNameMaterno?: string;
+    };
+
+    const finalName = [
+      nombre ?? name,
+      apellido_paterno ?? lastNamePaterno,
+      apellido_materno ?? lastNameMaterno,
+    ]
+      .filter(Boolean)
+      .map((value) => String(value).trim())
+      .filter(Boolean)
+      .join(' ');
+
+    if (!finalName) {
+      res.status(400).json({ ok: false, error: 'El nombre es requerido' });
+      return;
+    }
+
+    const { data, error } = await AuthService.updateUserByAuthId(req.user!.id, {
+      nombre: finalName,
+    });
+
+    if (error) {
+      res.status(400).json({
+        ok: false,
+        error: 'No se pudo actualizar el perfil',
+        details: error.message,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      ok: true,
+      message: 'Perfil actualizado correctamente',
+      user: data,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(500).json({
+      ok: false,
+      error: 'Error interno del servidor',
+      details: msg,
+    });
+  }
+});
+
 export default router;

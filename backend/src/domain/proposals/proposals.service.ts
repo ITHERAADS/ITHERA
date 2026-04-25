@@ -49,7 +49,7 @@ const buildProposalResponse = async (proposalId: number) => {
   };
 };
 
-const assertGroupMembership = async (grupoId: number, authUserId: string) => {
+const assertGroupMembership = async (grupoId: string, authUserId: string) => {
   const usuarioId = await getLocalUserId(authUserId);
 
   const { data: membership, error } = await supabase
@@ -198,7 +198,7 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
   return buildProposalResponse(proposal.id_propuesta);
 };
 
-export const listGroupProposals = async (groupId: number, authUserId: string) => {
+export const listGroupProposals = async (groupId: string, authUserId: string) => {
   await assertGroupMembership(groupId, authUserId);
 
   const { data: proposals, error } = await supabase

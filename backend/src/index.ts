@@ -17,8 +17,27 @@ import { startLockScheduler } from './infrastructure/sockets/lock.scheduler';
 const app = express();
 const httpServer = createServer(app);
 
+const allowedOrigins = [
+  env.FRONTEND_URL,
+  'http://localhost:5173',
+];
+
 app.use(cors({
-  origin: env.FRONTEND_URL,
+  origin: (origin: string | undefined, callback: any) => {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.vercel.app');
+
+    if (isAllowed) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+  },
   credentials: true,
 }));
 

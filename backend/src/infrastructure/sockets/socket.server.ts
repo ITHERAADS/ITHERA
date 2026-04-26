@@ -29,7 +29,22 @@ export const getIO = (): SocketIOServer => {
 export const initSocketServer = (httpServer: HttpServer): SocketIOServer => {
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: env.FRONTEND_URL,
+      origin: (origin, callback) => {
+        if (!origin) {
+          return callback(null, true);
+        }
+
+        const isAllowed =
+          origin === env.FRONTEND_URL ||
+          origin === 'http://localhost:5173' ||
+          origin.endsWith('.vercel.app');
+
+        if (isAllowed) {
+          return callback(null, true);
+        }
+
+        return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+      },
       methods: ['GET', 'POST'],
       credentials: true,
     },

@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { AppLayout } from '../../components/layout/AppLayout'
 import { useAuth } from '../../context/useAuth'
+import { apiClient } from '../../services/apiClient'
+import { supabase } from '../../lib/supabase'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -168,7 +170,7 @@ function Toggle({
 // ── ProfilePage ───────────────────────────────────────────────────────────────
 
 export function ProfilePage() {
-  const { localUser } = useAuth()
+  const { localUser, accessToken, refreshMe } = useAuth()
 
   const fullName  = localUser?.nombre ?? 'Usuario'
   const email     = localUser?.email  ?? ''
@@ -196,7 +198,14 @@ export function ProfilePage() {
     setEditing(false)
   }
 
-  function handleSave() {
+  async function handleSave() {
+    if (!accessToken) return
+
+    const fullName = [nombre, apPat, apMat].filter(Boolean).join(' ').trim()
+
+    await apiClient.patch('/auth/me', { nombre: fullName }, accessToken)
+    await refreshMe(accessToken)
+
     setSavedName(nombre)
     setSavedApPat(apPat)
     setSavedApMat(apMat)
@@ -213,27 +222,176 @@ export function ProfilePage() {
   const [pwError,   setPwError]   = useState('')
   const [pwSuccess, setPwSuccess] = useState(false)
 
-  function handlePasswordUpdate() {
+  async function handlePasswordUpdate() {
     setPwError('')
-    if (!pwCurrent) { setPwError('Ingresa tu contraseña actual.'); return }
-    if (pwNew.length < 8) { setPwError('La nueva contraseña debe tener al menos 8 caracteres.'); return }
-    if (pwNew !== pwConfirm) { setPwError('Las contraseñas no coinciden.'); return }
-    setPwSuccess(true)
-    setPwCurrent('')
-    setPwNew('')
-    setPwConfirm('')
-    setTimeout(() => setPwSuccess(false), 3000)
+    setPwSuccess(false)
+
+    if (!accessToken) {
+      setPwError('No hay sesión activa.')
+      return
+    }
+
+    if (!localUser?.email) {
+      setPwError('No se pudo obtener el correo del usuario.')
+      return
+    }
+
+    if (!pwCurrent) {
+      setPwError('Ingresa tu contraseña actual.')
+      return
+    }
+
+    if (pwNew.length < 8) {
+      setPwError('La nueva contraseña debe tener al menos 8 caracteres.')
+      return
+    }
+
+    if (pwNew !== pwConfirm) {
+      setPwError('Las contraseñas no coinciden.')
+      return
+    }
+
+    if (pwCurrent === pwNew) {
+      setPwError('La nueva contraseña debe ser diferente a la actual.')
+      return
+    }
+
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: localUser.email,
+        password: pwCurrent,
+      })
+
+      if (signInError) {
+        setPwError('La contraseña actual no es correcta.')
+        return
+      }
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: pwNew,
+      })
+
+      if (updateError) {
+        setPwError(updateError.message)
+        return
+      }
+
+      setPwSuccess(true)
+      setPwCurrent('')
+      setPwNew('')
+      setPwConfirm('')
+
+      setTimeout(() => setPwSuccess(false), 3000)
+    } catch {
+      setPwError('No se pudo actualizar la contraseña.')
+    }
   }
 
   // ── Photo state ───────────────────────────────────────────────────────────
   const fileRef = useRef<HTMLInputElement>(null)
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [photoSaving, setPhotoSaving] = useState(false)
+  const [photoError, setPhotoError] = useState('')
+  const [photoSuccess, setPhotoSuccess] = useState(false)
+  const [photoDeleting, setPhotoDeleting] = useState(false)
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
+
+    if (!allowedTypes.includes(file.type)) {
+      setPhotoError('Solo se permiten imágenes PNG, JPG, JPEG o WEBP.')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError('La imagen no puede pesar más de 5 MB.')
+      return
+    }
+
+    setPhotoError('')
+    setPhotoSuccess(false)
+    setPhotoFile(file)
+
     const url = URL.createObjectURL(file)
     setPhotoPreview(url)
+  }
+
+  async function handleSavePhoto() {
+    if (!photoFile) return
+
+    if (!accessToken) {
+      setPhotoError('No hay sesión activa.')
+      return
+    }
+
+    try {
+      setPhotoSaving(true)
+      setPhotoError('')
+      setPhotoSuccess(false)
+
+      const formData = new FormData()
+      formData.append('avatar', photoFile)
+
+      await apiClient.upload('/auth/me/avatar', formData, accessToken)
+
+      await refreshMe(accessToken)
+
+      setPhotoFile(null)
+      setPhotoPreview(null)
+      setPhotoSuccess(true)
+
+      if (fileRef.current) {
+        fileRef.current.value = ''
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo actualizar la imagen.'
+
+      setPhotoError(message)
+    } finally {
+      setPhotoSaving(false)
+    }
+  }
+
+  async function handleDeletePhoto() {
+    if (!accessToken) {
+      setPhotoError('No hay sesión activa.')
+      return
+    }
+
+    if (!localUser?.avatar_url && !photoPreview) return
+
+    try {
+      setPhotoDeleting(true)
+      setPhotoError('')
+      setPhotoSuccess(false)
+
+      await apiClient.delete('/auth/me/avatar', accessToken)
+      await refreshMe(accessToken)
+
+      setPhotoFile(null)
+      setPhotoPreview(null)
+      setPhotoSuccess(true)
+
+      if (fileRef.current) {
+        fileRef.current.value = ''
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo eliminar la imagen.'
+
+      setPhotoError(message)
+    } finally {
+      setPhotoDeleting(false)
+    }
   }
 
   useEffect(() => {
@@ -269,8 +427,14 @@ export function ProfilePage() {
                 className="w-20 h-20 rounded-full flex items-center justify-center text-white font-heading font-bold text-2xl overflow-hidden"
                 style={{ backgroundColor: '#1E6FD9' }}
               >
-                {photoPreview
-                  ? <img src={photoPreview} alt="Foto de perfil" className="w-full h-full object-cover" />
+                {photoPreview || localUser?.avatar_url
+                  ? (
+                    <img
+                      src={photoPreview || localUser?.avatar_url || ''}
+                      alt="Foto de perfil"
+                      className="w-full h-full object-cover"
+                    />
+                  )
                   : avatarInitials
                 }
               </div>
@@ -295,7 +459,7 @@ export function ProfilePage() {
               <h1 className="font-heading font-bold text-[#1E0A4E] text-xl leading-tight">
                 {displayName || 'Usuario'}
               </h1>
-              <p className="font-body text-sm text-[#1E0A4E]/50 mt-0.5">Organizador</p>
+              <p className="font-body text-sm text-[#1E0A4E]/50 mt-0.5">Usuario</p>
               <p className="font-body text-xs text-[#1E0A4E]/40 mt-1">{savedEmail}</p>
             </div>
 
@@ -386,7 +550,7 @@ export function ProfilePage() {
             {pwOpen && (
               <div className="px-6 pb-6 flex flex-col gap-4 border-t border-[#E2E8F0] pt-5">
                 <Field
-                  label="Contraseña actual"
+                  label="Confirma tu contraseña actual"
                   value={pwCurrent}
                   onChange={setPwCurrent}
                   type={showPw.current ? 'text' : 'password'}
@@ -462,15 +626,21 @@ export function ProfilePage() {
               <div
                 className="w-20 h-20 rounded-2xl border-2 border-dashed border-[#E2E8F0] flex items-center justify-center overflow-hidden shrink-0 bg-[#F8FAFC]"
               >
-                {photoPreview
-                  ? <img src={photoPreview} alt="Vista previa" className="w-full h-full object-cover" />
-                  : <span className="font-heading font-bold text-2xl text-[#1E0A4E]/20">{avatarInitials}</span>
+                {photoPreview || localUser?.avatar_url
+                  ? (
+                    <img
+                      src={photoPreview || localUser?.avatar_url || ''}
+                      alt="Foto de perfil"
+                      className="w-full h-full object-cover"
+                    />
+                  )
+                  : avatarInitials
                 }
               </div>
 
               <div className="flex flex-col gap-2 text-center sm:text-left">
                 <p className="font-body text-sm text-[#1E0A4E]/60">
-                  JPG, PNG o GIF. Máximo 2 MB.
+                  JPG, PNG o WEBP. Máximo 5 MB.
                 </p>
                 <div className="flex gap-2 justify-center sm:justify-start">
                   <button
@@ -478,17 +648,54 @@ export function ProfilePage() {
                     className="flex items-center gap-2 bg-[#1E6FD9] text-white font-body text-sm font-semibold rounded-xl px-4 py-2 hover:bg-[#1a5fc2] transition-colors"
                   >
                     <IconCamera />
-                    Subir imagen
+                    Seleccionar imagen
                   </button>
+
+                  {photoFile && (
+                    <button
+                      onClick={handleSavePhoto}
+                      disabled={photoSaving}
+                      className="bg-[#35C56A] text-white font-body text-sm font-semibold rounded-xl px-4 py-2 hover:bg-[#2eae5d] transition-colors disabled:opacity-60"
+                    >
+                      {photoSaving ? 'Guardando...' : 'Guardar foto'}
+                    </button>
+                  )}
+
                   {photoPreview && (
                     <button
-                      onClick={() => setPhotoPreview(null)}
+                      onClick={() => {
+                        setPhotoFile(null)
+                        setPhotoPreview(null)
+                        setPhotoError('')
+                        if (fileRef.current) fileRef.current.value = ''
+                      }}
                       className="border border-[#E2E8F0] text-[#1E0A4E]/60 font-body text-sm font-semibold rounded-xl px-4 py-2 hover:bg-[#F8FAFC] transition-colors"
                     >
-                      Eliminar
+                      Cancelar
+                    </button>
+                  )}
+
+                  {localUser?.avatar_url && !photoPreview && (
+                    <button
+                      onClick={handleDeletePhoto}
+                      disabled={photoDeleting}
+                      className="border border-[#EF4444]/30 text-[#EF4444] font-body text-sm font-semibold rounded-xl px-4 py-2 hover:bg-[#FEF2F2] transition-colors disabled:opacity-60"
+                    >
+                      {photoDeleting ? 'Eliminando...' : 'Eliminar foto'}
                     </button>
                   )}
                 </div>
+                {photoError && (
+                  <p className="font-body text-xs text-[#EF4444] bg-[#FEF2F2] border border-[#EF4444]/20 rounded-xl px-4 py-2.5">
+                    {photoError}
+                  </p>
+                )}
+
+                {photoSuccess && (
+                  <p className="font-body text-xs text-[#35C56A] bg-[#35C56A]/10 border border-[#35C56A]/20 rounded-xl px-4 py-2.5">
+                    Foto de perfil actualizada correctamente.
+                  </p>
+                )}
               </div>
             </div>
           </section>

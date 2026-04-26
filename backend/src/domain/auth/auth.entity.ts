@@ -11,6 +11,7 @@ export interface UsuarioLocal {
   email: string;
   nombre: string;
   proveedor_auth: string;
+  avatar_url?: string | null;
 }
 
 export interface SignupPayload {

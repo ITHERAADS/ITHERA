@@ -208,6 +208,8 @@ const DEFAULT_USER: NavUserInfo = {
 }
 
 function DashboardMobileMenu({ trip, user }: { trip: TripInfo; user: NavUserInfo }) {
+  const { localUser } = useAuth()
+  const avatarUrl = localUser?.avatar_url
   return (
     <div className="md:hidden absolute top-full left-0 right-0 bg-purpleNavbar border-b border-white/10 shadow-lg px-6 py-4 flex flex-col gap-4 z-40">
       {/* Trip info */}
@@ -221,10 +223,18 @@ function DashboardMobileMenu({ trip, user }: { trip: TripInfo; user: NavUserInfo
       {/* User info */}
       <div className="flex items-center gap-3">
         <div
-          className="w-10 h-10 rounded-full flex items-center justify-center text-white font-body font-bold text-sm shrink-0"
+          className="w-10 h-10 rounded-full flex items-center justify-center text-white font-body font-bold text-sm shrink-0 overflow-hidden"
           style={{ backgroundColor: user.color ?? '#1E6FD9' }}
         >
-          {user.initials}
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt="Foto de perfil"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            user.initials
+          )}
         </div>
         <div>
           <p className="font-body text-sm font-bold text-white">{user.name}</p>
@@ -264,7 +274,7 @@ function DashboardNavContent({
   onTripSelect,
 }: DashboardContentProps) {
   const navigate = useNavigate()
-  const { logout } = useAuth()
+  const { logout, localUser } = useAuth()
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -272,6 +282,7 @@ function DashboardNavContent({
   const [notifOpen,   setNotifOpen]   = useState(false)
   const [unreadCount, setUnreadCount] = useState(notificationCount)
   const notifRef = useRef<HTMLDivElement>(null)
+  const avatarUrl = localUser?.avatar_url
 
   useEffect(() => {
     if (!menuOpen) return
@@ -395,11 +406,20 @@ function DashboardNavContent({
             aria-expanded={menuOpen}
           >
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-white font-body font-bold text-xs shrink-0"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white font-body font-bold text-xs shrink-0 overflow-hidden"
               style={{ backgroundColor: user.color ?? '#1E6FD9' }}
             >
-              {user.initials}
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="Foto de perfil"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                user.initials
+              )}
             </div>
+            
             <div className="hidden md:flex flex-col items-start">
               <span className="font-body text-[13px] font-bold text-white leading-tight">{user.name}</span>
               <span className="font-body text-[11px] text-white/50 leading-tight">{user.role}</span>

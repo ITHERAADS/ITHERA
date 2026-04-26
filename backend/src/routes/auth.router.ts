@@ -2,8 +2,24 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as AuthService from '../domain/auth/auth.service';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import multer from 'multer';
 
 const router = Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      cb(new Error('Solo se permiten imágenes'));
+      return;
+    }
+
+    cb(null, true);
+  },
+});
 
 router.post('/register', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -297,5 +313,85 @@ router.patch('/me', requireAuth, async (req: Request, res: Response): Promise<vo
     });
   }
 });
+
+router.patch(
+  '/me/avatar',
+  requireAuth,
+  upload.single('avatar'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!req.file) {
+        res.status(400).json({
+          ok: false,
+          error: 'La imagen es requerida',
+        });
+        return;
+      }
+
+      const { data, error } = await AuthService.updateUserAvatarByAuthId(
+        req.user!.id,
+        req.file
+      );
+
+      if (error) {
+        res.status(400).json({
+          ok: false,
+          error: 'No se pudo actualizar la imagen de perfil',
+          details: error.message,
+        });
+        return;
+      }
+
+      res.status(200).json({
+        ok: true,
+        message: 'Imagen de perfil actualizada correctamente',
+        user: data,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+
+      res.status(500).json({
+        ok: false,
+        error: 'Error interno del servidor',
+        details: msg,
+      });
+    }
+  }
+);
+
+router.delete(
+  '/me/avatar',
+  requireAuth,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { data, error } = await AuthService.deleteUserAvatarByAuthId(
+        req.user!.id
+      );
+
+      if (error) {
+        res.status(400).json({
+          ok: false,
+          error: 'No se pudo eliminar la imagen de perfil',
+          details: error.message,
+        });
+        return;
+      }
+
+      res.status(200).json({
+        ok: true,
+        message: 'Imagen de perfil eliminada correctamente',
+        user: data,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error desconocido';
+
+      res.status(500).json({
+        ok: false,
+        error: 'Error interno del servidor',
+        details: msg,
+      });
+    }
+  }
+);
 
 export default router;

@@ -31,6 +31,32 @@ async function request<T>(
   return data as T;
 }
 
+async function upload<T>(
+  path: string,
+  formData: FormData,
+  token?: string
+): Promise<T> {
+  const headers: Record<string, string> = {};
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'PATCH',
+    headers,
+    body: formData,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data?.error || data?.details || 'Error al subir archivo');
+  }
+
+  return data as T;
+}
+
 export const apiClient = {
   post: <T>(path: string, body?: unknown, token?: string) =>
     request<T>(path, 'POST', body, token),
@@ -46,4 +72,7 @@ export const apiClient = {
 
   delete: <T>(path: string, token?: string) =>
     request<T>(path, 'DELETE', undefined, token),
+
+  upload: <T>(path: string, formData: FormData, token?: string) =>
+    upload<T>(path, formData, token),
 };

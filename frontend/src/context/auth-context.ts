@@ -11,6 +11,7 @@ export type LocalUser = {
   email: string;
   nombre: string;
   proveedor_auth: string;
+  avatar_url?: string | null;
 };
 
 export type RegisterPayload = {

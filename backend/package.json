@@ -15,6 +15,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "multer": "^2.1.1",
     "qrcode": "^1.5.4",
     "resend": "^6.12.2",
     "socket.io": "^4.8.3"
@@ -23,6 +24,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.25",
     "@types/jest": "^29.5.12",
+    "@types/multer": "^2.1.0",
     "@types/node": "^20.14.0",
     "@types/qrcode": "^1.5.6",
     "axios": "^1.15.2",

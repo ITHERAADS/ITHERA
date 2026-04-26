@@ -101,3 +101,78 @@ export const updateUserByAuthId = async (
     .select('*')
     .single();
 };
+
+function getStoragePathFromPublicUrl(publicUrl?: string | null): string | null {
+  if (!publicUrl) return null;
+
+  const marker = '/profile-avatars/';
+  const index = publicUrl.indexOf(marker);
+
+  if (index === -1) return null;
+
+  return decodeURIComponent(publicUrl.substring(index + marker.length));
+}
+
+export const updateUserAvatarByAuthId = async (
+  authUserId: string,
+  file: Express.Multer.File
+) => {
+  const { data: currentUser } = await getUserByAuthId(authUserId);
+  const oldAvatarPath = getStoragePathFromPublicUrl(currentUser?.avatar_url);
+
+  const extension = file.originalname.split('.').pop()?.toLowerCase() || 'jpg';
+  const filePath = `${authUserId}/avatar-${Date.now()}.${extension}`;
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from('profile-avatars')
+    .upload(filePath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    return { data: null, error: uploadError };
+  }
+
+  const { data: publicUrlData } = supabaseAdmin.storage
+    .from('profile-avatars')
+    .getPublicUrl(filePath);
+
+  const { data, error } = await supabaseAdmin
+    .from('usuarios')
+    .update({ avatar_url: publicUrlData.publicUrl })
+    .eq('auth_user_id', authUserId)
+    .select('*')
+    .single();
+
+  if (!error && oldAvatarPath && oldAvatarPath !== filePath) {
+    await supabaseAdmin.storage
+      .from('profile-avatars')
+      .remove([oldAvatarPath]);
+  }
+
+  return { data, error };
+};
+
+export const deleteUserAvatarByAuthId = async (authUserId: string) => {
+  const { data: currentUser, error: userError } = await getUserByAuthId(authUserId);
+
+  if (userError) {
+    return { data: null, error: userError };
+  }
+
+  const avatarPath = getStoragePathFromPublicUrl(currentUser?.avatar_url);
+
+  if (avatarPath) {
+    await supabaseAdmin.storage
+      .from('profile-avatars')
+      .remove([avatarPath]);
+  }
+
+  return supabaseAdmin
+    .from('usuarios')
+    .update({ avatar_url: null })
+    .eq('auth_user_id', authUserId)
+    .select('*')
+    .single();
+};

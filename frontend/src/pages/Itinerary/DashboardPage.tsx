@@ -254,79 +254,79 @@ function InfoBanner() {
   )
 }
 
-// function BottomNavbar({
-//   activeTab,
-//   onTabChange,
-// }: {
-//   activeTab: string
-//   onTabChange: (tab: string) => void
-// }) {
-//   const tabs = [
-//     {
-//       id: 'buscar',
-//       label: 'Buscar',
-//       icon: (
-//         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-//           <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
-//           <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-//         </svg>
-//       ),
-//     },
-//     {
-//       id: 'comparar',
-//       label: 'Comparar',
-//       icon: (
-//         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-//           <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-//         </svg>
-//       ),
-//     },
-//     {
-//       id: 'mapas',
-//       label: 'Mapas',
-//       icon: (
-//         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-//           <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-//           <line x1="8" y1="2" x2="8" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-//           <line x1="16" y1="6" x2="16" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-//         </svg>
-//       ),
-//     },
-//     {
-//       id: 'pagar',
-//       label: 'Pagar',
-//       icon: (
-//         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-//           <line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-//           <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-//         </svg>
-//       ),
-//     },
-//   ]
+function BottomNavbar({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: string
+  onTabChange: (tab: string) => void
+}) {
+  const tabs = [
+    {
+      id: 'buscar',
+      label: 'Buscar',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
+          <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      id: 'comparar',
+      label: 'Comparar',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      id: 'mapas',
+      label: 'Mapas',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <line x1="8" y1="2" x2="8" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <line x1="16" y1="6" x2="16" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      id: 'pagar',
+      label: 'Pagar',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+  ]
 
-//   return (
-//     <div className="flex h-14 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4">
-//       {tabs.map((tab) => {
-//         const isActive = tab.id === activeTab
-//         return (
-//           <button
-//             key={tab.id}
-//             onClick={() => onTabChange(tab.id)}
-//             className={[
-//               'rounded-lg px-3 py-1 font-body text-[10px] font-medium transition-colors',
-//               isActive ? 'text-bluePrimary' : 'text-gray500 hover:text-gray700',
-//             ].join(' ')}
-//           >
-//             <span className="flex flex-col items-center gap-0.5">
-//               {tab.icon}
-//               <span>{tab.label}</span>
-//             </span>
-//           </button>
-//         )
-//       })}
-//     </div>
-//   )
-// }
+  return (
+    <div className="flex h-14 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4">
+      {tabs.map((tab) => {
+        const isActive = tab.id === activeTab
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onTabChange(tab.id)}
+            className={[
+              'rounded-lg px-3 py-1 font-body text-[10px] font-medium transition-colors',
+              isActive ? 'text-bluePrimary' : 'text-gray500 hover:text-gray700',
+            ].join(' ')}
+          >
+            <span className="flex flex-col items-center gap-0.5">
+              {tab.icon}
+              <span>{tab.label}</span>
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
 
 export function DashboardPage() {
 
@@ -556,6 +556,8 @@ export function DashboardPage() {
         onCreated={reloadDashboard}
         editingActivity={editingActivity}
       />
+
+      <BottomNavbar activeTab={activeTab} onTabChange={setActiveTab} />
     </AppLayout>
   )
 }

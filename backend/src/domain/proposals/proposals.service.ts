@@ -225,6 +225,28 @@ export const getProposalById = async (proposalId: number, authUserId: string) =>
 export const updateProposal = async (proposalId: number, authUserId: string, payload: UpdateProposalPayload) => {
   const { proposal } = await assertProposalAccess(proposalId, authUserId);
 
+  if (payload.updatedAt && proposal.ultima_actualizacion) {
+    const dbDate = new Date(proposal.ultima_actualizacion).getTime();
+    const payloadDate = new Date(payload.updatedAt).getTime();
+    
+    if (Number.isNaN(payloadDate)) {
+      const err = new Error('Invalid updatedAt timestamp.') as Error & { statusCode: number };
+      err.statusCode = 400;
+      throw err;
+    }
+    if (Number.isNaN(dbDate)) {
+      const err = new Error('Invalid proposal update timestamp in storage.') as Error & { statusCode: number };
+      err.statusCode = 500;
+      throw err;
+    }
+    
+    if (payloadDate < dbDate) {
+      const err = new Error('Conflict: The entity has been modified. Refresh and try again.') as Error & { statusCode: number };
+      err.statusCode = 409;
+      throw err;
+    }
+  }
+
   const proposalPatch: Record<string, unknown> = {
     ultima_actualizacion: new Date().toISOString(),
   };

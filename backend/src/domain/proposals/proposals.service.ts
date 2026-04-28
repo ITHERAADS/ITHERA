@@ -225,6 +225,15 @@ export const getProposalById = async (proposalId: number, authUserId: string) =>
 export const updateProposal = async (proposalId: number, authUserId: string, payload: UpdateProposalPayload) => {
   const { proposal } = await assertProposalAccess(proposalId, authUserId);
 
+  if (payload.updatedAt && proposal.ultima_actualizacion) {
+    const dbDate = new Date(proposal.ultima_actualizacion).getTime();
+    const payloadDate = new Date(payload.updatedAt).getTime();
+    
+    if (payloadDate < dbDate) {
+      throw { status: 409, message: 'Conflict: The entity has been modified. Refresh and try again.' };
+    }
+  }
+
   const proposalPatch: Record<string, unknown> = {
     ultima_actualizacion: new Date().toISOString(),
   };

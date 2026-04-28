@@ -4,6 +4,7 @@ import { AppLayout } from '../../components/layout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { groupsService, saveCurrentGroup } from '../../services/groups'
 import { DestinationSearch } from '../../components/DestinationSearch/DestinationSearch'
+import type { GeocodingResult } from '../../services/maps'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Member {
@@ -163,6 +164,7 @@ export function CreateGroupPage() {
   const { accessToken, localUser } = useAuth()
   const [serverError, setServerError] = useState('')
   const [createdGroupId, setCreatedGroupId] = useState('')
+  const [destinationData, setDestinationData] = useState<GeocodingResult | null>(null)
   const navigate = useNavigate()
   const [form, setForm] = useState<FormData>({
     name: '',
@@ -208,14 +210,18 @@ export function CreateGroupPage() {
       setLoading(true)
 
       const response = await groupsService.createGroup(
-        {
-          nombre: form.name.trim(),
-          descripcion: form.description.trim() || undefined,
-          destino: form.destination || undefined,
-          fecha_inicio: form.startDate || undefined,
-          fecha_fin: form.endDate || undefined,
-          maximo_miembros: Number(form.maxMembers),
-        },
+          {
+            nombre: form.name.trim(),
+            descripcion: form.description.trim() || undefined,
+            destino: form.destination || undefined,
+            destino_latitud: destinationData?.latitude ?? null,
+            destino_longitud: destinationData?.longitude ?? null,
+            destino_place_id: destinationData?.placeId ?? null,
+            destino_formatted_address: destinationData?.formattedAddress ?? null,
+            fecha_inicio: form.startDate || undefined,
+            fecha_fin: form.endDate || undefined,
+            maximo_miembros: Number(form.maxMembers),
+          },
         accessToken
       )
 
@@ -295,7 +301,7 @@ export function CreateGroupPage() {
                   Copiar código
                 </button>
                 <button
-                  onClick={() => navigate(`/grouppanel?groupId=${encodeURIComponent(createdGroupId)}`)}
+                  onClick={() => navigate(`/dashboard?groupId=${encodeURIComponent(createdGroupId)}`)}
                   className="font-body font-medium text-sm bg-[#1E6FD9] text-white rounded-xl px-4 py-3 hover:opacity-90 transition-opacity flex items-center justify-center"
                 >
                   Ir al grupo →
@@ -371,7 +377,10 @@ export function CreateGroupPage() {
               />
               <DestinationSearch
                 value={form.destination}
-                onChange={set('destination') as (v: string) => void}
+                onChange={(value, result) => {
+                  set('destination')(value)
+                  setDestinationData(result ?? null)
+                }}
                 error={errors.destination}
                 token={accessToken}
               />

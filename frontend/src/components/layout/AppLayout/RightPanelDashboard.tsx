@@ -1,6 +1,4 @@
 import { useState } from 'react'
-import { GoogleMiniMap } from '../../GoogleMiniMap/GoogleMiniMap'
-import type { Group } from '../../../types/groups'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -29,6 +27,13 @@ interface MemberFromBackend {
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
 
+const PARTICIPANTS: Participant[] = [
+  { id: '1', name: 'Bryan A.',    role: 'Organizador', color: '#1E6FD9', isOnline: true  },
+  { id: '2', name: 'Ana L.',      role: 'Miembro',     color: '#35C56A', isOnline: true  },
+  { id: '3', name: 'Luis R.',     role: 'Miembro',     color: '#7A4FD6', isOnline: true  },
+  { id: '4', name: 'Mariana G.', role: 'Miembro',     color: '#F59E0B', isOnline: false },
+]
+
 const INITIAL_MESSAGES: ChatMessage[] = [
   { id: '1', text: 'El hotel confirmó check-in a las 2 pm', isOwn: false, author: 'Ana L.',   timestamp: '10:42 am' },
   { id: '2', text: 'Perfecto, ya agregué el traslado',       isOwn: true,  author: 'Bryan A.', timestamp: '10:44 am' },
@@ -41,14 +46,14 @@ function getParticipantColor(authorName: string | undefined, participants: Parti
   return found?.color ?? '#7A4FD6'
 }
 
-// function IconMapPin({ size = 14 }: { size?: number }) {
-//   return (
-//     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-//       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" strokeWidth="2"/>
-//       <circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2"/>
-//     </svg>
-//   )
-// }
+function IconMapPin({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" strokeWidth="2"/>
+      <circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2"/>
+    </svg>
+  )
+}
 
 function IconSend({ size = 13 }: { size?: number }) {
   return (
@@ -60,71 +65,27 @@ function IconSend({ size = 13 }: { size?: number }) {
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
-  export function RightPanelDashboard({
-    members = [],
-    group,
-    isLoading = false,
-  }: {
-    members?: MemberFromBackend[]
-    group?: Group | null
-    isLoading?: boolean
-  }) {
+
+export function RightPanelDashboard({ members = [] }: { members?: MemberFromBackend[] }) {
+
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES)
   const [chatInput, setChatInput] = useState('')
 
-  if (isLoading) {
-    return (
-      <>
-        <section className="shrink-0">
-          <div className="mb-3 h-3 w-24 animate-pulse rounded bg-gray-200" />
-          <div className="mb-3 flex gap-2">
-            {[1, 2, 3].map((item) => (
-              <div key={item} className="h-8 w-8 animate-pulse rounded-full bg-gray-200" />
-            ))}
-          </div>
-          <div className="flex flex-col gap-3">
-            {[1, 2, 3].map((item) => (
-              <div key={item} className="flex items-center gap-2.5">
-                <div className="h-8 w-8 animate-pulse rounded-full bg-gray-200" />
-                <div className="flex-1">
-                  <div className="mb-1 h-3 w-24 animate-pulse rounded bg-gray-200" />
-                  <div className="h-3 w-16 animate-pulse rounded bg-gray-200" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+  const participants: Participant[] =
+    members.length > 0
+      ? members.map((member, index) => {
+          const name = member.nombre || member.email || 'Usuario'
+          const colors = ['#1E6FD9', '#35C56A', '#7A4FD6', '#F59E0B']
 
-        <section className="shrink-0">
-          <div className="mb-2 h-3 w-20 animate-pulse rounded bg-gray-200" />
-          <div className="mb-2 h-28 w-full animate-pulse rounded-xl bg-gray-200" />
-          <div className="mb-1 h-3 w-32 animate-pulse rounded bg-gray-200" />
-          <div className="h-3 w-40 animate-pulse rounded bg-gray-200" />
-        </section>
-
-        <section className="flex flex-1 flex-col gap-2 min-h-0">
-          <div className="h-3 w-28 animate-pulse rounded bg-gray-200" />
-          <div className="flex-1 rounded-2xl border border-purpleMedium/20 bg-surface p-4">
-            <div className="mb-3 h-16 w-32 animate-pulse rounded-2xl bg-gray-200" />
-            <div className="ml-auto h-16 w-36 animate-pulse rounded-2xl bg-gray-200" />
-          </div>
-        </section>
-      </>
-    )
-  }
-
-  const participants: Participant[] = members.map((member, index) => {
-    const name = member.nombre || member.email || 'Usuario'
-    const colors = ['#1E6FD9', '#35C56A', '#7A4FD6', '#F59E0B']
-
-    return {
-      id: member.id,
-      name,
-      role: member.rol === 'admin' ? 'Organizador' : 'Miembro',
-      color: colors[index % colors.length],
-      isOnline: true,
-    }
-  })
+          return {
+            id: member.id,
+            name,
+            role: member.rol === 'admin' ? 'Organizador' : 'Miembro',
+            color: colors[index % colors.length],
+            isOnline: true,
+          }
+        })
+      : PARTICIPANTS
 
   const onlineCount = participants.filter((p) => p.isOnline).length
 
@@ -198,33 +159,35 @@ function IconSend({ size = 13 }: { size?: number }) {
         <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest mb-2">
           Destino
         </p>
-
-        <div className="mb-2">
-          <GoogleMiniMap
-            lat={group?.destino_latitud}
-            lng={group?.destino_longitud}
-            title={group?.destino || group?.nombre || 'Destino'}
+        <div className="relative rounded-xl h-28 overflow-hidden mb-2 bg-[#D4E9F7]">
+          <div
+            className="absolute inset-0"
+            style={{
+              background: 'linear-gradient(135deg, #B8D9F0 0%, #7EC8E3 40%, #4AA8D8 70%, #2A7DB5 100%)',
+            }}
           />
+          <div
+            className="absolute inset-0 opacity-20"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px)',
+              backgroundSize: '24px 24px',
+            }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex flex-col items-center drop-shadow-lg">
+              <div className="w-8 h-8 rounded-full bg-bluePrimary flex items-center justify-center shadow-lg text-white">
+                <IconMapPin size={14} />
+              </div>
+              <div className="w-0.5 h-3 bg-bluePrimary" />
+            </div>
+          </div>
         </div>
-
-        <p className="font-body text-xs font-bold text-purpleNavbar leading-none">
-          {group?.destino || 'Destino pendiente'}
-        </p>
-
-        <p className="font-body text-[11px] text-gray500 mt-0.5 leading-none">
-          {group?.destino_formatted_address || 'Ubicación no disponible'}
-        </p>
-
-        {group?.destino_latitud != null && group?.destino_longitud != null && (
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${group.destino_latitud},${group.destino_longitud}`}
-            target="_blank"
-            rel="noreferrer"
-            className="font-body text-[11px] text-bluePrimary mt-1.5 hover:underline inline-block"
-          >
-            Ver en mapa completo →
-          </a>
-        )}
+        <p className="font-body text-xs font-bold text-purpleNavbar leading-none">Cancún, Q.R.</p>
+        <p className="font-body text-[11px] text-gray500 mt-0.5 leading-none">Riviera Maya · México</p>
+        <button className="font-body text-[11px] text-bluePrimary mt-1.5 hover:underline">
+          Ver en mapa completo →
+        </button>
       </section>
 
       {/* Group chat */}

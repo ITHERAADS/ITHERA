@@ -5,7 +5,6 @@ export interface ProposalCardProps {
   proposalStatus?: 'pendiente' | 'procesando' | 'bloqueada' | 'error'
   onAccept?: (id: string) => void
   onDelete?: (id: string) => void
-  onEdit?: (id: string) => void
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -44,15 +43,6 @@ function IconTrash({ size = 15 }: { size?: number }) {
       <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  )
-}
-
-function IconEdit({ size = 15 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -121,7 +111,7 @@ const BADGE: Record<NonNullable<ProposalCardProps['proposalStatus']>, { label: s
 
 // ── ProposalCard ──────────────────────────────────────────────────────────────
 
-export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept, onDelete, onEdit }: ProposalCardProps) {
+export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept, onDelete }: ProposalCardProps) {
   const badge = BADGE[proposalStatus]
   const isProcessing = proposalStatus === 'procesando'
   const isBlocked    = proposalStatus === 'bloqueada'
@@ -258,16 +248,6 @@ export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept,
               aria-label="Eliminar propuesta"
             >
               <IconTrash size={15} />
-            </button>
-          )}
-          {!isBlocked && (
-            <button
-              onClick={isProcessing || isError ? undefined : () => onEdit?.(activity.id)}
-              disabled={isProcessing}
-              className="w-9 h-9 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-[#1E6FD9] hover:bg-blue-50 transition-colors ml-2 shrink-0"
-              aria-label="Editar propuesta"
-            >
-              <IconEdit size={15} />
             </button>
           )}
         </div>

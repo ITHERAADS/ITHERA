@@ -50,7 +50,6 @@ export interface UpdateProposalPayload {
   titulo?: string;
   descripcion?: string;
   estado?: ProposalStatus;
-  updatedAt?: string;
   payload?: Record<string, unknown>;
   detalle?: {
     aerolinea?: string;
@@ -86,7 +85,6 @@ export interface Proposal {
   titulo?: string;
   descripcion?: string;
   fecha_creacion?: string;
-  ultima_actualizacion?: string;
 }
 
 export interface ProposalVote {

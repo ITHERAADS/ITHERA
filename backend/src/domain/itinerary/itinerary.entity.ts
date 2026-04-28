@@ -11,26 +11,10 @@ export interface ItineraryActivity {
   time: string;
   location?: string;
   image: string;
-  externalReference?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
 }
 
 export interface ItineraryDay {
   dayNumber: number;
   date: string;
   activities: ItineraryActivity[];
-}
-
-export interface CreateItineraryActivityPayload {
-  titulo: string;
-  descripcion?: string | null;
-  ubicacion?: string | null;
-  latitud?: number | null;
-  longitud?: number | null;
-  fecha_inicio?: string | null;
-  fecha_fin?: string | null;
-  referencia_externa?: string | null;
-  fuente?: string | null;
-  payload?: Record<string, unknown> | null;
 }

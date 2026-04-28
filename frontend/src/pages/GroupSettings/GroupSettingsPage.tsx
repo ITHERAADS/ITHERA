@@ -10,7 +10,6 @@ import {
 } from '../../services/groups'
 import type { Group } from '../../types/groups'
 import { DestinationSearch } from '../../components/DestinationSearch/DestinationSearch'
-import type { GeocodingResult } from '../../services/maps'
 
 type SettingsForm = {
   name: string
@@ -51,7 +50,6 @@ export function GroupSettingsPage() {
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [destinationData, setDestinationData] = useState<GeocodingResult | null>(null)
 
   const groupId = searchParams.get('groupId') || group?.id || ''
 
@@ -76,7 +74,6 @@ export function GroupSettingsPage() {
 
         setGroup(foundGroup)
         setForm(buildForm(foundGroup))
-        setDestinationData(null)
         saveCurrentGroup(foundGroup)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'No se pudo cargar el grupo')
@@ -126,11 +123,6 @@ export function GroupSettingsPage() {
           nombre: form.name.trim(),
           descripcion: form.description.trim() || undefined,
           destino: form.destination.trim() || undefined,
-          destino_latitud: destinationData?.latitude ?? group.destino_latitud ?? null,
-          destino_longitud: destinationData?.longitude ?? group.destino_longitud ?? null,
-          destino_place_id: destinationData?.placeId ?? group.destino_place_id ?? null,
-          destino_formatted_address:
-            destinationData?.formattedAddress ?? group.destino_formatted_address ?? null,
           fecha_inicio: form.startDate || undefined,
           fecha_fin: form.endDate || undefined,
           maximo_miembros: Number(form.maxMembers),
@@ -244,10 +236,7 @@ export function GroupSettingsPage() {
               <div className="md:col-span-2">
                 <DestinationSearch
                   value={form.destination}
-                  onChange={(value, result) => {
-                    setField('destination', value)
-                    setDestinationData(result ?? null)
-                  }}
+                  onChange={(value) => setField('destination', value)}
                   token={accessToken}
                 />
               </div>

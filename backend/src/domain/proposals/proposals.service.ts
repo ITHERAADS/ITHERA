@@ -225,28 +225,6 @@ export const getProposalById = async (proposalId: number, authUserId: string) =>
 export const updateProposal = async (proposalId: number, authUserId: string, payload: UpdateProposalPayload) => {
   const { proposal } = await assertProposalAccess(proposalId, authUserId);
 
-  if (payload.updatedAt && proposal.ultima_actualizacion) {
-    const dbDate = new Date(proposal.ultima_actualizacion).getTime();
-    const payloadDate = new Date(payload.updatedAt).getTime();
-    
-    if (Number.isNaN(payloadDate)) {
-      const err = new Error('Invalid updatedAt timestamp.') as Error & { statusCode: number };
-      err.statusCode = 400;
-      throw err;
-    }
-    if (Number.isNaN(dbDate)) {
-      const err = new Error('Invalid proposal update timestamp in storage.') as Error & { statusCode: number };
-      err.statusCode = 500;
-      throw err;
-    }
-    
-    if (payloadDate < dbDate) {
-      const err = new Error('Conflict: The entity has been modified. Refresh and try again.') as Error & { statusCode: number };
-      err.statusCode = 409;
-      throw err;
-    }
-  }
-
   const proposalPatch: Record<string, unknown> = {
     ultima_actualizacion: new Date().toISOString(),
   };
@@ -344,12 +322,6 @@ export const updateProposal = async (proposalId: number, authUserId: string, pay
 export const deleteProposal = async (proposalId: number, authUserId: string) => {
   const { proposal } = await assertProposalAccess(proposalId, authUserId);
 
-  const { error: voteError } = await supabase.from('voto').delete().eq('id_propuesta', proposalId);
-  if (voteError) throw new Error(voteError.message);
-
-  const { error: commentError } = await supabase.from('comentario').delete().eq('id_propuesta', proposalId);
-  if (commentError) throw new Error(commentError.message);
-
   if (proposal.tipo_item === 'vuelo') {
     const { error } = await supabase.from('vuelos').delete().eq('propuesta_id', proposalId);
     if (error) throw new Error(error.message);
@@ -360,16 +332,12 @@ export const deleteProposal = async (proposalId: number, authUserId: string) => 
     if (error) throw new Error(error.message);
   }
 
-  if (proposal.tipo_item === 'actividad') {
-    const { error } = await supabase.from('actividades').delete().eq('propuesta_id', proposalId);
-    if (error) throw new Error(error.message);
-  }
-
   const { error } = await supabase.from('propuestas').delete().eq('id_propuesta', proposalId);
   if (error) throw new Error(error.message);
 
   return true;
 };
+
 type ServiceError = Error & { statusCode?: number };
 
 const createError = (message: string, statusCode: number): ServiceError => {

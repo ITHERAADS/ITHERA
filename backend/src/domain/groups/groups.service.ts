@@ -219,10 +219,6 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
       codigo_invitacion: codigo,
       creado_por: Number(usuarioId),
       estado: 'activo',
-      destino_latitud: payload.destino_latitud ?? null,
-      destino_longitud: payload.destino_longitud ?? null,
-      destino_place_id: payload.destino_place_id ?? null,
-      destino_formatted_address: payload.destino_formatted_address ?? null,
     })
     .select('*')
     .single();
@@ -603,11 +599,7 @@ export const getMyTravelHistory = async (authUserId: string) => {
         maximo_miembros,
         codigo_invitacion,
         estado,
-        created_at,
-        destino_latitud,
-        destino_longitud,
-        destino_place_id,
-        destino_formatted_address
+        created_at
       )
     `)
     .eq('usuario_id', usuarioId);
@@ -638,11 +630,9 @@ export const updateGroup = async (
     ...(payload.destino !== undefined ? { destino: payload.destino || null } : {}),
     ...(payload.fecha_inicio !== undefined ? { fecha_inicio: payload.fecha_inicio || null } : {}),
     ...(payload.fecha_fin !== undefined ? { fecha_fin: payload.fecha_fin || null } : {}),
-    ...(payload.maximo_miembros !== undefined ? { maximo_miembros: payload.maximo_miembros } : {}),
-    ...(payload.destino_latitud !== undefined ? { destino_latitud: payload.destino_latitud } : {}),
-    ...(payload.destino_longitud !== undefined ? { destino_longitud: payload.destino_longitud } : {}),
-    ...(payload.destino_place_id !== undefined ? { destino_place_id: payload.destino_place_id || null } : {}),
-    ...(payload.destino_formatted_address !== undefined ? { destino_formatted_address: payload.destino_formatted_address || null } : {}),
+    ...(payload.maximo_miembros !== undefined
+      ? { maximo_miembros: payload.maximo_miembros }
+      : {}),
   };
 
   const { data, error } = await supabase

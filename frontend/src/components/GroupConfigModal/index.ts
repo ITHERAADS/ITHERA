@@ -1,0 +1,1 @@
+export { GroupConfigModal } from './GroupConfigModal'

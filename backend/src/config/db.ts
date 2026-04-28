@@ -1,0 +1,1 @@
+export { supabase, supabaseAdmin, supabaseAuth } from '../infrastructure/db/supabase.client';

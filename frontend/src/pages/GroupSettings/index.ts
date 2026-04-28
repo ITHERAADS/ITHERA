@@ -1,0 +1,1 @@
+export { GroupSettingsPage } from './GroupSettingsPage'

@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react'
-import { mapsService } from '../../services/maps'
+import { useEffect, useRef, useState } from 'react'
+import {
+  mapsService,
+  type GeocodingResult,
+  type PlaceAutocompleteResult,
+} from '../../services/maps'
 
 type DestinationSearchProps = {
   value: string
-  onChange: (value: string) => void
+  onChange: (value: string, result?: GeocodingResult) => void
   token?: string | null
   error?: string
   label?: string
@@ -19,109 +23,130 @@ export function DestinationSearch({
   placeholder = 'Ej: Cancún, México',
 }: DestinationSearchProps) {
   const [search, setSearch] = useState(value)
+  const [suggestions, setSuggestions] = useState<PlaceAutocompleteResult[]>([])
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState('')
+  const [selecting, setSelecting] = useState(false)
   const [localError, setLocalError] = useState('')
   const [selected, setSelected] = useState(false)
+  const debounceRef = useRef<number | null>(null)
 
   useEffect(() => {
     setSearch(value)
-    setSelected(false)
-    }, [value])
+  }, [value])
 
-  const handleSearch = async () => {
-    if (!search.trim()) {
-      setLocalError('Escribe un destino para buscar.')
+  useEffect(() => {
+    if (debounceRef.current) window.clearTimeout(debounceRef.current)
+
+    if (!search.trim() || search.trim().length < 3 || selected) {
+      setSuggestions([])
       return
     }
 
+    if (!token) {
+      setSuggestions([])
+      return
+    }
+
+    debounceRef.current = window.setTimeout(async () => {
+      try {
+        setLoading(true)
+        setLocalError('')
+
+        const response = await mapsService.autocompletePlaces(search.trim(), token)
+        setSuggestions(response.data ?? [])
+      } catch (err) {
+        setLocalError(err instanceof Error ? err.message : 'No se pudieron cargar sugerencias.')
+        setSuggestions([])
+      } finally {
+        setLoading(false)
+      }
+    }, 350)
+
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current)
+    }
+  }, [search, selected, token])
+
+  const handleSelectSuggestion = async (suggestion: PlaceAutocompleteResult) => {
     if (!token) {
       setLocalError('Tu sesión expiró. Vuelve a iniciar sesión.')
       return
     }
 
     try {
-      setLoading(true)
-      setResult('')
+      setSelecting(true)
       setLocalError('')
 
-      const response = await mapsService.searchDestination(search.trim(), token)
+      const response = await mapsService.getPlaceDetails(suggestion.placeId, token)
+      const geo = response.data ?? undefined
+      const finalValue = geo?.formattedAddress || suggestion.description
 
-      const formatted = response.data?.formattedAddress || search.trim()
-      setResult(formatted)
+      setSearch(finalValue)
+      setSelected(true)
+      setSuggestions([])
+      onChange(finalValue, geo)
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'No se pudo buscar el destino.')
+      setLocalError(err instanceof Error ? err.message : 'No se pudo seleccionar el destino.')
     } finally {
-      setLoading(false)
+      setSelecting(false)
     }
   }
 
-  const handleSelect = () => {
-    if (!result) return
-    onChange(result)
-    setSearch(result)
-    setSelected(true)
-    setResult('')
-    setLocalError('')
-  }
-
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="relative flex flex-col gap-1.5">
       <label className="font-body text-xs font-semibold text-[#1E0A4E]/60 uppercase tracking-wide">
         {label}
       </label>
 
-      <div className="flex gap-2">
-        <input
-          type="text"
-          placeholder={placeholder}
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            setLocalError('')
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              handleSearch()
-            }
-          }}
-          className={`flex-1 border rounded-xl px-4 py-3 text-sm outline-none transition bg-white ${
-            error || localError
-              ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-              : value
-                ? 'border-[#1E6FD9] ring-2 ring-[#1E6FD9]/10'
-                : 'border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10'
-          }`}
-        />
+      <input
+        type="text"
+        placeholder={placeholder}
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value)
+          setSelected(false)
+          setLocalError('')
+          onChange(e.target.value, undefined)
+        }}
+        className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition bg-white ${
+          error || localError
+            ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+            : value
+              ? 'border-[#1E6FD9] ring-2 ring-[#1E6FD9]/10'
+              : 'border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10'
+        }`}
+      />
 
-        <button
-          type="button"
-          onClick={handleSearch}
-          disabled={loading}
-          className="rounded-xl bg-[#1E0A4E] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {loading ? 'Buscando…' : 'Buscar'}
-        </button>
-      </div>
+      {(loading || selecting) && (
+        <p className="text-[11px] text-[#7A8799]">
+          {selecting ? 'Seleccionando destino…' : 'Buscando sugerencias…'}
+        </p>
+      )}
 
-      {result && (
-        <button
-          type="button"
-          onClick={handleSelect}
-          className="mt-2 text-left rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 hover:border-[#1E6FD9] hover:bg-[#F8FAFC]"
-        >
-          <p className="text-xs text-[#7A8799]">Resultado encontrado</p>
-          <p className="text-sm font-semibold text-[#1E0A4E]">{result}</p>
-        </button>
+      {suggestions.length > 0 && (
+        <div className="absolute left-0 right-0 top-[76px] z-30 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-lg">
+          {suggestions.map((suggestion) => (
+            <button
+              key={suggestion.placeId || suggestion.description}
+              type="button"
+              onClick={() => handleSelectSuggestion(suggestion)}
+              className="block w-full border-b border-[#F1F5F9] px-4 py-3 text-left transition hover:bg-[#F8FAFC] last:border-b-0"
+            >
+              <p className="text-sm font-semibold text-[#1E0A4E]">
+                {suggestion.mainText || suggestion.description}
+              </p>
+              <p className="mt-0.5 text-xs text-[#7A8799]">
+                {suggestion.secondaryText || suggestion.description}
+              </p>
+            </button>
+          ))}
+        </div>
       )}
 
       {selected && (
-        <p className="text-[11px] text-[#35C56A]">
-            Destino seleccionado: {value}
-        </p>
+        <p className="text-[11px] text-[#35C56A]">Destino seleccionado: {value}</p>
       )}
-      
+
       {(error || localError) && (
         <p className="text-xs text-red-500">{error || localError}</p>
       )}

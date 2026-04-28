@@ -44,6 +44,66 @@ router.post('/routes/compute', requireAuth, async (req: Request, res: Response):
   }
 });
 
+router.get('/places/autocomplete', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { input } = req.query;
+
+    if (!input) {
+      res.status(400).json({ ok: false, error: 'input es requerido' });
+      return;
+    }
+
+    const results = await MapsService.autocompletePlaces(String(input));
+
+    res.status(200).json({ ok: true, data: results });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(500).json({ ok: false, error: 'Error al autocompletar lugares', details: msg });
+  }
+});
+
+router.get('/places/details/:placeId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { placeId } = req.params;
+
+    if (!placeId) {
+      res.status(400).json({ ok: false, error: 'placeId es requerido' });
+      return;
+    }
+
+    const result = await MapsService.getPlaceDetails(placeId);
+
+    res.status(200).json({ ok: true, data: result });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(500).json({ ok: false, error: 'Error al obtener detalle del lugar', details: msg });
+  }
+});
+
+router.post('/places/text-search', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { textQuery, latitude, longitude, radius, maxResultCount } = req.body as Record<string, unknown>;
+
+    if (!textQuery) {
+      res.status(400).json({ ok: false, error: 'textQuery es requerido' });
+      return;
+    }
+
+    const results = await MapsService.searchPlacesByText({
+      textQuery: String(textQuery),
+      latitude: latitude !== undefined && latitude !== null ? Number(latitude) : undefined,
+      longitude: longitude !== undefined && longitude !== null ? Number(longitude) : undefined,
+      radius: radius ? Number(radius) : 5000,
+      maxResultCount: maxResultCount ? Number(maxResultCount) : 8,
+    });
+
+    res.status(200).json({ ok: true, data: results });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(500).json({ ok: false, error: 'Error al buscar lugares', details: msg });
+  }
+});
+
 router.post('/places/nearby', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { latitude, longitude, radius, includedTypes, maxResultCount } = req.body as Record<string, unknown>;

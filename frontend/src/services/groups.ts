@@ -134,6 +134,60 @@ export const groupsService = {
       days: ItineraryDay[]
     }>(`/groups/${groupId}/itinerary`, token)
   },
+
+  createActivity: async (
+    groupId: string,
+    payload: {
+      titulo: string
+      descripcion?: string | null
+      ubicacion?: string | null
+      latitud?: number | null
+      longitud?: number | null
+      fecha_inicio?: string | null
+      fecha_fin?: string | null
+      referencia_externa?: string | null
+      fuente?: string | null
+      payload?: Record<string, unknown> | null
+    },
+    token: string
+  ) => {
+    return apiClient.post<{ ok: boolean; message: string; activity: unknown }>(
+      `/groups/${groupId}/itinerary/activities`,
+      payload,
+      token
+    )
+  },
+
+  updateActivity: async (
+    groupId: string,
+    activityId: string,
+    payload: {
+      titulo?: string
+      descripcion?: string | null
+      ubicacion?: string | null
+      latitud?: number | null
+      longitud?: number | null
+      fecha_inicio?: string | null
+      fecha_fin?: string | null
+      referencia_externa?: string | null
+      fuente?: string | null
+      payload?: Record<string, unknown> | null
+    },
+    token: string
+  ) => {
+    return apiClient.patch<{ ok: boolean; message: string; activity: unknown }>(
+      `/groups/${groupId}/itinerary/activities/${activityId}`,
+      payload,
+      token
+    )
+  },
+
+  deleteActivity: async (groupId: string, activityId: string, token: string) => {
+    return apiClient.delete<{ ok: boolean; message: string }>(
+      `/groups/${groupId}/itinerary/activities/${activityId}`,
+      token
+    )
+  },
 }
 
 export function saveCurrentGroup(group: Group) {

@@ -322,6 +322,12 @@ export const updateProposal = async (proposalId: number, authUserId: string, pay
 export const deleteProposal = async (proposalId: number, authUserId: string) => {
   const { proposal } = await assertProposalAccess(proposalId, authUserId);
 
+  const { error: voteError } = await supabase.from('voto').delete().eq('id_propuesta', proposalId);
+  if (voteError) throw new Error(voteError.message);
+
+  const { error: commentError } = await supabase.from('comentario').delete().eq('id_propuesta', proposalId);
+  if (commentError) throw new Error(commentError.message);
+
   if (proposal.tipo_item === 'vuelo') {
     const { error } = await supabase.from('vuelos').delete().eq('propuesta_id', proposalId);
     if (error) throw new Error(error.message);
@@ -332,12 +338,16 @@ export const deleteProposal = async (proposalId: number, authUserId: string) => 
     if (error) throw new Error(error.message);
   }
 
+  if (proposal.tipo_item === 'actividad') {
+    const { error } = await supabase.from('actividades').delete().eq('propuesta_id', proposalId);
+    if (error) throw new Error(error.message);
+  }
+
   const { error } = await supabase.from('propuestas').delete().eq('id_propuesta', proposalId);
   if (error) throw new Error(error.message);
 
   return true;
 };
-
 type ServiceError = Error & { statusCode?: number };
 
 const createError = (message: string, statusCode: number): ServiceError => {

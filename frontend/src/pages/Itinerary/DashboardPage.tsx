@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getCurrentGroup, groupsService } from '../../services/groups'
+import type { ItineraryDay } from '../../services/groups'
 import { useAuth } from '../../context/useAuth'
 import { AppLayout, RightPanelDashboard, SidebarDashboard } from '../../components/layout/AppLayout'
 import { DayView } from '../../components/ui/DayView'
 import type { Activity as DayActivity, DayViewHandle } from '../../components/ui/DayView'
 import { ProposalCard } from '../../components/ProposalCard/ProposalCard'
 import { ComparisonPage } from '../Comparison/ComparisonPage'
-import { ITINERARY_DAYS } from '../../mock/itinerary.mock'
 import { useLocation } from 'react-router-dom'
-
+import { ActivityProposalModal } from '../../components/ActivityProposalModal/ActivityProposalModal'
 
 
 function IconDownload({ size = 14 }: { size?: number }) {
@@ -90,34 +90,56 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
   )
 }
 
-function HeroCard({ activeDay }: { activeDay: number | null }) {
-  const totalDays = ITINERARY_DAYS.length
+function HeroCard({
+  activeDay,
+  totalDays,
+  selectedDay,
+  group,
+  onAdd,
+}: {
+  activeDay: number | null
+  totalDays: number
+  selectedDay?: ItineraryDay
+  group: ReturnType<typeof getCurrentGroup> | null
+  onAdd: () => void
+}) {
+  const activities = selectedDay?.activities ?? []
+  const pending = activities.filter((activity) => activity.status === 'pendiente').length
+  const destination = group?.destino || group?.destino_formatted_address || 'Destino pendiente'
+  const dateLabel = selectedDay?.date?.toUpperCase() || group?.fecha_inicio || 'Fecha pendiente'
 
   return (
     <div className="relative mb-4 h-52 shrink-0 overflow-hidden rounded-2xl">
       <img
         src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=400&fit=crop"
-        alt="Cancún"
+        alt={destination}
         className="absolute inset-0 h-full w-full object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
       <div className="absolute left-4 top-4 flex gap-2">
         <span className="rounded-full bg-white/20 px-3 py-1 font-body text-[11px] font-bold text-white backdrop-blur-sm">
-          {activeDay !== null ? `DÍA ${activeDay} / ${totalDays}` : 'CANCÚN 2025'}
+          {activeDay !== null ? `DÍA ${activeDay} / ${totalDays}` : `${destination.toUpperCase()}`}
         </span>
         <span className="rounded-full bg-white/20 px-3 py-1 font-body text-[11px] font-bold text-white backdrop-blur-sm">
-          16 JUNIO 2025
+          {dateLabel}
         </span>
       </div>
       <div className="absolute bottom-0 left-0 right-0 px-5 pb-4">
-        <h1 className="mb-1 font-heading text-[28px] font-bold leading-tight text-white">Llegada a Cancún</h1>
-        <p className="mb-3 font-body text-[13px] text-white/70">3 actividades planeadas · 1 pendiente de confirmación</p>
+        <h1 className="mb-1 font-heading text-[28px] font-bold leading-tight text-white">
+          {activeDay !== null ? `Día ${activeDay}` : destination}
+        </h1>
+        <p className="mb-3 font-body text-[13px] text-white/70">
+          {activities.length} actividad{activities.length !== 1 ? 'es' : ''} planeada{activities.length !== 1 ? 's' : ''} · {pending} pendiente{pending !== 1 ? 's' : ''} de confirmación
+        </p>
         <div className="flex gap-2">
           <button className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-white/10">
             <IconDownload size={13} />
             Exportar PDF
           </button>
-          <button className="inline-flex items-center gap-1.5 rounded-lg bg-greenAccent px-4 py-2 font-body text-sm font-medium text-white transition-opacity hover:opacity-90">
+          <button
+            onClick={onAdd}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-greenAccent px-4 py-2 font-body text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
             <IconPlus size={13} />
             Proponer actividad
           </button>
@@ -232,79 +254,79 @@ function InfoBanner() {
   )
 }
 
-function BottomNavbar({
-  activeTab,
-  onTabChange,
-}: {
-  activeTab: string
-  onTabChange: (tab: string) => void
-}) {
-  const tabs = [
-    {
-      id: 'buscar',
-      label: 'Buscar',
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
-          <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      ),
-    },
-    {
-      id: 'comparar',
-      label: 'Comparar',
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      ),
-    },
-    {
-      id: 'mapas',
-      label: 'Mapas',
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          <line x1="8" y1="2" x2="8" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <line x1="16" y1="6" x2="16" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      ),
-    },
-    {
-      id: 'pagar',
-      label: 'Pagar',
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      ),
-    },
-  ]
+// function BottomNavbar({
+//   activeTab,
+//   onTabChange,
+// }: {
+//   activeTab: string
+//   onTabChange: (tab: string) => void
+// }) {
+//   const tabs = [
+//     {
+//       id: 'buscar',
+//       label: 'Buscar',
+//       icon: (
+//         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+//           <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
+//           <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+//         </svg>
+//       ),
+//     },
+//     {
+//       id: 'comparar',
+//       label: 'Comparar',
+//       icon: (
+//         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+//           <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+//         </svg>
+//       ),
+//     },
+//     {
+//       id: 'mapas',
+//       label: 'Mapas',
+//       icon: (
+//         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+//           <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+//           <line x1="8" y1="2" x2="8" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+//           <line x1="16" y1="6" x2="16" y2="22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+//         </svg>
+//       ),
+//     },
+//     {
+//       id: 'pagar',
+//       label: 'Pagar',
+//       icon: (
+//         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+//           <line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+//           <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+//         </svg>
+//       ),
+//     },
+//   ]
 
-  return (
-    <div className="flex h-14 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4">
-      {tabs.map((tab) => {
-        const isActive = tab.id === activeTab
-        return (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            className={[
-              'rounded-lg px-3 py-1 font-body text-[10px] font-medium transition-colors',
-              isActive ? 'text-bluePrimary' : 'text-gray500 hover:text-gray700',
-            ].join(' ')}
-          >
-            <span className="flex flex-col items-center gap-0.5">
-              {tab.icon}
-              <span>{tab.label}</span>
-            </span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
+//   return (
+//     <div className="flex h-14 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4">
+//       {tabs.map((tab) => {
+//         const isActive = tab.id === activeTab
+//         return (
+//           <button
+//             key={tab.id}
+//             onClick={() => onTabChange(tab.id)}
+//             className={[
+//               'rounded-lg px-3 py-1 font-body text-[10px] font-medium transition-colors',
+//               isActive ? 'text-bluePrimary' : 'text-gray500 hover:text-gray700',
+//             ].join(' ')}
+//           >
+//             <span className="flex flex-col items-center gap-0.5">
+//               {tab.icon}
+//               <span>{tab.label}</span>
+//             </span>
+//           </button>
+//         )
+//       })}
+//     </div>
+//   )
+// }
 
 export function DashboardPage() {
 
@@ -330,10 +352,13 @@ export function DashboardPage() {
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
   const [activeTab,   setActiveTab]   = useState('pagar')
   const [isLoading,   setIsLoading]   = useState(false)
-  const [days,        setDays]        = useState(ITINERARY_DAYS)
+  const [days,        setDays]        = useState<ItineraryDay[]>([])
   const [group, setGroup] = useState<typeof currentGroup>(currentGroup)
   const [members, setMembers] = useState<Parameters<typeof RightPanelDashboard>[0]['members']>([])
   const dayRefs = useRef<Record<number, DayViewHandle | null>>({})
+  const [showActivityModal, setShowActivityModal] = useState(false)
+  const [selectedActivityDay, setSelectedActivityDay] = useState<number | null>(null)
+  const [editingActivity, setEditingActivity] = useState<DayActivity | null>(null)
 
   const handleDayChange = useCallback((dayNumber: number) => {
     const next = activeDay === dayNumber ? null : dayNumber
@@ -341,9 +366,16 @@ export function DashboardPage() {
     setExpandedDay(next)
   }, [activeDay])
 
-  const handleDayExpand = useCallback((dayNumber: number) => {
-    setExpandedDay((prev) => prev === dayNumber ? null : dayNumber)
+  const openActivityModalForDay = useCallback((dayNumber: number) => {
+    setActiveDay(dayNumber)
+    setExpandedDay(dayNumber)
+    setSelectedActivityDay(dayNumber)
+    setShowActivityModal(true)
   }, [])
+
+  // const handleDayExpand = useCallback((dayNumber: number) => {
+  //   setExpandedDay((prev) => prev === dayNumber ? null : dayNumber)
+  // }, [])
 
   const isEmpty = days.length === 0
   const selectedDay = activeDay !== null ? days.find((day) => day.dayNumber === activeDay) : undefined
@@ -377,7 +409,7 @@ export function DashboardPage() {
       console.error('Error cargando dashboard:', error)
 
       if (isMounted) {
-        setDays(ITINERARY_DAYS)
+        setDays([])
       }
     } finally {
       if (isMounted) {
@@ -392,6 +424,24 @@ export function DashboardPage() {
       isMounted = false
     }
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, navigate])
+
+  const reloadDashboard = useCallback(async () => {
+    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+
+    if (!resolvedGroupId || !accessToken) return
+
+    const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
+    setDays(itineraryRes.days)
+  }, [groupIdFromState, groupId, currentGroup?.id, accessToken])
+
+  const handleDeleteActivity = useCallback(async (activityId: string) => {
+    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+
+    if (!resolvedGroupId || !accessToken) return
+
+    await groupsService.deleteActivity(String(resolvedGroupId), activityId, accessToken)
+    await reloadDashboard()
+  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard])
 
   return (
     <AppLayout
@@ -412,6 +462,7 @@ export function DashboardPage() {
       sidebarContent={
         <SidebarDashboard
           activeDay={activeDay}
+          days={days}
           onDayChange={handleDayChange}
           onOpenGroupPanel={() =>
             navigate(`/grouppanel?groupId=${encodeURIComponent(groupId || currentGroup?.id || '')}`)
@@ -419,45 +470,44 @@ export function DashboardPage() {
         />
       }
 
-      rightPanel={<RightPanelDashboard members={members} />}
+      rightPanel={<RightPanelDashboard members={members} group={group} isLoading={isLoading} />}
     >
       {isLoading ? (
         <SkeletonView />
       ) : isEmpty ? (
-        <EmptyState onAdd={() => {}} />
+        <EmptyState onAdd={() => setShowActivityModal(true)} />
       ) : activeTab === 'comparar' ? (
         <div className="flex-1 overflow-y-auto px-4 py-6">
           <ComparisonPage onBack={() => setActiveTab('pagar')} />
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
-          <HeroCard activeDay={activeDay} />
+          <HeroCard
+            activeDay={activeDay}
+            totalDays={days.length}
+            selectedDay={selectedDay}
+            group={group}
+            onAdd={() => openActivityModalForDay(activeDay ?? days[0]?.dayNumber ?? 1)}
+          />
           <InfoBanner />
           <TimelineStrip activeDay={activeDay} date={selectedDay?.date} activities={selectedDay?.activities} />
           <div className="flex flex-col gap-3">
             {days.map((day) => (
-              <DayView
-                key={day.dayNumber}
-                ref={(handle) => {
-                  dayRefs.current[day.dayNumber] = handle
-                }}
-                dayNumber={day.dayNumber}
-                date={day.date}
-                activities={day.activities}
-                isActive={day.dayNumber === activeDay}
-                isExpanded={day.dayNumber === expandedDay}
-                onSelect={handleDayExpand}
-                onAccept={(id) => console.log('aceptar', id)}
-                onDelete={(id) => {
-                  setDays((prev) =>
-                    prev.map((d) =>
-                      d.dayNumber === day.dayNumber
-                        ? { ...d, activities: d.activities.filter((a) => a.id !== id) }
-                        : d
-                    )
-                  )
-                }}
-              />
+            <DayView
+              key={day.dayNumber}
+              ref={(handle) => {
+                dayRefs.current[day.dayNumber] = handle
+              }}
+              dayNumber={day.dayNumber}
+              date={day.date}
+              activities={day.activities}
+              isActive={day.dayNumber === activeDay}
+              isExpanded={day.dayNumber === expandedDay}
+              onSelect={handleDayChange}
+              onAddActivity={openActivityModalForDay}
+              onAccept={(id) => console.log('aceptar', id)}
+              onDelete={(id) => void handleDeleteActivity(id)}
+            />
             ))}
           </div>
 
@@ -477,13 +527,13 @@ export function DashboardPage() {
                       activity={activity}
                       proposalStatus="pendiente"
                       onAccept={(id) => console.log('aceptar', id)}
-                      onDelete={(id) => {
-                        setDays((prev) =>
-                          prev.map((d) => ({
-                            ...d,
-                            activities: d.activities.filter((a) => a.id !== id),
-                          }))
-                        )
+                      onDelete={(id) => void handleDeleteActivity(id)}
+                      onEdit={(id) => {
+                        const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
+                        if (activity) {
+                          setEditingActivity(activity)
+                          setShowActivityModal(true)
+                        }
                       }}
                     />
                   ))}
@@ -494,7 +544,18 @@ export function DashboardPage() {
         </div>
       )}
 
-      <BottomNavbar activeTab={activeTab} onTabChange={setActiveTab} />
+      <ActivityProposalModal
+        open={showActivityModal}
+        group={group}
+        token={accessToken}
+        selectedDayNumber={selectedActivityDay}
+        onClose={() => {
+          setEditingActivity(null)
+          setShowActivityModal(false)
+        }}
+        onCreated={reloadDashboard}
+        editingActivity={editingActivity}
+      />
     </AppLayout>
   )
 }

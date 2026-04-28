@@ -53,4 +53,21 @@ export interface PlaceResult {
   latitude: number | null;
   longitude: number | null;
   primaryCategory: string | null;
+  photoName?: string | null;
+  photoUrl?: string | null;
+}
+
+export interface PlaceAutocompleteResult {
+  description: string;
+  placeId: string;
+  mainText: string;
+  secondaryText: string;
+}
+
+export interface TextSearchPlacesParams {
+  textQuery: string;
+  latitude?: number;
+  longitude?: number;
+  radius?: number;
+  maxResultCount?: number;
 }

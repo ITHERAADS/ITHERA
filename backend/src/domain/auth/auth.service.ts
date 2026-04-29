@@ -7,6 +7,12 @@ import {
   ForgotPasswordPayload,
 } from './auth.entity';
 
+export interface UploadedAvatarFile {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
+}
+
 function buildFullName(payload: SignupPayload): string {
   return [
     payload.name?.trim(),
@@ -136,7 +142,7 @@ function getStoragePathFromPublicUrl(publicUrl?: string | null): string | null {
 
 export const updateUserAvatarByAuthId = async (
   authUserId: string,
-  file: Express.Multer.File
+  file: UploadedAvatarFile
 ) => {
   const { data: currentUser } = await getUserByAuthId(authUserId);
   const oldAvatarPath = getStoragePathFromPublicUrl(currentUser?.avatar_url);

@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { getCurrentGroup, groupsService } from '../../services/groups'
 import type { ItineraryDay } from '../../services/groups'
+import { mapsService } from '../../services/maps'
+import { proposalsService, type ProposalComment, type VoteResult } from '../../services/proposals'
 import { useAuth } from '../../context/useAuth'
 import { AppLayout, RightPanelDashboard, SidebarDashboard } from '../../components/layout/AppLayout'
 import { DayView } from '../../components/ui/DayView'
 import type { Activity as DayActivity, DayViewHandle } from '../../components/ui/DayView'
 import { ProposalCard } from '../../components/ProposalCard/ProposalCard'
 import { ComparisonPage } from '../Comparison/ComparisonPage'
-import { useLocation } from 'react-router-dom'
 import { ActivityProposalModal } from '../../components/ActivityProposalModal/ActivityProposalModal'
 import { useSocket } from '../../hooks/useSocket'
+import type { Group } from '../../types/groups'
 
 
 function IconDownload({ size = 14 }: { size?: number }) {
@@ -242,16 +244,22 @@ function TimelineStrip({
   )
 }
 
-function InfoBanner() {
+function InfoBanner({ memberCount }: { memberCount: number }) {
+  const isSoloTrip = memberCount <= 1
+
   return (
     <div className="mb-4 flex items-start gap-3 rounded-xl border border-bluePrimary/20 bg-[#EEF4FF] px-4 py-3">
       <span className="mt-0.5 shrink-0 text-bluePrimary">
         <IconInfo size={16} />
       </span>
       <div>
-        <p className="font-body text-sm font-semibold leading-tight text-gray700">Acepta propuestas para confirmarlas</p>
+        <p className="font-body text-sm font-semibold leading-tight text-gray700">
+          {isSoloTrip ? 'Tus propuestas se confirman automaticamente' : 'Acepta propuestas para confirmarlas'}
+        </p>
         <p className="mt-0.5 font-body text-xs leading-relaxed text-gray500">
-          Las actividades con votos necesitan tu aprobación para ser incluidas en el itinerario final del grupo.
+          {isSoloTrip
+            ? 'Como eres el unico integrante, cada propuesta nueva se aprueba en cuanto la creas.'
+            : 'Las actividades con votos necesitan tu aprobacion para ser incluidas en el itinerario final del grupo.'}
         </p>
       </div>
     </div>
@@ -332,6 +340,125 @@ function BottomNavbar({
   )
 }
 
+function MapsTabView({
+  days,
+}: {
+  days: ItineraryDay[]
+}) {
+  const activities = days.flatMap((day) =>
+    day.activities.map((activity) => ({
+      ...activity,
+      dayNumber: day.dayNumber,
+      dayDate: day.date,
+    }))
+  )
+
+  const withCoords = activities.filter((activity) => activity.latitude != null && activity.longitude != null)
+
+  if (withCoords.length === 0) {
+    return (
+      <div className="rounded-2xl border border-[#E2E8F0] bg-white p-6 text-center">
+        <p className="font-body text-sm text-gray500">
+          No hay actividades con ubicacion para mostrar en mapas.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {withCoords.map((activity) => (
+        <div key={activity.id} className="rounded-2xl border border-[#E2E8F0] bg-white p-4">
+          <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-bluePrimary">
+            Dia {activity.dayNumber} · {activity.dayDate}
+          </p>
+          <h3 className="mt-1 font-heading text-base font-bold text-purpleNavbar">{activity.title}</h3>
+          <p className="mt-1 font-body text-sm text-gray500">{activity.location || 'Ubicacion no disponible'}</p>
+          {activity.routeDistanceText && activity.routeDurationText && (
+            <p className="mt-2 font-body text-xs text-gray700">
+              Ruta estimada: {activity.routeDistanceText} · {activity.routeDurationText}
+            </p>
+          )}
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${activity.latitude},${activity.longitude}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-block font-body text-xs font-semibold text-bluePrimary hover:underline"
+          >
+            Abrir en Google Maps →
+          </a>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const ROUTE_TRAVEL_MODE = 'DRIVE' as const
+
+async function enrichDaysWithRoutes(
+  itineraryDays: ItineraryDay[],
+  group: Group | null,
+  token: string
+): Promise<ItineraryDay[]> {
+  const originLat = group?.destino_latitud
+  const originLng = group?.destino_longitud
+
+  if (originLat == null || originLng == null) {
+    return itineraryDays
+  }
+
+  const routeTasks = itineraryDays.flatMap((day) =>
+    day.activities
+      .filter((activity) => activity.latitude != null && activity.longitude != null)
+      .map(async (activity) => {
+        try {
+          const response = await mapsService.computeRoute(
+            {
+              originLat,
+              originLng,
+              destinationLat: Number(activity.latitude),
+              destinationLng: Number(activity.longitude),
+              travelMode: ROUTE_TRAVEL_MODE,
+            },
+            token
+          )
+
+          return {
+            activityId: activity.id,
+            routeDistanceText: response.data?.distanceText ?? null,
+            routeDurationText: response.data?.durationText ?? response.data?.staticDurationText ?? null,
+            routeTravelMode: ROUTE_TRAVEL_MODE,
+          }
+        } catch {
+          return {
+            activityId: activity.id,
+            routeDistanceText: null,
+            routeDurationText: null,
+            routeTravelMode: null,
+          }
+        }
+      })
+  )
+
+  const routeResults = await Promise.all(routeTasks)
+  const routeMap = new Map(routeResults.map((item) => [item.activityId, item]))
+
+  return itineraryDays.map((day) => ({
+    ...day,
+    activities: day.activities.map((activity) => {
+      const route = routeMap.get(activity.id)
+      if (!route) return activity
+
+      return {
+        ...activity,
+        routeDistanceText: route.routeDistanceText,
+        routeDurationText: route.routeDurationText,
+        routeTravelMode: route.routeTravelMode,
+      }
+    }),
+  }))
+}
+
 export function DashboardPage() {
 
   const navigate = useNavigate()
@@ -364,6 +491,20 @@ export function DashboardPage() {
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [selectedActivityDay, setSelectedActivityDay] = useState<number | null>(null)
   const [editingActivity, setEditingActivity] = useState<DayActivity | null>(null)
+  const [acceptingActivityId, setAcceptingActivityId] = useState<string | null>(null)
+  const [acceptErrorActivityIds, setAcceptErrorActivityIds] = useState<Record<string, boolean>>({})
+  const [votedActivityIds, setVotedActivityIds] = useState<Record<string, boolean>>({})
+  const [lockedProposalIds, setLockedProposalIds] = useState<Record<string, boolean>>({})
+  const [lockErrorActivityIds, setLockErrorActivityIds] = useState<Record<string, boolean>>({})
+  const [voteCountByProposal, setVoteCountByProposal] = useState<Record<string, number>>({})
+  const [expandedCommentsProposalId, setExpandedCommentsProposalId] = useState<string | null>(null)
+  const [commentsByProposal, setCommentsByProposal] = useState<Record<string, ProposalComment[]>>({})
+  const [commentDraftByProposal, setCommentDraftByProposal] = useState<Record<string, string>>({})
+  const [loadingCommentsProposalId, setLoadingCommentsProposalId] = useState<string | null>(null)
+  const [sendingCommentProposalId, setSendingCommentProposalId] = useState<string | null>(null)
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingCommentText, setEditingCommentText] = useState('')
+  const [visibleCommentsCountByProposal, setVisibleCommentsCountByProposal] = useState<Record<string, number>>({})
 
   const handleDayChange = useCallback((dayNumber: number) => {
     const next = activeDay === dayNumber ? null : dayNumber
@@ -383,7 +524,10 @@ export function DashboardPage() {
   // }, [])
 
   const isEmpty = days.length === 0
+  const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id || null
   const selectedDay = activeDay !== null ? days.find((day) => day.dayNumber === activeDay) : undefined
+  const safeMembers = members ?? []
+  const uniqueMemberCount = new Set(safeMembers.map((member) => String(member.usuario_id ?? member.id))).size
 
   useEffect(() => {
   const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
@@ -404,11 +548,19 @@ export function DashboardPage() {
       const groupRes = await groupsService.getGroupDetails(resolvedGroupId, accessToken)
       const membersRes = await groupsService.getMembers(resolvedGroupId, accessToken)
       const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
+      const votesRes = await proposalsService.getVoteResults(String(resolvedGroupId), accessToken)
+      const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupRes.group, accessToken)
+      const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, number>>((acc, item: VoteResult) => {
+        acc[String(item.id_propuesta)] = item.votos ?? 0
+        return acc
+      }, {})
 
       if (isMounted) {
         setGroup(groupRes.group)
-        setMembers(membersRes.members)
-        setDays(itineraryRes.days)
+        setMembers(membersRes.members ?? [])
+        setDays(daysWithRoutes)
+        setVoteCountByProposal(nextVotesMap)
+        setVotedActivityIds({})
       }
     } catch (error) {
       console.error('Error cargando dashboard:', error)
@@ -436,8 +588,17 @@ export function DashboardPage() {
     if (!resolvedGroupId || !accessToken) return
 
     const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-    setDays(itineraryRes.days)
-  }, [groupIdFromState, groupId, currentGroup?.id, accessToken])
+    const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, group, accessToken)
+    setDays(daysWithRoutes)
+    setVotedActivityIds({})
+
+    const votesRes = await proposalsService.getVoteResults(String(resolvedGroupId), accessToken)
+    const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, number>>((acc, item: VoteResult) => {
+      acc[String(item.id_propuesta)] = item.votos ?? 0
+      return acc
+    }, {})
+    setVoteCountByProposal(nextVotesMap)
+  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, group])
 
   const handleDeleteActivity = useCallback(async (activityId: string) => {
     const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
@@ -447,6 +608,168 @@ export function DashboardPage() {
     await groupsService.deleteActivity(String(resolvedGroupId), activityId, accessToken)
     await reloadDashboard()
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard])
+
+  const lockProposalForActivity = useCallback((activity: DayActivity | null) => {
+    if (!socket || !activity?.proposalId) return
+    socket.emit('item_lock', { propuestaId: activity.proposalId, tripId: groupId || currentGroup?.id })
+  }, [socket, groupId, currentGroup?.id])
+
+  const unlockProposalForActivity = useCallback((activity: DayActivity | null) => {
+    if (!socket || !activity?.proposalId) return
+    socket.emit('item_unlock', { propuestaId: activity.proposalId, tripId: groupId || currentGroup?.id })
+  }, [socket, groupId, currentGroup?.id])
+
+  const handleAcceptActivity = useCallback(async (activityId: string) => {
+    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+
+    if (!resolvedGroupId || !accessToken) return
+
+    const activity = days.flatMap((day) => day.activities).find((item) => item.id === activityId)
+    const proposalId = activity?.proposalId
+
+    if (!proposalId) {
+      setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: true }))
+      return
+    }
+
+    try {
+      setAcceptingActivityId(activityId)
+      setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: false }))
+
+      await proposalsService.voteProposal(String(resolvedGroupId), proposalId, { voto: 'a_favor' }, accessToken)
+      setVotedActivityIds((prev) => ({ ...prev, [activityId]: true }))
+      await reloadDashboard()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      if (message.toLowerCase().includes('ya emitiste tu voto')) {
+        setVotedActivityIds((prev) => ({ ...prev, [activityId]: true }))
+        setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: false }))
+      } else {
+        setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: true }))
+      }
+    } finally {
+      setAcceptingActivityId(null)
+    }
+  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, days, reloadDashboard])
+
+  const handleToggleComments = useCallback(async (proposalId: string) => {
+    if (!accessToken || !resolvedGroupId) return
+
+    const isSame = expandedCommentsProposalId === proposalId
+    if (isSame) {
+      setExpandedCommentsProposalId(null)
+      return
+    }
+
+    setExpandedCommentsProposalId(proposalId)
+    setVisibleCommentsCountByProposal((prev) => ({
+      ...prev,
+      [proposalId]: prev[proposalId] ?? 3,
+    }))
+
+    if (commentsByProposal[proposalId]) return
+
+    try {
+      setLoadingCommentsProposalId(proposalId)
+      const response = await proposalsService.getComments(String(resolvedGroupId), proposalId, accessToken)
+      setCommentsByProposal((prev) => ({ ...prev, [proposalId]: response.comments ?? [] }))
+    } finally {
+      setLoadingCommentsProposalId(null)
+    }
+  }, [accessToken, resolvedGroupId, expandedCommentsProposalId, commentsByProposal])
+
+  const handleCreateComment = useCallback(async (proposalId: string) => {
+    const content = commentDraftByProposal[proposalId]?.trim()
+    if (!content || !accessToken || !resolvedGroupId) return
+
+    try {
+      setSendingCommentProposalId(proposalId)
+      const response = await proposalsService.addComment(String(resolvedGroupId), proposalId, { contenido: content }, accessToken)
+      setCommentsByProposal((prev) => ({
+        ...prev,
+        [proposalId]: [...(prev[proposalId] ?? []), response.comment],
+      }))
+      setCommentDraftByProposal((prev) => ({ ...prev, [proposalId]: '' }))
+    } finally {
+      setSendingCommentProposalId(null)
+    }
+  }, [commentDraftByProposal, accessToken, resolvedGroupId])
+
+  const handleStartEditComment = useCallback((comment: ProposalComment) => {
+    setEditingCommentId(comment.id)
+    setEditingCommentText(comment.contenido)
+  }, [])
+
+  const handleCancelEditComment = useCallback(() => {
+    setEditingCommentId(null)
+    setEditingCommentText('')
+  }, [])
+
+  const handleSaveEditComment = useCallback(async (proposalId: string, commentId: string) => {
+    const content = editingCommentText.trim()
+    if (!content || !accessToken || !resolvedGroupId) return
+
+    const response = await proposalsService.updateComment(
+      String(resolvedGroupId),
+      proposalId,
+      commentId,
+      { contenido: content },
+      accessToken
+    )
+
+    setCommentsByProposal((prev) => ({
+      ...prev,
+      [proposalId]: (prev[proposalId] ?? []).map((item) =>
+        item.id === commentId ? response.comment : item
+      ),
+    }))
+    setEditingCommentId(null)
+    setEditingCommentText('')
+  }, [editingCommentText, accessToken, resolvedGroupId])
+
+  const handleDeleteComment = useCallback(async (proposalId: string, commentId: string) => {
+    if (!accessToken || !resolvedGroupId) return
+
+    await proposalsService.deleteComment(String(resolvedGroupId), proposalId, commentId, accessToken)
+    setCommentsByProposal((prev) => ({
+      ...prev,
+      [proposalId]: (prev[proposalId] ?? []).filter((item) => item.id !== commentId),
+    }))
+  }, [accessToken, resolvedGroupId])
+
+  useEffect(() => {
+    if (!socket) return
+
+    const handleItemLocked = (payload: { propuestaId?: string }) => {
+      if (!payload?.propuestaId) return
+      setLockedProposalIds((prev) => ({ ...prev, [payload.propuestaId!]: true }))
+    }
+
+    const handleItemUnlocked = (payload: { propuestaId?: string }) => {
+      if (!payload?.propuestaId) return
+      setLockedProposalIds((prev) => ({ ...prev, [payload.propuestaId!]: false }))
+      setLockErrorActivityIds({})
+    }
+
+    const handleLockError = (payload: { propuestaId?: string }) => {
+      const proposalId = payload?.propuestaId
+      if (!proposalId) return
+      const activity = days.flatMap((day) => day.activities).find((item) => item.proposalId === proposalId)
+      if (!activity) return
+      setLockErrorActivityIds((prev) => ({ ...prev, [activity.id]: true }))
+      setLockedProposalIds((prev) => ({ ...prev, [proposalId]: true }))
+    }
+
+    socket.on('item_locked', handleItemLocked)
+    socket.on('item_unlocked', handleItemUnlocked)
+    socket.on('lock_error', handleLockError)
+
+    return () => {
+      socket.off('item_locked', handleItemLocked)
+      socket.off('item_unlocked', handleItemUnlocked)
+      socket.off('lock_error', handleLockError)
+    }
+  }, [socket, days])
 
   return (
     <AppLayout
@@ -496,6 +819,10 @@ export function DashboardPage() {
         <div className="flex-1 overflow-y-auto px-4 py-6">
           <ComparisonPage onBack={() => setActiveTab('pagar')} />
         </div>
+      ) : activeTab === 'mapas' ? (
+        <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
+          <MapsTabView days={days} />
+        </div>
       ) : (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
           <HeroCard
@@ -505,7 +832,7 @@ export function DashboardPage() {
             group={group}
             onAdd={() => openActivityModalForDay(activeDay ?? days[0]?.dayNumber ?? 1)}
           />
-          <InfoBanner />
+          <InfoBanner memberCount={uniqueMemberCount} />
           <TimelineStrip activeDay={activeDay} date={selectedDay?.date} activities={selectedDay?.activities} />
           <div className="flex flex-col gap-3">
             {days.map((day) => (
@@ -521,37 +848,244 @@ export function DashboardPage() {
               isExpanded={day.dayNumber === expandedDay}
               onSelect={handleDayChange}
               onAddActivity={openActivityModalForDay}
-              onAccept={(id) => console.log('aceptar', id)}
+              onAccept={(id) => void handleAcceptActivity(id)}
               onDelete={(id) => void handleDeleteActivity(id)}
+              onEdit={(id) => {
+                const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
+                if (!activity) return
+                lockProposalForActivity(activity)
+                setEditingActivity(activity)
+                setShowActivityModal(true)
+              }}
             />
             ))}
           </div>
 
           {/* ── Propuestas pendientes ── */}
           {(() => {
-            const pending = days.flatMap((d) => d.activities).filter((a) => a.status === 'pendiente')
-            if (pending.length === 0) return null
+            const proposalsWithThread = days
+              .flatMap((d) => d.activities)
+              .filter((a) => a.proposalId && (a.status === 'pendiente' || a.status === 'confirmada'))
+            if (proposalsWithThread.length === 0) return null
             return (
               <div className="mt-6">
                 <h2 className="font-heading font-bold text-[#1E0A4E] text-base mb-3">
-                  Propuestas pendientes
+                  Propuestas y comentarios
                 </h2>
                 <div className="flex flex-col gap-3">
-                  {pending.map((activity) => (
-                    <ProposalCard
-                      key={activity.id}
-                      activity={activity}
-                      proposalStatus="pendiente"
-                      onAccept={(id) => console.log('aceptar', id)}
-                      onDelete={(id) => void handleDeleteActivity(id)}
-                      onEdit={(id) => {
-                        const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
-                        if (activity) {
-                          setEditingActivity(activity)
-                          setShowActivityModal(true)
+                  {proposalsWithThread.map((activity) => (
+                    <div key={activity.id} className="rounded-2xl border border-transparent">
+                      <ProposalCard
+                        activity={activity}
+                        proposalStatus={
+                          activity.status === 'confirmada'
+                            ? 'bloqueada'
+                          : acceptingActivityId === activity.id
+                            ? 'procesando'
+                          : votedActivityIds[activity.id]
+                            ? 'votada'
+                          : activity.proposalId && lockedProposalIds[activity.proposalId]
+                            ? 'bloqueada'
+                          : acceptErrorActivityIds[activity.id]
+                            ? 'error'
+                          : lockErrorActivityIds[activity.id]
+                            ? 'error'
+                          : 'pendiente'
                         }
-                      }}
-                    />
+                        onAccept={(id) => void handleAcceptActivity(id)}
+                        onDelete={(id) => void handleDeleteActivity(id)}
+                        onEdit={(id) => {
+                          const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
+                          if (activity) {
+                            lockProposalForActivity(activity)
+                            setEditingActivity(activity)
+                            setShowActivityModal(true)
+                          }
+                        }}
+                      />
+
+                      {activity.proposalId && (
+                        <div className="mt-2 rounded-2xl border border-[#D9E2F2] bg-gradient-to-b from-white to-[#F8FAFF] px-3 py-3">
+                          {(() => {
+                            const votesFor = voteCountByProposal[activity.proposalId!] ?? 0
+                            const votesAgainst =
+                              Number((activity as DayActivity & { votesAgainst?: number }).votesAgainst ?? 0) || 0
+                            const totalMembers = Math.max(uniqueMemberCount, 1)
+                            const pendingVotes = Math.max(totalMembers - (votesFor + votesAgainst), 0)
+                            const commentsLoaded = commentsByProposal[activity.proposalId!]?.length ?? 0
+                            const isCommentsOpen = expandedCommentsProposalId === activity.proposalId
+
+                            return (
+                              <>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 font-body text-[11px] font-semibold text-green-700">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                                      A favor: {votesFor}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 font-body text-[11px] font-semibold text-rose-700">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                                      En contra: {votesAgainst}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 font-body text-[11px] font-semibold text-amber-700">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                      Pendientes: {pendingVotes}
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => void handleToggleComments(activity.proposalId!)}
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-[#CFE0FF] bg-white px-3 py-1.5 font-body text-xs font-semibold text-bluePrimary transition-colors hover:bg-[#EEF4FF]"
+                                  >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                    {isCommentsOpen ? 'Ocultar chat' : 'Abrir chat'}
+                                    <span className="rounded-full bg-bluePrimary/10 px-1.5 py-0.5 text-[10px] font-bold text-bluePrimary">
+                                      {commentsLoaded}
+                                    </span>
+                                  </button>
+                                </div>
+                                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#E8EEF8]">
+                                  <div className="h-full bg-green-500" style={{ width: `${Math.min((votesFor / totalMembers) * 100, 100)}%` }} />
+                                </div>
+                              </>
+                            )
+                          })()}
+
+                          {expandedCommentsProposalId === activity.proposalId && (
+                            <div className="mt-3 space-y-2">
+                              {loadingCommentsProposalId === activity.proposalId ? (
+                                <p className="font-body text-xs text-gray500">Cargando comentarios...</p>
+                              ) : (commentsByProposal[activity.proposalId] ?? []).length === 0 ? (
+                                <p className="font-body text-xs text-gray500">Sin comentarios todavía.</p>
+                              ) : (
+                                <div className="max-h-36 space-y-2 overflow-y-auto pr-1">
+                                  {(commentsByProposal[activity.proposalId] ?? [])
+                                    .slice(
+                                      0,
+                                      visibleCommentsCountByProposal[activity.proposalId] ?? 3
+                                    )
+                                    .map((comment) => (
+                                    <div key={comment.id} className="rounded-lg bg-surface px-2 py-1.5">
+                                      <div className="mb-1 flex items-center justify-between gap-2">
+                                        <p className="font-body text-[11px] font-semibold text-gray700">
+                                          {comment.authorName || `Usuario ${comment.usuarioId}`}
+                                        </p>
+                                        <p className="font-body text-[10px] text-gray500">
+                                          {new Date(comment.createdAt).toLocaleString('es-MX', {
+                                            day: '2-digit',
+                                            month: '2-digit',
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })}
+                                        </p>
+                                      </div>
+
+                                      {editingCommentId === comment.id ? (
+                                        <div className="space-y-2">
+                                          <textarea
+                                            value={editingCommentText}
+                                            onChange={(e) => setEditingCommentText(e.target.value)}
+                                            rows={2}
+                                            className="w-full resize-none rounded-md border border-[#E2E8F0] px-2 py-1 text-xs outline-none focus:border-bluePrimary"
+                                          />
+                                          <div className="flex gap-2">
+                                            <button
+                                              onClick={() => void handleSaveEditComment(activity.proposalId!, comment.id)}
+                                              className="rounded-md bg-bluePrimary px-2 py-1 font-body text-[11px] font-semibold text-white"
+                                            >
+                                              Guardar
+                                            </button>
+                                            <button
+                                              onClick={handleCancelEditComment}
+                                              className="rounded-md border border-[#E2E8F0] px-2 py-1 font-body text-[11px] text-gray700"
+                                            >
+                                              Cancelar
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <p className="font-body text-xs text-gray700">{comment.contenido}</p>
+                                          {String(comment.usuarioId) === String(localUser?.id_usuario) && (
+                                            <div className="mt-1.5 flex gap-2">
+                                              <button
+                                                onClick={() => handleStartEditComment(comment)}
+                                                className="font-body text-[11px] font-semibold text-bluePrimary hover:underline"
+                                              >
+                                                Editar
+                                              </button>
+                                              <button
+                                                onClick={() => void handleDeleteComment(activity.proposalId!, comment.id)}
+                                                className="font-body text-[11px] font-semibold text-red-500 hover:underline"
+                                              >
+                                                Eliminar
+                                              </button>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {(commentsByProposal[activity.proposalId] ?? []).length >
+                                (visibleCommentsCountByProposal[activity.proposalId] ?? 3) && (
+                                <button
+                                  onClick={() =>
+                                    setVisibleCommentsCountByProposal((prev) => ({
+                                      ...prev,
+                                      [activity.proposalId!]:
+                                        (prev[activity.proposalId!] ?? 3) + 3,
+                                    }))
+                                  }
+                                  className="font-body text-[11px] font-semibold text-bluePrimary hover:underline"
+                                >
+                                  Ver más comentarios
+                                </button>
+                              )}
+
+                              {(visibleCommentsCountByProposal[activity.proposalId] ?? 3) > 3 &&
+                                (commentsByProposal[activity.proposalId] ?? []).length > 3 && (
+                                  <button
+                                    onClick={() =>
+                                      setVisibleCommentsCountByProposal((prev) => ({
+                                        ...prev,
+                                        [activity.proposalId!]: 3,
+                                      }))
+                                    }
+                                    className="ml-3 font-body text-[11px] font-semibold text-gray500 hover:underline"
+                                  >
+                                    Ver menos
+                                  </button>
+                                )}
+
+                              <div className="flex gap-2">
+                                <input
+                                  value={commentDraftByProposal[activity.proposalId] ?? ''}
+                                  onChange={(e) =>
+                                    setCommentDraftByProposal((prev) => ({
+                                      ...prev,
+                                      [activity.proposalId!]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Agregar comentario..."
+                                  className="flex-1 rounded-lg border border-[#E2E8F0] px-2 py-1.5 font-body text-xs outline-none focus:border-bluePrimary"
+                                />
+                                <button
+                                  onClick={() => void handleCreateComment(activity.proposalId!)}
+                                  disabled={sendingCommentProposalId === activity.proposalId}
+                                  className="rounded-lg bg-bluePrimary px-2.5 py-1.5 font-body text-xs font-semibold text-white disabled:opacity-50"
+                                >
+                                  {sendingCommentProposalId === activity.proposalId ? 'Enviando...' : 'Enviar'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -566,10 +1100,14 @@ export function DashboardPage() {
         token={accessToken}
         selectedDayNumber={selectedActivityDay}
         onClose={() => {
+          unlockProposalForActivity(editingActivity)
           setEditingActivity(null)
           setShowActivityModal(false)
         }}
-        onCreated={reloadDashboard}
+        onCreated={async () => {
+          unlockProposalForActivity(editingActivity)
+          await reloadDashboard()
+        }}
         editingActivity={editingActivity}
       />
 

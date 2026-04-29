@@ -2,6 +2,7 @@ export type ItineraryActivityStatus = 'pendiente' | 'confirmada' | 'cancelada';
 
 export interface ItineraryActivity {
   id: string;
+  proposalId?: string | null;
   title: string;
   description: string;
   category: 'transporte' | 'hospedaje' | 'actividad';

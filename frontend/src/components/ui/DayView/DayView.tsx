@@ -4,6 +4,7 @@ import { useState, useRef, useImperativeHandle, forwardRef } from 'react'
 
 export interface Activity {
   id: string
+  proposalId?: string | null
   title: string
   description: string
   category: 'transporte' | 'hospedaje' | 'actividad'
@@ -18,6 +19,9 @@ export interface Activity {
   externalReference?: string | null
   latitude?: number | null
   longitude?: number | null
+  routeDistanceText?: string | null
+  routeDurationText?: string | null
+  routeTravelMode?: string | null
 }
 
 export interface DayViewProps {
@@ -183,7 +187,7 @@ function SectionLabel({ emoji, text }: { emoji: string; text: string }) {
 
 // ── ActivityCardConfirmed ─────────────────────────────────────────────────────
 
-function ActivityCardConfirmed({ activity }: { activity: Activity }) {
+function ActivityCardConfirmed({ activity, onDelete, onEdit }: { activity: Activity; onDelete?: (id: string) => void; onEdit?: (id: string) => void }) {
   const iconColor = getCategoryColor(activity.category)
 
   return (
@@ -235,6 +239,12 @@ function ActivityCardConfirmed({ activity }: { activity: Activity }) {
               {activity.location}
             </span>
           )}
+          {activity.routeDistanceText && activity.routeDurationText && (
+            <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+              <span className="text-bluePrimary"><IconMapPin /></span>
+              {activity.routeDistanceText} · {activity.routeDurationText}
+            </span>
+          )}
         </div>
 
         {/* Confirmation status */}
@@ -243,6 +253,23 @@ function ActivityCardConfirmed({ activity }: { activity: Activity }) {
           <span className="font-body text-xs text-greenAccent font-medium">
             Reservación confirmada
           </span>
+        </div>
+        <div className="mt-3 flex items-center justify-end gap-2">
+          <button
+            onClick={() => onEdit?.(activity.id)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0"
+            aria-label="Editar actividad confirmada"
+            title="Editar (volvera a votacion)"
+          >
+            <IconEdit size={14} />
+          </button>
+          <button
+            onClick={() => onDelete?.(activity.id)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
+            aria-label="Eliminar actividad confirmada"
+          >
+            <IconTrash size={14} />
+          </button>
         </div>
       </div>
     </div>
@@ -300,6 +327,12 @@ function ActivityCardPending({ activity, onAccept, onDelete, onEdit }: { activit
             <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
               <span className="text-bluePrimary"><IconMapPin /></span>
               {activity.location}
+            </span>
+          )}
+          {activity.routeDistanceText && activity.routeDurationText && (
+            <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+              <span className="text-bluePrimary"><IconMapPin /></span>
+              {activity.routeDistanceText} · {activity.routeDurationText}
             </span>
           )}
           {activity.votes !== undefined && (
@@ -412,7 +445,7 @@ function ActivitiesBody({
           <SectionLabel {...getSectionLabel('transporte')} />
           {transport.map((a) =>
             a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} />
+              ? <ActivityCardConfirmed key={a.id} activity={a} onDelete={onDelete} onEdit={onEdit} />
               : <ActivityCardPending   key={a.id} activity={a} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} />
           )}
         </section>
@@ -423,7 +456,7 @@ function ActivitiesBody({
           <SectionLabel {...getSectionLabel('hospedaje')} />
           {lodging.map((a) =>
             a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} />
+              ? <ActivityCardConfirmed key={a.id} activity={a} onDelete={onDelete} onEdit={onEdit} />
               : <ActivityCardPending   key={a.id} activity={a} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} />
           )}
         </section>
@@ -434,7 +467,7 @@ function ActivitiesBody({
           <SectionLabel {...getSectionLabel('actividad')} />
           {acts.map((a) =>
             a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} />
+              ? <ActivityCardConfirmed key={a.id} activity={a} onDelete={onDelete} onEdit={onEdit} />
               : <ActivityCardPending   key={a.id} activity={a} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} />
           )}
         </section>

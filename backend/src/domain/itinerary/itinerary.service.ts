@@ -22,6 +22,18 @@ const ensureGroupMember = async (authUserId: string, groupId: string) => {
   }
 };
 
+const getUniqueGroupMemberCount = async (groupId: string): Promise<number> => {
+  const { data, error } = await supabase
+    .from('grupo_miembros')
+    .select('usuario_id')
+    .eq('grupo_id', groupId);
+
+  if (error) throw new Error(error.message);
+
+  const unique = new Set((data ?? []).map((row: any) => String(row.usuario_id)));
+  return unique.size;
+};
+
 const formatDateLabel = (date: string): string => {
   return new Intl.DateTimeFormat('es-MX', {
     day: 'numeric',
@@ -39,6 +51,42 @@ const formatTimeLabel = (value?: string | null): string => {
     minute: '2-digit',
     hour12: false,
   }).format(new Date(value));
+};
+
+const resolveActivityDateTime = (activity: any, fallbackDate: string): string | null => {
+  if (activity.fecha_inicio) return String(activity.fecha_inicio);
+
+  const activityPayload = activity.payload && typeof activity.payload === 'object' ? activity.payload : {};
+  const proposalPayload =
+    activity.propuestas?.payload && typeof activity.propuestas.payload === 'object'
+      ? activity.propuestas.payload
+      : {};
+
+  const directDateTime =
+    activityPayload.fecha_inicio ??
+    activityPayload.fechaInicio ??
+    activityPayload.scheduledAt ??
+    proposalPayload.fecha_inicio ??
+    proposalPayload.fechaInicio ??
+    proposalPayload.scheduledAt ??
+    null;
+
+  if (directDateTime) return String(directDateTime);
+
+  const hhmm =
+    activityPayload.hora ??
+    activityPayload.time ??
+    activityPayload.selectedTime ??
+    proposalPayload.hora ??
+    proposalPayload.time ??
+    proposalPayload.selectedTime ??
+    null;
+
+  if (typeof hhmm === 'string' && /^([01]\d|2[0-3]):([0-5]\d)$/.test(hhmm)) {
+    return `${fallbackDate}T${hhmm}:00.000Z`;
+  }
+
+  return null;
 };
 
 const diffDays = (startDate: string, currentDate: string): number => {
@@ -126,6 +174,58 @@ export const getGroupItinerary = async (
 
   if (activitiesError) throw new Error(activitiesError.message);
 
+  const uniqueMembersCount = await getUniqueGroupMemberCount(groupId);
+  const votesRequired = Math.floor(uniqueMembersCount / 2) + 1;
+
+  const pendingProposalIds = (activities ?? [])
+    .filter((activity: any) => activity.estado === 'pendiente' && activity.propuesta_id != null)
+    .map((activity: any) => Number(activity.propuesta_id));
+
+  if (pendingProposalIds.length > 0) {
+    const { data: votesByProposal, error: votesByProposalError } = await supabase
+      .from('voto')
+      .select('id_propuesta')
+      .in('id_propuesta', pendingProposalIds);
+
+    if (votesByProposalError) throw new Error(votesByProposalError.message);
+
+    const voteCountMap = new Map<number, number>();
+    for (const row of votesByProposal ?? []) {
+      const proposalId = Number((row as any).id_propuesta);
+      voteCountMap.set(proposalId, (voteCountMap.get(proposalId) ?? 0) + 1);
+    }
+
+    const proposalIdsToConfirm = pendingProposalIds.filter((proposalId) => {
+      const votes = voteCountMap.get(proposalId) ?? 0;
+      return votes >= votesRequired;
+    });
+
+    if (proposalIdsToConfirm.length > 0) {
+      const nowIso = new Date().toISOString();
+
+      const { error: confirmActivitiesError } = await supabase
+        .from('actividades')
+        .update({ estado: 'confirmada', ultima_actualizacion: nowIso })
+        .in('propuesta_id', proposalIdsToConfirm);
+
+      if (confirmActivitiesError) throw new Error(confirmActivitiesError.message);
+
+      const { error: approveProposalsError } = await supabase
+        .from('propuestas')
+        .update({ estado: 'aprobada', fecha_cierre: nowIso, ultima_actualizacion: nowIso })
+        .in('id_propuesta', proposalIdsToConfirm)
+        .eq('grupo_id', groupId);
+
+      if (approveProposalsError) throw new Error(approveProposalsError.message);
+
+      for (const activity of activities ?? []) {
+        if (activity.propuesta_id != null && proposalIdsToConfirm.includes(Number(activity.propuesta_id))) {
+          activity.estado = 'confirmada';
+        }
+      }
+    }
+  }
+
   const startDate = itinerary.fecha_inicio ?? new Date().toISOString().slice(0, 10);
   const endDate = itinerary.fecha_fin ?? startDate;
 
@@ -152,13 +252,14 @@ export const getGroupItinerary = async (
 
     days[dayIndex].activities.push({
       id: String(activity.id_actividad),
+      proposalId: activity.propuesta_id ? String(activity.propuesta_id) : null,
       title: activity.titulo,
       description: activity.descripcion ?? 'Sin descripción',
       category: getActivityCategory(activity),
       status: activity.estado === 'confirmada' ? 'confirmada' : 'pendiente',
       price: 0,
       currency: 'MXN',
-      time: formatTimeLabel(activity.fecha_inicio),
+      time: formatTimeLabel(resolveActivityDateTime(activity, activityDate)),
       location: activity.ubicacion ?? undefined,
       image: getPayloadImage(activity),
       externalReference: activity.referencia_externa ?? null,
@@ -273,6 +374,44 @@ export const createGroupActivity = async (
     throw new Error(activityError?.message ?? 'Error al crear actividad');
   }
 
+  // Si el grupo tiene un solo integrante, su mayoría simple es 1.
+  // Confirmamos de inmediato para evitar que quede "por confirmar" innecesariamente.
+  const uniqueMembersCount = await getUniqueGroupMemberCount(groupId);
+
+  if (uniqueMembersCount <= 1) {
+    const { error: voteInsertError } = await supabase
+      .from('voto')
+      .insert({
+        id_propuesta: proposal.id_propuesta,
+        id_usuario: Number(usuarioId),
+      });
+
+    if (voteInsertError) throw new Error(voteInsertError.message);
+
+    const nowIso = new Date().toISOString();
+    const { error: proposalApproveError } = await supabase
+      .from('propuestas')
+      .update({
+        estado: 'aprobada',
+        fecha_cierre: nowIso,
+        ultima_actualizacion: nowIso,
+      })
+      .eq('id_propuesta', proposal.id_propuesta)
+      .eq('grupo_id', groupId);
+
+    if (proposalApproveError) throw new Error(proposalApproveError.message);
+
+    const { error: activityConfirmError } = await supabase
+      .from('actividades')
+      .update({
+        estado: 'confirmada',
+        ultima_actualizacion: nowIso,
+      })
+      .eq('id_actividad', activity.id_actividad);
+
+    if (activityConfirmError) throw new Error(activityConfirmError.message);
+  }
+
   return activity;
 };
 
@@ -294,6 +433,16 @@ export const updateGroupActivity = async (
 
   if (itineraryError) throw new Error(itineraryError.message);
   if (!itinerary) throw Object.assign(new Error('Itinerario no encontrado'), { statusCode: 404 });
+
+  const { data: currentActivity, error: currentActivityError } = await supabase
+    .from('actividades')
+    .select('id_actividad, estado, propuesta_id, titulo, descripcion, ubicacion, latitud, longitud, fecha_inicio, fecha_fin')
+    .eq('id_actividad', activityId)
+    .eq('itinerario_id', itinerary.id_itinerario)
+    .maybeSingle();
+
+  if (currentActivityError) throw new Error(currentActivityError.message);
+  if (!currentActivity) throw Object.assign(new Error('Actividad no encontrada'), { statusCode: 404 });
 
   const updateData = {
     ...(payload.titulo !== undefined ? { titulo: payload.titulo } : {}),
@@ -319,6 +468,72 @@ export const updateGroupActivity = async (
 
   if (error || !data) {
     throw new Error(error?.message ?? 'No se pudo actualizar la actividad');
+  }
+
+  const toComparable = (value: unknown): string => {
+    if (value === null || value === undefined) return '';
+    return String(value).trim();
+  };
+  const sameNumber = (a: unknown, b: unknown): boolean => {
+    if (a === null || a === undefined || b === null || b === undefined) return a == null && b == null;
+    return Number(a) === Number(b);
+  };
+
+  const titleChanged =
+    payload.titulo !== undefined &&
+    toComparable(payload.titulo) !== toComparable((currentActivity as any).titulo);
+  const descriptionChanged =
+    payload.descripcion !== undefined &&
+    toComparable(payload.descripcion) !== toComparable((currentActivity as any).descripcion);
+  const locationChanged =
+    payload.ubicacion !== undefined &&
+    toComparable(payload.ubicacion) !== toComparable((currentActivity as any).ubicacion);
+  const latChanged =
+    payload.latitud !== undefined &&
+    !sameNumber(payload.latitud, (currentActivity as any).latitud);
+  const lngChanged =
+    payload.longitud !== undefined &&
+    !sameNumber(payload.longitud, (currentActivity as any).longitud);
+  const startChanged =
+    payload.fecha_inicio !== undefined &&
+    toComparable(payload.fecha_inicio) !== toComparable((currentActivity as any).fecha_inicio);
+  const endChanged =
+    payload.fecha_fin !== undefined &&
+    toComparable(payload.fecha_fin) !== toComparable((currentActivity as any).fecha_fin);
+
+  const touchedVotingFields =
+    titleChanged ||
+    descriptionChanged ||
+    locationChanged ||
+    latChanged ||
+    lngChanged ||
+    startChanged ||
+    endChanged;
+
+  if (currentActivity.estado === 'confirmada' && touchedVotingFields && currentActivity.propuesta_id) {
+    const nowIso = new Date().toISOString();
+
+    const { error: setPendingError } = await supabase
+      .from('actividades')
+      .update({ estado: 'pendiente', ultima_actualizacion: nowIso })
+      .eq('id_actividad', activityId);
+
+    if (setPendingError) throw new Error(setPendingError.message);
+
+    const { error: resetProposalError } = await supabase
+      .from('propuestas')
+      .update({ estado: 'en_votacion', fecha_cierre: null, ultima_actualizacion: nowIso })
+      .eq('id_propuesta', currentActivity.propuesta_id)
+      .eq('grupo_id', groupId);
+
+    if (resetProposalError) throw new Error(resetProposalError.message);
+
+    const { error: clearVotesError } = await supabase
+      .from('voto')
+      .delete()
+      .eq('id_propuesta', currentActivity.propuesta_id);
+
+    if (clearVotesError) throw new Error(clearVotesError.message);
   }
 
   return data;

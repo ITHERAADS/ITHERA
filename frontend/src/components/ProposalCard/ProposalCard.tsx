@@ -2,13 +2,11 @@ import type { Activity } from '../ui/DayView/DayView'
 
 export interface ProposalCardProps {
   activity: Activity
-  proposalStatus?: 'pendiente' | 'procesando' | 'bloqueada' | 'error'
+  proposalStatus?: 'pendiente' | 'procesando' | 'bloqueada' | 'votada' | 'error'
   onAccept?: (id: string) => void
   onDelete?: (id: string) => void
   onEdit?: (id: string) => void
 }
-
-// ── Icons ─────────────────────────────────────────────────────────────────────
 
 function IconClock({ size = 11 }: { size?: number }) {
   return (
@@ -83,8 +81,6 @@ function IconSpinner({ size = 16 }: { size?: number }) {
   )
 }
 
-// ── Category icon (centered on image) ────────────────────────────────────────
-
 function CategoryIcon({ category }: { category: Activity['category'] }) {
   if (category === 'transporte') {
     return (
@@ -110,46 +106,34 @@ function CategoryIcon({ category }: { category: Activity['category'] }) {
   )
 }
 
-// ── Badge config ──────────────────────────────────────────────────────────────
-
 const BADGE: Record<NonNullable<ProposalCardProps['proposalStatus']>, { label: string; bg: string }> = {
-  pendiente:  { label: 'POR CONFIRMAR', bg: 'bg-[#7A4FD6]' },
-  bloqueada:  { label: 'CONFIRMADO',    bg: 'bg-[#35C56A]' },
-  procesando: { label: 'PROCESANDO',    bg: 'bg-[#1E6FD9]' },
-  error:      { label: 'ERROR',         bg: 'bg-[#EF4444]' },
+  pendiente: { label: 'POR CONFIRMAR', bg: 'bg-[#7A4FD6]' },
+  bloqueada: { label: 'CONFIRMADO', bg: 'bg-[#35C56A]' },
+  procesando: { label: 'PROCESANDO', bg: 'bg-[#1E6FD9]' },
+  votada: { label: 'YA VOTASTE', bg: 'bg-[#475569]' },
+  error: { label: 'ERROR', bg: 'bg-[#EF4444]' },
 }
-
-// ── ProposalCard ──────────────────────────────────────────────────────────────
 
 export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept, onDelete, onEdit }: ProposalCardProps) {
   const badge = BADGE[proposalStatus]
   const isProcessing = proposalStatus === 'procesando'
-  const isBlocked    = proposalStatus === 'bloqueada'
-  const isError      = proposalStatus === 'error'
+  const isBlocked = proposalStatus === 'bloqueada'
+  const isVoted = proposalStatus === 'votada'
+  const isError = proposalStatus === 'error'
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden w-full max-w-sm">
-
-      {/* ── Image ── */}
+    <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden w-full">
       <div className="relative h-40 overflow-hidden">
-        <img
-          src={activity.image}
-          alt={activity.title}
-          className="w-full h-full object-cover rounded-t-2xl"
-          loading="lazy"
-        />
+        <img src={activity.image} alt={activity.title} className="w-full h-full object-cover rounded-t-2xl" loading="lazy" />
 
-        {/* Status badge */}
         <span className={`absolute top-3 left-3 ${badge.bg} text-white text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full font-body`}>
           {badge.label}
         </span>
 
-        {/* Price badge */}
         <span className="absolute top-3 right-3 bg-[#1E0A4E]/70 backdrop-blur-sm text-white text-xs font-bold px-2.5 py-1 rounded-full font-body">
           ${activity.price.toLocaleString('es-MX')} {activity.currency}
         </span>
 
-        {/* Category icon — centered on image */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="bg-black/30 backdrop-blur-sm rounded-full p-2">
             <CategoryIcon category={activity.category} />
@@ -157,16 +141,10 @@ export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept,
         </div>
       </div>
 
-      {/* ── Content ── */}
       <div className="px-4 py-4">
-        <h3 className="font-heading font-bold text-[#1E0A4E] text-base leading-tight">
-          {activity.title}
-        </h3>
-        <p className="font-body text-sm text-[#6B7280] mt-1 line-clamp-2">
-          {activity.description}
-        </p>
+        <h3 className="font-heading font-bold text-[#1E0A4E] text-base leading-tight">{activity.title}</h3>
+        <p className="font-body text-sm text-[#6B7280] mt-1 line-clamp-2">{activity.description}</p>
 
-        {/* Info chips */}
         <div className="flex flex-wrap gap-2 mt-3">
           <span className="bg-[#F0EEF8] text-[#1E0A4E] text-[11px] font-body px-2.5 py-1 rounded-full flex items-center gap-1">
             <IconClock />
@@ -178,6 +156,12 @@ export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept,
               {activity.location}
             </span>
           )}
+          {activity.routeDistanceText && activity.routeDurationText && (
+            <span className="bg-[#F0EEF8] text-[#1E0A4E] text-[11px] font-body px-2.5 py-1 rounded-full flex items-center gap-1">
+              <IconMapPin />
+              {activity.routeDistanceText} · {activity.routeDurationText}
+            </span>
+          )}
           {activity.votes !== undefined && (
             <span className="bg-[#F0EEF8] text-[#1E0A4E] text-[11px] font-body px-2.5 py-1 rounded-full flex items-center gap-1">
               <IconThumbsUp />
@@ -187,46 +171,34 @@ export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept,
         </div>
 
         {activity.proposedBy && (
-          <p className="font-body text-xs text-[#6B7280] italic mt-2">
-            Propuesto por {activity.proposedBy}
-          </p>
+          <p className="font-body text-xs text-[#6B7280] italic mt-2">Propuesto por {activity.proposedBy}</p>
         )}
       </div>
 
-      {/* ── Actions ── */}
       <div className="px-4 pb-4 pt-3 border-t border-[#E2E8F0]">
-
-        {/* Error banner */}
         {isError && (
           <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-xl p-3 mb-3">
-            <p className="font-body text-xs text-[#EF4444]">
-              Alguien más aceptó esta propuesta primero.
-            </p>
+            <p className="font-body text-xs text-[#EF4444]">No se pudo registrar tu voto. Intenta nuevamente.</p>
           </div>
         )}
 
         <div className="flex items-center">
-          {/* Accept button */}
           {isBlocked ? (
-            <button
-              disabled
-              className="flex-1 flex items-center justify-center gap-1.5 bg-[#E5E7EB] text-[#9CA3AF] font-body font-semibold text-sm rounded-xl py-2.5 cursor-not-allowed"
-            >
+            <button disabled className="flex-1 flex items-center justify-center gap-1.5 bg-[#E5E7EB] text-[#9CA3AF] font-body font-semibold text-sm rounded-xl py-2.5 cursor-not-allowed">
               <IconCheck size={12} />
               Confirmada
             </button>
+          ) : isVoted ? (
+            <button disabled className="flex-1 flex items-center justify-center gap-1.5 bg-[#E5E7EB] text-[#64748B] font-body font-semibold text-sm rounded-xl py-2.5 cursor-not-allowed">
+              <IconCheck size={12} />
+              Ya votaste
+            </button>
           ) : isProcessing ? (
-            <button
-              disabled
-              className="flex-1 flex items-center justify-center bg-[#1E6FD9] text-white font-body font-semibold text-sm rounded-xl py-2.5 opacity-70 cursor-not-allowed"
-            >
+            <button disabled className="flex-1 flex items-center justify-center bg-[#1E6FD9] text-white font-body font-semibold text-sm rounded-xl py-2.5 opacity-70 cursor-not-allowed">
               <IconSpinner size={16} />
             </button>
           ) : isError ? (
-            <button
-              disabled
-              className="flex-1 flex items-center justify-center gap-1.5 bg-[#E5E7EB] text-[#9CA3AF] font-body font-semibold text-sm rounded-xl py-2.5 cursor-not-allowed"
-            >
+            <button disabled className="flex-1 flex items-center justify-center gap-1.5 bg-[#E5E7EB] text-[#9CA3AF] font-body font-semibold text-sm rounded-xl py-2.5 cursor-not-allowed">
               No disponible
             </button>
           ) : (
@@ -239,15 +211,13 @@ export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept,
             </button>
           )}
 
-          {/* Lock icon (bloqueada) */}
           {isBlocked && (
             <span className="ml-2 shrink-0 text-[#35C56A]">
               <IconLock size={16} />
             </span>
           )}
 
-          {/* Delete button — hidden when bloqueada */}
-          {!isBlocked && (
+          {!isBlocked && !isVoted && (
             <button
               onClick={isProcessing || isError ? undefined : () => onDelete?.(activity.id)}
               disabled={isProcessing}
@@ -260,7 +230,7 @@ export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept,
               <IconTrash size={15} />
             </button>
           )}
-          {!isBlocked && (
+          {!isBlocked && !isVoted && (
             <button
               onClick={isProcessing || isError ? undefined : () => onEdit?.(activity.id)}
               disabled={isProcessing}

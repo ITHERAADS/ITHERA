@@ -378,6 +378,37 @@ const createError = (message: string, statusCode: number): ServiceError => {
 	return err;
 };
 
+type RawCommentRow = {
+	id_comentario: string | number;
+	id_propuesta: string | number;
+	id_usuario: string | number;
+	contenido: string;
+	created_at: string;
+	updated_at: string;
+};
+
+const attachCommentAuthorNames = async (comments: RawCommentRow[]) => {
+	if (comments.length === 0) return [];
+
+	const uniqueUserIds = Array.from(new Set(comments.map((comment) => String(comment.id_usuario))));
+
+	const { data: users, error: usersError } = await supabase
+		.from('usuarios')
+		.select('id_usuario, nombre')
+		.in('id_usuario', uniqueUserIds);
+
+	if (usersError) throw createError(usersError.message, 500);
+
+	const nameByUserId = new Map(
+		(users ?? []).map((user: any) => [String(user.id_usuario), String(user.nombre ?? '')])
+	);
+
+	return comments.map((comment) => ({
+		...comment,
+		authorName: nameByUserId.get(String(comment.id_usuario)) ?? null,
+	}));
+};
+
 const ensureProposalBelongsToGroup = async (groupId: string, proposalId: string): Promise<void> => {
 	const { data, error } = await supabase
 		.from('propuestas')
@@ -400,6 +431,18 @@ const ensureUserBelongsToGroup = async (groupId: string, localUserId: string): P
 
 	if (error) throw createError(error.message, 500);
 	if (!data) throw createError('No autorizado: no perteneces a este viaje/grupo', 403);
+};
+
+const getUniqueGroupMemberCount = async (groupId: string): Promise<number> => {
+	const { data, error } = await supabase
+		.from('grupo_miembros')
+		.select('usuario_id')
+		.eq('grupo_id', groupId);
+
+	if (error) throw createError(error.message, 500);
+
+	const unique = new Set((data ?? []).map((row: any) => String(row.usuario_id)));
+	return unique.size;
 };
 
 export const castSingleVote = async (
@@ -433,9 +476,49 @@ export const castSingleVote = async (
 
 	if (insertError) throw createError(insertError.message, 500);
 
+	const totalMembers = await getUniqueGroupMemberCount(groupId);
+	const votesRequired = Math.floor(totalMembers / 2) + 1;
+
+	const { count: totalVotesForProposal, error: totalVotesError } = await supabase
+		.from('voto')
+		.select('id_voto', { count: 'exact', head: true })
+		.eq('id_propuesta', proposalId);
+
+	if (totalVotesError) throw createError(totalVotesError.message, 500);
+
+	const votesCount = totalVotesForProposal ?? 0;
+	const approved = votesCount >= votesRequired;
+
+	if (approved) {
+		const { error: proposalUpdateError } = await supabase
+			.from('propuestas')
+			.update({
+				estado: 'aprobada',
+				fecha_cierre: new Date().toISOString(),
+				ultima_actualizacion: new Date().toISOString(),
+			})
+			.eq('id_propuesta', proposalId)
+			.eq('grupo_id', groupId);
+
+		if (proposalUpdateError) throw createError(proposalUpdateError.message, 500);
+
+		const { error: activityUpdateError } = await supabase
+			.from('actividades')
+			.update({
+				estado: 'confirmada',
+				ultima_actualizacion: new Date().toISOString(),
+			})
+			.eq('propuesta_id', proposalId);
+
+		if (activityUpdateError) throw createError(activityUpdateError.message, 500);
+	}
+
 	return {
 		vote: newVote,
-		message: 'Voto registrado correctamente',
+		message: approved ? 'Voto registrado y propuesta aprobada' : 'Voto registrado correctamente',
+		votesCount,
+		votesRequired,
+		approved,
 	};
 };
 
@@ -517,7 +600,8 @@ export const createComment = async (
 		.single();
 
 	if (error) throw createError(error.message, 500);
-	return data;
+	const [enriched] = await attachCommentAuthorNames([data as RawCommentRow]);
+	return enriched;
 };
 
 export const listComments = async (
@@ -537,7 +621,7 @@ export const listComments = async (
 		.order('created_at', { ascending: true });
 
 	if (error) throw createError(error.message, 500);
-	return data ?? [];
+	return attachCommentAuthorNames((data ?? []) as RawCommentRow[]);
 };
 
 export const updateComment = async (
@@ -578,7 +662,8 @@ export const updateComment = async (
 		.single();
 
 	if (error) throw createError(error.message, 500);
-	return data;
+	const [enriched] = await attachCommentAuthorNames([data as RawCommentRow]);
+	return enriched;
 };
 
 export const deleteComment = async (

@@ -86,7 +86,17 @@ export function RightPanelDashboard({
   const currentUserIdStr = currentUserId != null ? String(currentUserId) : null
 
   const participants: Participant[] = useMemo(() => {
-    return members.map((member, index) => {
+    const uniqueMembers: MemberFromBackend[] = []
+    const seen = new Set<string>()
+
+    for (const member of members) {
+      const key = String(member.usuario_id ?? member.id)
+      if (seen.has(key)) continue
+      seen.add(key)
+      uniqueMembers.push(member)
+    }
+
+    return uniqueMembers.map((member, index) => {
       const name = member.nombre || member.email || 'Usuario'
       const colors = ['#1E6FD9', '#35C56A', '#7A4FD6', '#F59E0B']
 
@@ -281,18 +291,20 @@ export function RightPanelDashboard({
           </span>
         </div>
 
-        <div className="flex -space-x-2 mb-3">
-          {participants.map((participant) => (
-            <div
-              key={participant.id}
-              className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white font-body font-bold text-xs shrink-0"
-              style={{ backgroundColor: participant.color }}
-              title={participant.name}
-            >
-              {participant.name[0]}
-            </div>
-          ))}
-        </div>
+        {participants.length > 1 && (
+          <div className="flex -space-x-2 mb-3">
+            {participants.map((participant) => (
+              <div
+                key={participant.id}
+                className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white font-body font-bold text-xs shrink-0"
+                style={{ backgroundColor: participant.color }}
+                title={participant.name}
+              >
+                {participant.name[0]}
+              </div>
+            ))}
+          </div>
+        )}
 
         <ul className="flex flex-col gap-2.5">
           {participants.map((participant) => (

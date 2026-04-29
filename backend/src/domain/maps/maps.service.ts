@@ -215,11 +215,15 @@ export async function getPlaceDetails(placeId: string): Promise<GeocodingResult 
 
   if (!place) return null;
 
+  const photoName = place.photos?.[0]?.name ?? null;
+
   return {
     formattedAddress: place.formattedAddress ?? place.displayName?.text ?? null,
     latitude: place.location?.latitude ?? null,
     longitude: place.location?.longitude ?? null,
     placeId: place.id ?? placeId,
+    photoName,
+    photoUrl: await resolvePhotoUrl(photoName),
   };
 }
 

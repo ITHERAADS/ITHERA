@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { sendEmail } from '../../services/email.service';
 import { supabase } from '../../infrastructure/db/supabase.client';
+import { getPlaceDetails } from '../maps/maps.service';
 import { baseTemplate } from '../../infrastructure/email/templates/baseTemplate';
 import {
   CreateGroupInvitationsPayload,
@@ -146,6 +147,84 @@ const getGroupById = async (groupId: string) => {
   return data;
 };
 
+type DestinationPayload = Pick<
+  CreateGroupPayload | UpdateGroupPayload,
+  | 'destino_latitud'
+  | 'destino_longitud'
+  | 'destino_place_id'
+  | 'destino_formatted_address'
+  | 'destino_photo_name'
+  | 'destino_photo_url'
+>;
+
+const buildDestinationFields = async (payload: DestinationPayload) => {
+  const placeId = payload.destino_place_id ?? null;
+
+  if (!placeId) {
+    return {
+      destino_latitud: payload.destino_latitud ?? null,
+      destino_longitud: payload.destino_longitud ?? null,
+      destino_place_id: null,
+      destino_formatted_address: payload.destino_formatted_address ?? null,
+      destino_photo_name: payload.destino_photo_name ?? null,
+      destino_photo_url: payload.destino_photo_url ?? null,
+    };
+  }
+
+  try {
+    const details = await getPlaceDetails(placeId);
+
+    return {
+      destino_latitud: details?.latitude ?? payload.destino_latitud ?? null,
+      destino_longitud: details?.longitude ?? payload.destino_longitud ?? null,
+      destino_place_id: details?.placeId ?? placeId,
+      destino_formatted_address:
+        details?.formattedAddress ?? payload.destino_formatted_address ?? null,
+      destino_photo_name: details?.photoName ?? payload.destino_photo_name ?? null,
+      destino_photo_url: details?.photoUrl ?? payload.destino_photo_url ?? null,
+    };
+  } catch {
+    return {
+      destino_latitud: payload.destino_latitud ?? null,
+      destino_longitud: payload.destino_longitud ?? null,
+      destino_place_id: placeId,
+      destino_formatted_address: payload.destino_formatted_address ?? null,
+      destino_photo_name: payload.destino_photo_name ?? null,
+      destino_photo_url: payload.destino_photo_url ?? null,
+    };
+  }
+};
+
+const ensureDestinationPhotoCached = async (grupo: any) => {
+  if (!grupo?.destino_place_id || grupo.destino_photo_url) return grupo;
+
+  const destinationFields = await buildDestinationFields({
+    destino_latitud: grupo.destino_latitud ?? null,
+    destino_longitud: grupo.destino_longitud ?? null,
+    destino_place_id: grupo.destino_place_id ?? null,
+    destino_formatted_address: grupo.destino_formatted_address ?? null,
+    destino_photo_name: grupo.destino_photo_name ?? null,
+    destino_photo_url: grupo.destino_photo_url ?? null,
+  });
+
+  if (!destinationFields.destino_photo_url) return grupo;
+
+  const { data } = await supabase
+    .from('grupos_viaje')
+    .update({
+      destino_latitud: destinationFields.destino_latitud,
+      destino_longitud: destinationFields.destino_longitud,
+      destino_formatted_address: destinationFields.destino_formatted_address,
+      destino_photo_name: destinationFields.destino_photo_name,
+      destino_photo_url: destinationFields.destino_photo_url,
+    })
+    .eq('id', grupo.id)
+    .select('*')
+    .single();
+
+  return data ?? grupo;
+};
+
 const getMembership = async (groupId: string, usuarioId: string) => {
   const { data, error } = await supabase
     .from('grupo_miembros')
@@ -193,7 +272,7 @@ const countMembers = async (groupId: string): Promise<number> => {
 
 export const getGroupDetails = async (authUserId: string, groupId: string) => {
   const { membership } = await ensureGroupMember(authUserId, groupId);
-  const grupo = await getGroupById(groupId);
+  const grupo = await ensureDestinationPhotoCached(await getGroupById(groupId));
   const memberCount = await countMembers(groupId);
 
   return {
@@ -206,6 +285,7 @@ export const getGroupDetails = async (authUserId: string, groupId: string) => {
 export const createGroup = async (authUserId: string, payload: CreateGroupPayload) => {
   const usuarioId = await getLocalUserId(authUserId);
   const codigo = await generateUniqueCode();
+  const destinationFields = await buildDestinationFields(payload);
 
   const { data: grupo, error: groupError } = await supabase
     .from('grupos_viaje')
@@ -219,10 +299,7 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
       codigo_invitacion: codigo,
       creado_por: Number(usuarioId),
       estado: 'activo',
-      destino_latitud: payload.destino_latitud ?? null,
-      destino_longitud: payload.destino_longitud ?? null,
-      destino_place_id: payload.destino_place_id ?? null,
-      destino_formatted_address: payload.destino_formatted_address ?? null,
+      ...destinationFields,
     })
     .select('*')
     .single();
@@ -631,6 +708,7 @@ export const updateGroup = async (
   payload: UpdateGroupPayload
 ) => {
   await ensureGroupAdmin(authUserId, groupId);
+  const destinationFields = await buildDestinationFields(payload);
 
   const updateData = {
     ...(payload.nombre !== undefined ? { nombre: payload.nombre } : {}),
@@ -639,10 +717,16 @@ export const updateGroup = async (
     ...(payload.fecha_inicio !== undefined ? { fecha_inicio: payload.fecha_inicio || null } : {}),
     ...(payload.fecha_fin !== undefined ? { fecha_fin: payload.fecha_fin || null } : {}),
     ...(payload.maximo_miembros !== undefined ? { maximo_miembros: payload.maximo_miembros } : {}),
-    ...(payload.destino_latitud !== undefined ? { destino_latitud: payload.destino_latitud } : {}),
-    ...(payload.destino_longitud !== undefined ? { destino_longitud: payload.destino_longitud } : {}),
-    ...(payload.destino_place_id !== undefined ? { destino_place_id: payload.destino_place_id || null } : {}),
-    ...(payload.destino_formatted_address !== undefined ? { destino_formatted_address: payload.destino_formatted_address || null } : {}),
+    ...(payload.destino_latitud !== undefined ? { destino_latitud: destinationFields.destino_latitud } : {}),
+    ...(payload.destino_longitud !== undefined ? { destino_longitud: destinationFields.destino_longitud } : {}),
+    ...(payload.destino_place_id !== undefined ? { destino_place_id: destinationFields.destino_place_id } : {}),
+    ...(payload.destino_formatted_address !== undefined ? { destino_formatted_address: destinationFields.destino_formatted_address } : {}),
+    ...(payload.destino_place_id !== undefined || payload.destino_photo_name !== undefined
+      ? { destino_photo_name: destinationFields.destino_photo_name }
+      : {}),
+    ...(payload.destino_place_id !== undefined || payload.destino_photo_url !== undefined
+      ? { destino_photo_url: destinationFields.destino_photo_url }
+      : {}),
   };
 
   const { data, error } = await supabase

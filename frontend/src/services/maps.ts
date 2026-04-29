@@ -5,6 +5,8 @@ export interface GeocodingResult {
   latitude: number | null
   longitude: number | null
   placeId: string | null
+  photoName?: string | null
+  photoUrl?: string | null
 }
 
 export interface PlaceAutocompleteResult {

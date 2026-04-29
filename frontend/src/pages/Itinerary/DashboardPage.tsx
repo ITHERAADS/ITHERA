@@ -10,6 +10,7 @@ import { ProposalCard } from '../../components/ProposalCard/ProposalCard'
 import { ComparisonPage } from '../Comparison/ComparisonPage'
 import { useLocation } from 'react-router-dom'
 import { ActivityProposalModal } from '../../components/ActivityProposalModal/ActivityProposalModal'
+import { useSocket } from '../../hooks/useSocket'
 
 
 function IconDownload({ size = 14 }: { size?: number }) {
@@ -107,11 +108,14 @@ function HeroCard({
   const pending = activities.filter((activity) => activity.status === 'pendiente').length
   const destination = group?.destino || group?.destino_formatted_address || 'Destino pendiente'
   const dateLabel = selectedDay?.date?.toUpperCase() || group?.fecha_inicio || 'Fecha pendiente'
+  const heroImage =
+    group?.destino_photo_url ||
+    'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=400&fit=crop'
 
   return (
     <div className="relative mb-4 h-52 shrink-0 overflow-hidden rounded-2xl">
       <img
-        src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=400&fit=crop"
+        src={heroImage}
         alt={destination}
         className="absolute inset-0 h-full w-full object-cover"
       />
@@ -333,6 +337,7 @@ export function DashboardPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { localUser, accessToken } = useAuth()
+  const { socket, isConnected: isSocketConnected } = useSocket(accessToken)
 
   const location = useLocation()
   const groupIdFromState = location.state?.groupId
@@ -470,7 +475,18 @@ export function DashboardPage() {
         />
       }
 
-      rightPanel={<RightPanelDashboard members={members} group={group} isLoading={isLoading} />}
+      rightPanel={
+        <RightPanelDashboard
+          members={members}
+          group={group}
+          isLoading={isLoading}
+          socket={socket}
+          isSocketConnected={isSocketConnected}
+          accessToken={accessToken}
+          currentUserId={localUser?.id_usuario}
+          currentUserName={userName}
+        />
+      }
     >
       {isLoading ? (
         <SkeletonView />

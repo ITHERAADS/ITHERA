@@ -526,7 +526,8 @@ export function DashboardPage() {
   const isEmpty = days.length === 0
   const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id || null
   const selectedDay = activeDay !== null ? days.find((day) => day.dayNumber === activeDay) : undefined
-  const uniqueMemberCount = new Set(members.map((member) => String(member.usuario_id ?? member.id))).size
+  const safeMembers = members ?? []
+  const uniqueMemberCount = new Set(safeMembers.map((member) => String(member.usuario_id ?? member.id))).size
 
   useEffect(() => {
   const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
@@ -556,7 +557,7 @@ export function DashboardPage() {
 
       if (isMounted) {
         setGroup(groupRes.group)
-        setMembers(membersRes.members)
+        setMembers(membersRes.members ?? [])
         setDays(daysWithRoutes)
         setVoteCountByProposal(nextVotesMap)
         setVotedActivityIds({})

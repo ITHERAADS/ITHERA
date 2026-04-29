@@ -10,6 +10,7 @@ import { ProposalCard } from '../../components/ProposalCard/ProposalCard'
 import { ComparisonPage } from '../Comparison/ComparisonPage'
 import { useLocation } from 'react-router-dom'
 import { ActivityProposalModal } from '../../components/ActivityProposalModal/ActivityProposalModal'
+import { BudgetDashboard } from '../../components/budget/BudgetDashboard'
 
 
 function IconDownload({ size = 14 }: { size?: number }) {
@@ -350,7 +351,7 @@ export function DashboardPage() {
 
   const [activeDay,   setActiveDay]   = useState<number | null>(null)
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
-  const [activeTab,   setActiveTab]   = useState('pagar')
+  const [activeTab,   setActiveTab]   = useState('buscar')
   const [isLoading,   setIsLoading]   = useState(false)
   const [days,        setDays]        = useState<ItineraryDay[]>([])
   const [group, setGroup] = useState<typeof currentGroup>(currentGroup)
@@ -480,6 +481,8 @@ export function DashboardPage() {
         <div className="flex-1 overflow-y-auto px-4 py-6">
           <ComparisonPage onBack={() => setActiveTab('pagar')} />
         </div>
+      ) : activeTab === 'pagar' ? (
+        <BudgetDashboard groupId={groupId} />
       ) : (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
           <HeroCard

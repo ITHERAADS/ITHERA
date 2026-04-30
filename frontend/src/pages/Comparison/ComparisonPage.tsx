@@ -1,8 +1,14 @@
 import { useState } from 'react'
+import { useEffect } from 'react';
+import { useAuth } from '../../context/useAuth';
+import { proposalsService } from '../../services/proposals';
+
 
 export interface ComparisonPageProps {
-  onBack: () => void
+  groupId: string;
+  onBack: () => void;
 }
+
 
 interface ComparisonOption {
   id: string
@@ -14,31 +20,6 @@ interface ComparisonOption {
   climate: string
   image: string
 }
-
-const SAMPLE_OPTIONS: ComparisonOption[] = [
-  {
-    id: '1',
-    title: 'Vuelo CDMX → Cancún — Aeromexico',
-    category: 'transporte' as const,
-    price: 3200,
-    duration: '2h 10min',
-    location: 'Aeropuerto AICM T2',
-    climate: 'Soleado 32°C',
-    image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=300&h=200&fit=crop',
-  },
-  {
-    id: '2',
-    title: 'Vuelo CDMX → Cancún — Volaris',
-    category: 'transporte' as const,
-    price: 1980,
-    duration: '2h 25min',
-    location: 'Aeropuerto AICM T1',
-    climate: 'Soleado 32°C',
-    image: 'https://images.unsplash.com/photo-1464037866556-6812c9d1c72e?w=300&h=200&fit=crop',
-  },
-]
-
-const BUDGET_LIMIT = 5000
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -152,20 +133,49 @@ function TableRow({ label, children }: { label: string; children: React.ReactNod
 
 // ── ComparisonPage ────────────────────────────────────────────────────────────
 
-export function ComparisonPage({ onBack }: ComparisonPageProps) {
-  const [options, setOptions]   = useState(SAMPLE_OPTIONS)
+export function ComparisonPage({ groupId, onBack }: ComparisonPageProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [proposed, setProposed] = useState(false)
+  const { accessToken } = useAuth();
+  const [options, setOptions] = useState<ComparisonOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const minPrice        = Math.min(...options.map((o) => o.price))
-  const selectedOption  = selected ? options.find((o) => o.id === selected) ?? null : null
-  const exceedsBudget   = selectedOption ? selectedOption.price > BUDGET_LIMIT : false
+  const minPrice = Math.min(...options.map((o) => o.price))
+  const selectedOption = selected ? options.find((o) => o.id === selected) ?? null : null
+  const exceedsBudget = selectedOption ? selectedOption.price > BUDGET_LIMIT : false
+
+
+  useEffect(() => {
+    if (!groupId || !accessToken) return;
+    setLoading(true);
+    proposalsService.getGroupProposals(groupId, accessToken)
+      .then(res => {
+        const mapped = res.proposals.map(p => ({
+          id: p.id,
+          title: p.titulo,
+          price: p.precio,
+          category: p.tipo === 'vuelo' ? 'transporte' : p.tipo === 'hotel' ? 'hospedaje' : 'actividad',
+          duration: p.duracion ?? 'N/A',
+          location: p.ubicacion ?? 'Ubicación pendiente',
+          climate: p.clima ?? 'Clima pendiente',
+          image: p.imagen ?? 'https://via.placeholder.com/150',
+        }));
+        setOptions(mapped);
+      })
+      .catch(() => setError('No se pudieron cargar las propuestas'))
+      .finally(() => setLoading(false));
+  }, [groupId, accessToken]);
 
   function removeOption(id: string) {
     if (options.length <= 1) return
     setOptions((prev) => prev.filter((o) => o.id !== id))
     if (selected === id) setSelected(null)
   }
+
+  if (loading) return <div className="p-8 text-center text-gray-500">Cargando propuestas...</div>;
+  if (error) return <div className="p-8 text-center text-red-500">{error}</div>;
+  if (options.length === 0) return <div className="p-8 text-center text-gray-400">No hay propuestas para comparar aún.</div>;
 
   return (
     <div className="flex flex-col gap-4">
@@ -352,7 +362,15 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           )}
 
           <button
-            onClick={() => setProposed(true)}
+            onClick={async () => {
+              if (!selectedOption || !accessToken) return;
+              try {
+                await proposalsService.voteProposal(groupId, selectedOption.id, { voto: 'a_favor' }, accessToken);
+                setProposed(true);
+              } catch {
+                alert('No se pudo confirmar la propuesta. Intenta de nuevo.');
+              }
+            }}
             className={[
               'w-full font-body font-semibold text-sm rounded-xl py-3 text-white transition-colors flex items-center justify-center gap-2',
               exceedsBudget ? 'bg-[#EF4444] hover:bg-[#dc2626]' : 'bg-[#1E6FD9] hover:bg-[#1a5fc2]',

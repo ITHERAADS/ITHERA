@@ -480,11 +480,11 @@ export function DashboardPage() {
     .slice(0, 2)
     .toUpperCase()
 
-  const [activeDay,   setActiveDay]   = useState<number | null>(null)
+  const [activeDay, setActiveDay] = useState<number | null>(null)
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
-  const [activeTab,   setActiveTab]   = useState('pagar')
-  const [isLoading,   setIsLoading]   = useState(false)
-  const [days,        setDays]        = useState<ItineraryDay[]>([])
+  const [activeTab, setActiveTab] = useState('pagar')
+  const [isLoading, setIsLoading] = useState(false)
+  const [days, setDays] = useState<ItineraryDay[]>([])
   const [group, setGroup] = useState<typeof currentGroup>(currentGroup)
   const [members, setMembers] = useState<Parameters<typeof RightPanelDashboard>[0]['members']>([])
   const dayRefs = useRef<Record<number, DayViewHandle | null>>({})
@@ -530,54 +530,46 @@ export function DashboardPage() {
   const uniqueMemberCount = new Set(safeMembers.map((member) => String(member.usuario_id ?? member.id))).size
 
   useEffect(() => {
-  const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
 
-  if (!resolvedGroupId) {
-    navigate('/my-trips')
-    return
-  }
+    if (!resolvedGroupId) {
+      navigate('/my-trips')
+      return
+    }
 
-  if (!accessToken) return
+    if (!accessToken) return
 
-  let isMounted = true
+    let isMounted = true
 
-  const loadDashboard = async () => {
-    try {
-      setIsLoading(true)
+    const loadDashboard = async () => {
+      try {
+        setIsLoading(true)
 
-      const groupRes = await groupsService.getGroupDetails(resolvedGroupId, accessToken)
-      const membersRes = await groupsService.getMembers(resolvedGroupId, accessToken)
-      const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-      const votesRes = await proposalsService.getVoteResults(String(resolvedGroupId), accessToken)
-      const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupRes.group, accessToken)
-      const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, number>>((acc, item: VoteResult) => {
-        acc[String(item.id_propuesta)] = item.votos ?? 0
-        return acc
-      }, {})
+        const groupRes = await groupsService.getGroupDetails(resolvedGroupId, accessToken)
+        const membersRes = await groupsService.getMembers(resolvedGroupId, accessToken)
+        const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
 
-      if (isMounted) {
-        setGroup(groupRes.group)
-        setMembers(membersRes.members ?? [])
-        setDays(daysWithRoutes)
-        setVoteCountByProposal(nextVotesMap)
-        setVotedActivityIds({})
-      }
-    } catch (error) {
-      console.error('Error cargando dashboard:', error)
+        if (isMounted) {
+          setGroup(groupRes.group)
+          setMembers(membersRes.members)
+          setDays(itineraryRes.days)
+        }
+      } catch (error) {
+        console.error('Error cargando dashboard:', error)
 
-      if (isMounted) {
-        setDays([])
-      }
-    } finally {
-      if (isMounted) {
-        setIsLoading(false)
+        if (isMounted) {
+          setDays([])
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
     }
-  }
 
-  void loadDashboard()
+    void loadDashboard()
 
-  return () => {
+    return () => {
       isMounted = false
     }
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, navigate])
@@ -816,9 +808,15 @@ export function DashboardPage() {
       ) : isEmpty ? (
         <EmptyState onAdd={() => setShowActivityModal(true)} />
       ) : activeTab === 'comparar' ? (
-        <div className="flex-1 overflow-y-auto px-4 py-6">
-          <ComparisonPage onBack={() => setActiveTab('pagar')} />
-        </div>
+        groupId ? (
+          <div className="flex-1 overflow-y-auto px-4 py-6">
+            <ComparisonPage groupId={groupId} onBack={() => setActiveTab('pagar')} />
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center px-4 py-6">
+            <p className="text-center text-gray-500">Grupo no encontrado. Verifica la URL.</p>
+          </div>
+        )
       ) : activeTab === 'mapas' ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
           <MapsTabView days={days} />
@@ -836,28 +834,28 @@ export function DashboardPage() {
           <TimelineStrip activeDay={activeDay} date={selectedDay?.date} activities={selectedDay?.activities} />
           <div className="flex flex-col gap-3">
             {days.map((day) => (
-            <DayView
-              key={day.dayNumber}
-              ref={(handle) => {
-                dayRefs.current[day.dayNumber] = handle
-              }}
-              dayNumber={day.dayNumber}
-              date={day.date}
-              activities={day.activities}
-              isActive={day.dayNumber === activeDay}
-              isExpanded={day.dayNumber === expandedDay}
-              onSelect={handleDayChange}
-              onAddActivity={openActivityModalForDay}
-              onAccept={(id) => void handleAcceptActivity(id)}
-              onDelete={(id) => void handleDeleteActivity(id)}
-              onEdit={(id) => {
-                const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
-                if (!activity) return
-                lockProposalForActivity(activity)
-                setEditingActivity(activity)
-                setShowActivityModal(true)
-              }}
-            />
+              <DayView
+                key={day.dayNumber}
+                ref={(handle) => {
+                  dayRefs.current[day.dayNumber] = handle
+                }}
+                dayNumber={day.dayNumber}
+                date={day.date}
+                activities={day.activities}
+                isActive={day.dayNumber === activeDay}
+                isExpanded={day.dayNumber === expandedDay}
+                onSelect={handleDayChange}
+                onAddActivity={openActivityModalForDay}
+                onAccept={(id) => void handleAcceptActivity(id)}
+                onDelete={(id) => void handleDeleteActivity(id)}
+                onEdit={(id) => {
+                  const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
+                  if (!activity) return
+                  lockProposalForActivity(activity)
+                  setEditingActivity(activity)
+                  setShowActivityModal(true)
+                }}
+              />
             ))}
           </div>
 
@@ -880,17 +878,17 @@ export function DashboardPage() {
                         proposalStatus={
                           activity.status === 'confirmada'
                             ? 'bloqueada'
-                          : acceptingActivityId === activity.id
-                            ? 'procesando'
-                          : votedActivityIds[activity.id]
-                            ? 'votada'
-                          : activity.proposalId && lockedProposalIds[activity.proposalId]
-                            ? 'bloqueada'
-                          : acceptErrorActivityIds[activity.id]
-                            ? 'error'
-                          : lockErrorActivityIds[activity.id]
-                            ? 'error'
-                          : 'pendiente'
+                            : acceptingActivityId === activity.id
+                              ? 'procesando'
+                              : votedActivityIds[activity.id]
+                                ? 'votada'
+                                : activity.proposalId && lockedProposalIds[activity.proposalId]
+                                  ? 'bloqueada'
+                                  : acceptErrorActivityIds[activity.id]
+                                    ? 'error'
+                                    : lockErrorActivityIds[activity.id]
+                                      ? 'error'
+                                      : 'pendiente'
                         }
                         onAccept={(id) => void handleAcceptActivity(id)}
                         onDelete={(id) => void handleDeleteActivity(id)}
@@ -966,85 +964,85 @@ export function DashboardPage() {
                                       visibleCommentsCountByProposal[activity.proposalId] ?? 3
                                     )
                                     .map((comment) => (
-                                    <div key={comment.id} className="rounded-lg bg-surface px-2 py-1.5">
-                                      <div className="mb-1 flex items-center justify-between gap-2">
-                                        <p className="font-body text-[11px] font-semibold text-gray700">
-                                          {comment.authorName || `Usuario ${comment.usuarioId}`}
-                                        </p>
-                                        <p className="font-body text-[10px] text-gray500">
-                                          {new Date(comment.createdAt).toLocaleString('es-MX', {
-                                            day: '2-digit',
-                                            month: '2-digit',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                          })}
-                                        </p>
-                                      </div>
-
-                                      {editingCommentId === comment.id ? (
-                                        <div className="space-y-2">
-                                          <textarea
-                                            value={editingCommentText}
-                                            onChange={(e) => setEditingCommentText(e.target.value)}
-                                            rows={2}
-                                            className="w-full resize-none rounded-md border border-[#E2E8F0] px-2 py-1 text-xs outline-none focus:border-bluePrimary"
-                                          />
-                                          <div className="flex gap-2">
-                                            <button
-                                              onClick={() => void handleSaveEditComment(activity.proposalId!, comment.id)}
-                                              className="rounded-md bg-bluePrimary px-2 py-1 font-body text-[11px] font-semibold text-white"
-                                            >
-                                              Guardar
-                                            </button>
-                                            <button
-                                              onClick={handleCancelEditComment}
-                                              className="rounded-md border border-[#E2E8F0] px-2 py-1 font-body text-[11px] text-gray700"
-                                            >
-                                              Cancelar
-                                            </button>
-                                          </div>
+                                      <div key={comment.id} className="rounded-lg bg-surface px-2 py-1.5">
+                                        <div className="mb-1 flex items-center justify-between gap-2">
+                                          <p className="font-body text-[11px] font-semibold text-gray700">
+                                            {comment.authorName || `Usuario ${comment.usuarioId}`}
+                                          </p>
+                                          <p className="font-body text-[10px] text-gray500">
+                                            {new Date(comment.createdAt).toLocaleString('es-MX', {
+                                              day: '2-digit',
+                                              month: '2-digit',
+                                              hour: '2-digit',
+                                              minute: '2-digit',
+                                            })}
+                                          </p>
                                         </div>
-                                      ) : (
-                                        <>
-                                          <p className="font-body text-xs text-gray700">{comment.contenido}</p>
-                                          {String(comment.usuarioId) === String(localUser?.id_usuario) && (
-                                            <div className="mt-1.5 flex gap-2">
+
+                                        {editingCommentId === comment.id ? (
+                                          <div className="space-y-2">
+                                            <textarea
+                                              value={editingCommentText}
+                                              onChange={(e) => setEditingCommentText(e.target.value)}
+                                              rows={2}
+                                              className="w-full resize-none rounded-md border border-[#E2E8F0] px-2 py-1 text-xs outline-none focus:border-bluePrimary"
+                                            />
+                                            <div className="flex gap-2">
                                               <button
-                                                onClick={() => handleStartEditComment(comment)}
-                                                className="font-body text-[11px] font-semibold text-bluePrimary hover:underline"
+                                                onClick={() => void handleSaveEditComment(activity.proposalId!, comment.id)}
+                                                className="rounded-md bg-bluePrimary px-2 py-1 font-body text-[11px] font-semibold text-white"
                                               >
-                                                Editar
+                                                Guardar
                                               </button>
                                               <button
-                                                onClick={() => void handleDeleteComment(activity.proposalId!, comment.id)}
-                                                className="font-body text-[11px] font-semibold text-red-500 hover:underline"
+                                                onClick={handleCancelEditComment}
+                                                className="rounded-md border border-[#E2E8F0] px-2 py-1 font-body text-[11px] text-gray700"
                                               >
-                                                Eliminar
+                                                Cancelar
                                               </button>
                                             </div>
-                                          )}
-                                        </>
-                                      )}
-                                    </div>
-                                  ))}
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <p className="font-body text-xs text-gray700">{comment.contenido}</p>
+                                            {String(comment.usuarioId) === String(localUser?.id_usuario) && (
+                                              <div className="mt-1.5 flex gap-2">
+                                                <button
+                                                  onClick={() => handleStartEditComment(comment)}
+                                                  className="font-body text-[11px] font-semibold text-bluePrimary hover:underline"
+                                                >
+                                                  Editar
+                                                </button>
+                                                <button
+                                                  onClick={() => void handleDeleteComment(activity.proposalId!, comment.id)}
+                                                  className="font-body text-[11px] font-semibold text-red-500 hover:underline"
+                                                >
+                                                  Eliminar
+                                                </button>
+                                              </div>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    ))}
                                 </div>
                               )}
 
                               {(commentsByProposal[activity.proposalId] ?? []).length >
                                 (visibleCommentsCountByProposal[activity.proposalId] ?? 3) && (
-                                <button
-                                  onClick={() =>
-                                    setVisibleCommentsCountByProposal((prev) => ({
-                                      ...prev,
-                                      [activity.proposalId!]:
-                                        (prev[activity.proposalId!] ?? 3) + 3,
-                                    }))
-                                  }
-                                  className="font-body text-[11px] font-semibold text-bluePrimary hover:underline"
-                                >
-                                  Ver más comentarios
-                                </button>
-                              )}
+                                  <button
+                                    onClick={() =>
+                                      setVisibleCommentsCountByProposal((prev) => ({
+                                        ...prev,
+                                        [activity.proposalId!]:
+                                          (prev[activity.proposalId!] ?? 3) + 3,
+                                      }))
+                                    }
+                                    className="font-body text-[11px] font-semibold text-bluePrimary hover:underline"
+                                  >
+                                    Ver más comentarios
+                                  </button>
+                                )}
 
                               {(visibleCommentsCountByProposal[activity.proposalId] ?? 3) > 3 &&
                                 (commentsByProposal[activity.proposalId] ?? []).length > 3 && (

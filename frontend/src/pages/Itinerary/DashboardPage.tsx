@@ -99,12 +99,14 @@ function HeroCard({
   selectedDay,
   group,
   onAdd,
+  onExportPdf,
 }: {
   activeDay: number | null
   totalDays: number
   selectedDay?: ItineraryDay
   group: ReturnType<typeof getCurrentGroup> | null
   onAdd: () => void
+  onExportPdf: () => void
 }) {
   const activities = selectedDay?.activities ?? []
   const pending = activities.filter((activity) => activity.status === 'pendiente').length
@@ -138,7 +140,10 @@ function HeroCard({
           {activities.length} actividad{activities.length !== 1 ? 'es' : ''} planeada{activities.length !== 1 ? 's' : ''} · {pending} pendiente{pending !== 1 ? 's' : ''} de confirmación
         </p>
         <div className="flex gap-2">
-          <button className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-white/10">
+          <button
+            onClick={onExportPdf}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-white/10"
+          >
             <IconDownload size={13} />
             Exportar PDF
           </button>
@@ -496,7 +501,7 @@ export function DashboardPage() {
   const [votedActivityIds, setVotedActivityIds] = useState<Record<string, boolean>>({})
   const [lockedProposalIds, setLockedProposalIds] = useState<Record<string, boolean>>({})
   const [lockErrorActivityIds, setLockErrorActivityIds] = useState<Record<string, boolean>>({})
-  const [voteCountByProposal, setVoteCountByProposal] = useState<Record<string, number>>({})
+  const [voteResultByProposal, setVoteResultByProposal] = useState<Record<string, VoteResult>>({})
   const [expandedCommentsProposalId, setExpandedCommentsProposalId] = useState<string | null>(null)
   const [commentsByProposal, setCommentsByProposal] = useState<Record<string, ProposalComment[]>>({})
   const [commentDraftByProposal, setCommentDraftByProposal] = useState<Record<string, string>>({})
@@ -526,12 +531,15 @@ export function DashboardPage() {
   const isEmpty = days.length === 0
   const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id || null
   const selectedDay = activeDay !== null ? days.find((day) => day.dayNumber === activeDay) : undefined
-  const safeMembers = members ?? []
+  const safeMembers = (Array.isArray(members) ? members : []).filter(
+    (member): member is NonNullable<NonNullable<typeof members>[number]> => Boolean(member),
+  )
   const uniqueMemberCount = new Set(safeMembers.map((member) => String(member.usuario_id ?? member.id))).size
   const currentMember = safeMembers.find(
-    (member) => String(member.usuario_id) === String(localUser?.id_usuario)
+    (member) => String(member.usuario_id ?? member.id) === String(localUser?.id_usuario)
   )
   const currentUserRole = currentMember?.rol ?? group?.myRole ?? currentGroup?.myRole ?? 'viajero'
+  const isCurrentUserAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
 
   useEffect(() => {
   const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
@@ -554,8 +562,8 @@ export function DashboardPage() {
       const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
       const votesRes = await proposalsService.getVoteResults(String(resolvedGroupId), accessToken)
       const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupRes.group, accessToken)
-      const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, number>>((acc, item: VoteResult) => {
-        acc[String(item.id_propuesta)] = item.votos ?? 0
+      const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
+        acc[String(item.id_propuesta)] = item
         return acc
       }, {})
 
@@ -563,7 +571,7 @@ export function DashboardPage() {
         setGroup(groupRes.group)
         setMembers(membersRes.members ?? [])
         setDays(daysWithRoutes)
-        setVoteCountByProposal(nextVotesMap)
+        setVoteResultByProposal(nextVotesMap)
         setVotedActivityIds({})
       }
     } catch (error) {
@@ -597,11 +605,11 @@ export function DashboardPage() {
     setVotedActivityIds({})
 
     const votesRes = await proposalsService.getVoteResults(String(resolvedGroupId), accessToken)
-    const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, number>>((acc, item: VoteResult) => {
-      acc[String(item.id_propuesta)] = item.votos ?? 0
+    const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
+      acc[String(item.id_propuesta)] = item
       return acc
     }, {})
-    setVoteCountByProposal(nextVotesMap)
+    setVoteResultByProposal(nextVotesMap)
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, group])
 
   const handleDeleteActivity = useCallback(async (activityId: string) => {
@@ -655,6 +663,45 @@ export function DashboardPage() {
       setAcceptingActivityId(null)
     }
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, days, reloadDashboard])
+
+  const handleRejectActivity = useCallback(async (activityId: string) => {
+    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+
+    if (!resolvedGroupId || !accessToken) return
+
+    const activity = days.flatMap((day) => day.activities).find((item) => item.id === activityId)
+    const proposalId = activity?.proposalId
+
+    if (!proposalId) {
+      setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: true }))
+      return
+    }
+
+    try {
+      setAcceptingActivityId(activityId)
+      setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: false }))
+      await proposalsService.voteProposal(String(resolvedGroupId), proposalId, { voto: 'en_contra' }, accessToken)
+      setVotedActivityIds((prev) => ({ ...prev, [activityId]: true }))
+      await reloadDashboard()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      if (message.toLowerCase().includes('ya emitiste tu voto')) {
+        setVotedActivityIds((prev) => ({ ...prev, [activityId]: true }))
+        setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: false }))
+      } else {
+        setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: true }))
+      }
+    } finally {
+      setAcceptingActivityId(null)
+    }
+  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, days, reloadDashboard])
+
+  const handleAdminDecision = useCallback(async (proposalId: string, decision: 'aprobar' | 'rechazar') => {
+    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+    if (!resolvedGroupId || !accessToken) return
+    await proposalsService.applyAdminDecision(String(resolvedGroupId), proposalId, { decision }, accessToken)
+    await reloadDashboard()
+  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard])
 
   const handleToggleComments = useCallback(async (proposalId: string) => {
     if (!accessToken || !resolvedGroupId) return
@@ -740,6 +787,170 @@ export function DashboardPage() {
       [proposalId]: (prev[proposalId] ?? []).filter((item) => item.id !== commentId),
     }))
   }, [accessToken, resolvedGroupId])
+
+  const handleExportConfirmedItineraryPdf = useCallback(() => {
+    const escapeHtml = (value: string) =>
+      value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;')
+
+    const confirmedByDay = days
+      .map((day) => ({
+        dayNumber: day.dayNumber,
+        date: day.date,
+        activities: day.activities.filter((activity) => activity.status === 'confirmada'),
+      }))
+      .filter((day) => day.activities.length > 0)
+
+    if (confirmedByDay.length === 0) {
+      window.alert('No hay actividades confirmadas para exportar.')
+      return
+    }
+
+    const generatedAt = new Date().toLocaleString('es-MX', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
+    const sectionsHtml = confirmedByDay
+      .map((day) => {
+        const items = day.activities
+          .map((activity, index) => {
+            const routeText =
+              activity.routeDistanceText && activity.routeDurationText
+                ? `${activity.routeDistanceText} · ${activity.routeDurationText}`
+                : 'Ruta no disponible'
+
+            return `
+              <article class="activity-card">
+                <div class="activity-index">${index + 1}</div>
+                <div class="activity-content">
+                  <h4>${escapeHtml(activity.title)}</h4>
+                  <p class="desc">${escapeHtml(activity.description || 'Sin descripción')}</p>
+                  <div class="chips">
+                    <span>Hora: ${escapeHtml(activity.time || 'Hora pendiente')}</span>
+                    <span>${escapeHtml(activity.location || 'Ubicación no disponible')}</span>
+                    <span>${escapeHtml(routeText)}</span>
+                  </div>
+                </div>
+              </article>
+            `
+          })
+          .join('')
+
+        return `
+          <section class="day-section">
+            <div class="day-header">
+              <h3>Día ${day.dayNumber}</h3>
+              <span>${escapeHtml(day.date)}</span>
+            </div>
+            ${items}
+          </section>
+        `
+      })
+      .join('')
+
+    const tripName = escapeHtml(group?.nombre || 'Itinerario')
+    const tripDestination = escapeHtml(group?.destino || group?.destino_formatted_address || 'Destino pendiente')
+    const html = `
+      <!doctype html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width,initial-scale=1" />
+          <title>Itinerario Confirmado - ${tripName}</title>
+          <style>
+            :root { --ink:#1E0A4E; --blue:#1E6FD9; --green:#35C56A; --lav:#F6F3FF; --paper:#fff; }
+            * { box-sizing: border-box; }
+            body { margin:0; font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color:#1f2937; background:linear-gradient(145deg,#f3f0ff 0%,#eef4ff 100%); padding:28px; }
+            .sheet { max-width:900px; margin:0 auto; background:var(--paper); border:1px solid #e5e7eb; border-radius:18px; overflow:hidden; box-shadow:0 16px 36px rgba(30,10,78,.12); }
+            .hero { background:linear-gradient(110deg,var(--ink),#3A1B7A); color:#fff; padding:26px 28px; }
+            .hero h1 { margin:0; font-size:28px; line-height:1.1; }
+            .hero p { margin:8px 0 0; opacity:.88; font-size:14px; }
+            .meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+            .meta span { background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.25); padding:6px 10px; border-radius:999px; font-size:12px; }
+            .content { padding:20px 22px 26px; }
+            .day-section + .day-section { margin-top:16px; }
+            .day-header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; border-bottom:1px dashed #dbe3f2; padding-bottom:8px; }
+            .day-header h3 { margin:0; color:var(--ink); font-size:18px; }
+            .day-header span { color:#64748b; font-size:13px; font-weight:600; }
+            .activity-card { display:flex; gap:12px; background:#fafcff; border:1px solid #d9e4fb; border-radius:14px; padding:12px; margin-bottom:10px; }
+            .activity-index { width:28px; height:28px; border-radius:999px; background:var(--blue); color:#fff; display:grid; place-items:center; font-size:13px; font-weight:700; flex-shrink:0; }
+            .activity-content h4 { margin:0; color:var(--ink); font-size:16px; }
+            .activity-content .desc { margin:5px 0 0; color:#475569; font-size:13px; line-height:1.5; }
+            .chips { display:flex; gap:7px; flex-wrap:wrap; margin-top:9px; }
+            .chips span { background:var(--lav); border:1px solid #dfd4ff; color:#3f2a83; font-size:11px; padding:5px 8px; border-radius:999px; }
+            .footer { border-top:1px solid #e5e7eb; padding:14px 22px; color:#64748b; font-size:12px; display:flex; justify-content:space-between; align-items:center; }
+            .dot { width:8px; height:8px; border-radius:999px; background:var(--green); display:inline-block; margin-right:6px; }
+            @media print { body { background:#fff; padding:0; } .sheet { border:0; border-radius:0; box-shadow:none; max-width:100%; } @page { size:A4; margin:12mm; } }
+          </style>
+        </head>
+        <body>
+          <main class="sheet">
+            <header class="hero">
+              <h1>Itinerario confirmado</h1>
+              <p>${tripName} · ${tripDestination}</p>
+              <div class="meta">
+                <span>${confirmedByDay.length} día(s) con actividades confirmadas</span>
+                <span>${confirmedByDay.reduce((acc, day) => acc + day.activities.length, 0)} actividad(es) confirmada(s)</span>
+              </div>
+            </header>
+            <section class="content">${sectionsHtml}</section>
+            <footer class="footer">
+              <span><i class="dot"></i>Generado por ITHERA</span>
+              <span>${escapeHtml(generatedAt)}</span>
+            </footer>
+          </main>
+        </body>
+      </html>
+    `
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const blobUrl = URL.createObjectURL(blob)
+    const win = window.open(blobUrl, '_blank')
+
+    if (!win) {
+      URL.revokeObjectURL(blobUrl)
+      window.alert('No se pudo abrir la ventana de exportación. Revisa el bloqueador de ventanas.')
+      return
+    }
+
+    const cleanup = () => {
+      try {
+        URL.revokeObjectURL(blobUrl)
+      } catch {
+        // noop
+      }
+    }
+
+    const onLoad = () => {
+      try {
+        win.focus()
+        win.print()
+      } finally {
+        cleanup()
+      }
+    }
+
+    try {
+      win.addEventListener('load', onLoad, { once: true })
+    } catch {
+      window.setTimeout(() => {
+        try {
+          win.focus()
+          win.print()
+        } finally {
+          cleanup()
+        }
+      }, 700)
+    }
+  }, [days, group])
 
   useEffect(() => {
     if (!socket) return
@@ -835,6 +1046,7 @@ export function DashboardPage() {
             selectedDay={selectedDay}
             group={group}
             onAdd={() => openActivityModalForDay(activeDay ?? days[0]?.dayNumber ?? 1)}
+            onExportPdf={handleExportConfirmedItineraryPdf}
           />
           <InfoBanner memberCount={uniqueMemberCount} />
           <TimelineStrip activeDay={activeDay} date={selectedDay?.date} activities={selectedDay?.activities} />
@@ -890,7 +1102,7 @@ export function DashboardPage() {
                             ? 'bloqueada'
                           : acceptingActivityId === activity.id
                             ? 'procesando'
-                          : activity.hasVoted || votedActivityIds[activity.id]
+                          : (activity.proposalId && voteResultByProposal[activity.proposalId]?.mi_voto) || activity.hasVoted || votedActivityIds[activity.id]
                             ? 'votada'
                           : activity.proposalId && lockedProposalIds[activity.proposalId]
                             ? 'bloqueada'
@@ -915,11 +1127,16 @@ export function DashboardPage() {
                       {activity.proposalId && (
                         <div className="mt-2 rounded-2xl border border-[#D9E2F2] bg-gradient-to-b from-white to-[#F8FAFF] px-3 py-3">
                           {(() => {
-                            const votesFor = voteCountByProposal[activity.proposalId!] ?? 0
-                            const votesAgainst =
-                              Number((activity as DayActivity & { votesAgainst?: number }).votesAgainst ?? 0) || 0
+                            const voteResult = voteResultByProposal[activity.proposalId!]
+                            const votesFor = voteResult?.votos_a_favor ?? voteResult?.votos ?? 0
+                            const votesAgainst = voteResult?.votos_en_contra ?? 0
                             const totalMembers = Math.max(uniqueMemberCount, 1)
-                            const pendingVotes = Math.max(totalMembers - (votesFor + votesAgainst), 0)
+                            const pendingVotes = voteResult?.votos_pendientes ?? Math.max(totalMembers - (votesFor + votesAgainst), 0)
+                            const requiresAdminTieBreak = Boolean(voteResult?.requiere_desempate_admin)
+                            const hasUserVoted =
+                              Boolean(voteResult?.mi_voto) ||
+                              Boolean(activity.hasVoted) ||
+                              Boolean(votedActivityIds[activity.id])
                             const commentsLoaded = commentsByProposal[activity.proposalId!]?.length ?? 0
                             const isCommentsOpen = expandedCommentsProposalId === activity.proposalId
 
@@ -939,6 +1156,11 @@ export function DashboardPage() {
                                       <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
                                       Pendientes: {pendingVotes}
                                     </span>
+                                    {requiresAdminTieBreak && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-1 font-body text-[11px] font-semibold text-purple-700">
+                                        Empate: requiere desempate admin
+                                      </span>
+                                    )}
                                   </div>
                                   <button
                                     onClick={() => void handleToggleComments(activity.proposalId!)}
@@ -956,6 +1178,45 @@ export function DashboardPage() {
                                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#E8EEF8]">
                                   <div className="h-full bg-green-500" style={{ width: `${Math.min((votesFor / totalMembers) * 100, 100)}%` }} />
                                 </div>
+                                {activity.status === 'pendiente' && (
+                                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                                    <button
+                                      onClick={() => void handleAcceptActivity(activity.id)}
+                                      disabled={acceptingActivityId === activity.id || hasUserVoted}
+                                      className="inline-flex min-w-[132px] items-center justify-center gap-1.5 rounded-full bg-[#1E6FD9] px-4 py-2 font-body text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#145DC0] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Votar a favor
+                                    </button>
+                                    <button
+                                      onClick={() => void handleRejectActivity(activity.id)}
+                                      disabled={acceptingActivityId === activity.id || hasUserVoted}
+                                      className="inline-flex min-w-[132px] items-center justify-center gap-1.5 rounded-full border border-[#F3B1B1] bg-[#FFF5F5] px-4 py-2 font-body text-xs font-semibold text-[#C03535] transition-all hover:border-[#E79292] hover:bg-[#FFEAEA] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      Votar en contra
+                                    </button>
+                                    {hasUserVoted && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-[#EEF2F7] px-3 py-1.5 font-body text-[11px] font-semibold text-[#475569]">
+                                        Ya emitiste tu voto
+                                      </span>
+                                    )}
+                                    {isCurrentUserAdmin && (
+                                      <>
+                                        <button
+                                          onClick={() => void handleAdminDecision(activity.proposalId!, 'aprobar')}
+                                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#A8E6BF] bg-[#EAFBF1] px-3 py-1.5 font-body text-xs font-semibold text-[#1E7A45]"
+                                        >
+                                          Decisión admin: aprobar
+                                        </button>
+                                        <button
+                                          onClick={() => void handleAdminDecision(activity.proposalId!, 'rechazar')}
+                                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#FBC7C7] bg-[#FFF5F5] px-3 py-1.5 font-body text-xs font-semibold text-[#C03535]"
+                                        >
+                                          Decisión admin: rechazar
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
                               </>
                             )
                           })()}
@@ -1107,6 +1368,7 @@ export function DashboardPage() {
         group={group}
         token={accessToken}
         selectedDayNumber={selectedActivityDay}
+        isCurrentUserAdmin={isCurrentUserAdmin}
         onClose={() => {
           unlockProposalForActivity(editingActivity)
           setEditingActivity(null)

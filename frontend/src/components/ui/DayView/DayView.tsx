@@ -24,6 +24,7 @@ export interface Activity {
   routeDistanceText?: string | null
   routeDurationText?: string | null
   routeTravelMode?: string | null
+  adminDecisionType?: 'A' | 'B' | 'C' | null
 }
 
 export interface DayViewProps {
@@ -176,6 +177,13 @@ function formatPrice(price: number, currency: string): string {
   return `$${price.toLocaleString('es-MX')} ${currency}`
 }
 
+function getGoogleMapsRouteUrl(activity: Activity): string | null {
+  if (activity.latitude == null || activity.longitude == null) return null
+  const destination = `${activity.latitude},${activity.longitude}`
+  const travelMode = String(activity.routeTravelMode ?? 'DRIVE').toLowerCase()
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=${encodeURIComponent(travelMode)}`
+}
+
 // ── SectionLabel ──────────────────────────────────────────────────────────────
 
 function SectionLabel({ emoji, text }: { emoji: string; text: string }) {
@@ -206,9 +214,10 @@ function ActivityCardConfirmed({
 }) {
   const iconColor = getCategoryColor(activity.category)
   const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
-  const isAdmin = currentUserRole === 'admin'
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
   const canEdit = isOwner
   const canDelete = isOwner || isAdmin
+  const routeUrl = getGoogleMapsRouteUrl(activity)
 
   return (
     <div className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden mb-3">
@@ -260,10 +269,19 @@ function ActivityCardConfirmed({
             </span>
           )}
           {activity.routeDistanceText && activity.routeDurationText && (
-            <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+            <a
+              href={routeUrl ?? '#'}
+              target="_blank"
+              rel="noreferrer"
+              title={routeUrl ? 'Abrir ruta en Google Maps' : 'Ruta no disponible'}
+              onClick={(event) => {
+                if (!routeUrl) event.preventDefault()
+              }}
+              className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
+            >
               <span className="text-bluePrimary"><IconMapPin /></span>
               {activity.routeDistanceText} · {activity.routeDurationText}
-            </span>
+            </a>
           )}
         </div>
 
@@ -322,10 +340,11 @@ function ActivityCardPending({
 }) {
   const iconColor = getCategoryColor(activity.category)
   const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
-  const isAdmin = currentUserRole === 'admin'
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
   const canEdit = isOwner
   const canDelete = isOwner || isAdmin
   const hasVoted = activity.hasVoted === true
+  const routeUrl = getGoogleMapsRouteUrl(activity)
 
   return (
     <div className="bg-white rounded-2xl border-2 border-dashed border-[#E2E8F0] overflow-hidden mb-3">
@@ -376,10 +395,19 @@ function ActivityCardPending({
             </span>
           )}
           {activity.routeDistanceText && activity.routeDurationText && (
-            <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+            <a
+              href={routeUrl ?? '#'}
+              target="_blank"
+              rel="noreferrer"
+              title={routeUrl ? 'Abrir ruta en Google Maps' : 'Ruta no disponible'}
+              onClick={(event) => {
+                if (!routeUrl) event.preventDefault()
+              }}
+              className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
+            >
               <span className="text-bluePrimary"><IconMapPin /></span>
               {activity.routeDistanceText} · {activity.routeDurationText}
-            </span>
+            </a>
           )}
           {activity.votes !== undefined && (
             <span className="inline-flex items-center gap-1 font-body text-xs text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 font-medium">
@@ -391,6 +419,11 @@ function ActivityCardPending({
         {activity.proposedBy && (
           <p className="font-body text-xs text-gray500 italic mt-1 mb-3">
             Propuesto por {activity.proposedBy}
+          </p>
+        )}
+        {activity.adminDecisionType === 'A' && (
+          <p className="font-body text-xs text-[#1E6FD9] font-semibold mt-1 mb-3">
+            Puesta por el admin directamente (Tipo A)
           </p>
         )}
 

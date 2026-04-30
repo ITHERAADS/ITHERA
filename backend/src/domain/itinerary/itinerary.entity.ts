@@ -17,6 +17,7 @@ export interface ItineraryActivity {
   longitude?: number | null;
   createdBy?: string | null;
   hasVoted?: boolean;
+  adminDecisionType?: 'A' | null;
 }
 
 export interface ItineraryDay {

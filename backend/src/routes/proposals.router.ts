@@ -137,8 +137,33 @@ router.delete('/:proposalId', requireAuth, async (req: Request, res: Response): 
 router.post('/groups/:tripId/:proposalId/vote', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { tripId, proposalId } = req.params as { tripId: string; proposalId: string };
+    const { voto } = req.body as { voto?: 'a_favor' | 'en_contra' | 'abstencion' };
 
-    const result = await ProposalsService.castSingleVote(req.user!.id, tripId, proposalId, {});
+    const result = await ProposalsService.castSingleVote(req.user!.id, tripId, proposalId, { voto });
+    res.status(200).json({ ok: true, ...result });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(getStatusCode(err)).json({ ok: false, error: msg });
+  }
+});
+
+// POST /api/proposals/groups/:tripId/:proposalId/admin-decision
+router.post('/groups/:tripId/:proposalId/admin-decision', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { tripId, proposalId } = req.params as { tripId: string; proposalId: string };
+    const { decision, reason } = req.body as { decision?: 'aprobar' | 'rechazar'; reason?: string };
+
+    if (decision !== 'aprobar' && decision !== 'rechazar') {
+      res.status(400).json({ ok: false, error: 'decision debe ser aprobar o rechazar' });
+      return;
+    }
+
+    const result = await ProposalsService.applyAdminDecisionToProposal(
+      req.user!.id,
+      tripId,
+      proposalId,
+      { decision, reason },
+    );
     res.status(200).json({ ok: true, ...result });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';

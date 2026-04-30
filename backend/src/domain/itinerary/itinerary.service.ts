@@ -43,6 +43,11 @@ const getUniqueGroupMemberCount = async (groupId: string): Promise<number> => {
   return unique.size;
 };
 
+const isMissingVoteTypeColumnError = (error: { message?: string } | null | undefined): boolean => {
+  const message = String(error?.message ?? '').toLowerCase();
+  return message.includes("voto_tipo") && message.includes("could not find");
+};
+
 const formatDateLabel = (date: string): string => {
   return new Intl.DateTimeFormat('es-MX', {
     day: 'numeric',
@@ -193,16 +198,29 @@ export const getGroupItinerary = async (
     .map((activity: any) => Number(activity.propuesta_id));
 
   if (pendingProposalIds.length > 0) {
-    const { data: votesByProposal, error: votesByProposalError } = await supabase
+    let votesByProposal: any[] | null = null;
+    let votesByProposalError: any = null;
+    ({ data: votesByProposal, error: votesByProposalError } = await supabase
       .from('voto')
-      .select('id_propuesta')
-      .in('id_propuesta', pendingProposalIds);
+      .select('id_propuesta, voto_tipo')
+      .in('id_propuesta', pendingProposalIds));
+
+    if (votesByProposalError && isMissingVoteTypeColumnError(votesByProposalError)) {
+      const fallback = await supabase
+        .from('voto')
+        .select('id_propuesta')
+        .in('id_propuesta', pendingProposalIds);
+      votesByProposal = (fallback.data ?? []).map((row: any) => ({ ...row, voto_tipo: 'a_favor' }));
+      votesByProposalError = fallback.error;
+    }
 
     if (votesByProposalError) throw new Error(votesByProposalError.message);
 
     const voteCountMap = new Map<number, number>();
     for (const row of votesByProposal ?? []) {
       const proposalId = Number((row as any).id_propuesta);
+      const voteType = String((row as any).voto_tipo ?? 'a_favor');
+      if (voteType !== 'a_favor') continue;
       voteCountMap.set(proposalId, (voteCountMap.get(proposalId) ?? 0) + 1);
     }
 
@@ -279,6 +297,18 @@ export const getGroupItinerary = async (
 
     if (dayIndex < 0 || dayIndex >= days.length) continue;
 
+    const proposalRow = Array.isArray(activity.propuestas)
+      ? (activity.propuestas[0] ?? null)
+      : (activity.propuestas ?? null);
+    const proposalPayload =
+      proposalRow?.payload && typeof proposalRow.payload === 'object'
+        ? proposalRow.payload
+        : {};
+    const adminDecisionType =
+      proposalPayload && (proposalPayload as any).decisionType
+        ? String((proposalPayload as any).decisionType)
+        : null;
+
     days[dayIndex].activities.push({
       id: String(activity.id_actividad),
       proposalId: activity.propuesta_id ? String(activity.propuesta_id) : null,
@@ -302,6 +332,7 @@ export const getGroupItinerary = async (
       externalReference: activity.referencia_externa ?? null,
       latitude: activity.latitud ?? null,
       longitude: activity.longitud ?? null,
+      adminDecisionType: adminDecisionType === 'A' ? 'A' : null,
     });
   }
 
@@ -416,12 +447,24 @@ export const createGroupActivity = async (
   const uniqueMembersCount = await getUniqueGroupMemberCount(groupId);
 
   if (uniqueMembersCount <= 1) {
-    const { error: voteInsertError } = await supabase
+    let voteInsertError: any = null;
+    ({ error: voteInsertError } = await supabase
       .from('voto')
       .insert({
         id_propuesta: proposal.id_propuesta,
         id_usuario: Number(usuarioId),
-      });
+        voto_tipo: 'a_favor',
+      }));
+
+    if (voteInsertError && isMissingVoteTypeColumnError(voteInsertError)) {
+      const fallbackInsert = await supabase
+        .from('voto')
+        .insert({
+          id_propuesta: proposal.id_propuesta,
+          id_usuario: Number(usuarioId),
+        });
+      voteInsertError = fallbackInsert.error;
+    }
 
     if (voteInsertError) throw new Error(voteInsertError.message);
 

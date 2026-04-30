@@ -19,6 +19,12 @@ export interface ItineraryDay {
   activities: Activity[]
 }
 
+interface CreatedActivityPayload {
+  id_actividad?: number | string
+  propuesta_id?: number | string | null
+  proposalId?: number | string | null
+}
+
 export const groupsService = {
   createGroup: async (payload: CreateGroupPayload, token: string) => {
     return apiClient.post<{ ok: boolean; message: string; group: Group }>(
@@ -151,7 +157,7 @@ export const groupsService = {
     },
     token: string
   ) => {
-    return apiClient.post<{ ok: boolean; message: string; activity: unknown }>(
+    return apiClient.post<{ ok: boolean; message: string; activity: CreatedActivityPayload }>(
       `/groups/${groupId}/itinerary/activities`,
       payload,
       token

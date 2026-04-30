@@ -59,7 +59,10 @@ describe('ProposalsService integrity tests', () => {
       data: [{ usuario_id: 10 }, { usuario_id: 11 }, { usuario_id: 12 }],
       error: null,
     });
-    const votesCountChain = buildSelectEqChain({ count: 1, error: null, data: null } as any);
+    const votesCountChain = buildSelectEqChain({
+      data: [{ id_propuesta: 99, id_usuario: 10, voto_tipo: 'a_favor' }],
+      error: null,
+    } as any);
 
     fromMock
       .mockReturnValueOnce(memberChain)
@@ -115,18 +118,24 @@ describe('ProposalsService integrity tests', () => {
       select: jest.fn(() => votesChain),
       in: jest.fn().mockResolvedValue({
         data: [
-          { id_propuesta: 2 },
-          { id_propuesta: 2 },
-          { id_propuesta: 1 },
+          { id_propuesta: 2, id_usuario: 20, voto_tipo: 'a_favor' },
+          { id_propuesta: 2, id_usuario: 21, voto_tipo: 'a_favor' },
+          { id_propuesta: 1, id_usuario: 22, voto_tipo: 'a_favor' },
         ],
         error: null,
       }),
     };
 
+    const membersCountChain = buildSelectEqChain({
+      data: [{ usuario_id: 10 }, { usuario_id: 11 }, { usuario_id: 12 }],
+      error: null,
+    });
+
     fromMock
       .mockReturnValueOnce(memberChain)
       .mockReturnValueOnce(proposalsChain)
-      .mockReturnValueOnce(votesChain);
+      .mockReturnValueOnce(votesChain)
+      .mockReturnValueOnce(membersCountChain);
 
     const result = await ProposalsService.getProposalVoteResults('auth-user', '7');
 

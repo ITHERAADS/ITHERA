@@ -18,6 +18,13 @@ export interface VoteResult {
   tipo_item: string
   titulo: string
   votos: number
+  votos_a_favor: number
+  votos_en_contra: number
+  abstenciones: number
+  votos_pendientes: number
+  requiere_desempate_admin: boolean
+  estado_actual: string
+  mi_voto?: 'a_favor' | 'en_contra' | 'abstencion' | null
 }
 
 export interface ProposalComment {
@@ -100,6 +107,19 @@ export const proposalsService = {
   ) => {
     return apiClient.post<{ ok: boolean; message: string }>(
       `/proposals/groups/${tripId}/${proposalId}/vote`,
+      body,
+      token
+    )
+  },
+
+  applyAdminDecision: async (
+    tripId: string,
+    proposalId: string,
+    body: { decision: 'aprobar' | 'rechazar'; reason?: string },
+    token: string
+  ) => {
+    return apiClient.post<{ ok: boolean; message: string }>(
+      `/proposals/groups/${tripId}/${proposalId}/admin-decision`,
       body,
       token
     )

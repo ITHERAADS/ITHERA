@@ -131,7 +131,7 @@ export function ProposalCard({
   const isVoted = proposalStatus === 'votada'
   const isError = proposalStatus === 'error'
   const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
-  const isAdmin = currentUserRole === 'admin'
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
   const canEdit = isOwner && !isBlocked
   const canDelete = (isOwner || isAdmin) && !isBlocked
 
@@ -186,6 +186,11 @@ export function ProposalCard({
 
         {activity.proposedBy && (
           <p className="font-body text-xs text-[#6B7280] italic mt-2">Propuesto por {activity.proposedBy}</p>
+        )}
+        {activity.adminDecisionType === 'A' && (
+          <p className="font-body text-xs text-[#1E6FD9] font-semibold mt-2">
+            Puesta por el admin directamente (Tipo A)
+          </p>
         )}
       </div>
 

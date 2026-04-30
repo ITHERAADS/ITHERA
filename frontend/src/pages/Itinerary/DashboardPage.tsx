@@ -1119,6 +1119,7 @@ export function DashboardPage() {
       {selectedProposal && (
         <ProposalDetailModal
           proposal={selectedProposal}
+          tripId={groupId || currentGroup?.id || ''}
           onClose={() => setSelectedProposal(null)}
           onAccept={() => setShowConfirm(true)}
         />

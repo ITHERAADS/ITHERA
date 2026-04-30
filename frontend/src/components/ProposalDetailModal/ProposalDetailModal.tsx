@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Activity as DayActivity } from '../ui/DayView'
+import { proposalsService, type ProposalComment } from '../../services/proposals'
+import { useAuth } from '../../context/useAuth'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -48,6 +50,15 @@ function IconThumbUp() {
   )
 }
 
+function IconThumbDown() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function IconCheck() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -74,21 +85,6 @@ function timeAgo(dateStr: string): string {
   return `hace ${Math.floor(diff / 86400)} días`
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-export interface LocalComment {
-  id: string
-  authorName: string
-  text: string
-  createdAt: string
-}
-
-export interface ProposalDetailModalProps {
-  proposal: DayActivity
-  onClose: () => void
-  onAccept: () => void
-}
-
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
 function SkeletonComment() {
@@ -104,43 +100,88 @@ function SkeletonComment() {
   )
 }
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export interface ProposalDetailModalProps {
+  proposal: DayActivity
+  tripId: string
+  onClose: () => void
+  onAccept: () => void
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ProposalDetailModal({ proposal, onClose, onAccept }: ProposalDetailModalProps) {
+export function ProposalDetailModal({ proposal, tripId, onClose, onAccept }: ProposalDetailModalProps) {
+  const { accessToken } = useAuth()
   const isConfirmed = proposal.status === 'confirmada'
 
-  const [comments, setComments] = useState<LocalComment[]>([])
-  const [draft, setDraft] = useState('')
-  const [loading] = useState(false)
+  const [comments, setComments] = useState<ProposalComment[]>([])
+  const [draft, setDraft]       = useState('')
+  const [loading, setLoading]   = useState(false)
+  const [sending, setSending]   = useState(false)
+  const [voting, setVoting]     = useState(false)
+  const [voteError, setVoteError] = useState('')
+  const [voteSuccess, setVoteSuccess] = useState('')
+
+  // Cargar comentarios al abrir
+  useEffect(() => {
+    if (!proposal.proposalId || !accessToken) return
+    setLoading(true)
+    proposalsService
+      .getComments(tripId, proposal.proposalId, accessToken)
+      .then((res) => setComments(res.comments ?? []))
+      .catch(() => setComments([]))
+      .finally(() => setLoading(false))
+  }, [proposal.proposalId, tripId, accessToken])
 
   const heroImage =
     proposal.image ||
     'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=500&fit=crop'
 
   const chips = [
-    proposal.time      && { icon: <IconClock />,   label: proposal.time },
-    proposal.location  && { icon: <IconMapPin />,  label: proposal.location },
-    proposal.category  && { icon: <IconTag />,     label: proposal.category },
+    proposal.time     && { icon: <IconClock />,   label: proposal.time },
+    proposal.location && { icon: <IconMapPin />,  label: proposal.location },
+    proposal.category && { icon: <IconTag />,     label: proposal.category },
     proposal.votes !== undefined && { icon: <IconThumbUp />, label: `${proposal.votes} votos` },
   ].filter(Boolean) as { icon: React.ReactNode; label: string }[]
 
-  function handleSendComment() {
+  async function handleSendComment() {
     const text = draft.trim()
-    if (!text) return
-    const newComment: LocalComment = {
-      id: crypto.randomUUID(),
-      authorName: 'Tú',
-      text,
-      createdAt: new Date().toISOString(),
+    if (!text || !proposal.proposalId || !accessToken) return
+    try {
+      setSending(true)
+      const res = await proposalsService.addComment(tripId, proposal.proposalId, { contenido: text }, accessToken)
+      setComments((prev) => [...prev, res.comment])
+      setDraft('')
+    } finally {
+      setSending(false)
     }
-    setComments((prev) => [...prev, newComment])
-    setDraft('')
+  }
+
+  async function handleVote(voto: 'a_favor' | 'en_contra') {
+    if (!proposal.proposalId || !accessToken) return
+    try {
+      setVoting(true)
+      setVoteError('')
+      setVoteSuccess('')
+      await proposalsService.voteProposal(tripId, proposal.proposalId, { voto }, accessToken)
+      setVoteSuccess(voto === 'a_favor' ? '¡Votaste a favor!' : 'Votaste en contra.')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      setVoteError(
+        msg.toLowerCase().includes('ya emitiste')
+          ? 'Ya votaste en esta propuesta.'
+          : 'Error al votar, intenta de nuevo.'
+      )
+    } finally {
+      setVoting(false)
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSendComment()
+      void handleSendComment()
     }
   }
 
@@ -189,7 +230,10 @@ export function ProposalDetailModal({ proposal, onClose, onAccept }: ProposalDet
           {/* Precio */}
           {proposal.price !== undefined && (
             <p className="font-heading font-bold text-2xl text-[#1E0A4E]">
-              ${proposal.price.toLocaleString('es-MX')} <span className="font-body text-sm font-normal text-[#1E0A4E]/50">MXN</span>
+              ${proposal.price.toLocaleString('es-MX')}{' '}
+              <span className="font-body text-sm font-normal text-[#1E0A4E]/50">
+                {proposal.currency || 'MXN'}
+              </span>
             </p>
           )}
 
@@ -218,7 +262,41 @@ export function ProposalDetailModal({ proposal, onClose, onAccept }: ProposalDet
           {/* Propuesto por */}
           {proposal.proposedBy && (
             <p className="font-body text-xs text-[#1E0A4E]/50 italic">
-              Propuesto por <span className="font-semibold not-italic text-[#1E0A4E]/70">{proposal.proposedBy}</span>
+              Propuesto por{' '}
+              <span className="font-semibold not-italic text-[#1E0A4E]/70">{proposal.proposedBy}</span>
+            </p>
+          )}
+
+          {/* Botones de voto */}
+          {!isConfirmed && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => void handleVote('a_favor')}
+                disabled={voting}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#35C56A] text-[#35C56A] py-2 font-body text-xs font-semibold hover:bg-[#35C56A]/10 transition-colors disabled:opacity-50"
+              >
+                <IconThumbUp />
+                A favor
+              </button>
+              <button
+                onClick={() => void handleVote('en_contra')}
+                disabled={voting}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#EF4444] text-[#EF4444] py-2 font-body text-xs font-semibold hover:bg-[#EF4444]/10 transition-colors disabled:opacity-50"
+              >
+                <IconThumbDown />
+                En contra
+              </button>
+            </div>
+          )}
+
+          {voteError && (
+            <p className="font-body text-xs text-[#EF4444] bg-[#FEF2F2] border border-[#EF4444]/20 rounded-xl px-3 py-2">
+              {voteError}
+            </p>
+          )}
+          {voteSuccess && (
+            <p className="font-body text-xs text-[#35C56A] bg-[#35C56A]/10 border border-[#35C56A]/20 rounded-xl px-3 py-2">
+              {voteSuccess}
             </p>
           )}
 
@@ -246,14 +324,16 @@ export function ProposalDetailModal({ proposal, onClose, onAccept }: ProposalDet
                       className="w-8 h-8 rounded-full flex items-center justify-center text-white font-body text-xs font-bold shrink-0"
                       style={{ backgroundColor: '#1E6FD9' }}
                     >
-                      {getInitials(comment.authorName)}
+                      {getInitials(comment.authorName || `U${comment.usuarioId}`)}
                     </div>
                     <div className="flex-1 bg-[#F8FAFC] rounded-xl px-3 py-2">
                       <div className="flex items-center justify-between gap-2 mb-0.5">
-                        <p className="font-body text-xs font-semibold text-[#1E0A4E]">{comment.authorName}</p>
+                        <p className="font-body text-xs font-semibold text-[#1E0A4E]">
+                          {comment.authorName || `Usuario ${comment.usuarioId}`}
+                        </p>
                         <p className="font-body text-[10px] text-[#1E0A4E]/40">{timeAgo(comment.createdAt)}</p>
                       </div>
-                      <p className="font-body text-xs text-[#1E0A4E]/70">{comment.text}</p>
+                      <p className="font-body text-xs text-[#1E0A4E]/70">{comment.contenido}</p>
                     </div>
                   </div>
                 ))}
@@ -272,11 +352,11 @@ export function ProposalDetailModal({ proposal, onClose, onAccept }: ProposalDet
                   className="flex-1 resize-none rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 font-body text-xs text-[#1E0A4E] placeholder-gray-400 outline-none transition focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/20"
                 />
                 <button
-                  onClick={handleSendComment}
-                  disabled={!draft.trim()}
+                  onClick={() => void handleSendComment()}
+                  disabled={!draft.trim() || sending}
                   className="self-end rounded-xl bg-[#1E6FD9] text-white font-body text-xs font-semibold px-3 py-2 hover:bg-[#1a5fc2] transition-colors disabled:opacity-40"
                 >
-                  Enviar
+                  {sending ? '...' : 'Enviar'}
                 </button>
               </div>
             )}

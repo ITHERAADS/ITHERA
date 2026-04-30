@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import type { Activity as DayActivity } from '../ui/DayView'
+import { proposalsService } from '../../services/proposals'
+import { useAuth } from '../../context/useAuth'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -33,10 +35,7 @@ function IconAlertTriangle() {
 
 function Spinner() {
   return (
-    <svg
-      className="animate-spin"
-      width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"
-    >
+    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
       <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
     </svg>
@@ -56,15 +55,28 @@ export interface ConfirmProposalModalProps {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function ConfirmProposalModal({ proposal, onClose, onConfirm }: ConfirmProposalModalProps) {
-  const [state, setState] = useState<ModalState>('idle')
+  const { accessToken } = useAuth()
+  const [state, setState]   = useState<ModalState>('idle')
+  const [errorMsg, setErrorMsg] = useState('')
 
   async function handleConfirm() {
+    if (!proposal.proposalId || !accessToken) return
     setState('processing')
+    setErrorMsg('')
     try {
-      // Simula un proceso asíncrono (aquí se conectaría al backend en el futuro)
-      await new Promise((resolve) => setTimeout(resolve, 1200))
+      await proposalsService.updateProposal(
+        proposal.proposalId,
+        { estado: 'confirmado' },
+        accessToken
+      )
       onConfirm()
-    } catch {
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : ''
+      setErrorMsg(
+        msg.toLowerCase().includes('already') || msg.toLowerCase().includes('confirmad')
+          ? 'Alguien más aceptó esta propuesta primero.'
+          : 'No se pudo confirmar la propuesta. Intenta de nuevo.'
+      )
       setState('error')
     }
   }
@@ -96,7 +108,7 @@ export function ConfirmProposalModal({ proposal, onClose, onConfirm }: ConfirmPr
           </p>
           {proposal.price !== undefined && (
             <p className="font-heading font-bold text-[#1E6FD9] text-sm shrink-0">
-              ${proposal.price.toLocaleString('es-MX')} MXN
+              ${proposal.price.toLocaleString('es-MX')} {proposal.currency || 'MXN'}
             </p>
           )}
         </div>
@@ -107,7 +119,7 @@ export function ConfirmProposalModal({ proposal, onClose, onConfirm }: ConfirmPr
             <span className="text-[#EF4444] mt-0.5 shrink-0"><IconAlertTriangle /></span>
             <div className="flex-1">
               <p className="font-body text-xs font-semibold text-[#EF4444]">
-                Alguien más aceptó esta propuesta primero
+                {errorMsg || 'Alguien más aceptó esta propuesta primero'}
               </p>
               <p className="font-body text-xs text-[#EF4444]/70 mt-0.5">
                 La propuesta ya fue bloqueada por otro integrante del grupo.
@@ -141,7 +153,7 @@ export function ConfirmProposalModal({ proposal, onClose, onConfirm }: ConfirmPr
               <button
                 onClick={() => void handleConfirm()}
                 disabled={state === 'processing'}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#1E6FD9] py-3 font-body text-sm font-semibold text-white hover:bg-[#1a5fc2] transition-colors disabled:opacity-60"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#35C56A] py-3 font-body text-sm font-semibold text-white hover:bg-[#2eae5d] transition-colors disabled:opacity-60"
               >
                 {state === 'processing' ? (
                   <>

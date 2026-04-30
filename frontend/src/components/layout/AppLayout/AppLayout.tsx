@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { Navbar } from '../Navbar'
 import type { NavUserInfo, TripInfo } from '../Navbar'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 export interface TripMeta {
   name: string
   subtitle: string
@@ -25,15 +23,13 @@ export interface AppLayoutProps {
   isOnline?: boolean
 }
 
-// ── Sidebar icons ─────────────────────────────────────────────────────────────
-
 function IconCalendar() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
-      <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
+      <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
+      <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
     </svg>
   )
 }
@@ -41,45 +37,42 @@ function IconCalendar() {
 function IconUsers() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2"/>
-      <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
+      <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   )
 }
 
-// ── General navigation (when no active trip) ──────────────────────────────────
-
 const GENERAL_NAV = [
-  { href: '/dashboard', label: 'Inicio'       },
-  { href: '/my-trips',  label: 'Mis viajes'   },
-  { href: '/groups',    label: 'Grupos'       },
-  { href: '/settings',  label: 'Configuración'},
+  { to: '/my-trips', label: 'Inicio' },
+  { to: '/my-trips', label: 'Mis viajes' },
+  { to: '/create-group', label: 'Grupos' },
+  { to: '/profile', label: 'Configuración' },
 ]
 
-function GeneralNav() {
+function GeneralNav({ onNavigate }: { onNavigate: (to: string) => void }) {
   return (
     <nav>
-      <p className="font-body text-[10px] text-white/40 uppercase tracking-widest mb-3">
+      <p className="mb-3 font-body text-[10px] uppercase tracking-widest text-white/40">
         Navegación
       </p>
       <ul className="flex flex-col gap-1">
         {GENERAL_NAV.map((item) => (
-          <li key={item.href}>
-            <a
-              href={item.href}
-              className="flex items-center px-3 py-2.5 rounded-xl font-body text-sm text-white/70 hover:text-white hover:bg-white/10 transition-colors duration-150"
+          <li key={`${item.to}-${item.label}`}>
+            <button
+              type="button"
+              onClick={() => onNavigate(item.to)}
+              className="flex w-full items-center rounded-xl px-3 py-2.5 text-left font-body text-sm text-white/70 transition-colors duration-150 hover:bg-white/10 hover:text-white"
             >
               {item.label}
-            </a>
+            </button>
           </li>
         ))}
       </ul>
     </nav>
   )
 }
-
-// ── AppLayout ─────────────────────────────────────────────────────────────────
 
 export function AppLayout({
   children,
@@ -103,8 +96,7 @@ export function AppLayout({
     : undefined
 
   return (
-    <div className="h-screen flex flex-col bg-surface overflow-hidden font-body">
-      {/* Fixed top navbar */}
+    <div className="flex h-screen flex-col overflow-hidden bg-surface font-body">
       <Navbar
         variant="dashboard"
         trip={tripInfo}
@@ -116,59 +108,48 @@ export function AppLayout({
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
       />
 
-      {/* Main layout — three columns, below navbar */}
       <div className="flex flex-1 overflow-hidden pt-20">
-
-        {/* ── Left sidebar ─────────────────────────────────────────────────── */}
         <aside
           className={[
-            'shrink-0 bg-purpleNavbar overflow-hidden transition-all duration-300 ease-in-out',
+            'shrink-0 overflow-hidden bg-purpleNavbar transition-all duration-300 ease-in-out',
             sidebarOpen ? 'w-[240px]' : 'w-0',
           ].join(' ')}
         >
-          <div className="w-[240px] flex flex-col h-full px-4 pt-6 pb-4 overflow-y-auto">
-
-            {/* Fixed: trip header */}
+          <div className="flex h-full w-[240px] flex-col overflow-y-auto px-4 pb-4 pt-6">
             {trip ? (
               <>
                 <div className="mb-4">
-                  <h2 className="font-heading font-bold text-white text-base leading-tight">
-                    {trip.name}
-                  </h2>
-                  <p className="font-body text-xs text-white/50 mt-0.5">{trip.subtitle}</p>
+                  <h2 className="font-heading text-base font-bold leading-tight text-white">{trip.name}</h2>
+                  <p className="mt-0.5 font-body text-xs text-white/50">{trip.subtitle}</p>
                 </div>
 
-                {/* Metadata pills */}
-                <div className="flex flex-wrap gap-2 mb-5">
-                  <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1">
+                <div className="mb-5 flex flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
                     <span className="text-white/70"><IconCalendar /></span>
                     <span className="font-body text-[11px] text-white/70">{trip.dates}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-white/10 rounded-full px-3 py-1">
+                  <div className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
                     <span className="text-white/70"><IconUsers /></span>
                     <span className="font-body text-[11px] text-white/70">{trip.people}</span>
                   </div>
                 </div>
 
-                {/* Divider */}
-                <div className="border-t border-white/10 mb-4" />
+                <div className="mb-4 border-t border-white/10" />
               </>
             ) : (
-              <GeneralNav />
+              <GeneralNav onNavigate={navigate} />
             )}
 
-            {/* Variable: page-specific sidebar content */}
             {sidebarContent}
 
-            {/* Back to Mis Viajes — only when inside a trip */}
             {trip && (
-              <div className="mt-auto pt-4 border-t border-white/10">
+              <div className="mt-auto border-t border-white/10 pt-4">
                 <button
                   onClick={() => navigate('/my-trips')}
-                  className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl font-body text-sm text-white/60 hover:text-white hover:bg-white/10 transition-colors duration-150"
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 font-body text-sm text-white/60 transition-colors duration-150 hover:bg-white/10 hover:text-white"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   Mis viajes
                 </button>
@@ -177,14 +158,12 @@ export function AppLayout({
           </div>
         </aside>
 
-        {/* ── Central content ───────────────────────────────────────────────── */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-[#F0EEF8]">
+        <main className="flex flex-1 flex-col overflow-hidden bg-[#F0EEF8]">
           {children}
         </main>
 
-        {/* ── Right panel ───────────────────────────────────────────────────── */}
         {showRightPanel && rightPanel && (
-          <aside className="hidden xl:flex flex-col w-[280px] shrink-0 bg-[#FAF9FD] border-l border-[#E2E8F0] px-5 py-5 overflow-hidden gap-4">
+          <aside className="hidden w-[280px] shrink-0 flex-col gap-4 overflow-hidden border-l border-[#E2E8F0] bg-[#FAF9FD] px-5 py-5 xl:flex">
             {rightPanel}
           </aside>
         )}

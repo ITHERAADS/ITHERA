@@ -7,6 +7,12 @@ import {
   ForgotPasswordPayload,
 } from './auth.entity';
 
+export interface UploadedAvatarFile {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
+}
+
 function buildFullName(payload: SignupPayload): string {
   return [
     payload.name?.trim(),
@@ -57,6 +63,27 @@ export const syncUserToLocal = async (token: string) => {
 
   const user = data.user;
 
+  // Verificar si el usuario ya existe en la tabla local
+  const { data: existingUser } = await supabaseAdmin
+    .from('usuarios')
+    .select('id_usuario, nombre')
+    .eq('auth_user_id', user.id)
+    .maybeSingle();
+
+  // Si ya existe, solo actualizar email y proveedor (NO sobreescribir nombre)
+  if (existingUser) {
+    return supabaseAdmin
+      .from('usuarios')
+      .update({
+        email: user.email ?? '',
+        proveedor_auth: (user.app_metadata?.['provider'] as string) ?? 'email',
+      })
+      .eq('auth_user_id', user.id)
+      .select()
+      .single();
+  }
+
+  // Si es usuario nuevo, crear con el nombre de los metadatos de auth
   const nombre =
     (user.user_metadata?.['full_name'] as string) ??
     [
@@ -68,7 +95,7 @@ export const syncUserToLocal = async (token: string) => {
       .join(' ') ??
     'Sin nombre';
 
-  const upsertPayload: Omit<UsuarioLocal, 'id_usuario'> = {
+  const insertPayload: Omit<UsuarioLocal, 'id_usuario'> = {
     auth_user_id: user.id,
     email: user.email ?? '',
     nombre,
@@ -77,7 +104,7 @@ export const syncUserToLocal = async (token: string) => {
 
   return supabaseAdmin
     .from('usuarios')
-    .upsert(upsertPayload, { onConflict: 'auth_user_id' })
+    .insert(insertPayload)
     .select()
     .single();
 };
@@ -115,7 +142,7 @@ function getStoragePathFromPublicUrl(publicUrl?: string | null): string | null {
 
 export const updateUserAvatarByAuthId = async (
   authUserId: string,
-  file: Express.Multer.File
+  file: UploadedAvatarFile
 ) => {
   const { data: currentUser } = await getUserByAuthId(authUserId);
   const oldAvatarPath = getStoragePathFromPublicUrl(currentUser?.avatar_url);

@@ -14,20 +14,55 @@ export interface Proposal {
 }
 
 export interface VoteResult {
-  proposalId: string
-  totalVotos: number
-  aFavor: number
-  enContra: number
+  id_propuesta: string
+  tipo_item: string
+  titulo: string
+  votos: number
+  votos_a_favor: number
+  votos_en_contra: number
   abstenciones: number
+  votos_pendientes: number
+  requiere_desempate_admin: boolean
+  estado_actual: string
+  mi_voto?: 'a_favor' | 'en_contra' | 'abstencion' | null
 }
 
 export interface ProposalComment {
   id: string
   proposalId: string
   usuarioId: string
+  authorName?: string | null
   contenido: string
   createdAt: string
   updatedAt: string
+}
+
+type RawProposalComment = {
+  id?: string | number
+  id_comentario?: string | number
+  proposalId?: string | number
+  id_propuesta?: string | number
+  usuarioId?: string | number
+  id_usuario?: string | number
+  authorName?: string | null
+  nombre?: string | null
+  contenido?: string
+  createdAt?: string
+  created_at?: string
+  updatedAt?: string
+  updated_at?: string
+}
+
+function normalizeComment(raw: RawProposalComment): ProposalComment {
+  return {
+    id: String(raw.id ?? raw.id_comentario ?? ''),
+    proposalId: String(raw.proposalId ?? raw.id_propuesta ?? ''),
+    usuarioId: String(raw.usuarioId ?? raw.id_usuario ?? ''),
+    authorName: raw.authorName ?? raw.nombre ?? null,
+    contenido: String(raw.contenido ?? ''),
+    createdAt: String(raw.createdAt ?? raw.created_at ?? new Date().toISOString()),
+    updatedAt: String(raw.updatedAt ?? raw.updated_at ?? new Date().toISOString()),
+  }
 }
 
 export const proposalsService = {
@@ -77,18 +112,41 @@ export const proposalsService = {
     )
   },
 
+  applyAdminDecision: async (
+    tripId: string,
+    proposalId: string,
+    body: { decision: 'aprobar' | 'rechazar'; reason?: string },
+    token: string
+  ) => {
+    return apiClient.post<{ ok: boolean; message: string }>(
+      `/proposals/groups/${tripId}/${proposalId}/admin-decision`,
+      body,
+      token
+    )
+  },
+
   getVoteResults: async (tripId: string, token: string) => {
-    return apiClient.get<{ ok: boolean; results: VoteResult[] }>(
+    return apiClient.get<{ ok: boolean; tripId: string; totalVotes: number; results: VoteResult[] }>(
       `/proposals/groups/${tripId}/vote-results`,
       token
     )
   },
 
   getComments: async (tripId: string, proposalId: string, token: string) => {
-    return apiClient.get<{ ok: boolean; comments: ProposalComment[] }>(
+    const response = await apiClient.get<{
+      ok: boolean
+      comments?: RawProposalComment[]
+      data?: RawProposalComment[]
+    }>(
       `/proposals/groups/${tripId}/${proposalId}/comments`,
       token
     )
+
+    const raw = response.comments ?? response.data ?? []
+    return {
+      ok: response.ok,
+      comments: raw.map(normalizeComment),
+    }
   },
 
   addComment: async (
@@ -97,11 +155,22 @@ export const proposalsService = {
     body: { contenido: string },
     token: string
   ) => {
-    return apiClient.post<{ ok: boolean; message: string; comment: ProposalComment }>(
+    const response = await apiClient.post<{
+      ok: boolean
+      message: string
+      comment?: RawProposalComment
+      data?: RawProposalComment
+    }>(
       `/proposals/groups/${tripId}/${proposalId}/comments`,
       body,
       token
     )
+
+    return {
+      ok: response.ok,
+      message: response.message,
+      comment: normalizeComment(response.comment ?? response.data ?? {}),
+    }
   },
 
   updateComment: async (
@@ -111,11 +180,22 @@ export const proposalsService = {
     body: { contenido: string },
     token: string
   ) => {
-    return apiClient.patch<{ ok: boolean; message: string; comment: ProposalComment }>(
+    const response = await apiClient.patch<{
+      ok: boolean
+      message: string
+      comment?: RawProposalComment
+      data?: RawProposalComment
+    }>(
       `/proposals/groups/${tripId}/${proposalId}/comments/${commentId}`,
       body,
       token
     )
+
+    return {
+      ok: response.ok,
+      message: response.message,
+      comment: normalizeComment(response.comment ?? response.data ?? {}),
+    }
   },
 
   deleteComment: async (

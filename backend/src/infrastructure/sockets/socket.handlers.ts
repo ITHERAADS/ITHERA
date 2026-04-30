@@ -2,6 +2,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { supabase } from '../db/supabase.client';
 import { SocketUserData } from './socket.server';
 import * as LockService from '../../domain/proposals/lock.service';
+import * as ChatService from '../../domain/groups/chat.service';
 
 // ── Tipos de eventos ─────────────────────────────────────────────────────
 
@@ -23,6 +24,14 @@ interface ItemUnlockPayload {
   tripId: string;
 }
 
+interface ChatSendMessagePayload {
+  groupId?: string;
+  tripId?: string;
+  contenido?: string;
+  text?: string;
+  clientId?: string;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 const getUserData = (socket: Socket): SocketUserData => {
@@ -41,6 +50,64 @@ const validateMembership = async (userId: string, tripId: string): Promise<boole
     .maybeSingle();
 
   return !error && !!data;
+};
+
+
+// ── Presence en memoria ─────────────────────────────────────────────────
+// roomPresence: tripId -> userId -> sockets activos del usuario en esa room
+const roomPresence = new Map<string, Map<string, Set<string>>>();
+const socketRooms = new Map<string, Set<string>>();
+
+const getOnlineUserIds = (tripId: string): string[] => {
+  return Array.from(roomPresence.get(tripId)?.keys() ?? []);
+};
+
+const emitPresenceUpdate = (io: SocketIOServer, tripId: string): void => {
+  io.to(tripId).emit('presence_update', {
+    tripId,
+    onlineUserIds: getOnlineUserIds(tripId),
+  });
+};
+
+const addPresence = (socket: Socket, tripId: string, userId: string): void => {
+  const users = roomPresence.get(tripId) ?? new Map<string, Set<string>>();
+  const sockets = users.get(userId) ?? new Set<string>();
+  sockets.add(socket.id);
+  users.set(userId, sockets);
+  roomPresence.set(tripId, users);
+
+  const rooms = socketRooms.get(socket.id) ?? new Set<string>();
+  rooms.add(tripId);
+  socketRooms.set(socket.id, rooms);
+};
+
+const removePresence = (socket: Socket, tripId: string, userId: string): void => {
+  const users = roomPresence.get(tripId);
+  const sockets = users?.get(userId);
+
+  sockets?.delete(socket.id);
+  if (sockets && sockets.size === 0) {
+    users?.delete(userId);
+  }
+  if (users && users.size === 0) {
+    roomPresence.delete(tripId);
+  }
+
+  const rooms = socketRooms.get(socket.id);
+  rooms?.delete(tripId);
+  if (rooms && rooms.size === 0) {
+    socketRooms.delete(socket.id);
+  }
+};
+
+const removeSocketFromAllPresenceRooms = (socket: Socket, userId: string): string[] => {
+  const rooms = Array.from(socketRooms.get(socket.id) ?? []);
+
+  for (const tripId of rooms) {
+    removePresence(socket, tripId, userId);
+  }
+
+  return rooms;
 };
 
 // ── Handler Registration ─────────────────────────────────────────────────
@@ -66,10 +133,14 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
       }
 
       socket.join(tripId);
+      addPresence(socket, tripId, user.localUserId);
       console.log(`[socket.io] ${user.userName} se unió a room: ${tripId}`);
 
       // Notificar al usuario que se unió exitosamente
       socket.emit('room_joined', { tripId });
+
+      // Actualizar presencia para todos los clientes de la room
+      emitPresenceUpdate(io, tripId);
 
       // Notificar a los demás que un usuario se conectó
       socket.to(tripId).emit('user_joined', {
@@ -89,8 +160,12 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
       const { tripId } = payload;
       if (!tripId) return;
 
+      removePresence(socket, tripId, user.localUserId);
       socket.leave(tripId);
       console.log(`[socket.io] ${user.userName} salió de room: ${tripId}`);
+
+      // Actualizar presencia para los clientes que quedan en la room
+      emitPresenceUpdate(io, tripId);
 
       socket.to(tripId).emit('user_left', {
         userId: user.localUserId,
@@ -99,6 +174,47 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al salir de la room';
       console.error(`[socket.io] Error en leave_room:`, message);
+    }
+  });
+
+
+
+  // -- chat_send_message ------------------------------------------------
+  socket.on('chat_send_message', async (payload: ChatSendMessagePayload, ack?: (response: unknown) => void) => {
+    try {
+      const groupId = payload?.groupId ?? payload?.tripId;
+      const contenido = payload?.contenido ?? payload?.text;
+
+      if (!groupId || typeof contenido !== 'string') {
+        const response = { ok: false, error: 'groupId y contenido son requeridos' };
+        socket.emit('error_event', { message: response.error });
+        ack?.(response);
+        return;
+      }
+
+      const message = await ChatService.createGroupMessageByLocalUser(
+        user.localUserId,
+        groupId,
+        contenido,
+        {
+          nombre: user.userName,
+          email: null,
+          avatar_url: null,
+        }
+      );
+
+      io.to(groupId).emit('chat_message', {
+        ...message,
+        clientId: payload.clientId ?? null,
+      });
+
+      ack?.({ ok: true, message });
+      console.log(`[socket.io] Mensaje de chat enviado por ${user.userName} en room ${groupId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al enviar mensaje';
+      console.error('[socket.io] Error en chat_send_message:', message);
+      socket.emit('error_event', { message });
+      ack?.({ ok: false, error: message });
     }
   });
 
@@ -202,6 +318,12 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
   socket.on('disconnect', async (reason) => {
     try {
       console.log(`[socket.io] Desconectado: ${user.userName} (${user.localUserId}) — razón: ${reason}`);
+
+      // Quitar presencia del socket desconectado y notificar rooms afectadas
+      const affectedPresenceRooms = removeSocketFromAllPresenceRooms(socket, user.localUserId);
+      for (const tripId of affectedPresenceRooms) {
+        emitPresenceUpdate(io, tripId);
+      }
 
       // Liberar TODOS los bloqueos del usuario desconectado
       const released = await LockService.releaseAllUserLocks(user.localUserId);

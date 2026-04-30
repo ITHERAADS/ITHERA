@@ -33,6 +33,14 @@ const buildInsertSingleChain = (result: { data: any; error: any }) => {
   return chain;
 };
 
+const buildSelectEqChain = (result: { data: any; error: any }) => {
+  const chain: any = {
+    select: jest.fn(() => chain),
+    eq: jest.fn().mockResolvedValue(result),
+  };
+  return chain;
+};
+
 describe('ProposalsService integrity tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -47,12 +55,22 @@ describe('ProposalsService integrity tests', () => {
       data: { id_voto: 500, id_propuesta: 99, id_usuario: 10, created_at: '2026-04-19T00:00:00Z' },
       error: null,
     });
+    const membersCountChain = buildSelectEqChain({
+      data: [{ usuario_id: 10 }, { usuario_id: 11 }, { usuario_id: 12 }],
+      error: null,
+    });
+    const votesCountChain = buildSelectEqChain({
+      data: [{ id_propuesta: 99, id_usuario: 10, voto_tipo: 'a_favor' }],
+      error: null,
+    } as any);
 
     fromMock
       .mockReturnValueOnce(memberChain)
       .mockReturnValueOnce(proposalChain)
       .mockReturnValueOnce(existingVoteChain)
-      .mockReturnValueOnce(insertVoteChain);
+      .mockReturnValueOnce(insertVoteChain)
+      .mockReturnValueOnce(membersCountChain)
+      .mockReturnValueOnce(votesCountChain);
 
     const result = await ProposalsService.castSingleVote('auth-user', '7', '99', {});
 
@@ -62,6 +80,8 @@ describe('ProposalsService integrity tests', () => {
     expect(fromMock).toHaveBeenNthCalledWith(2, 'propuestas');
     expect(fromMock).toHaveBeenNthCalledWith(3, 'voto');
     expect(fromMock).toHaveBeenNthCalledWith(4, 'voto');
+    expect(fromMock).toHaveBeenNthCalledWith(5, 'grupo_miembros');
+    expect(fromMock).toHaveBeenNthCalledWith(6, 'voto');
   });
 
   it('castSingleVote: rechaza segundo voto del mismo usuario en la misma propuesta', async () => {
@@ -98,18 +118,24 @@ describe('ProposalsService integrity tests', () => {
       select: jest.fn(() => votesChain),
       in: jest.fn().mockResolvedValue({
         data: [
-          { id_propuesta: 2 },
-          { id_propuesta: 2 },
-          { id_propuesta: 1 },
+          { id_propuesta: 2, id_usuario: 20, voto_tipo: 'a_favor' },
+          { id_propuesta: 2, id_usuario: 21, voto_tipo: 'a_favor' },
+          { id_propuesta: 1, id_usuario: 22, voto_tipo: 'a_favor' },
         ],
         error: null,
       }),
     };
 
+    const membersCountChain = buildSelectEqChain({
+      data: [{ usuario_id: 10 }, { usuario_id: 11 }, { usuario_id: 12 }],
+      error: null,
+    });
+
     fromMock
       .mockReturnValueOnce(memberChain)
       .mockReturnValueOnce(proposalsChain)
-      .mockReturnValueOnce(votesChain);
+      .mockReturnValueOnce(votesChain)
+      .mockReturnValueOnce(membersCountChain);
 
     const result = await ProposalsService.getProposalVoteResults('auth-user', '7');
 

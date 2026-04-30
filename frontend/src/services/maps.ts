@@ -5,6 +5,8 @@ export interface GeocodingResult {
   latitude: number | null
   longitude: number | null
   placeId: string | null
+  photoName?: string | null
+  photoUrl?: string | null
 }
 
 export interface PlaceAutocompleteResult {
@@ -23,6 +25,29 @@ export interface PlaceResult {
   primaryCategory: string | null
   photoName?: string | null
   photoUrl?: string | null
+}
+
+export interface ComputeRouteResult {
+  distanceMeters: number | null
+  duration: string | null
+  encodedPolyline: string | null
+  staticDuration: string | null
+  startLat: number | null
+  startLng: number | null
+  endLat: number | null
+  endLng: number | null
+  distanceText: string | null
+  durationText: string | null
+  staticDurationText: string | null
+  steps: Array<{
+    distanceMeters: number | null
+    staticDuration: string | null
+    maneuver: string | null
+    instructions: string | null
+    travelMode: string | null
+    distanceText: string | null
+    durationText: string | null
+  }>
 }
 
 export const mapsService = {
@@ -59,6 +84,23 @@ export const mapsService = {
   ) => {
     return apiClient.post<{ ok: boolean; data: PlaceResult[] }>(
       '/maps/places/text-search',
+      payload,
+      token
+    )
+  },
+
+  computeRoute: async (
+    payload: {
+      originLat: number
+      originLng: number
+      destinationLat: number
+      destinationLng: number
+      travelMode?: 'DRIVE' | 'WALK' | 'BICYCLE' | 'TRANSIT'
+    },
+    token: string
+  ) => {
+    return apiClient.post<{ ok: boolean; data: ComputeRouteResult | null }>(
+      '/maps/routes/compute',
       payload,
       token
     )

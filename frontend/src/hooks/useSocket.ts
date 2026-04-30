@@ -11,7 +11,10 @@ export const useSocket = (token: string | null) => {
   useEffect(() => {
     if (!token) return;
 
-    const newSocket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001', {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+    const socketUrl = apiUrl.replace(/\/api\/?$/, '');
+
+    const newSocket = io(socketUrl, {
       auth: { token },
       autoConnect: true,
       reconnection: true,

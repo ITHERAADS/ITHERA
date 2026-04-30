@@ -18,6 +18,8 @@ export interface GrupoViaje {
   destino_longitud?: number | null;
   destino_place_id?: string | null;
   destino_formatted_address?: string | null;
+  destino_photo_name?: string | null;
+  destino_photo_url?: string | null;
 }
 
 export interface GrupoMiembro {
@@ -38,6 +40,8 @@ export interface CreateGroupPayload {
   destino_longitud?: number | null;
   destino_place_id?: string | null;
   destino_formatted_address?: string | null;
+  destino_photo_name?: string | null;
+  destino_photo_url?: string | null;
 }
 
 export interface UpdateGroupPayload {
@@ -51,6 +55,8 @@ export interface UpdateGroupPayload {
   destino_longitud?: number | null;
   destino_place_id?: string | null;
   destino_formatted_address?: string | null;
+  destino_photo_name?: string | null;
+  destino_photo_url?: string | null;
 }
 
 export interface JoinGroupPayload {

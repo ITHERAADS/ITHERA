@@ -1,6 +1,5 @@
 import { supabaseAdmin } from '../../infrastructure/db/supabase.client';
-import { Expense, ExpenseSplit } from './budget.entity';
-
+import { Expense } from './budget.entity';
 export const createExpense = async (data: {
   group_id: string;
   paid_by_user_id: string;

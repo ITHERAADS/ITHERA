@@ -141,31 +141,42 @@ export function ComparisonPage({ groupId, onBack }: ComparisonPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const BUDGET_LIMIT = 5000
   const minPrice = Math.min(...options.map((o) => o.price))
   const selectedOption = selected ? options.find((o) => o.id === selected) ?? null : null
   const exceedsBudget = selectedOption ? selectedOption.price > BUDGET_LIMIT : false
 
-
   useEffect(() => {
-    if (!groupId || !accessToken) return;
-    setLoading(true);
-    proposalsService.getGroupProposals(groupId, accessToken)
-      .then(res => {
-        const mapped = res.proposals.map(p => ({
+    if (!groupId || !accessToken) return
+
+    const load = async () => {
+      setLoading(true)
+      try {
+        const res = await proposalsService.getGroupProposals(groupId, accessToken)
+        const mapped: ComparisonOption[] = res.proposals.map((p) => ({
           id: p.id,
           title: p.titulo,
-          price: p.precio,
-          category: p.tipo === 'vuelo' ? 'transporte' : p.tipo === 'hotel' ? 'hospedaje' : 'actividad',
-          duration: p.duracion ?? 'N/A',
-          location: p.ubicacion ?? 'Ubicación pendiente',
-          climate: p.clima ?? 'Clima pendiente',
-          image: p.imagen ?? 'https://via.placeholder.com/150',
-        }));
-        setOptions(mapped);
-      })
-      .catch(() => setError('No se pudieron cargar las propuestas'))
-      .finally(() => setLoading(false));
-  }, [groupId, accessToken]);
+          price: (p.payload?.precio as number) ?? (p.payload?.price as number) ?? 0,
+          category: (p.tipo === 'vuelo'
+            ? 'transporte'
+            : p.tipo === 'hotel'
+            ? 'hospedaje'
+            : 'actividad') as ComparisonOption['category'],
+          duration: String(p.payload?.duracion ?? p.payload?.duration ?? 'N/A'),
+          location: String(p.payload?.ubicacion ?? p.payload?.location ?? p.descripcion ?? 'Ubicación pendiente'),
+          climate: String(p.payload?.clima ?? p.payload?.climate ?? '—'),
+          image: String(p.payload?.imagen ?? p.payload?.image ?? p.payload?.photoUrl ?? 'https://via.placeholder.com/150'),
+        }))
+        setOptions(mapped)
+      } catch {
+        setError('No se pudieron cargar las propuestas')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    void load()
+  }, [groupId, accessToken])
 
   function removeOption(id: string) {
     if (options.length <= 1) return

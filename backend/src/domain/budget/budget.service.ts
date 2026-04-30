@@ -1,90 +1,94 @@
-import { AppDataSource } from '../../config/db';
+import { supabaseAdmin } from '../../infrastructure/db/supabase.client';
 import { Expense, ExpenseSplit } from './budget.entity';
 
-export const BudgetService = {
+export const createExpense = async (data: {
+  group_id: string;
+  paid_by_user_id: string;
+  amount: number;
+  description: string;
+  category: string;
+  member_ids: string[];
+}) => {
+  const { data: expense, error } = await supabaseAdmin
+    .from('expenses')
+    .insert({
+      group_id: data.group_id,
+      paid_by_user_id: data.paid_by_user_id,
+      amount: data.amount,
+      description: data.description,
+      category: data.category,
+    })
+    .select()
+    .single();
 
-  async createExpense(data: {
-    groupId: string;
-    paidByUserId: string;
-    amount: number;
-    description: string;
-    category: string;
-    memberIds: string[];
-  }) {
-    return await AppDataSource.transaction(async (manager) => {
-      const expense = manager.create(Expense, {
-        groupId: data.groupId,
-        paidByUserId: data.paidByUserId,
-        amount: data.amount,
-        description: data.description,
-        category: data.category,
-      });
-      await manager.save(expense);
+  if (error) throw error;
 
-      const share = data.amount / data.memberIds.length;
-      const splits = data.memberIds.map(userId =>
-        manager.create(ExpenseSplit, {
-          expenseId: expense.id,
-          userId,
-          share,
-          settled: false,
-        })
-      );
-      await manager.save(splits);
+  const share = data.amount / data.member_ids.length;
+  const splits = data.member_ids.map((user_id) => ({
+    expense_id: expense.id,
+    user_id,
+    share,
+    settled: false,
+  }));
 
-      return expense;
-    });
-  },
+  const { error: splitError } = await supabaseAdmin
+    .from('expense_splits')
+    .insert(splits);
 
-  async getBalances(groupId: string): Promise<Record<string, number>> {
-    const expenses = await AppDataSource.getRepository(Expense)
-      .find({ where: { groupId } });
+  if (splitError) throw splitError;
 
-    const balances: Record<string, number> = {};
+  return expense;
+};
 
-    for (const expense of expenses) {
-      const splits = await AppDataSource.getRepository(ExpenseSplit)
-        .find({ where: { expenseId: expense.id } });
+export const getBalances = async (group_id: string): Promise<Record<string, number>> => {
+  const { data: expenses, error } = await supabaseAdmin
+    .from('expenses')
+    .select('*, expense_splits(*)')
+    .eq('group_id', group_id);
 
-      balances[expense.paidByUserId] =
-        (balances[expense.paidByUserId] || 0) + Number(expense.amount);
+  if (error) throw error;
 
-      for (const split of splits) {
-        balances[split.userId] =
-          (balances[split.userId] || 0) - Number(split.share);
-      }
+  const balances: Record<string, number> = {};
+
+  for (const expense of expenses ?? []) {
+    balances[expense.paid_by_user_id] =
+      (balances[expense.paid_by_user_id] || 0) + Number(expense.amount);
+
+    for (const split of expense.expense_splits ?? []) {
+      balances[split.user_id] =
+        (balances[split.user_id] || 0) - Number(split.share);
     }
-
-    return balances;
-  },
-
-  async getMinimumSettlements(groupId: string) {
-    const balances = await this.getBalances(groupId);
-
-    const creditors: { id: string; amount: number }[] = [];
-    const debtors: { id: string; amount: number }[] = [];
-
-    for (const [userId, balance] of Object.entries(balances)) {
-      if (balance > 0) creditors.push({ id: userId, amount: balance });
-      if (balance < 0) debtors.push({ id: userId, amount: -balance });
-    }
-
-    const settlements: { from: string; to: string; amount: number }[] = [];
-
-    let i = 0, j = 0;
-    while (i < debtors.length && j < creditors.length) {
-      const payment = Math.min(debtors[i].amount, creditors[j].amount);
-      settlements.push({
-        from: debtors[i].id,
-        to: creditors[j].id,
-        amount: Math.round(payment * 100) / 100,
-      });
-      debtors[i].amount -= payment;
-      creditors[j].amount -= payment;
-      if (debtors[i].amount === 0) i++;
-      if (creditors[j].amount === 0) j++;
-    }
-
-    return settlements;
   }
+
+  return balances;
+};
+
+export const getMinimumSettlements = async (group_id: string) => {
+  const balances = await getBalances(group_id);
+
+  const creditors: { id: string; amount: number }[] = [];
+  const debtors: { id: string; amount: number }[] = [];
+
+  for (const [userId, balance] of Object.entries(balances)) {
+    if (balance > 0) creditors.push({ id: userId, amount: balance });
+    if (balance < 0) debtors.push({ id: userId, amount: -balance });
+  }
+
+  const settlements: { from: string; to: string; amount: number }[] = [];
+
+  let i = 0, j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const payment = Math.min(debtors[i].amount, creditors[j].amount);
+    settlements.push({
+      from: debtors[i].id,
+      to: creditors[j].id,
+      amount: Math.round(payment * 100) / 100,
+    });
+    debtors[i].amount -= payment;
+    creditors[j].amount -= payment;
+    if (debtors[i].amount === 0) i++;
+    if (creditors[j].amount === 0) j++;
+  }
+
+  return settlements;
 };

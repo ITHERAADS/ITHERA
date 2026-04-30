@@ -15,6 +15,8 @@ export interface ItineraryActivity {
   externalReference?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  createdBy?: string | null;
+  hasVoted?: boolean;
 }
 
 export interface ItineraryDay {

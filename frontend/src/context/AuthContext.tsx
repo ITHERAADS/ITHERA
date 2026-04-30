@@ -175,11 +175,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiClient.post('/auth/forgot-password', { email });
   }, []);
 
-  const loginWithGoogle = useCallback(async () => {
+  const loginWithGoogle = useCallback(async (redirectTo = '/my-trips') => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/my-trips`,
+        redirectTo: `${window.location.origin}${redirectTo}`,
       },
     });
 

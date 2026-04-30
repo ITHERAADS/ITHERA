@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { mapsService, type PlaceResult } from '../../services/maps'
 import { groupsService } from '../../services/groups'
+import { proposalsService } from '../../services/proposals'
 import type { Group } from '../../types/groups'
 import type { Activity } from '../ui/DayView/DayView'
 
@@ -10,6 +11,7 @@ type ActivityProposalModalProps = {
   token?: string | null
   selectedDayNumber?: number | null
   editingActivity?: Activity | null
+  isCurrentUserAdmin?: boolean
   onClose: () => void
   onCreated: () => void
 }
@@ -25,6 +27,7 @@ export function ActivityProposalModal({
   token,
   selectedDayNumber,
   editingActivity,
+  isCurrentUserAdmin = false,
   onClose,
   onCreated,
 }: ActivityProposalModalProps) {
@@ -146,7 +149,7 @@ export function ActivityProposalModal({
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = async (asAdminDirect = false) => {
     if (!group?.id) {
       setError('No se encontro el grupo actual.')
       return
@@ -173,7 +176,24 @@ export function ActivityProposalModal({
       if (editingActivity) {
         await groupsService.updateActivity(String(group.id), editingActivity.id, payload, token)
       } else {
-        await groupsService.createActivity(String(group.id), payload, token)
+        const created = await groupsService.createActivity(String(group.id), payload, token)
+        const proposalId = String(
+          created.activity?.propuesta_id ??
+          created.activity?.proposalId ??
+          ''
+        )
+
+        if (asAdminDirect && proposalId) {
+          await proposalsService.applyAdminDecision(
+            String(group.id),
+            proposalId,
+            {
+              decision: 'aprobar',
+              reason: 'Actividad agregada directamente por organizador (Tipo A)',
+            },
+            token
+          )
+        }
       }
 
       setQuery('')
@@ -328,9 +348,19 @@ export function ActivityProposalModal({
           >
             Cancelar
           </button>
+          {!editingActivity && isCurrentUserAdmin && (
+            <button
+              type="button"
+              onClick={() => void handleSave(true)}
+              disabled={saving || !selectedPlace}
+              className="rounded-xl border border-[#1E6FD9] bg-[#EEF4FF] px-4 py-3 font-body text-sm font-semibold text-[#1E6FD9] disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : 'Agregar como admin (directo)'}
+            </button>
+          )}
           <button
             type="button"
-            onClick={handleSave}
+            onClick={() => void handleSave(false)}
             disabled={saving || !selectedPlace}
             className="rounded-xl bg-bluePrimary px-4 py-3 font-body text-sm font-semibold text-white disabled:opacity-50"
           >

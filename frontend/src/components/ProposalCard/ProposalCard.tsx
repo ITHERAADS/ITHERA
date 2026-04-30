@@ -2,6 +2,8 @@ import type { Activity } from '../ui/DayView/DayView'
 
 export interface ProposalCardProps {
   activity: Activity
+  currentUserId?: string | number | null
+  currentUserRole?: 'admin' | 'viajero' | string | null
   proposalStatus?: 'pendiente' | 'procesando' | 'bloqueada' | 'votada' | 'error'
   onAccept?: (id: string) => void
   onDelete?: (id: string) => void
@@ -114,12 +116,24 @@ const BADGE: Record<NonNullable<ProposalCardProps['proposalStatus']>, { label: s
   error: { label: 'ERROR', bg: 'bg-[#EF4444]' },
 }
 
-export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept, onDelete, onEdit }: ProposalCardProps) {
+export function ProposalCard({
+  activity,
+  currentUserId,
+  currentUserRole,
+  proposalStatus = 'pendiente',
+  onAccept,
+  onDelete,
+  onEdit,
+}: ProposalCardProps) {
   const badge = BADGE[proposalStatus]
   const isProcessing = proposalStatus === 'procesando'
   const isBlocked = proposalStatus === 'bloqueada'
   const isVoted = proposalStatus === 'votada'
   const isError = proposalStatus === 'error'
+  const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
+  const canEdit = isOwner && !isBlocked
+  const canDelete = (isOwner || isAdmin) && !isBlocked
 
   return (
     <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden w-full">
@@ -173,6 +187,11 @@ export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept,
         {activity.proposedBy && (
           <p className="font-body text-xs text-[#6B7280] italic mt-2">Propuesto por {activity.proposedBy}</p>
         )}
+        {activity.adminDecisionType === 'A' && (
+          <p className="font-body text-xs text-[#1E6FD9] font-semibold mt-2">
+            Puesta por el admin directamente (Tipo A)
+          </p>
+        )}
       </div>
 
       <div className="px-4 pb-4 pt-3 border-t border-[#E2E8F0]">
@@ -217,10 +236,10 @@ export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept,
             </span>
           )}
 
-          {!isBlocked && !isVoted && (
+          {canDelete && (
             <button
               onClick={isProcessing || isError ? undefined : () => onDelete?.(activity.id)}
-              disabled={isProcessing}
+              disabled={isProcessing || isError}
               className={[
                 'w-9 h-9 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-[#EF4444] hover:bg-red-50 transition-colors ml-2 shrink-0',
                 isProcessing ? 'opacity-40 cursor-not-allowed' : '',
@@ -230,10 +249,10 @@ export function ProposalCard({ activity, proposalStatus = 'pendiente', onAccept,
               <IconTrash size={15} />
             </button>
           )}
-          {!isBlocked && !isVoted && (
+          {canEdit && (
             <button
               onClick={isProcessing || isError ? undefined : () => onEdit?.(activity.id)}
-              disabled={isProcessing}
+              disabled={isProcessing || isError}
               className="w-9 h-9 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-[#1E6FD9] hover:bg-blue-50 transition-colors ml-2 shrink-0"
               aria-label="Editar propuesta"
             >

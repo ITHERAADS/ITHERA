@@ -43,7 +43,9 @@ export function JoinGroupPage() {
 
   const handleJoin = async () => {
     if (!accessToken) {
-      navigate(`/login?redirect=${encodeURIComponent(`/join-group?code=${code}`)}`)
+      const redirectTo = `/join-group?code=${encodeURIComponent(code)}`
+      sessionStorage.setItem('ithera_post_login_redirect', redirectTo)
+      navigate(`/login?redirect=${encodeURIComponent(redirectTo)}`)
       return
     }
 
@@ -72,7 +74,7 @@ export function JoinGroupPage() {
 
   const navUser = {
     name: authLoading ? 'Cargando...' : userName,
-    role: localUser ? 'Viajero' : '',
+    role: localUser ? 'Usuario' : '',
     initials: authLoading ? '--' : initials,
   }
 

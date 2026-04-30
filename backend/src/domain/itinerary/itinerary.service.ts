@@ -10,7 +10,7 @@ const ensureGroupMember = async (authUserId: string, groupId: string) => {
 
   const { data, error } = await supabase
     .from('grupo_miembros')
-    .select('id')
+    .select('id, rol, usuario_id')
     .eq('grupo_id', groupId)
     .eq('usuario_id', usuarioId)
     .maybeSingle();
@@ -20,6 +20,15 @@ const ensureGroupMember = async (authUserId: string, groupId: string) => {
   if (!data) {
     throw Object.assign(new Error('No perteneces a este grupo'), { statusCode: 403 });
   }
+
+  return {
+    usuarioId,
+    membership: {
+      id: String((data as any).id),
+      rol: String((data as any).rol ?? 'viajero'),
+      usuario_id: String((data as any).usuario_id),
+    },
+  };
 };
 
 const getUniqueGroupMemberCount = async (groupId: string): Promise<number> => {
@@ -32,6 +41,11 @@ const getUniqueGroupMemberCount = async (groupId: string): Promise<number> => {
 
   const unique = new Set((data ?? []).map((row: any) => String(row.usuario_id)));
   return unique.size;
+};
+
+const isMissingVoteTypeColumnError = (error: { message?: string } | null | undefined): boolean => {
+  const message = String(error?.message ?? '').toLowerCase();
+  return message.includes("voto_tipo") && message.includes("could not find");
 };
 
 const formatDateLabel = (date: string): string => {
@@ -127,7 +141,7 @@ export const getGroupItinerary = async (
   authUserId: string,
   groupId: string
 ): Promise<{ itinerary: any | null; days: ItineraryDay[] }> => {
-  await ensureGroupMember(authUserId, groupId);
+  const { usuarioId } = await ensureGroupMember(authUserId, groupId);
 
   const { data: itinerary, error: itineraryError } = await supabase
     .from('itinerarios')
@@ -159,12 +173,14 @@ export const getGroupItinerary = async (
       latitud,
       longitud,
       estado,
+      creado_por,
       referencia_externa,
       payload,
       propuestas (
         id_propuesta,
         tipo_item,
         titulo,
+        creado_por,
         payload
       )
     `)
@@ -182,16 +198,29 @@ export const getGroupItinerary = async (
     .map((activity: any) => Number(activity.propuesta_id));
 
   if (pendingProposalIds.length > 0) {
-    const { data: votesByProposal, error: votesByProposalError } = await supabase
+    let votesByProposal: any[] | null = null;
+    let votesByProposalError: any = null;
+    ({ data: votesByProposal, error: votesByProposalError } = await supabase
       .from('voto')
-      .select('id_propuesta')
-      .in('id_propuesta', pendingProposalIds);
+      .select('id_propuesta, voto_tipo')
+      .in('id_propuesta', pendingProposalIds));
+
+    if (votesByProposalError && isMissingVoteTypeColumnError(votesByProposalError)) {
+      const fallback = await supabase
+        .from('voto')
+        .select('id_propuesta')
+        .in('id_propuesta', pendingProposalIds);
+      votesByProposal = (fallback.data ?? []).map((row: any) => ({ ...row, voto_tipo: 'a_favor' }));
+      votesByProposalError = fallback.error;
+    }
 
     if (votesByProposalError) throw new Error(votesByProposalError.message);
 
     const voteCountMap = new Map<number, number>();
     for (const row of votesByProposal ?? []) {
       const proposalId = Number((row as any).id_propuesta);
+      const voteType = String((row as any).voto_tipo ?? 'a_favor');
+      if (voteType !== 'a_favor') continue;
       voteCountMap.set(proposalId, (voteCountMap.get(proposalId) ?? 0) + 1);
     }
 
@@ -226,6 +255,24 @@ export const getGroupItinerary = async (
     }
   }
 
+  const proposalIds = (activities ?? [])
+    .filter((activity: any) => activity.propuesta_id != null)
+    .map((activity: any) => Number(activity.propuesta_id));
+
+  const { data: myVotes, error: myVotesError } = proposalIds.length > 0
+    ? await supabase
+        .from('voto')
+        .select('id_propuesta')
+        .eq('id_usuario', usuarioId)
+        .in('id_propuesta', proposalIds)
+    : { data: [], error: null };
+
+  if (myVotesError) throw new Error(myVotesError.message);
+
+  const myVotedProposalIds = new Set(
+    (myVotes ?? []).map((vote: any) => String(vote.id_propuesta))
+  );
+
   const startDate = itinerary.fecha_inicio ?? new Date().toISOString().slice(0, 10);
   const endDate = itinerary.fecha_fin ?? startDate;
 
@@ -250,9 +297,29 @@ export const getGroupItinerary = async (
 
     if (dayIndex < 0 || dayIndex >= days.length) continue;
 
+    const proposalRow = Array.isArray(activity.propuestas)
+      ? (activity.propuestas[0] ?? null)
+      : (activity.propuestas ?? null);
+    const proposalPayload =
+      proposalRow?.payload && typeof proposalRow.payload === 'object'
+        ? proposalRow.payload
+        : {};
+    const adminDecisionType =
+      proposalPayload && (proposalPayload as any).decisionType
+        ? String((proposalPayload as any).decisionType)
+        : null;
+
     days[dayIndex].activities.push({
       id: String(activity.id_actividad),
       proposalId: activity.propuesta_id ? String(activity.propuesta_id) : null,
+      createdBy: String(
+        activity.creado_por ??
+        ((activity.propuestas as any)?.creado_por) ??
+        ''
+      ),
+      hasVoted: activity.propuesta_id
+        ? myVotedProposalIds.has(String(activity.propuesta_id))
+        : false,
       title: activity.titulo,
       description: activity.descripcion ?? 'Sin descripción',
       category: getActivityCategory(activity),
@@ -265,6 +332,7 @@ export const getGroupItinerary = async (
       externalReference: activity.referencia_externa ?? null,
       latitude: activity.latitud ?? null,
       longitude: activity.longitud ?? null,
+      adminDecisionType: adminDecisionType === 'A' ? 'A' : null,
     });
   }
 
@@ -379,12 +447,24 @@ export const createGroupActivity = async (
   const uniqueMembersCount = await getUniqueGroupMemberCount(groupId);
 
   if (uniqueMembersCount <= 1) {
-    const { error: voteInsertError } = await supabase
+    let voteInsertError: any = null;
+    ({ error: voteInsertError } = await supabase
       .from('voto')
       .insert({
         id_propuesta: proposal.id_propuesta,
         id_usuario: Number(usuarioId),
-      });
+        voto_tipo: 'a_favor',
+      }));
+
+    if (voteInsertError && isMissingVoteTypeColumnError(voteInsertError)) {
+      const fallbackInsert = await supabase
+        .from('voto')
+        .insert({
+          id_propuesta: proposal.id_propuesta,
+          id_usuario: Number(usuarioId),
+        });
+      voteInsertError = fallbackInsert.error;
+    }
 
     if (voteInsertError) throw new Error(voteInsertError.message);
 
@@ -421,6 +501,7 @@ export const updateGroupActivity = async (
   activityId: string,
   payload: Partial<CreateItineraryActivityPayload>
 ) => {
+  const usuarioId = await getLocalUserId(authUserId);
   await ensureGroupMember(authUserId, groupId);
 
   const { data: itinerary, error: itineraryError } = await supabase
@@ -436,13 +517,18 @@ export const updateGroupActivity = async (
 
   const { data: currentActivity, error: currentActivityError } = await supabase
     .from('actividades')
-    .select('id_actividad, estado, propuesta_id, titulo, descripcion, ubicacion, latitud, longitud, fecha_inicio, fecha_fin')
+    .select('id_actividad, estado, propuesta_id, creado_por, titulo, descripcion, ubicacion, latitud, longitud, fecha_inicio, fecha_fin')
     .eq('id_actividad', activityId)
     .eq('itinerario_id', itinerary.id_itinerario)
     .maybeSingle();
 
   if (currentActivityError) throw new Error(currentActivityError.message);
   if (!currentActivity) throw Object.assign(new Error('Actividad no encontrada'), { statusCode: 404 });
+  if (String((currentActivity as any).creado_por) !== String(usuarioId)) {
+    throw Object.assign(new Error('Solo el creador de la propuesta puede editarla'), {
+      statusCode: 403,
+    });
+  }
 
   const updateData = {
     ...(payload.titulo !== undefined ? { titulo: payload.titulo } : {}),
@@ -543,7 +629,7 @@ export const deleteGroupActivity = async (
   groupId: string,
   activityId: string
 ) => {
-  await ensureGroupMember(authUserId, groupId);
+  const { usuarioId, membership } = await ensureGroupMember(authUserId, groupId);
 
   const { data: itinerary, error: itineraryError } = await supabase
     .from('itinerarios')
@@ -558,13 +644,21 @@ export const deleteGroupActivity = async (
 
   const { data: activity, error: activityLookupError } = await supabase
     .from('actividades')
-    .select('id_actividad, propuesta_id')
+    .select('id_actividad, propuesta_id, creado_por')
     .eq('id_actividad', activityId)
     .eq('itinerario_id', itinerary.id_itinerario)
     .maybeSingle();
 
   if (activityLookupError) throw new Error(activityLookupError.message);
   if (!activity) throw Object.assign(new Error('Actividad no encontrada'), { statusCode: 404 });
+  const isOwner = String((activity as any).creado_por) === String(usuarioId);
+  const isAdmin = membership.rol === 'admin';
+
+  if (!isOwner && !isAdmin) {
+    throw Object.assign(new Error('Solo el creador o un administrador del grupo puede eliminarla'), {
+      statusCode: 403,
+    });
+  }
 
   const proposalId = activity.propuesta_id;
 

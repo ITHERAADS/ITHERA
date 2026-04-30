@@ -10,6 +10,8 @@ import { DayView } from '../../components/ui/DayView'
 import type { Activity as DayActivity, DayViewHandle } from '../../components/ui/DayView'
 import { ProposalCard } from '../../components/ProposalCard/ProposalCard'
 import { ComparisonPage } from '../Comparison/ComparisonPage'
+import { ProposalDetailModal } from '../../components/ProposalDetailModal/ProposalDetailModal'
+import { ConfirmProposalModal } from '../../components/ConfirmProposalModal/ConfirmProposalModal'
 import { ActivityProposalModal } from '../../components/ActivityProposalModal/ActivityProposalModal'
 import { useSocket } from '../../hooks/useSocket'
 import type { Group } from '../../types/groups'
@@ -497,6 +499,8 @@ export function DashboardPage() {
   const [lockedProposalIds, setLockedProposalIds] = useState<Record<string, boolean>>({})
   const [lockErrorActivityIds, setLockErrorActivityIds] = useState<Record<string, boolean>>({})
   const [voteCountByProposal, setVoteCountByProposal] = useState<Record<string, number>>({})
+  const [selectedProposal, setSelectedProposal] = useState<DayActivity | null>(null)
+  const [showConfirm, setShowConfirm] = useState(false)
   const [expandedCommentsProposalId, setExpandedCommentsProposalId] = useState<string | null>(null)
   const [commentsByProposal, setCommentsByProposal] = useState<Record<string, ProposalComment[]>>({})
   const [commentDraftByProposal, setCommentDraftByProposal] = useState<Record<string, string>>({})
@@ -874,7 +878,7 @@ export function DashboardPage() {
                 </h2>
                 <div className="flex flex-col gap-3">
                   {proposalsWithThread.map((activity) => (
-                    <div key={activity.id} className="rounded-2xl border border-transparent">
+                    <div key={activity.id} className="rounded-2xl border border-transparent" onClick={() => setSelectedProposal(activity)}>
                       <ProposalCard
                         activity={activity}
                         proposalStatus={
@@ -1112,6 +1116,31 @@ export function DashboardPage() {
       />
 
       <BottomNavbar activeTab={activeTab} onTabChange={setActiveTab} />
+      {selectedProposal && (
+        <ProposalDetailModal
+          proposal={selectedProposal}
+          onClose={() => setSelectedProposal(null)}
+          onAccept={() => setShowConfirm(true)}
+        />
+      )}
+      {showConfirm && selectedProposal && (
+        <ConfirmProposalModal
+          proposal={selectedProposal}
+          onClose={() => setShowConfirm(false)}
+          onConfirm={() => {
+            setDays((prev) =>
+              prev.map((day) => ({
+                ...day,
+                activities: day.activities.map((a) =>
+                  a.id === selectedProposal.id ? { ...a, status: 'confirmada' as const } : a
+                ),
+              }))
+            )
+            setShowConfirm(false)
+            setSelectedProposal(null)
+          }}
+        />
+      )}
     </AppLayout>
   )
 }

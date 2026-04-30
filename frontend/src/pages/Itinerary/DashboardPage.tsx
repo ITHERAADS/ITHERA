@@ -1,5 +1,7 @@
+import { proposalsService } from '../../services/proposals'
+import { toast } from 'react-hot-toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { getCurrentGroup, groupsService } from '../../services/groups'
 import type { ItineraryDay } from '../../services/groups'
 import { useAuth } from '../../context/useAuth'
@@ -8,10 +10,8 @@ import { DayView } from '../../components/ui/DayView'
 import type { Activity as DayActivity, DayViewHandle } from '../../components/ui/DayView'
 import { ProposalCard } from '../../components/ProposalCard/ProposalCard'
 import { ComparisonPage } from '../Comparison/ComparisonPage'
-import { useLocation } from 'react-router-dom'
 import { ActivityProposalModal } from '../../components/ActivityProposalModal/ActivityProposalModal'
 import { useSocket } from '../../hooks/useSocket'
-
 
 function IconDownload({ size = 14 }: { size?: number }) {
   return (
@@ -128,6 +128,7 @@ function HeroCard({
           {dateLabel}
         </span>
       </div>
+
       <div className="absolute bottom-0 left-0 right-0 px-5 pb-4">
         <h1 className="mb-1 font-heading text-[28px] font-bold leading-tight text-white">
           {activeDay !== null ? `Día ${activeDay}` : destination}
@@ -135,11 +136,16 @@ function HeroCard({
         <p className="mb-3 font-body text-[13px] text-white/70">
           {activities.length} actividad{activities.length !== 1 ? 'es' : ''} planeada{activities.length !== 1 ? 's' : ''} · {pending} pendiente{pending !== 1 ? 's' : ''} de confirmación
         </p>
+
         <div className="flex gap-2">
-          <button className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-white/10">
+          <button
+            onClick={() => toast('La exportación de PDF estará disponible pronto')}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-white/10"
+          >
             <IconDownload size={13} />
             Exportar PDF
           </button>
+
           <button
             onClick={onAdd}
             className="inline-flex items-center gap-1.5 rounded-lg bg-greenAccent px-4 py-2 font-body text-sm font-medium text-white transition-opacity hover:opacity-90"
@@ -312,6 +318,7 @@ function BottomNavbar({
     <div className="flex h-14 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4">
       {tabs.map((tab) => {
         const isActive = tab.id === activeTab
+
         return (
           <button
             key={tab.id}
@@ -333,15 +340,14 @@ function BottomNavbar({
 }
 
 export function DashboardPage() {
-
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
+
   const { localUser, accessToken } = useAuth()
   const { socket, isConnected: isSocketConnected } = useSocket(accessToken)
 
-  const location = useLocation()
   const groupIdFromState = location.state?.groupId
-
   const groupId = searchParams.get('groupId')
   const currentGroup = getCurrentGroup()
 
@@ -353,11 +359,11 @@ export function DashboardPage() {
     .slice(0, 2)
     .toUpperCase()
 
-  const [activeDay,   setActiveDay]   = useState<number | null>(null)
+  const [activeDay, setActiveDay] = useState<number | null>(null)
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
-  const [activeTab,   setActiveTab]   = useState('pagar')
-  const [isLoading,   setIsLoading]   = useState(false)
-  const [days,        setDays]        = useState<ItineraryDay[]>([])
+  const [activeTab, setActiveTab] = useState('pagar')
+  const [isLoading, setIsLoading] = useState(false)
+  const [days, setDays] = useState<ItineraryDay[]>([])
   const [group, setGroup] = useState<typeof currentGroup>(currentGroup)
   const [members, setMembers] = useState<Parameters<typeof RightPanelDashboard>[0]['members']>([])
   const dayRefs = useRef<Record<number, DayViewHandle | null>>({})
@@ -378,54 +384,50 @@ export function DashboardPage() {
     setShowActivityModal(true)
   }, [])
 
-  // const handleDayExpand = useCallback((dayNumber: number) => {
-  //   setExpandedDay((prev) => prev === dayNumber ? null : dayNumber)
-  // }, [])
-
   const isEmpty = days.length === 0
   const selectedDay = activeDay !== null ? days.find((day) => day.dayNumber === activeDay) : undefined
 
   useEffect(() => {
-  const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
 
-  if (!resolvedGroupId) {
-    navigate('/my-trips')
-    return
-  }
+    if (!resolvedGroupId) {
+      navigate('/my-trips')
+      return
+    }
 
-  if (!accessToken) return
+    if (!accessToken) return
 
-  let isMounted = true
+    let isMounted = true
 
-  const loadDashboard = async () => {
-    try {
-      setIsLoading(true)
+    const loadDashboard = async () => {
+      try {
+        setIsLoading(true)
 
-      const groupRes = await groupsService.getGroupDetails(resolvedGroupId, accessToken)
-      const membersRes = await groupsService.getMembers(resolvedGroupId, accessToken)
-      const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
+        const groupRes = await groupsService.getGroupDetails(resolvedGroupId, accessToken)
+        const membersRes = await groupsService.getMembers(resolvedGroupId, accessToken)
+        const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
 
-      if (isMounted) {
-        setGroup(groupRes.group)
-        setMembers(membersRes.members)
-        setDays(itineraryRes.days)
-      }
-    } catch (error) {
-      console.error('Error cargando dashboard:', error)
+        if (isMounted) {
+          setGroup(groupRes.group)
+          setMembers(membersRes.members)
+          setDays(itineraryRes.days)
+        }
+      } catch (error) {
+        console.error('Error cargando dashboard:', error)
 
-      if (isMounted) {
-        setDays([])
-      }
-    } finally {
-      if (isMounted) {
-        setIsLoading(false)
+        if (isMounted) {
+          setDays([])
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
       }
     }
-  }
 
-  void loadDashboard()
+    void loadDashboard()
 
-  return () => {
+    return () => {
       isMounted = false
     }
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, navigate])
@@ -439,6 +441,17 @@ export function DashboardPage() {
     setDays(itineraryRes.days)
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken])
 
+  const handleAcceptProposal = useCallback(async (id: string | number) => {
+    if (!accessToken) return
+
+    try {
+      await proposalsService.updateProposal(String(id), { estado: 'confirmado' }, accessToken)
+      await reloadDashboard()
+    } catch (error) {
+      console.error('No se pudo aceptar la propuesta', error)
+    }
+  }, [accessToken, reloadDashboard])
+
   const handleDeleteActivity = useCallback(async (activityId: string) => {
     const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
 
@@ -447,6 +460,11 @@ export function DashboardPage() {
     await groupsService.deleteActivity(String(resolvedGroupId), activityId, accessToken)
     await reloadDashboard()
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard])
+
+  const navbarRole =
+    members?.find((member) => member.esYo)?.rol === 'admin'
+      ? 'Organizador'
+      : 'Viajero'
 
   return (
     <AppLayout
@@ -458,12 +476,12 @@ export function DashboardPage() {
       }}
       user={{
         name: userName,
-        role: currentGroup?.myRole === 'admin' ? 'Organizador' : 'Viajero',
+        role: navbarRole,
         initials,
         color: '#1E6FD9',
       }}
-      notificationCount={3}
-      isOnline
+      notificationCount={0}
+      isOnline={isSocketConnected}
       sidebarContent={
         <SidebarDashboard
           activeDay={activeDay}
@@ -474,7 +492,6 @@ export function DashboardPage() {
           }
         />
       }
-
       rightPanel={
         <RightPanelDashboard
           members={members}
@@ -505,47 +522,57 @@ export function DashboardPage() {
             group={group}
             onAdd={() => openActivityModalForDay(activeDay ?? days[0]?.dayNumber ?? 1)}
           />
+
           <InfoBanner />
-          <TimelineStrip activeDay={activeDay} date={selectedDay?.date} activities={selectedDay?.activities} />
+
+          <TimelineStrip
+            activeDay={activeDay}
+            date={selectedDay?.date}
+            activities={selectedDay?.activities}
+          />
+
           <div className="flex flex-col gap-3">
             {days.map((day) => (
-            <DayView
-              key={day.dayNumber}
-              ref={(handle) => {
-                dayRefs.current[day.dayNumber] = handle
-              }}
-              dayNumber={day.dayNumber}
-              date={day.date}
-              activities={day.activities}
-              isActive={day.dayNumber === activeDay}
-              isExpanded={day.dayNumber === expandedDay}
-              onSelect={handleDayChange}
-              onAddActivity={openActivityModalForDay}
-              onAccept={(id) => console.log('aceptar', id)}
-              onDelete={(id) => void handleDeleteActivity(id)}
-            />
+              <DayView
+                key={day.dayNumber}
+                ref={(handle) => {
+                  dayRefs.current[day.dayNumber] = handle
+                }}
+                dayNumber={day.dayNumber}
+                date={day.date}
+                activities={day.activities}
+                isActive={day.dayNumber === activeDay}
+                isExpanded={day.dayNumber === expandedDay}
+                onSelect={handleDayChange}
+                onAddActivity={openActivityModalForDay}
+                onAccept={handleAcceptProposal}
+                onDelete={(id) => void handleDeleteActivity(id)}
+              />
             ))}
           </div>
 
-          {/* ── Propuestas pendientes ── */}
           {(() => {
-            const pending = days.flatMap((d) => d.activities).filter((a) => a.status === 'pendiente')
+            const pending = days.flatMap((day) => day.activities).filter((activity) => activity.status === 'pendiente')
+
             if (pending.length === 0) return null
+
             return (
               <div className="mt-6">
-                <h2 className="font-heading font-bold text-[#1E0A4E] text-base mb-3">
+                <h2 className="mb-3 font-heading text-base font-bold text-[#1E0A4E]">
                   Propuestas pendientes
                 </h2>
+
                 <div className="flex flex-col gap-3">
                   {pending.map((activity) => (
                     <ProposalCard
                       key={activity.id}
                       activity={activity}
                       proposalStatus="pendiente"
-                      onAccept={(id) => console.log('aceptar', id)}
+                      onAccept={handleAcceptProposal}
                       onDelete={(id) => void handleDeleteActivity(id)}
                       onEdit={(id) => {
-                        const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
+                        const activity = days.flatMap((day) => day.activities).find((activity) => activity.id === id)
+
                         if (activity) {
                           setEditingActivity(activity)
                           setShowActivityModal(true)

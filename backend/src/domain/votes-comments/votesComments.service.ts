@@ -6,6 +6,7 @@ import {
   UpdateCommentPayload,
   VoteSummaryResponse,
 } from './votesComments.entity';
+import * as NotificationsService from '../notifications/notifications.service';
 
 const assertProposalAccess = async (proposalId: number, authUserId: string) => {
   const usuarioId = await getLocalUserId(authUserId);
@@ -196,6 +197,38 @@ export const createComment = async (
     throw new Error(error?.message ?? 'No se pudo crear el comentario');
   }
 
+  // Notificar al creador de la propuesta
+  const { proposal } = await assertProposalAccess(proposalId, authUserId);
+  
+  const { data: proposalAuthorData } = await supabase.from('propuestas').select('creado_por').eq('id_propuesta', proposalId).single();
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  if (proposalAuthorData && String(proposalAuthorData.creado_por) !== String(usuarioId)) {
+    await NotificationsService.createNotification({
+      usuarioId: Number(proposalAuthorData.creado_por),
+      grupoId: Number(proposal.grupo_id),
+      tipo: 'comentario_nuevo',
+      titulo: 'Nuevo comentario',
+      mensaje: `${actorName} comentó en tu propuesta "${proposal.titulo}".`,
+      entidadTipo: 'propuesta',
+      entidadId: Number(proposalId),
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(usuarioId),
+        itemTitle: proposal.titulo,
+        itemType: 'propuesta',
+        commentPreview: payload.contenido.trim().slice(0, 120),
+      },
+    });
+  }
+
+  NotificationsService.emitGroupDashboardUpdated(Number(proposal.grupo_id), {
+    tipo: 'comentario_nuevo',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(usuarioId),
+    metadata: { actorName, commentPreview: payload.contenido.trim().slice(0, 120) },
+  });
+
   return data;
 };
 
@@ -245,6 +278,21 @@ export const updateComment = async (
     throw new Error(error?.message ?? 'No se pudo actualizar el comentario');
   }
 
+  const { proposal } = await assertProposalAccess(proposalId, authUserId);
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  NotificationsService.emitGroupDashboardUpdated(Number(proposal.grupo_id), {
+    tipo: 'comentario_actualizado',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(usuarioId),
+    metadata: {
+      actorName,
+      actorUsuarioId: Number(usuarioId),
+      commentId: Number(commentId),
+      commentPreview: payload.contenido.trim().slice(0, 120),
+    },
+  });
+
   return data;
 };
 
@@ -277,6 +325,20 @@ export const deleteComment = async (
     .eq('id_propuesta', proposalId);
 
   if (error) throw new Error(error.message);
+
+  const { proposal } = await assertProposalAccess(proposalId, authUserId);
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  NotificationsService.emitGroupDashboardUpdated(Number(proposal.grupo_id), {
+    tipo: 'comentario_eliminado',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(usuarioId),
+    metadata: {
+      actorName,
+      actorUsuarioId: Number(usuarioId),
+      commentId: Number(commentId),
+    },
+  });
 
   return true;
 };

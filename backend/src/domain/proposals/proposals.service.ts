@@ -10,8 +10,16 @@ import {
 	ProposalVoteResult,
 	UpdateCommentPayload,
 } from './proposals.entity';
+import * as NotificationsService from '../notifications/notifications.service';
 
 const isPresent = (value: unknown): boolean => value !== undefined;
+
+
+const getVoteLabel = (voteType: ProposalVoteType): string => {
+  if (voteType === 'a_favor') return 'a favor';
+  if (voteType === 'en_contra') return 'en contra';
+  return 'en abstención';
+};
 
 const buildProposalResponse = async (proposalId: number) => {
   const { data: proposal, error } = await supabase
@@ -145,6 +153,29 @@ export const createFlightProposal = async (authUserId: string, payload: SaveFlig
     throw new Error(flightError.message);
   }
 
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(payload.grupoId),
+    Number(usuarioId),
+    {
+      tipo: 'propuesta_creada',
+      titulo: 'Nueva propuesta de vuelo',
+      mensaje: `${actorName} propuso el vuelo "${payload.titulo}".`,
+      entidadTipo: 'propuesta',
+      entidadId: proposal.id_propuesta,
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(usuarioId),
+        itemTitle: payload.titulo,
+        itemType: 'vuelo',
+        scheduledAt: payload.vuelo.salida ?? null,
+        scheduledEndAt: payload.vuelo.llegada ?? null,
+        origin: payload.vuelo.origenNombre ?? payload.vuelo.origenCodigo ?? null,
+        destination: payload.vuelo.destinoNombre ?? payload.vuelo.destinoCodigo ?? null,
+      },
+    }
+  );
+
   return buildProposalResponse(proposal.id_propuesta);
 };
 
@@ -195,6 +226,28 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
     await supabase.from('propuestas').delete().eq('id_propuesta', proposal.id_propuesta);
     throw new Error(hotelError.message);
   }
+
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(payload.grupoId),
+    Number(usuarioId),
+    {
+      tipo: 'propuesta_creada',
+      titulo: 'Nueva propuesta de hospedaje',
+      mensaje: `${actorName} propuso el hospedaje "${payload.titulo}".`,
+      entidadTipo: 'propuesta',
+      entidadId: proposal.id_propuesta,
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(usuarioId),
+        itemTitle: payload.titulo,
+        itemType: 'hospedaje',
+        scheduledAt: payload.hospedaje.checkIn ?? null,
+        scheduledEndAt: payload.hospedaje.checkOut ?? null,
+        location: payload.hospedaje.direccion ?? null,
+      },
+    }
+  );
 
   return buildProposalResponse(proposal.id_propuesta);
 };
@@ -338,6 +391,19 @@ export const updateProposal = async (proposalId: number, authUserId: string, pay
       }
     }
   }
+
+  const usuarioId = await getLocalUserId(authUserId);
+  await NotificationsService.createNotificationForGroupMembers(
+    proposal.grupo_id,
+    Number(usuarioId),
+    {
+      tipo: 'propuesta_actualizada',
+      titulo: 'Propuesta actualizada',
+      mensaje: `La propuesta "${proposal.titulo}" ha sido modificada.`,
+      entidadTipo: 'propuesta',
+      entidadId: proposalId,
+    }
+  );
 
   return buildProposalResponse(proposalId);
 };
@@ -583,7 +649,7 @@ const applyProposalResolution = async (
 
 	const { data: currentProposal, error: currentProposalError } = await supabase
 		.from('propuestas')
-		.select('payload')
+		.select('payload, titulo, creado_por')
 		.eq('id_propuesta', proposalId)
 		.eq('grupo_id', groupId)
 		.maybeSingle();
@@ -633,6 +699,25 @@ const applyProposalResolution = async (
 		? String((resolvedActivity as any).fecha_inicio)
 		: null;
 	resolvedItineraryId = (resolvedActivity as any)?.itinerario_id ?? null;
+
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(groupId),
+    null,
+    {
+      tipo: resolution === 'aprobada' ? 'propuesta_aprobada' : 'propuesta_descartada',
+      titulo: resolution === 'aprobada' ? 'Propuesta aprobada' : 'Propuesta descartada',
+      mensaje: `La propuesta "${currentProposal?.titulo || 'Desconocida'}" fue ${resolution === 'aprobada' ? 'aprobada' : 'descartada'}.`,
+      entidadTipo: 'propuesta',
+      entidadId: Number(proposalId),
+      metadata: {
+        itemTitle: currentProposal?.titulo ?? 'Propuesta',
+        itemType: 'propuesta',
+        status: resolution,
+        scheduledAt: resolvedActivityDateStart,
+        itineraryId: resolvedItineraryId,
+      },
+    }
+  );
 
 	if (resolution !== 'aprobada' || !resolvedActivityDateStart || !resolvedItineraryId) {
 		return;
@@ -733,6 +818,35 @@ export const castSingleVote = async (
 
 			if (fallbackInsert.error) throw createError(fallbackInsert.error.message, 500);
 
+      // Notificar al creador si es otro usuario
+      const { data: proposalAuthor } = await supabase.from('propuestas').select('creado_por, titulo').eq('id_propuesta', proposalId).single();
+      const actorName = await NotificationsService.getUserDisplayName(localUserId);
+      if (proposalAuthor && String(proposalAuthor.creado_por) !== localUserIdStr) {
+        await NotificationsService.createNotification({
+          usuarioId: Number(proposalAuthor.creado_por),
+          grupoId: Number(groupId),
+          tipo: 'voto_nuevo',
+          titulo: 'Nuevo voto',
+          mensaje: `${actorName} votó ${getVoteLabel(desiredVoteType)} en tu propuesta "${proposalAuthor.titulo}".`,
+          entidadTipo: 'propuesta',
+          entidadId: Number(proposalId),
+          metadata: {
+            actorName,
+            actorUsuarioId: Number(localUserId),
+            itemTitle: proposalAuthor.titulo,
+            itemType: 'propuesta',
+            voteType: desiredVoteType,
+          },
+        });
+      }
+      NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+        tipo: 'voto_nuevo',
+        entidadTipo: 'propuesta',
+        entidadId: Number(proposalId),
+        actorUsuarioId: Number(localUserId),
+        metadata: { actorName, voteType: desiredVoteType },
+      });
+
 			const outcome = await evaluateProposalOutcome(groupId, proposalId);
 
 			if (outcome.approved) {
@@ -765,6 +879,35 @@ export const castSingleVote = async (
 		}
 		throw createError(insertError.message, 500);
 	}
+
+  // Notificar al creador si es otro usuario
+  const { data: proposalAuthor } = await supabase.from('propuestas').select('creado_por, titulo').eq('id_propuesta', proposalId).single();
+  const actorName = await NotificationsService.getUserDisplayName(localUserId);
+  if (proposalAuthor && String(proposalAuthor.creado_por) !== localUserIdStr) {
+    await NotificationsService.createNotification({
+      usuarioId: Number(proposalAuthor.creado_por),
+      grupoId: Number(groupId),
+      tipo: 'voto_nuevo',
+      titulo: 'Nuevo voto',
+      mensaje: `${actorName} votó ${getVoteLabel(desiredVoteType)} en tu propuesta "${proposalAuthor.titulo}".`,
+      entidadTipo: 'propuesta',
+      entidadId: Number(proposalId),
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(localUserId),
+        itemTitle: proposalAuthor.titulo,
+        itemType: 'propuesta',
+        voteType: desiredVoteType,
+      },
+    });
+  }
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'voto_nuevo',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(localUserId),
+    metadata: { actorName, voteType: desiredVoteType },
+  });
 
 	const outcome = await evaluateProposalOutcome(groupId, proposalId);
 
@@ -929,6 +1072,41 @@ export const createComment = async (
 
 	if (error) throw createError(error.message, 500);
 	const [enriched] = await attachCommentAuthorNames([data as RawCommentRow]);
+
+  const { data: proposalAuthor } = await supabase
+    .from('propuestas')
+    .select('creado_por, titulo')
+    .eq('id_propuesta', proposalId)
+    .maybeSingle();
+  const actorName = await NotificationsService.getUserDisplayName(localUserId);
+
+  if (proposalAuthor && String(proposalAuthor.creado_por) !== localUserIdStr) {
+    await NotificationsService.createNotification({
+      usuarioId: Number(proposalAuthor.creado_por),
+      grupoId: Number(groupId),
+      tipo: 'comentario_nuevo',
+      titulo: 'Nuevo comentario',
+      mensaje: `${actorName} comentó en tu propuesta "${proposalAuthor.titulo}".`,
+      entidadTipo: 'propuesta',
+      entidadId: Number(proposalId),
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(localUserId),
+        itemTitle: proposalAuthor.titulo,
+        itemType: 'propuesta',
+        commentPreview: payload.contenido.trim().slice(0, 120),
+      },
+    });
+  }
+
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'comentario_nuevo',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(localUserId),
+    metadata: { actorName, commentPreview: payload.contenido.trim().slice(0, 120) },
+  });
+
 	return enriched;
 };
 
@@ -991,6 +1169,28 @@ export const updateComment = async (
 
 	if (error) throw createError(error.message, 500);
 	const [enriched] = await attachCommentAuthorNames([data as RawCommentRow]);
+
+  const { data: proposalAuthor } = await supabase
+    .from('propuestas')
+    .select('creado_por, titulo')
+    .eq('id_propuesta', proposalId)
+    .maybeSingle();
+  const actorName = await NotificationsService.getUserDisplayName(localUserId);
+
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'comentario_actualizado',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(localUserId),
+    metadata: {
+      actorName,
+      actorUsuarioId: Number(localUserId),
+      itemTitle: proposalAuthor?.titulo ?? 'Propuesta',
+      commentId: Number(commentId),
+      commentPreview: payload.contenido.trim().slice(0, 120),
+    },
+  });
+
 	return enriched;
 };
 
@@ -1025,5 +1225,19 @@ export const deleteComment = async (
 		.eq('id_comentario', commentId);
 
 	if (error) throw createError(error.message, 500);
+
+  const actorName = await NotificationsService.getUserDisplayName(localUserId);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'comentario_eliminado',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(localUserId),
+    metadata: {
+      actorName,
+      actorUsuarioId: Number(localUserId),
+      commentId: Number(commentId),
+    },
+  });
+
 	return { deleted: true, commentId };
 };

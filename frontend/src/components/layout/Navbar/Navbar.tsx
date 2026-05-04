@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Logo } from '../../ui/Logo'
 import { useAuth } from '../../../context/useAuth'
+import { useNotifications } from '../../../hooks/useNotifications'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -31,7 +32,6 @@ interface DashboardNavbarProps {
   variant: 'dashboard'
   trip?: TripInfo
   user?: NavUserInfo
-  notificationCount?: number
   isOnline?: boolean
   showTripSelector?: boolean
   centerTitle?: string
@@ -197,6 +197,67 @@ function LandingNavContent({
   )
 }
 
+
+function readMetadataString(metadata: Record<string, unknown>, key: string): string | null {
+  const value = metadata[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function formatRelativeTime(value: string | null | undefined): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  const diffMs = Date.now() - date.getTime()
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60_000))
+
+  if (diffMinutes < 1) return 'Ahora'
+  if (diffMinutes < 60) return `Hace ${diffMinutes} min`
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `Hace ${diffHours} h`
+
+  return date.toLocaleDateString('es-MX', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatScheduledInfo(metadata: Record<string, unknown>): string | null {
+  const scheduledAt = readMetadataString(metadata, 'scheduledAt')
+  const scheduledEndAt = readMetadataString(metadata, 'scheduledEndAt')
+  const location = readMetadataString(metadata, 'location')
+  const origin = readMetadataString(metadata, 'origin')
+  const destination = readMetadataString(metadata, 'destination')
+  const parts: string[] = []
+
+  if (scheduledAt) {
+    const date = new Date(scheduledAt)
+    if (!Number.isNaN(date.getTime())) {
+      parts.push(date.toLocaleDateString('es-MX', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      }))
+    }
+  }
+
+  if (scheduledEndAt && !scheduledAt) {
+    const date = new Date(scheduledEndAt)
+    if (!Number.isNaN(date.getTime())) {
+      parts.push(`Hasta ${date.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })}`)
+    }
+  }
+
+  if (origin && destination) parts.push(`${origin} → ${destination}`)
+  else if (location) parts.push(location)
+
+  return parts.length > 0 ? parts.join(' • ') : null
+}
+
 // ── Dashboard variant ─────────────────────────────────────────────────────────
 
 const DEFAULT_TRIP: TripInfo    = { name: 'Cancún 2025', subtitle: 'Riviera Maya, México' }
@@ -248,7 +309,6 @@ function DashboardMobileMenu({ trip, user }: { trip: TripInfo; user: NavUserInfo
 interface DashboardContentProps {
   trip: TripInfo
   user: NavUserInfo
-  notificationCount: number
   isOnline: boolean
   mobileOpen: boolean
   showTripSelector: boolean
@@ -257,16 +317,9 @@ interface DashboardContentProps {
   onUserMenu?: () => void
 }
 
-const SAMPLE_NOTIFICATIONS = [
-  { id: 1, text: 'Kevin aceptó una propuesta',               time: 'hace 5 min',  unread: true  },
-  { id: 2, text: 'Nueva actividad agregada al Día 2',        time: 'hace 18 min', unread: true  },
-  { id: 3, text: 'El grupo votó por Hotel Malecón',          time: 'hace 1 h',    unread: true  },
-]
-
 function DashboardNavContent({
   trip,
   user,
-  notificationCount,
   isOnline,
   mobileOpen,
   showTripSelector,
@@ -280,7 +333,7 @@ function DashboardNavContent({
   const menuRef = useRef<HTMLDivElement>(null)
 
   const [notifOpen,   setNotifOpen]   = useState(false)
-  const [unreadCount, setUnreadCount] = useState(notificationCount)
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
   const notifRef = useRef<HTMLDivElement>(null)
   const avatarUrl = localUser?.avatar_url
 
@@ -308,7 +361,6 @@ function DashboardNavContent({
 
   function handleToggleNotif() {
     setNotifOpen((o) => !o)
-    setUnreadCount(0)
   }
 
   async function handleLogout() {
@@ -362,20 +414,52 @@ function DashboardNavContent({
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-[#E2E8F0] rounded-xl shadow-lg overflow-hidden z-50">
-              <div className="px-4 py-3 border-b border-[#E2E8F0] flex items-center justify-between">
+            <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-[#E2E8F0] rounded-xl shadow-lg overflow-hidden z-50 max-h-96 overflow-y-auto">
+              <div className="px-4 py-3 border-b border-[#E2E8F0] flex items-center justify-between sticky top-0 bg-white">
                 <span className="font-heading font-bold text-[#1E0A4E] text-sm">Notificaciones</span>
-                <span className="font-body text-[11px] text-[#1E6FD9] bg-[#1E6FD9]/10 px-2 py-0.5 rounded-full">3 nuevas</span>
-              </div>
-              {SAMPLE_NOTIFICATIONS.map((n) => (
-                <div key={n.id} className="flex items-start gap-3 px-4 py-3 hover:bg-[#F8FAFC] transition-colors border-b border-[#E2E8F0] last:border-none cursor-default">
-                  <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.unread ? 'bg-[#1E6FD9]' : 'bg-transparent'}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-body text-sm text-[#1E0A4E] leading-snug">{n.text}</p>
-                    <p className="font-body text-[11px] text-[#1E0A4E]/40 mt-0.5">{n.time}</p>
-                  </div>
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); markAllAsRead(); }}
+                      className="text-[10px] text-gray500 hover:text-bluePrimary underline"
+                    >
+                      Marcar todas
+                    </button>
+                  )}
+                  {unreadCount > 0 && (
+                    <span className="font-body text-[11px] text-[#1E6FD9] bg-[#1E6FD9]/10 px-2 py-0.5 rounded-full">{unreadCount} nuevas</span>
+                  )}
                 </div>
-              ))}
+              </div>
+              {notifications.length === 0 ? (
+                <div className="px-4 py-6 text-center text-gray500 text-sm">
+                  No tienes notificaciones
+                </div>
+              ) : (
+                notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    onClick={() => { if (!n.leida) markAsRead(n.id); }}
+                    className={`flex items-start gap-3 px-4 py-3 hover:bg-[#F8FAFC] transition-colors border-b border-[#E2E8F0] last:border-none ${!n.leida ? 'cursor-pointer bg-[#F8FAFC]/50' : 'cursor-default opacity-70'}`}
+                  >
+                    <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${!n.leida ? 'bg-[#1E6FD9]' : 'bg-transparent'}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-snug">{n.titulo}</p>
+                        <span className="font-body text-[10px] text-[#1E0A4E]/40 whitespace-nowrap mt-0.5">
+                          {formatRelativeTime(n.created_at)}
+                        </span>
+                      </div>
+                      <p className="font-body text-xs text-gray600 leading-snug mt-1">{n.mensaje}</p>
+                      {formatScheduledInfo(n.metadata) && (
+                        <p className="font-body text-[11px] text-[#1E6FD9] bg-[#1E6FD9]/10 rounded-md px-2 py-1 mt-2 line-clamp-2">
+                          {formatScheduledInfo(n.metadata)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           )}
         </div>
@@ -513,7 +597,6 @@ export function Navbar(props: NavbarProps) {
         <DashboardNavContent
           trip={props.trip ?? DEFAULT_TRIP}
           user={props.user ?? DEFAULT_USER}
-          notificationCount={props.notificationCount ?? 0}
           isOnline={props.isOnline ?? true}
           mobileOpen={mobileOpen}
           showTripSelector={props.showTripSelector ?? true}

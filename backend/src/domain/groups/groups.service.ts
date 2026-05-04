@@ -11,6 +11,7 @@ import {
   MemberRole,
   UpdateGroupPayload,
 } from './groups.entity';
+import * as NotificationsService from '../notifications/notifications.service';
 
 const generateGroupCode = (length = 8): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -374,6 +375,39 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
       .eq('estado', 'pendiente');
   }
 
+  // Notificar a los admins del grupo
+  const { data: admins } = await supabase.from('grupo_miembros').select('usuario_id').eq('grupo_id', grupo.id).eq('rol', 'admin');
+  if (admins) {
+    const actorName = localUser.nombre || localUser.email || 'Un miembro';
+    for (const admin of admins) {
+      if (String(admin.usuario_id) !== String(localUser.id_usuario)) {
+        await NotificationsService.createNotification({
+          usuarioId: Number(admin.usuario_id),
+          grupoId: Number(grupo.id),
+          tipo: 'miembro_unido',
+          titulo: 'Nuevo miembro',
+          mensaje: `${actorName} se unió al grupo "${grupo.nombre}".`,
+          entidadTipo: 'grupo',
+          entidadId: Number(grupo.id),
+          metadata: {
+            actorName,
+            actorUsuarioId: Number(localUser.id_usuario),
+            itemTitle: grupo.nombre,
+            itemType: 'grupo',
+          },
+        });
+      }
+    }
+
+    NotificationsService.emitGroupDashboardUpdated(Number(grupo.id), {
+      tipo: 'miembro_unido',
+      entidadTipo: 'grupo',
+      entidadId: Number(grupo.id),
+      actorUsuarioId: Number(localUser.id_usuario),
+      metadata: { actorName, itemTitle: grupo.nombre },
+    });
+  }
+
   return grupo;
 };
 
@@ -430,6 +464,22 @@ export const updateMemberRole = async (
     .single();
 
   if (error) throw new Error(error.message);
+
+  const actorUsuarioId = await getLocalUserId(authUserId);
+  const actorName = await NotificationsService.getUserDisplayName(actorUsuarioId);
+  NotificationsService.emitGroupDashboardUpdated(Number(targetMember.grupo_id), {
+    tipo: 'miembro_actualizado',
+    entidadTipo: 'grupo_miembro',
+    entidadId: Number(memberId),
+    actorUsuarioId: Number(actorUsuarioId),
+    metadata: {
+      actorName,
+      targetUsuarioId: Number(targetMember.usuario_id),
+      memberId: Number(memberId),
+      rol,
+    },
+  });
+
   return data;
 };
 
@@ -462,6 +512,20 @@ export const removeMember = async (
     .eq('grupo_id', groupId);
 
   if (error) throw new Error(error.message);
+
+  const actorName = await NotificationsService.getUserDisplayName(membership.usuario_id);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'miembro_eliminado',
+    entidadTipo: 'grupo_miembro',
+    entidadId: Number(memberId),
+    actorUsuarioId: Number(membership.usuario_id),
+    metadata: {
+      actorName,
+      targetUsuarioId: Number(targetMember.usuario_id),
+      targetRole: targetMember.rol,
+      memberId: Number(memberId),
+    },
+  });
 
   return { ok: true };
 };
@@ -655,6 +719,18 @@ export const createGroupInvitations = async (
       console.error('Error enviando invitación:', err);
     });
   }
+
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'invitacion_enviada',
+    entidadTipo: 'grupo_invitacion',
+    entidadId: Number(groupId),
+    actorUsuarioId: Number(usuarioId),
+    metadata: {
+      actorUsuarioId: Number(usuarioId),
+      invitedEmails: results.filter((item) => item.status === 'created').map((item) => item.email),
+      groupName: grupo.nombre,
+    },
+  });
 
   return {
     groupId: String(grupo.id),

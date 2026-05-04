@@ -1,6 +1,7 @@
 import { supabase } from '../../infrastructure/db/supabase.client';
 import { getLocalUserId } from '../groups/groups.service';
 import { CreateItineraryActivityPayload, ItineraryDay } from './itinerary.entity';
+import * as NotificationsService from '../notifications/notifications.service';
 
 const DEFAULT_ACTIVITY_IMAGE =
   'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&h=300&fit=crop';
@@ -501,6 +502,28 @@ export const createGroupActivity = async (
     if (activityConfirmError) throw new Error(activityConfirmError.message);
   }
 
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(groupId),
+    Number(usuarioId),
+    {
+      tipo: 'actividad_creada',
+      titulo: 'Nueva actividad',
+      mensaje: `${actorName} agregó "${payload.titulo}" al itinerario.`,
+      entidadTipo: 'actividad',
+      entidadId: activity.id_actividad,
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(usuarioId),
+        itemTitle: payload.titulo,
+        itemType: 'actividad',
+        scheduledAt: payload.fecha_inicio ?? null,
+        scheduledEndAt: payload.fecha_fin ?? null,
+        location: payload.ubicacion ?? null,
+      },
+    }
+  );
+
   return activity;
 };
 
@@ -631,6 +654,25 @@ export const updateGroupActivity = async (
     if (clearVotesError) throw new Error(clearVotesError.message);
   }
 
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'actividad_actualizada',
+    entidadTipo: 'actividad',
+    entidadId: Number(activityId),
+    actorUsuarioId: Number(usuarioId),
+    metadata: {
+      actorName,
+      actorUsuarioId: Number(usuarioId),
+      itemTitle: data.titulo ?? (currentActivity as any).titulo ?? 'Actividad',
+      itemType: 'actividad',
+      scheduledAt: data.fecha_inicio ?? null,
+      scheduledEndAt: data.fecha_fin ?? null,
+      location: data.ubicacion ?? null,
+      proposalId: currentActivity.propuesta_id ?? null,
+      requiresRevote: Boolean(currentActivity.estado === 'confirmada' && touchedVotingFields && currentActivity.propuesta_id),
+    },
+  });
+
   return data;
 };
 export const deleteGroupActivity = async (
@@ -653,7 +695,7 @@ export const deleteGroupActivity = async (
 
   const { data: activity, error: activityLookupError } = await supabase
     .from('actividades')
-    .select('id_actividad, propuesta_id, creado_por')
+    .select('id_actividad, propuesta_id, creado_por, titulo, ubicacion, fecha_inicio')
     .eq('id_actividad', activityId)
     .eq('itinerario_id', itinerary.id_itinerario)
     .maybeSingle();
@@ -691,6 +733,23 @@ export const deleteGroupActivity = async (
 
     if (proposalDeleteError) throw new Error(proposalDeleteError.message);
   }
+
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'actividad_eliminada',
+    entidadTipo: 'actividad',
+    entidadId: Number(activityId),
+    actorUsuarioId: Number(usuarioId),
+    metadata: {
+      actorName,
+      actorUsuarioId: Number(usuarioId),
+      itemTitle: (activity as any).titulo ?? 'Actividad',
+      itemType: 'actividad',
+      proposalId: proposalId ?? null,
+      location: (activity as any).ubicacion ?? null,
+      scheduledAt: (activity as any).fecha_inicio ?? null,
+    },
+  });
 
   return true;
 };

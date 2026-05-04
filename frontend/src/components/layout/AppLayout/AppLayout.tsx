@@ -19,7 +19,6 @@ export interface AppLayoutProps {
   centerTitle?: string
   trip?: TripMeta
   user?: NavUserInfo
-  notificationCount?: number
   isOnline?: boolean
 }
 
@@ -83,7 +82,6 @@ export function AppLayout({
   centerTitle,
   trip,
   user,
-  notificationCount = 0,
   isOnline = true,
 }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(() =>
@@ -101,7 +99,6 @@ export function AppLayout({
         variant="dashboard"
         trip={tripInfo}
         user={user}
-        notificationCount={notificationCount}
         isOnline={isOnline}
         showTripSelector={showTripSelector}
         centerTitle={centerTitle}

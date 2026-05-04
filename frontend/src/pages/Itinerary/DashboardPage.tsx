@@ -467,6 +467,17 @@ async function enrichDaysWithRoutes(
   }))
 }
 
+interface DashboardUpdatedSocketPayload {
+  grupoId?: number | string
+  groupId?: number | string
+  tipo?: string
+  entidadTipo?: string | null
+  entidadId?: number | string | null
+  actorUsuarioId?: number | string | null
+  metadata?: Record<string, unknown>
+  createdAt?: string
+}
+
 export function DashboardPage() {
 
   const navigate = useNavigate()
@@ -496,6 +507,7 @@ export function DashboardPage() {
   const [group, setGroup] = useState<typeof currentGroup>(currentGroup)
   const [members, setMembers] = useState<Parameters<typeof RightPanelDashboard>[0]['members']>([])
   const dayRefs = useRef<Record<number, DayViewHandle | null>>({})
+  const collaborativeRefreshTimerRef = useRef<number | null>(null)
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [selectedActivityDay, setSelectedActivityDay] = useState<number | null>(null)
   const [editingActivity, setEditingActivity] = useState<DayActivity | null>(null)
@@ -604,18 +616,92 @@ export function DashboardPage() {
 
     if (!resolvedGroupId || !accessToken) return
 
-    const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-    const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, group, accessToken)
-    setDays(daysWithRoutes)
-    setVotedActivityIds({})
+    const [groupRes, membersRes, itineraryRes, votesRes] = await Promise.all([
+      groupsService.getGroupDetails(resolvedGroupId, accessToken),
+      groupsService.getMembers(resolvedGroupId, accessToken),
+      groupsService.getItinerary(resolvedGroupId, accessToken),
+      proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
+    ])
 
-    const votesRes = await proposalsService.getVoteResults(String(resolvedGroupId), accessToken)
+    const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupRes.group, accessToken)
     const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
       acc[String(item.id_propuesta)] = item
       return acc
     }, {})
+
+    setGroup(groupRes.group)
+    setMembers(membersRes.members ?? [])
+    setDays(daysWithRoutes)
+    setVotedActivityIds({})
     setVoteResultByProposal(nextVotesMap)
-  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, group])
+  }, [groupIdFromState, groupId, currentGroup?.id, accessToken])
+
+  const refreshCommentsForProposal = useCallback(async (proposalId: string) => {
+    if (!accessToken || !resolvedGroupId) return
+
+    try {
+      setLoadingCommentsProposalId((current) => current ?? proposalId)
+      const response = await proposalsService.getComments(String(resolvedGroupId), proposalId, accessToken)
+      setCommentsByProposal((prev) => ({ ...prev, [proposalId]: response.comments ?? [] }))
+    } catch (error) {
+      console.error('Error actualizando comentarios colaborativos:', error)
+    } finally {
+      setLoadingCommentsProposalId((current) => (current === proposalId ? null : current))
+    }
+  }, [accessToken, resolvedGroupId])
+
+  useEffect(() => {
+    if (!socket || !resolvedGroupId || !accessToken) return
+
+    const scheduleCollaborativeRefresh = (payload?: DashboardUpdatedSocketPayload) => {
+      const payloadGroupId = payload?.grupoId ?? payload?.groupId
+      if (payloadGroupId !== undefined && String(payloadGroupId) !== String(resolvedGroupId)) return
+
+      if (collaborativeRefreshTimerRef.current !== null) {
+        window.clearTimeout(collaborativeRefreshTimerRef.current)
+      }
+
+      collaborativeRefreshTimerRef.current = window.setTimeout(() => {
+        void (async () => {
+          try {
+            await reloadDashboard()
+
+            const tipo = String(payload?.tipo ?? '')
+            const isCommentEvent = tipo.startsWith('comentario_') || payload?.entidadTipo === 'comentario'
+            const proposalId = payload?.entidadTipo === 'propuesta' && payload?.entidadId !== null && payload?.entidadId !== undefined
+              ? String(payload.entidadId)
+              : null
+
+            if (isCommentEvent && proposalId && expandedCommentsProposalId === proposalId) {
+              await refreshCommentsForProposal(proposalId)
+            }
+          } catch (error) {
+            console.error('Error actualizando dashboard colaborativo:', error)
+          }
+        })()
+      }, 250)
+    }
+
+    const handleDashboardUpdated = (payload: DashboardUpdatedSocketPayload) => {
+      scheduleCollaborativeRefresh(payload)
+    }
+
+    const handleVoteUpdated = (payload: DashboardUpdatedSocketPayload) => {
+      scheduleCollaborativeRefresh(payload)
+    }
+
+    socket.on('dashboard_updated', handleDashboardUpdated)
+    socket.on('vote_updated', handleVoteUpdated)
+
+    return () => {
+      if (collaborativeRefreshTimerRef.current !== null) {
+        window.clearTimeout(collaborativeRefreshTimerRef.current)
+        collaborativeRefreshTimerRef.current = null
+      }
+      socket.off('dashboard_updated', handleDashboardUpdated)
+      socket.off('vote_updated', handleVoteUpdated)
+    }
+  }, [socket, resolvedGroupId, accessToken, reloadDashboard, expandedCommentsProposalId, refreshCommentsForProposal])
 
   const handleDeleteActivity = useCallback(async (activityId: string) => {
     const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
@@ -1005,7 +1091,6 @@ export function DashboardPage() {
         initials,
         color: '#1E6FD9',
       }}
-      notificationCount={3}
       isOnline
       sidebarContent={
         <SidebarDashboard

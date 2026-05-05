@@ -129,10 +129,13 @@ export function ChatDrawer({
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatError, setChatError] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [loadedGroupId, setLoadedGroupId] = useState<string | null>(null)
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // Derived: true whenever the loaded data doesn't match the current group yet
+  const isLoading = groupId != null && loadedGroupId !== groupId
 
   const groupInitials = groupName
     .split(' ')
@@ -143,22 +146,27 @@ export function ChatDrawer({
 
   const onlineCount = participants.filter((p) => onlineUserIds.includes(p.id)).length
 
-  // Load messages when group changes
+  // Load messages when group changes — no synchronous setState in effect body
   useEffect(() => {
-    if (!groupId || !accessToken) {
-      setMessages([])
-      return
-    }
+    if (!groupId || !accessToken) return
+
     let isMounted = true
-    setIsLoading(true)
-    setChatError(null)
     void chatService
       .getMessages(groupId, accessToken, 50)
-      .then((res) => { if (isMounted) setMessages(res.messages) })
-      .catch((err: unknown) => {
-        if (isMounted) setChatError(err instanceof Error ? err.message : 'No se pudo cargar el chat')
+      .then((res) => {
+        if (isMounted) {
+          setMessages(res.messages)
+          setChatError(null)
+          setLoadedGroupId(groupId)
+        }
       })
-      .finally(() => { if (isMounted) setIsLoading(false) })
+      .catch((err: unknown) => {
+        if (isMounted) {
+          setMessages([])
+          setChatError(err instanceof Error ? err.message : 'No se pudo cargar el chat')
+          setLoadedGroupId(groupId)
+        }
+      })
     return () => { isMounted = false }
   }, [groupId, accessToken])
 
@@ -265,8 +273,11 @@ export function ChatDrawer({
     e.target.style.height = `${Math.min(e.target.scrollHeight, 96)}px`
   }
 
-  // Computed per render — mutable to track date separator state
-  let lastDateKey = ''
+  // Pre-compute which messages need a date separator (avoids mutable variable inside JSX)
+  const messagesWithSeparator = messages.map((msg, i) => ({
+    msg,
+    showSeparator: i === 0 || getDateKey(msg.createdAt) !== getDateKey(messages[i - 1].createdAt),
+  }))
 
   return (
     <>
@@ -364,15 +375,11 @@ export function ChatDrawer({
             </div>
           )}
 
-          {messages.map((message) => {
+          {messagesWithSeparator.map(({ msg: message, showSeparator }) => {
             const isOwn = currentUserId
               ? String(message.userId) === String(currentUserId)
               : message.id.startsWith('local-')
             const author = message.authorName || 'Usuario'
-            const dateKey = getDateKey(message.createdAt)
-            const showSeparator = dateKey !== lastDateKey
-            if (showSeparator) lastDateKey = dateKey
-
             const pColor = participants.find((p) => p.name === author)?.color ?? '#7A4FD6'
             const pAvatar = participants.find((p) => p.name === author)?.avatarUrl ?? null
 

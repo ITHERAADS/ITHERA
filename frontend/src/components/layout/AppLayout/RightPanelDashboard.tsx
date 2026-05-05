@@ -268,7 +268,6 @@ export function RightPanelDashboard({
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Buscar miembro..."
-                  // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                   className="flex-1 font-body text-xs outline-none text-gray700 placeholder-gray-400 bg-transparent"
                 />

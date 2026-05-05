@@ -423,7 +423,8 @@ export const getGroupMembers = async (authUserId: string, groupId: string) => {
       usuarios (
         id_usuario,
         nombre,
-        email
+        email,
+        avatar_url
       )
     `)
     .eq('grupo_id', groupId);
@@ -436,6 +437,7 @@ export const getGroupMembers = async (authUserId: string, groupId: string) => {
     rol: item.rol,
     nombre: item.usuarios?.nombre ?? '',
     email: item.usuarios?.email ?? '',
+    avatar_url: item.usuarios?.avatar_url ?? null,
   }));
 };
 
@@ -760,7 +762,9 @@ export const getMyTravelHistory = async (authUserId: string) => {
         destino_latitud,
         destino_longitud,
         destino_place_id,
-        destino_formatted_address
+        destino_formatted_address,
+        destino_photo_name,
+        destino_photo_url
       )
     `)
     .eq('usuario_id', usuarioId);

@@ -33,6 +33,7 @@ export interface GroupMember {
   rol: GroupRole
   nombre: string
   email: string
+  avatar_url?: string | null
 }
 
 export interface CreateGroupPayload {

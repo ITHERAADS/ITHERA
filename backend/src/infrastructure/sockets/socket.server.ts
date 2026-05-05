@@ -12,6 +12,7 @@ export interface SocketUserData {
   authUserId: string;   // UUID de Supabase Auth
   localUserId: string;  // id_usuario de tabla usuarios
   userName: string;      // nombre del usuario
+  avatarUrl: string | null;
 }
 
 // Instancia global de Socket.IO (accesible para gateway y scheduler)
@@ -75,7 +76,7 @@ export const initSocketServer = (httpServer: HttpServer): SocketIOServer => {
       // Obtener id_usuario local y nombre
       const { data: localUser, error: localError } = await supabase
         .from('usuarios')
-        .select('id_usuario, nombre')
+        .select('id_usuario, nombre, avatar_url')
         .eq('auth_user_id', data.user.id)
         .single();
 
@@ -88,6 +89,7 @@ export const initSocketServer = (httpServer: HttpServer): SocketIOServer => {
         authUserId: data.user.id,
         localUserId: String(localUser.id_usuario),
         userName: localUser.nombre ?? 'Usuario',
+        avatarUrl: localUser.avatar_url ?? null,
       } as SocketUserData;
 
       next();

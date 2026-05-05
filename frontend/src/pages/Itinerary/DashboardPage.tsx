@@ -47,23 +47,78 @@ function IconInfo({ size = 16 }: { size?: number }) {
   )
 }
 
-function SkeletonPulse({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded-lg bg-gray-200 ${className}`} />
+interface SwitchingGroupState {
+  id?: string | number
+  nombre?: string | null
+  destino?: string | null
+  destino_formatted_address?: string | null
+  destino_photo_url?: string | null
+  fecha_inicio?: string | null
+  fecha_fin?: string | null
+  myRole?: string | null
 }
 
-function SkeletonView() {
+function DashboardSwitchLoading({ group }: { group?: SwitchingGroupState | Group | null }) {
+  const title = group?.nombre || 'Cargando viaje'
+  const destination = group?.destino || group?.destino_formatted_address || 'Preparando información del destino'
+  const imageUrl = group?.destino_photo_url
+
   return (
-    <div className="flex flex-col gap-4 px-6 py-6">
-      <SkeletonPulse className="h-52 rounded-2xl" />
-      <SkeletonPulse className="h-14 rounded-2xl" />
-      <SkeletonPulse className="h-12 rounded-xl" />
-      {[1, 2, 3].map((item) => (
-        <div key={item} className="rounded-2xl border border-[#E2E8F0] bg-white p-5">
-          <SkeletonPulse className="mb-4 h-6 w-40" />
-          <SkeletonPulse className="mb-2 h-4 w-full" />
-          <SkeletonPulse className="h-4 w-2/3" />
+    <div className="flex flex-1 items-center justify-center bg-[#F0EEF8] px-6 py-8">
+      <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-[#E2E8F0] bg-white shadow-[0_24px_60px_rgba(30,10,78,0.14)]">
+        <div className="relative h-48 overflow-hidden bg-purpleNavbar">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={destination}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1E6FD9] via-[#7A4FD6] to-[#1E0A4E]">
+              <span className="font-heading text-6xl font-bold text-white/70">
+                {title[0] ?? 'V'}
+              </span>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#1E0A4E]/95 via-[#1E0A4E]/45 to-transparent" />
+          <div className="absolute bottom-5 left-6 right-6">
+            <p className="font-body text-xs font-semibold uppercase tracking-[0.24em] text-white/60">
+              Cambiando de grupo
+            </p>
+            <h2 className="mt-1 truncate font-heading text-2xl font-bold text-white">
+              {title}
+            </h2>
+            <p className="mt-1 line-clamp-2 font-body text-sm text-white/70">
+              {destination}
+            </p>
+          </div>
         </div>
-      ))}
+
+        <div className="px-6 py-6">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-bluePrimary/10 text-bluePrimary">
+              <span className="h-6 w-6 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            </div>
+            <div>
+              <p className="font-heading text-base font-bold text-purpleNavbar">
+                Cargando información del viaje...
+              </p>
+              <p className="mt-1 font-body text-sm leading-relaxed text-gray500">
+                Estamos actualizando itinerario, participantes, presupuesto y chat del grupo seleccionado.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-3 md:grid-cols-3">
+            {['Itinerario', 'Participantes', 'Presupuesto'].map((item) => (
+              <div key={item} className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+                <div className="mb-3 h-2 w-16 animate-pulse rounded-full bg-gray-200" />
+                <p className="font-body text-xs font-semibold text-[#1E0A4E]/70">{item}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -486,7 +541,11 @@ export function DashboardPage() {
   const { socket, isConnected: isSocketConnected } = useSocket(accessToken)
 
   const location = useLocation()
-  const groupIdFromState = location.state?.groupId
+  const routeState = location.state as { groupId?: string | number; switchingGroup?: SwitchingGroupState } | null
+  const groupIdFromState = routeState?.groupId !== undefined && routeState?.groupId !== null
+    ? String(routeState.groupId)
+    : null
+  const switchingGroupFromState = routeState?.switchingGroup
 
   const groupId = searchParams.get('groupId')
   const currentGroup = getCurrentGroup()
@@ -546,7 +605,7 @@ export function DashboardPage() {
   // }, [])
 
   const isEmpty = days.length === 0
-  const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id || null
+  const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
   const selectedDay = activeDay !== null ? days.find((day) => day.dayNumber === activeDay) : undefined
   const safeMembers = (Array.isArray(members) ? members : []).filter(
     (member): member is NonNullable<NonNullable<typeof members>[number]> => Boolean(member),
@@ -559,7 +618,7 @@ export function DashboardPage() {
   const isCurrentUserAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
 
   useEffect(() => {
-  const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+  const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
 
   if (!resolvedGroupId) {
     navigate('/my-trips')
@@ -612,7 +671,7 @@ export function DashboardPage() {
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, navigate])
 
   const reloadDashboard = useCallback(async () => {
-    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+    const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
 
     if (!resolvedGroupId || !accessToken) return
 
@@ -704,7 +763,7 @@ export function DashboardPage() {
   }, [socket, resolvedGroupId, accessToken, reloadDashboard, expandedCommentsProposalId, refreshCommentsForProposal])
 
   const handleDeleteActivity = useCallback(async (activityId: string) => {
-    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+    const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
 
     if (!resolvedGroupId || !accessToken) return
 
@@ -723,7 +782,7 @@ export function DashboardPage() {
   }, [socket, groupId, currentGroup?.id])
 
   const handleAcceptActivity = useCallback(async (activityId: string) => {
-    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+    const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
 
     if (!resolvedGroupId || !accessToken) return
 
@@ -756,7 +815,7 @@ export function DashboardPage() {
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, days, reloadDashboard])
 
   const handleRejectActivity = useCallback(async (activityId: string) => {
-    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+    const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
 
     if (!resolvedGroupId || !accessToken) return
 
@@ -788,7 +847,7 @@ export function DashboardPage() {
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, days, reloadDashboard])
 
   const handleAdminDecision = useCallback(async (proposalId: string, decision: 'aprobar' | 'rechazar') => {
-    const resolvedGroupId = groupIdFromState || groupId || currentGroup?.id
+    const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
     if (!resolvedGroupId || !accessToken) return
     await proposalsService.applyAdminDecision(String(resolvedGroupId), proposalId, { decision }, accessToken)
     await reloadDashboard()
@@ -1096,6 +1155,7 @@ export function DashboardPage() {
         <SidebarDashboard
           activeDay={activeDay}
           days={days}
+          group={group}
           onDayChange={handleDayChange}
           onOpenGroupPanel={() =>
             navigate(`/grouppanel?groupId=${encodeURIComponent(groupId || currentGroup?.id || '')}`)
@@ -1113,11 +1173,12 @@ export function DashboardPage() {
           accessToken={accessToken}
           currentUserId={localUser?.id_usuario}
           currentUserName={userName}
+          currentUserAvatarUrl={localUser?.avatar_url ?? null}
         />
       }
     >
       {isLoading ? (
-        <SkeletonView />
+        <DashboardSwitchLoading group={switchingGroupFromState ?? group ?? currentGroup} />
       ) : isEmpty ? (
         <EmptyState onAdd={() => setShowActivityModal(true)} />
       ) : activeTab === 'comparar' ? (

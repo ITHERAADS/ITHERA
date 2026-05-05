@@ -203,7 +203,7 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
         {
           nombre: user.userName,
           email: null,
-          avatar_url: null,
+          avatar_url: user.avatarUrl ?? null,
         }
       );
 

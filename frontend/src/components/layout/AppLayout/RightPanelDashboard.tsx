@@ -12,6 +12,7 @@ interface Participant {
   role: 'Organizador' | 'Miembro'
   color: string
   isOnline: boolean
+  avatarUrl?: string | null
 }
 
 interface MemberFromBackend {
@@ -19,6 +20,7 @@ interface MemberFromBackend {
   usuario_id?: string
   nombre?: string
   email?: string
+  avatar_url?: string | null
   rol: 'admin' | 'viajero' | string
 }
 
@@ -33,6 +35,37 @@ interface ChatAck {
 function getParticipantColor(authorName: string | undefined, participants: Participant[]): string {
   const found = participants.find((participant) => participant.name === authorName)
   return found?.color ?? '#7A4FD6'
+}
+
+function getParticipantAvatar(authorName: string | undefined, participants: Participant[]): string | null {
+  const found = participants.find((participant) => participant.name === authorName)
+  return found?.avatarUrl ?? null
+}
+
+function ParticipantAvatar({
+  name,
+  color,
+  avatarUrl,
+  className,
+}: {
+  name: string
+  color: string
+  avatarUrl?: string | null
+  className: string
+}) {
+  return (
+    <div
+      className={`${className} overflow-hidden rounded-full flex items-center justify-center text-white font-body font-bold shrink-0`}
+      style={{ backgroundColor: color }}
+      title={name}
+    >
+      {avatarUrl ? (
+        <img src={avatarUrl} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        name[0] ?? '?'
+      )}
+    </div>
+  )
 }
 
 function formatChatTime(value: string): string {
@@ -65,6 +98,7 @@ export function RightPanelDashboard({
   accessToken,
   currentUserId,
   currentUserName = 'Usuario',
+  currentUserAvatarUrl,
 }: {
   members?: MemberFromBackend[]
   group?: Group | null
@@ -74,6 +108,7 @@ export function RightPanelDashboard({
   accessToken?: string | null
   currentUserId?: string | number | null
   currentUserName?: string
+  currentUserAvatarUrl?: string | null
 }) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
@@ -106,6 +141,7 @@ export function RightPanelDashboard({
         role: member.rol === 'admin' ? 'Organizador' : 'Miembro',
         color: colors[index % colors.length],
         isOnline: onlineUserIds.includes(String(member.usuario_id ?? member.id)),
+        avatarUrl: member.avatar_url ?? null,
       }
     })
   }, [members, onlineUserIds])
@@ -209,7 +245,7 @@ export function RightPanelDashboard({
       userId: currentUserIdStr ?? 'me',
       authorName: currentUserName,
       authorEmail: null,
-      authorAvatarUrl: null,
+      authorAvatarUrl: currentUserAvatarUrl ?? null,
       contenido: text,
       createdAt: new Date().toISOString(),
       clientId,
@@ -294,14 +330,13 @@ export function RightPanelDashboard({
         {participants.length > 1 && (
           <div className="flex -space-x-2 mb-3">
             {participants.map((participant) => (
-              <div
+              <ParticipantAvatar
                 key={participant.id}
-                className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white font-body font-bold text-xs shrink-0"
-                style={{ backgroundColor: participant.color }}
-                title={participant.name}
-              >
-                {participant.name[0]}
-              </div>
+                name={participant.name}
+                color={participant.color}
+                avatarUrl={participant.avatarUrl}
+                className="w-8 h-8 border-2 border-white text-xs"
+              />
             ))}
           </div>
         )}
@@ -309,12 +344,12 @@ export function RightPanelDashboard({
         <ul className="flex flex-col gap-2.5">
           {participants.map((participant) => (
             <li key={participant.id} className="flex items-center gap-2.5">
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-body font-bold text-xs shrink-0"
-                style={{ backgroundColor: participant.color }}
-              >
-                {participant.name[0]}
-              </div>
+              <ParticipantAvatar
+                name={participant.name}
+                color={participant.color}
+                avatarUrl={participant.avatarUrl}
+                className="w-8 h-8 text-xs"
+              />
               <div className="flex-1 min-w-0">
                 <p className="font-body text-xs font-semibold text-gray700 truncate leading-none">
                   {participant.name}
@@ -395,12 +430,12 @@ export function RightPanelDashboard({
               return (
                 <div key={message.id} className={`flex gap-2 ${isOwn ? 'justify-end' : 'justify-start'}`}>
                   {!isOwn && (
-                    <div
-                      className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-white font-body font-bold text-[10px] mt-4"
-                      style={{ backgroundColor: getParticipantColor(author, participants) }}
-                    >
-                      {author[0] ?? '?'}
-                    </div>
+                    <ParticipantAvatar
+                      name={author}
+                      color={getParticipantColor(author, participants)}
+                      avatarUrl={message.authorAvatarUrl ?? getParticipantAvatar(author, participants)}
+                      className="w-6 h-6 text-[10px] mt-4"
+                    />
                   )}
                   <div className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} max-w-[80%]`}>
                     {!isOwn && (

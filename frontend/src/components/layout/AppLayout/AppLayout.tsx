@@ -19,7 +19,6 @@ export interface AppLayoutProps {
   centerTitle?: string
   trip?: TripMeta
   user?: NavUserInfo
-  notificationCount?: number
   isOnline?: boolean
 }
 
@@ -83,7 +82,6 @@ export function AppLayout({
   centerTitle,
   trip,
   user,
-  notificationCount = 0,
   isOnline = true,
 }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(() =>
@@ -101,7 +99,6 @@ export function AppLayout({
         variant="dashboard"
         trip={tripInfo}
         user={user}
-        notificationCount={notificationCount}
         isOnline={isOnline}
         showTripSelector={showTripSelector}
         centerTitle={centerTitle}
@@ -163,7 +160,7 @@ export function AppLayout({
         </main>
 
         {showRightPanel && rightPanel && (
-          <aside className="hidden w-[280px] shrink-0 flex-col gap-4 overflow-hidden border-l border-[#E2E8F0] bg-[#FAF9FD] px-5 py-5 xl:flex">
+          <aside className="hidden w-[280px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-[#E2E8F0] bg-[#FAF9FD] px-5 py-5 xl:flex">
             {rightPanel}
           </aside>
         )}

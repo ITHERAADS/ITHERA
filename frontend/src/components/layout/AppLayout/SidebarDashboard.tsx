@@ -1,12 +1,5 @@
 import type { ItineraryDay } from '../../../services/groups'
-
-// ── Mock budget data ──────────────────────────────────────────────────────────
-
-const BUDGET_ITEMS = [
-  { label: 'Vuelos',      amount: '$5,600' },
-  { label: 'Hospedaje',   amount: '$6,300' },
-  { label: 'Actividades', amount: '$2,300' },
-]
+import type { Group } from '../../../types/groups'
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -15,6 +8,7 @@ export interface SidebarDashboardProps {
   days: ItineraryDay[]
   onDayChange: (day: number) => void
   onOpenGroupPanel?: () => void
+  group?: Group | null
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -24,9 +18,40 @@ export function SidebarDashboard({
   days,
   onDayChange,
   onOpenGroupPanel,
+  group,
 }: SidebarDashboardProps) {
+  const destinationImage = group?.destino_photo_url
+  const destinationLabel = group?.destino || group?.destino_formatted_address || 'Destino pendiente'
+
   return (
     <div className="flex flex-col">
+      {/* Destination cover */}
+      <div className="mb-4 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-[0_10px_25px_rgba(0,0,0,0.16)]">
+        <div className="relative h-28 w-full overflow-hidden bg-white/10">
+          {destinationImage ? (
+            <img
+              src={destinationImage}
+              alt={destinationLabel}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1E6FD9]/60 via-[#7A4FD6]/50 to-[#1E0A4E]">
+              <span className="font-heading text-3xl font-bold text-white/80">
+                {(group?.nombre || 'V')[0]}
+              </span>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#1E0A4E]/90 via-[#1E0A4E]/20 to-transparent" />
+          <div className="absolute bottom-3 left-3 right-3">
+            <p className="truncate font-heading text-sm font-bold leading-tight text-white">
+              {group?.nombre || 'Viaje activo'}
+            </p>
+            <p className="mt-0.5 line-clamp-2 font-body text-[11px] leading-tight text-white/70">
+              {destinationLabel}
+            </p>
+          </div>
+        </div>
+      </div>
       {/* Section label */}
       <p className="font-body text-[10px] text-white/40 uppercase tracking-widest mb-2">
         Itinerario
@@ -87,35 +112,6 @@ export function SidebarDashboard({
 
       {/* Divider */}
       <div className="border-t border-white/10 mb-4 mt-3" />
-
-      {/* Budget */}
-      <p className="font-body text-[10px] text-white/40 uppercase tracking-widest mb-2">
-        Presupuesto Grupal
-      </p>
-      <p className="font-heading font-bold text-white text-2xl leading-none">$14,200</p>
-      <p className="font-body text-xs text-white/40 mt-0.5 mb-3">de $24,000 MXN</p>
-
-      {/* Progress bar */}
-      <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-1">
-        <div
-          className="h-full rounded-full"
-          style={{ width: '59%', background: 'linear-gradient(90deg, #1E6FD9, #7A4FD6)' }}
-        />
-      </div>
-      <p className="font-body text-[11px] text-white/40 text-right mb-3">59%</p>
-
-      {/* Breakdown */}
-      <div className="flex flex-col gap-2">
-        {BUDGET_ITEMS.map((item) => (
-          <div key={item.label} className="flex items-center justify-between">
-            <span className="font-body text-[11px] text-white/60">{item.label}</span>
-            <span className="font-body text-[11px] font-semibold text-white/80">{item.amount}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Divider */}
-      <div className="border-t border-white/10 mb-4 mt-4" />
 
       {/* Group panel */}
       <p className="font-body text-[10px] text-white/40 uppercase tracking-widest mb-2">

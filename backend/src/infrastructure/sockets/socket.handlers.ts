@@ -115,6 +115,10 @@ const removeSocketFromAllPresenceRooms = (socket: Socket, userId: string): strin
 export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void => {
   const user = getUserData(socket);
 
+  // Unir al usuario a su cuarto personal para recibir notificaciones
+  socket.join(`user:${user.localUserId}`);
+  console.log(`[socket.io] ${user.userName} unido a cuarto personal user:${user.localUserId}`);
+
   // ── join_room ────────────────────────────────────────────────────────
   socket.on('join_room', async (payload: JoinRoomPayload) => {
     try {
@@ -199,7 +203,7 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
         {
           nombre: user.userName,
           email: null,
-          avatar_url: null,
+          avatar_url: user.avatarUrl ?? null,
         }
       );
 

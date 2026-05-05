@@ -3,6 +3,7 @@ import { AppLayout } from '../../components/layout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { apiClient } from '../../services/apiClient'
 import { supabase } from '../../lib/supabase'
+import { notificationsService } from '../../services/notifications'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -402,6 +403,35 @@ export function ProfilePage() {
   const [notifEmail, setNotifEmail] = useState(true)
   const [notifGroup, setNotifGroup] = useState(true)
 
+  useEffect(() => {
+    if (accessToken) {
+      notificationsService.getPreferences(accessToken)
+        .then(res => {
+          if (res.ok && res.preferences) {
+            setNotifEmail(res.preferences.notificaciones_correo)
+            setNotifGroup(res.preferences.notificaciones_grupo)
+          }
+        })
+        .catch(console.error)
+    }
+  }, [accessToken])
+
+  const handleTogglePref = async (key: 'notificaciones_correo' | 'notificaciones_grupo', val: boolean) => {
+    if (!accessToken) return
+    const prevEmail = notifEmail
+    const prevGroup = notifGroup
+    if (key === 'notificaciones_correo') setNotifEmail(val)
+    if (key === 'notificaciones_grupo') setNotifGroup(val)
+
+    try {
+      await notificationsService.updatePreferences({ [key]: val }, accessToken)
+    } catch (err) {
+      console.error('Failed to update pref', err)
+      if (key === 'notificaciones_correo') setNotifEmail(prevEmail)
+      if (key === 'notificaciones_grupo') setNotifGroup(prevGroup)
+    }
+  }
+
   // ── NavUserInfo for AppLayout ─────────────────────────────────────────────
   const displayName = [savedName, savedApPat].filter(Boolean).join(' ') || fullName
   const navUser = {
@@ -711,13 +741,13 @@ export function ProfilePage() {
                 label="Notificaciones por correo"
                 description="Recibe actualizaciones del itinerario en tu correo."
                 checked={notifEmail}
-                onChange={setNotifEmail}
+                onChange={(val) => handleTogglePref('notificaciones_correo', val)}
               />
               <Toggle
                 label="Notificaciones del grupo"
                 description="Alertas cuando un miembro realiza cambios en el grupo."
                 checked={notifGroup}
-                onChange={setNotifGroup}
+                onChange={(val) => handleTogglePref('notificaciones_grupo', val)}
               />
             </div>
           </section>

@@ -1,8 +1,3 @@
-const AMADEUS_BASE_URL = process.env['AMADEUS_BASE_URL'] ?? 'https://test.api.amadeus.com';
-const AMADEUS_AUTH_URL = process.env['AMADEUS_AUTH_URL'] ?? 'https://test.api.amadeus.com/v1/security/oauth2/token';
-const AMADEUS_CLIENT_ID = process.env['AMADEUS_CLIENT_ID'];
-const AMADEUS_CLIENT_SECRET = process.env['AMADEUS_CLIENT_SECRET'];
-
 interface AmadeusTokenResponse {
   access_token: string;
   expires_in: number;
@@ -10,14 +5,20 @@ interface AmadeusTokenResponse {
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
-function ensureAmadeusEnv(): void {
-  if (!AMADEUS_CLIENT_ID || !AMADEUS_CLIENT_SECRET) {
+function ensureAmadeusEnv(): { clientId: string; clientSecret: string } {
+  const clientId = process.env['AMADEUS_CLIENT_ID'];
+  const clientSecret = process.env['AMADEUS_CLIENT_SECRET'];
+  if (!clientId || !clientSecret) {
     throw new Error('Faltan variables de entorno de Amadeus');
   }
+  return { clientId, clientSecret };
 }
 
 async function safeJson<T>(response: Response): Promise<T> {
   const text = await response.text();
+  if (!text) {
+    throw new Error('La respuesta del servicio de Amadeus está vacía');
+  }
   try {
     return JSON.parse(text) as T;
   } catch {
@@ -26,22 +27,24 @@ async function safeJson<T>(response: Response): Promise<T> {
 }
 
 export async function getAmadeusAccessToken(): Promise<string> {
-  ensureAmadeusEnv();
+  const { clientId, clientSecret } = ensureAmadeusEnv();
 
   if (cachedToken && Date.now() < cachedToken.expiresAt) {
     return cachedToken.value;
   }
 
+  const authUrl = process.env['AMADEUS_AUTH_URL'] || 'https://test.api.amadeus.com/v1/security/oauth2/token';
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
-    client_id: AMADEUS_CLIENT_ID!,
-    client_secret: AMADEUS_CLIENT_SECRET!,
+    client_id: clientId,
+    client_secret: clientSecret,
   });
 
-  const response = await fetch(AMADEUS_AUTH_URL, {
+  const response = await fetch(authUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
+    signal: AbortSignal.timeout(8000), // Timeout for integrity
   });
 
   if (!response.ok) {
@@ -52,7 +55,7 @@ export async function getAmadeusAccessToken(): Promise<string> {
   const data = await safeJson<AmadeusTokenResponse>(response);
   cachedToken = {
     value: data.access_token,
-    expiresAt: Date.now() + Math.max((data.expires_in - 60) * 1000, 60_000),
+    expiresAt: Date.now() + Math.max(((data.expires_in || 1799) - 60) * 1000, 60_000),
   };
 
   return data.access_token;
@@ -60,7 +63,8 @@ export async function getAmadeusAccessToken(): Promise<string> {
 
 export async function amadeusGet<T>(path: string, query: Record<string, string | number | undefined>): Promise<T> {
   const token = await getAmadeusAccessToken();
-  const url = new URL(path, AMADEUS_BASE_URL);
+  const baseUrl = process.env['AMADEUS_BASE_URL'] || 'https://test.api.amadeus.com';
+  const url = new URL(path, baseUrl);
 
   Object.entries(query).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
@@ -74,6 +78,7 @@ export async function amadeusGet<T>(path: string, query: Record<string, string |
       Authorization: `Bearer ${token}`,
       Accept: 'application/json',
     },
+    signal: AbortSignal.timeout(8000), // Timeout for integrity
   });
 
   if (!response.ok) {

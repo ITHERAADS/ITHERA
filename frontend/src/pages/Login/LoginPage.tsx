@@ -14,8 +14,19 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/my-trips';
+  const REDIRECT_STORAGE_KEY = 'ithera_post_login_redirect';
+
   const { login, loginWithGoogle, loginWithFacebook } = useAuth();
+
+  function getSafeRedirect(value: string | null): string {
+    if (!value) return '/my-trips';
+    if (!value.startsWith('/') || value.startsWith('//')) return '/my-trips';
+    return value;
+  }
+
+  const redirect = getSafeRedirect(
+      searchParams.get('redirect') || sessionStorage.getItem(REDIRECT_STORAGE_KEY)
+  );
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -34,7 +45,8 @@ export function LoginPage() {
     try {
       setLoading(true);
       await login(email, password);
-      navigate(redirect);
+      sessionStorage.removeItem(REDIRECT_STORAGE_KEY);
+      navigate(redirect, { replace: true });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "No se pudo iniciar sesión";

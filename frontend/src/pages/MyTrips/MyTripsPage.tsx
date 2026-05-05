@@ -388,7 +388,7 @@ export function MyTripsPage() {
 
   const navUser = {
     name: fullName,
-    role: 'Viajero',
+    role: 'Usuario',
     initials,
   }
 

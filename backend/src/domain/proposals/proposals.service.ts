@@ -4,13 +4,22 @@ import {
   SaveFlightProposalPayload,
   SaveHotelProposalPayload,
   UpdateProposalPayload,
-  CreateCommentPayload,
-  CreateVotePayload,
-  ProposalVoteResult,
-  UpdateCommentPayload,
+	CreateCommentPayload,
+	CreateVotePayload,
+	ProposalVoteType,
+	ProposalVoteResult,
+	UpdateCommentPayload,
 } from './proposals.entity';
+import * as NotificationsService from '../notifications/notifications.service';
 
 const isPresent = (value: unknown): boolean => value !== undefined;
+
+
+const getVoteLabel = (voteType: ProposalVoteType): string => {
+  if (voteType === 'a_favor') return 'a favor';
+  if (voteType === 'en_contra') return 'en contra';
+  return 'en abstención';
+};
 
 const buildProposalResponse = async (proposalId: number) => {
   const { data: proposal, error } = await supabase
@@ -95,6 +104,19 @@ const assertProposalAccess = async (proposalId: number, authUserId: string) => {
   return { usuarioId, proposal, membership };
 };
 
+const assertCanManageProposal = async (proposalId: number, authUserId: string) => {
+  const access = await assertProposalAccess(proposalId, authUserId);
+  const isCreator = String(access.proposal.creado_por) === String(access.usuarioId);
+  const role = String(access.membership.rol ?? '').toLowerCase();
+  const isAdmin = role === 'admin' || role === 'organizador';
+
+  if (!isCreator && !isAdmin) {
+    throw Object.assign(new Error('Solo el creador o el organizador pueden modificar esta propuesta'), { statusCode: 403 });
+  }
+
+  return access;
+};
+
 export const createFlightProposal = async (authUserId: string, payload: SaveFlightProposalPayload) => {
   const { usuarioId } = await assertGroupMembership(payload.grupoId, authUserId);
 
@@ -143,6 +165,29 @@ export const createFlightProposal = async (authUserId: string, payload: SaveFlig
     await supabase.from('propuestas').delete().eq('id_propuesta', proposal.id_propuesta);
     throw new Error(flightError.message);
   }
+
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(payload.grupoId),
+    Number(usuarioId),
+    {
+      tipo: 'propuesta_creada',
+      titulo: 'Nueva propuesta de vuelo',
+      mensaje: `${actorName} propuso el vuelo "${payload.titulo}".`,
+      entidadTipo: 'propuesta',
+      entidadId: proposal.id_propuesta,
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(usuarioId),
+        itemTitle: payload.titulo,
+        itemType: 'vuelo',
+        scheduledAt: payload.vuelo.salida ?? null,
+        scheduledEndAt: payload.vuelo.llegada ?? null,
+        origin: payload.vuelo.origenNombre ?? payload.vuelo.origenCodigo ?? null,
+        destination: payload.vuelo.destinoNombre ?? payload.vuelo.destinoCodigo ?? null,
+      },
+    }
+  );
 
   return buildProposalResponse(proposal.id_propuesta);
 };
@@ -195,6 +240,28 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
     throw new Error(hotelError.message);
   }
 
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(payload.grupoId),
+    Number(usuarioId),
+    {
+      tipo: 'propuesta_creada',
+      titulo: 'Nueva propuesta de hospedaje',
+      mensaje: `${actorName} propuso el hospedaje "${payload.titulo}".`,
+      entidadTipo: 'propuesta',
+      entidadId: proposal.id_propuesta,
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(usuarioId),
+        itemTitle: payload.titulo,
+        itemType: 'hospedaje',
+        scheduledAt: payload.hospedaje.checkIn ?? null,
+        scheduledEndAt: payload.hospedaje.checkOut ?? null,
+        location: payload.hospedaje.direccion ?? null,
+      },
+    }
+  );
+
   return buildProposalResponse(proposal.id_propuesta);
 };
 
@@ -223,7 +290,7 @@ export const getProposalById = async (proposalId: number, authUserId: string) =>
 };
 
 export const updateProposal = async (proposalId: number, authUserId: string, payload: UpdateProposalPayload) => {
-  const { proposal } = await assertProposalAccess(proposalId, authUserId);
+  const { proposal } = await assertCanManageProposal(proposalId, authUserId);
 
   if (payload.updatedAt && proposal.ultima_actualizacion) {
     const dbDate = new Date(proposal.ultima_actualizacion).getTime();
@@ -338,11 +405,24 @@ export const updateProposal = async (proposalId: number, authUserId: string, pay
     }
   }
 
+  const usuarioId = await getLocalUserId(authUserId);
+  await NotificationsService.createNotificationForGroupMembers(
+    proposal.grupo_id,
+    Number(usuarioId),
+    {
+      tipo: 'propuesta_actualizada',
+      titulo: 'Propuesta actualizada',
+      mensaje: `La propuesta "${proposal.titulo}" ha sido modificada.`,
+      entidadTipo: 'propuesta',
+      entidadId: proposalId,
+    }
+  );
+
   return buildProposalResponse(proposalId);
 };
 
 export const deleteProposal = async (proposalId: number, authUserId: string) => {
-  const { proposal } = await assertProposalAccess(proposalId, authUserId);
+  const { proposal } = await assertCanManageProposal(proposalId, authUserId);
 
   const { error: voteError } = await supabase.from('voto').delete().eq('id_propuesta', proposalId);
   if (voteError) throw new Error(voteError.message);
@@ -433,6 +513,23 @@ const ensureUserBelongsToGroup = async (groupId: string, localUserId: string): P
 	if (!data) throw createError('No autorizado: no perteneces a este viaje/grupo', 403);
 };
 
+const ensureUserIsAdmin = async (groupId: string, localUserId: string): Promise<void> => {
+	const { data, error } = await supabase
+		.from('grupo_miembros')
+		.select('id, rol')
+		.eq('grupo_id', groupId)
+		.eq('usuario_id', localUserId)
+		.maybeSingle();
+
+	if (error) throw createError(error.message, 500);
+	if (!data) throw createError('No autorizado: no perteneces a este viaje/grupo', 403);
+
+	const role = String((data as any).rol ?? '').toLowerCase();
+	if (role !== 'admin' && role !== 'organizador') {
+		throw createError('Solo el organizador puede tomar esta decision', 403);
+	}
+};
+
 const getUniqueGroupMemberCount = async (groupId: string): Promise<number> => {
 	const { data, error } = await supabase
 		.from('grupo_miembros')
@@ -445,11 +542,253 @@ const getUniqueGroupMemberCount = async (groupId: string): Promise<number> => {
 	return unique.size;
 };
 
+const normalizeVoteType = (voteType: unknown): ProposalVoteType => {
+	if (voteType === 'en_contra' || voteType === 'abstencion' || voteType === 'a_favor') {
+		return voteType;
+	}
+	return 'a_favor';
+};
+
+const isMissingVoteTypeColumnError = (error: { message?: string } | null | undefined): boolean => {
+	const message = String(error?.message ?? '').toLowerCase();
+	return message.includes("voto_tipo") && message.includes("could not find");
+};
+
+const fetchVotesWithFallback = async (proposalIds: string[] | number[]) => {
+	const voteTable = supabase.from('voto') as any;
+	const selectWithType = voteTable.select('id_propuesta, voto_tipo, id_usuario') as any;
+
+	let voteQueryResult: { data: any; error: any } = { data: null, error: null };
+
+	if (proposalIds.length === 1 && typeof selectWithType?.eq === 'function') {
+		voteQueryResult = await selectWithType.eq('id_propuesta', proposalIds[0]);
+	} else if (typeof selectWithType?.in === 'function') {
+		voteQueryResult = await selectWithType.in('id_propuesta', proposalIds as any);
+	} else if (typeof selectWithType?.eq === 'function') {
+		// Fallback de compatibilidad para mocks o clientes sin `.in`
+		voteQueryResult = await selectWithType.eq('id_propuesta', proposalIds[0]);
+	} else {
+		throw createError('No se pudo construir la consulta de votos', 500);
+	}
+
+	const { data, error } = voteQueryResult;
+
+	if (!error) {
+		return {
+			rows: (data ?? []).map((row: any) => ({
+				id_propuesta: row.id_propuesta,
+				id_usuario: row.id_usuario,
+				voto_tipo: normalizeVoteType(row.voto_tipo),
+			})),
+		};
+	}
+
+	if (!isMissingVoteTypeColumnError(error)) {
+		throw createError(error.message, 500);
+	}
+
+	const fallbackTable = supabase.from('voto') as any;
+	const fallbackSelect = fallbackTable.select('id_propuesta, id_usuario') as any;
+
+	let fallback: { data: any; error: any } = { data: null, error: null };
+
+	if (proposalIds.length === 1 && typeof fallbackSelect?.eq === 'function') {
+		fallback = await fallbackSelect.eq('id_propuesta', proposalIds[0]);
+	} else if (typeof fallbackSelect?.in === 'function') {
+		fallback = await fallbackSelect.in('id_propuesta', proposalIds as any);
+	} else if (typeof fallbackSelect?.eq === 'function') {
+		fallback = await fallbackSelect.eq('id_propuesta', proposalIds[0]);
+	} else {
+		throw createError('No se pudo construir la consulta de votos (fallback)', 500);
+	}
+
+	if (fallback.error) throw createError(fallback.error.message, 500);
+
+	return {
+		rows: (fallback.data ?? []).map((row: any) => ({
+			id_propuesta: row.id_propuesta,
+			id_usuario: row.id_usuario,
+			voto_tipo: 'a_favor' as ProposalVoteType,
+		})),
+	};
+};
+
+const evaluateProposalOutcome = async (groupId: string, proposalId: string) => {
+	const totalMembers = await getUniqueGroupMemberCount(groupId);
+	const votesRequired = Math.floor(totalMembers / 2) + 1;
+
+	const { rows: votes } = await fetchVotesWithFallback([proposalId]);
+
+	let votesFor = 0;
+	let votesAgainst = 0;
+	let abstentions = 0;
+
+	for (const row of votes ?? []) {
+		const t = normalizeVoteType((row as any).voto_tipo);
+		if (t === 'a_favor') votesFor += 1;
+		else if (t === 'en_contra') votesAgainst += 1;
+		else abstentions += 1;
+	}
+
+	const totalVotes = votes.length;
+	const pendingVotes = Math.max(totalMembers - totalVotes, 0);
+	const approved = votesFor >= votesRequired;
+	const rejected = votesAgainst >= votesRequired;
+	const tied = totalVotes >= totalMembers && votesFor === votesAgainst && !approved && !rejected;
+
+	return {
+		totalMembers,
+		votesRequired,
+		totalVotes,
+		votesFor,
+		votesAgainst,
+		abstentions,
+		pendingVotes,
+		approved,
+		rejected,
+		tied,
+	};
+};
+
+const applyProposalResolution = async (
+	groupId: string,
+	proposalId: string,
+	resolution: 'aprobada' | 'descartada',
+	meta?: Record<string, unknown>,
+) => {
+	const nowIso = new Date().toISOString();
+	let resolvedActivityDateStart: string | null = null;
+	let resolvedItineraryId: string | number | null = null;
+
+	const { data: currentProposal, error: currentProposalError } = await supabase
+		.from('propuestas')
+		.select('payload, titulo, creado_por')
+		.eq('id_propuesta', proposalId)
+		.eq('grupo_id', groupId)
+		.maybeSingle();
+
+	if (currentProposalError) throw createError(currentProposalError.message, 500);
+
+	const mergedPayload = {
+		...(typeof (currentProposal as any)?.payload === 'object' && (currentProposal as any)?.payload !== null
+			? (currentProposal as any).payload
+			: {}),
+		...(meta ?? {}),
+	};
+
+	const { error: proposalUpdateError } = await supabase
+		.from('propuestas')
+		.update({
+			estado: resolution,
+			fecha_cierre: nowIso,
+			ultima_actualizacion: nowIso,
+			payload: mergedPayload,
+		})
+		.eq('id_propuesta', proposalId)
+		.eq('grupo_id', groupId);
+
+	if (proposalUpdateError) throw createError(proposalUpdateError.message, 500);
+
+	const { error: activityUpdateError } = await supabase
+		.from('actividades')
+		.update({
+			estado: resolution === 'aprobada' ? 'confirmada' : 'cancelada',
+			ultima_actualizacion: nowIso,
+		})
+		.eq('propuesta_id', proposalId);
+
+	if (activityUpdateError) throw createError(activityUpdateError.message, 500);
+
+	const { data: resolvedActivity, error: resolvedActivityError } = await supabase
+		.from('actividades')
+		.select('id_actividad, itinerario_id, fecha_inicio')
+		.eq('propuesta_id', proposalId)
+		.limit(1)
+		.maybeSingle();
+
+	if (resolvedActivityError) throw createError(resolvedActivityError.message, 500);
+
+	resolvedActivityDateStart = (resolvedActivity as any)?.fecha_inicio
+		? String((resolvedActivity as any).fecha_inicio)
+		: null;
+	resolvedItineraryId = (resolvedActivity as any)?.itinerario_id ?? null;
+
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(groupId),
+    null,
+    {
+      tipo: resolution === 'aprobada' ? 'propuesta_aprobada' : 'propuesta_descartada',
+      titulo: resolution === 'aprobada' ? 'Propuesta aprobada' : 'Propuesta descartada',
+      mensaje: `La propuesta "${currentProposal?.titulo || 'Desconocida'}" fue ${resolution === 'aprobada' ? 'aprobada' : 'descartada'}.`,
+      entidadTipo: 'propuesta',
+      entidadId: Number(proposalId),
+      metadata: {
+        itemTitle: currentProposal?.titulo ?? 'Propuesta',
+        itemType: 'propuesta',
+        status: resolution,
+        scheduledAt: resolvedActivityDateStart,
+        itineraryId: resolvedItineraryId,
+      },
+    }
+  );
+
+	if (resolution !== 'aprobada' || !resolvedActivityDateStart || !resolvedItineraryId) {
+		return;
+	}
+
+	const { data: conflictingActivities, error: conflictingActivitiesError } = await supabase
+		.from('actividades')
+		.select('id_actividad, propuesta_id')
+		.eq('itinerario_id', resolvedItineraryId)
+		.eq('fecha_inicio', resolvedActivityDateStart)
+		.eq('estado', 'pendiente')
+		.neq('propuesta_id', proposalId)
+		.not('propuesta_id', 'is', null);
+
+	if (conflictingActivitiesError) throw createError(conflictingActivitiesError.message, 500);
+
+	if (!conflictingActivities || conflictingActivities.length === 0) {
+		return;
+	}
+
+	const conflictingActivityIds = conflictingActivities
+		.map((row: any) => row.id_actividad)
+		.filter(Boolean);
+
+	if (conflictingActivityIds.length > 0) {
+		const { error: cancelConflictActivitiesError } = await supabase
+			.from('actividades')
+			.update({
+				estado: 'cancelada',
+				ultima_actualizacion: nowIso,
+			})
+			.in('id_actividad', conflictingActivityIds);
+		if (cancelConflictActivitiesError) throw createError(cancelConflictActivitiesError.message, 500);
+	}
+
+	const conflictingProposalIds = conflictingActivities
+		.map((row: any) => row.propuesta_id)
+		.filter(Boolean);
+
+	if (conflictingProposalIds.length > 0) {
+		const { error: discardConflictProposalsError } = await supabase
+			.from('propuestas')
+			.update({
+				estado: 'descartada',
+				fecha_cierre: nowIso,
+				ultima_actualizacion: nowIso,
+			})
+			.in('id_propuesta', conflictingProposalIds)
+			.eq('grupo_id', groupId);
+		if (discardConflictProposalsError) throw createError(discardConflictProposalsError.message, 500);
+	}
+};
+
 export const castSingleVote = async (
 	authUserId: string,
 	groupId: string,
 	proposalId: string,
-	_payload: CreateVotePayload,
+	payload: CreateVotePayload,
 ) => {
 	const localUserId = await getLocalUserId(authUserId);
 	const localUserIdStr = String(localUserId);
@@ -468,57 +807,177 @@ export const castSingleVote = async (
 		throw createError('Ya emitiste tu voto para esta propuesta', 409);
 	}
 
+	const desiredVoteType = normalizeVoteType(payload?.voto);
 	const { data: newVote, error: insertError } = await supabase
 		.from('voto')
-		.insert({ id_propuesta: proposalId, id_usuario: localUserId })
-		.select('id_voto, id_propuesta, id_usuario, created_at')
+		.insert({
+			id_propuesta: proposalId,
+			id_usuario: localUserId,
+			voto_tipo: desiredVoteType,
+		})
+		.select('id_voto, id_propuesta, id_usuario, voto_tipo, created_at')
 		.single();
 
-	if (insertError) throw createError(insertError.message, 500);
+	if (insertError) {
+		if (isMissingVoteTypeColumnError(insertError)) {
+			const fallbackInsert = await supabase
+				.from('voto')
+				.insert({
+					id_propuesta: proposalId,
+					id_usuario: localUserId,
+				})
+				.select('id_voto, id_propuesta, id_usuario, created_at')
+				.single();
 
-	const totalMembers = await getUniqueGroupMemberCount(groupId);
-	const votesRequired = Math.floor(totalMembers / 2) + 1;
+			if (fallbackInsert.error) throw createError(fallbackInsert.error.message, 500);
 
-	const { count: totalVotesForProposal, error: totalVotesError } = await supabase
-		.from('voto')
-		.select('id_voto', { count: 'exact', head: true })
-		.eq('id_propuesta', proposalId);
+      // Notificar al creador si es otro usuario
+      const { data: proposalAuthor } = await supabase.from('propuestas').select('creado_por, titulo').eq('id_propuesta', proposalId).single();
+      const actorName = await NotificationsService.getUserDisplayName(localUserId);
+      if (proposalAuthor && String(proposalAuthor.creado_por) !== localUserIdStr) {
+        await NotificationsService.createNotification({
+          usuarioId: Number(proposalAuthor.creado_por),
+          grupoId: Number(groupId),
+          tipo: 'voto_nuevo',
+          titulo: 'Nuevo voto',
+          mensaje: `${actorName} votó ${getVoteLabel(desiredVoteType)} en tu propuesta "${proposalAuthor.titulo}".`,
+          entidadTipo: 'propuesta',
+          entidadId: Number(proposalId),
+          metadata: {
+            actorName,
+            actorUsuarioId: Number(localUserId),
+            itemTitle: proposalAuthor.titulo,
+            itemType: 'propuesta',
+            voteType: desiredVoteType,
+          },
+        });
+      }
+      NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+        tipo: 'voto_nuevo',
+        entidadTipo: 'propuesta',
+        entidadId: Number(proposalId),
+        actorUsuarioId: Number(localUserId),
+        metadata: { actorName, voteType: desiredVoteType },
+      });
 
-	if (totalVotesError) throw createError(totalVotesError.message, 500);
+			const outcome = await evaluateProposalOutcome(groupId, proposalId);
 
-	const votesCount = totalVotesForProposal ?? 0;
-	const approved = votesCount >= votesRequired;
+			if (outcome.approved) {
+				await applyProposalResolution(groupId, proposalId, 'aprobada', { decisionType: 'B', resolution: 'majority_for' });
+			}
 
-	if (approved) {
-		const { error: proposalUpdateError } = await supabase
-			.from('propuestas')
-			.update({
-				estado: 'aprobada',
-				fecha_cierre: new Date().toISOString(),
-				ultima_actualizacion: new Date().toISOString(),
-			})
-			.eq('id_propuesta', proposalId)
-			.eq('grupo_id', groupId);
+			if (outcome.rejected) {
+				await applyProposalResolution(groupId, proposalId, 'descartada', { decisionType: 'B', resolution: 'majority_against' });
+			}
 
-		if (proposalUpdateError) throw createError(proposalUpdateError.message, 500);
+			return {
+				vote: { ...(fallbackInsert.data as any), voto_tipo: desiredVoteType },
+				message: outcome.approved
+					? 'Voto registrado y propuesta aprobada'
+					: outcome.rejected
+						? 'Voto registrado y propuesta descartada'
+						: outcome.tied
+							? 'Votacion empatada: requiere desempate del organizador'
+							: 'Voto registrado correctamente',
+				votesCount: outcome.votesFor,
+				votesRequired: outcome.votesRequired,
+				approved: outcome.approved,
+				rejected: outcome.rejected,
+				requiresAdminTieBreak: outcome.tied,
+				votesFor: outcome.votesFor,
+				votesAgainst: outcome.votesAgainst,
+				abstentions: outcome.abstentions,
+				pendingVotes: outcome.pendingVotes,
+			};
+		}
+		throw createError(insertError.message, 500);
+	}
 
-		const { error: activityUpdateError } = await supabase
-			.from('actividades')
-			.update({
-				estado: 'confirmada',
-				ultima_actualizacion: new Date().toISOString(),
-			})
-			.eq('propuesta_id', proposalId);
+  // Notificar al creador si es otro usuario
+  const { data: proposalAuthor } = await supabase.from('propuestas').select('creado_por, titulo').eq('id_propuesta', proposalId).single();
+  const actorName = await NotificationsService.getUserDisplayName(localUserId);
+  if (proposalAuthor && String(proposalAuthor.creado_por) !== localUserIdStr) {
+    await NotificationsService.createNotification({
+      usuarioId: Number(proposalAuthor.creado_por),
+      grupoId: Number(groupId),
+      tipo: 'voto_nuevo',
+      titulo: 'Nuevo voto',
+      mensaje: `${actorName} votó ${getVoteLabel(desiredVoteType)} en tu propuesta "${proposalAuthor.titulo}".`,
+      entidadTipo: 'propuesta',
+      entidadId: Number(proposalId),
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(localUserId),
+        itemTitle: proposalAuthor.titulo,
+        itemType: 'propuesta',
+        voteType: desiredVoteType,
+      },
+    });
+  }
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'voto_nuevo',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(localUserId),
+    metadata: { actorName, voteType: desiredVoteType },
+  });
 
-		if (activityUpdateError) throw createError(activityUpdateError.message, 500);
+	const outcome = await evaluateProposalOutcome(groupId, proposalId);
+
+	if (outcome.approved) {
+		await applyProposalResolution(groupId, proposalId, 'aprobada', { decisionType: 'B', resolution: 'majority_for' });
+	}
+
+	if (outcome.rejected) {
+		await applyProposalResolution(groupId, proposalId, 'descartada', { decisionType: 'B', resolution: 'majority_against' });
 	}
 
 	return {
 		vote: newVote,
-		message: approved ? 'Voto registrado y propuesta aprobada' : 'Voto registrado correctamente',
-		votesCount,
-		votesRequired,
-		approved,
+		message: outcome.approved
+			? 'Voto registrado y propuesta aprobada'
+			: outcome.rejected
+				? 'Voto registrado y propuesta descartada'
+				: outcome.tied
+					? 'Votacion empatada: requiere desempate del organizador'
+					: 'Voto registrado correctamente',
+		votesCount: outcome.votesFor,
+		votesRequired: outcome.votesRequired,
+		approved: outcome.approved,
+		rejected: outcome.rejected,
+		requiresAdminTieBreak: outcome.tied,
+		votesFor: outcome.votesFor,
+		votesAgainst: outcome.votesAgainst,
+		abstentions: outcome.abstentions,
+		pendingVotes: outcome.pendingVotes,
+	};
+};
+
+export const applyAdminDecisionToProposal = async (
+	authUserId: string,
+	groupId: string,
+	proposalId: string,
+	payload: { decision: 'aprobar' | 'rechazar'; reason?: string },
+) => {
+	const localUserId = await getLocalUserId(authUserId);
+	await ensureUserBelongsToGroup(groupId, localUserId);
+	await ensureUserIsAdmin(groupId, localUserId);
+	await ensureProposalBelongsToGroup(groupId, proposalId);
+
+	const decision = payload.decision === 'rechazar' ? 'descartada' : 'aprobada';
+	await applyProposalResolution(groupId, proposalId, decision, {
+		decisionType: 'A',
+		adminDecisionBy: localUserId,
+		adminDecisionAt: new Date().toISOString(),
+		adminDecisionReason: payload.reason ?? null,
+	});
+
+	return {
+		decisionType: 'A',
+		resolution: decision,
+		message: decision === 'aprobada'
+			? 'Decision administrativa aplicada: propuesta aprobada'
+			: 'Decision administrativa aplicada: propuesta descartada',
 	};
 };
 
@@ -531,7 +990,7 @@ export const getProposalVoteResults = async (
 
 	const { data: proposals, error: proposalsError } = await supabase
 		.from('propuestas')
-		.select('id_propuesta, tipo_item, titulo')
+		.select('id_propuesta, tipo_item, titulo, estado')
 		.eq('grupo_id', groupId);
 
 	if (proposalsError) throw createError(proposalsError.message, 500);
@@ -545,17 +1004,24 @@ export const getProposalVoteResults = async (
 	}
 
 	const proposalIds = proposals.map((p: any) => p.id_propuesta);
-	const { data: votes, error: votesError } = await supabase
-		.from('voto')
-		.select('id_propuesta')
-		.in('id_propuesta', proposalIds);
+	const { rows: votes } = await fetchVotesWithFallback(proposalIds);
 
-	if (votesError) throw createError(votesError.message, 500);
+	const totalMembers = await getUniqueGroupMemberCount(groupId);
+	const countsFor = new Map<string, number>();
+	const countsAgainst = new Map<string, number>();
+	const countsAbstention = new Map<string, number>();
+	const myVoteByProposal = new Map<string, ProposalVoteType>();
 
-	const counts = new Map<string, number>();
 	for (const row of votes ?? []) {
 		const idPropuesta = String((row as { id_propuesta: string | number }).id_propuesta);
-		counts.set(idPropuesta, (counts.get(idPropuesta) ?? 0) + 1);
+		const voteType = normalizeVoteType((row as any).voto_tipo);
+		if (voteType === 'a_favor') countsFor.set(idPropuesta, (countsFor.get(idPropuesta) ?? 0) + 1);
+		else if (voteType === 'en_contra') countsAgainst.set(idPropuesta, (countsAgainst.get(idPropuesta) ?? 0) + 1);
+		else countsAbstention.set(idPropuesta, (countsAbstention.get(idPropuesta) ?? 0) + 1);
+
+		if (String((row as any).id_usuario) === String(localUserId)) {
+			myVoteByProposal.set(idPropuesta, voteType);
+		}
 	}
 
 	const results: ProposalVoteResult[] = proposals
@@ -563,13 +1029,31 @@ export const getProposalVoteResults = async (
 			id_propuesta: String(proposal.id_propuesta),
 			tipo_item: proposal.tipo_item as 'vuelo' | 'hospedaje',
 			titulo: String(proposal.titulo ?? ''),
-			votos: counts.get(String(proposal.id_propuesta)) ?? 0,
+			votos: countsFor.get(String(proposal.id_propuesta)) ?? 0,
+			votos_a_favor: countsFor.get(String(proposal.id_propuesta)) ?? 0,
+			votos_en_contra: countsAgainst.get(String(proposal.id_propuesta)) ?? 0,
+			abstenciones: countsAbstention.get(String(proposal.id_propuesta)) ?? 0,
+			votos_pendientes: Math.max(
+				totalMembers -
+					((countsFor.get(String(proposal.id_propuesta)) ?? 0) +
+					(countsAgainst.get(String(proposal.id_propuesta)) ?? 0) +
+					(countsAbstention.get(String(proposal.id_propuesta)) ?? 0)),
+				0,
+			),
+			requiere_desempate_admin:
+				((countsFor.get(String(proposal.id_propuesta)) ?? 0) +
+					(countsAgainst.get(String(proposal.id_propuesta)) ?? 0) +
+					(countsAbstention.get(String(proposal.id_propuesta)) ?? 0)) >= totalMembers &&
+				(countsFor.get(String(proposal.id_propuesta)) ?? 0) ===
+					(countsAgainst.get(String(proposal.id_propuesta)) ?? 0),
+			estado_actual: String(proposal.estado ?? 'en_votacion'),
+			mi_voto: myVoteByProposal.get(String(proposal.id_propuesta)) ?? null,
 		}))
 		.sort((a, b) => b.votos - a.votos || a.id_propuesta.localeCompare(b.id_propuesta));
 
 	return {
 		tripId: groupId,
-		totalVotes: votes?.length ?? 0,
+		totalVotes: votes.length,
 		results,
 	};
 };
@@ -601,6 +1085,41 @@ export const createComment = async (
 
 	if (error) throw createError(error.message, 500);
 	const [enriched] = await attachCommentAuthorNames([data as RawCommentRow]);
+
+  const { data: proposalAuthor } = await supabase
+    .from('propuestas')
+    .select('creado_por, titulo')
+    .eq('id_propuesta', proposalId)
+    .maybeSingle();
+  const actorName = await NotificationsService.getUserDisplayName(localUserId);
+
+  if (proposalAuthor && String(proposalAuthor.creado_por) !== localUserIdStr) {
+    await NotificationsService.createNotification({
+      usuarioId: Number(proposalAuthor.creado_por),
+      grupoId: Number(groupId),
+      tipo: 'comentario_nuevo',
+      titulo: 'Nuevo comentario',
+      mensaje: `${actorName} comentó en tu propuesta "${proposalAuthor.titulo}".`,
+      entidadTipo: 'propuesta',
+      entidadId: Number(proposalId),
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(localUserId),
+        itemTitle: proposalAuthor.titulo,
+        itemType: 'propuesta',
+        commentPreview: payload.contenido.trim().slice(0, 120),
+      },
+    });
+  }
+
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'comentario_nuevo',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(localUserId),
+    metadata: { actorName, commentPreview: payload.contenido.trim().slice(0, 120) },
+  });
+
 	return enriched;
 };
 
@@ -650,7 +1169,15 @@ export const updateComment = async (
 	if (!existing || String((existing as { id_propuesta: string | number }).id_propuesta) !== proposalId) {
 		throw createError('Comentario no encontrado', 404);
 	}
-	if (String((existing as { id_usuario: string | number }).id_usuario) !== localUserIdStr) {
+	const { data: membershipForComment } = await supabase
+		.from('grupo_miembros')
+		.select('rol')
+		.eq('grupo_id', groupId)
+		.eq('usuario_id', localUserId)
+		.maybeSingle();
+	const roleForComment = String((membershipForComment as { rol?: string } | null)?.rol ?? '').toLowerCase();
+	const canManageComment = String((existing as { id_usuario: string | number }).id_usuario) === localUserIdStr || roleForComment === 'admin' || roleForComment === 'organizador';
+	if (!canManageComment) {
 		throw createError('No puedes editar comentarios de otro usuario', 403);
 	}
 
@@ -663,6 +1190,28 @@ export const updateComment = async (
 
 	if (error) throw createError(error.message, 500);
 	const [enriched] = await attachCommentAuthorNames([data as RawCommentRow]);
+
+  const { data: proposalAuthor } = await supabase
+    .from('propuestas')
+    .select('creado_por, titulo')
+    .eq('id_propuesta', proposalId)
+    .maybeSingle();
+  const actorName = await NotificationsService.getUserDisplayName(localUserId);
+
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'comentario_actualizado',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(localUserId),
+    metadata: {
+      actorName,
+      actorUsuarioId: Number(localUserId),
+      itemTitle: proposalAuthor?.titulo ?? 'Propuesta',
+      commentId: Number(commentId),
+      commentPreview: payload.contenido.trim().slice(0, 120),
+    },
+  });
+
 	return enriched;
 };
 
@@ -687,7 +1236,15 @@ export const deleteComment = async (
 	if (!existing || String((existing as { id_propuesta: string | number }).id_propuesta) !== proposalId) {
 		throw createError('Comentario no encontrado', 404);
 	}
-	if (String((existing as { id_usuario: string | number }).id_usuario) !== localUserIdStr) {
+	const { data: membershipForComment } = await supabase
+		.from('grupo_miembros')
+		.select('rol')
+		.eq('grupo_id', groupId)
+		.eq('usuario_id', localUserId)
+		.maybeSingle();
+	const roleForComment = String((membershipForComment as { rol?: string } | null)?.rol ?? '').toLowerCase();
+	const canManageComment = String((existing as { id_usuario: string | number }).id_usuario) === localUserIdStr || roleForComment === 'admin' || roleForComment === 'organizador';
+	if (!canManageComment) {
 		throw createError('No puedes eliminar comentarios de otro usuario', 403);
 	}
 
@@ -697,5 +1254,19 @@ export const deleteComment = async (
 		.eq('id_comentario', commentId);
 
 	if (error) throw createError(error.message, 500);
+
+  const actorName = await NotificationsService.getUserDisplayName(localUserId);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'comentario_eliminado',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    actorUsuarioId: Number(localUserId),
+    metadata: {
+      actorName,
+      actorUsuarioId: Number(localUserId),
+      commentId: Number(commentId),
+    },
+  });
+
 	return { deleted: true, commentId };
 };

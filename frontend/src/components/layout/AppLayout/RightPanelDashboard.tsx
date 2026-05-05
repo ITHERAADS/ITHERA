@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Socket } from 'socket.io-client'
 import { GoogleMiniMap } from '../../GoogleMiniMap/GoogleMiniMap'
 import type { Group } from '../../../types/groups'
-import { chatService, type ChatMessage } from '../../../services/chat'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -12,6 +11,7 @@ interface Participant {
   role: 'Organizador' | 'Miembro'
   color: string
   isOnline: boolean
+  avatarUrl?: string | null
 }
 
 interface MemberFromBackend {
@@ -19,37 +19,65 @@ interface MemberFromBackend {
   usuario_id?: string
   nombre?: string
   email?: string
+  avatar_url?: string | null
   rol: 'admin' | 'viajero' | string
-}
-
-interface ChatAck {
-  ok: boolean
-  message?: ChatMessage
-  error?: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getParticipantColor(authorName: string | undefined, participants: Participant[]): string {
-  const found = participants.find((participant) => participant.name === authorName)
-  return found?.color ?? '#7A4FD6'
+function formatMXN(n: number): string {
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    maximumFractionDigits: 0,
+  }).format(n)
 }
 
-function formatChatTime(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleTimeString('es-MX', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })
-}
-
-function IconSend({ size = 13 }: { size?: number }) {
+function ParticipantAvatar({
+  name,
+  color,
+  avatarUrl,
+  className,
+}: {
+  name: string
+  color: string
+  avatarUrl?: string | null
+  className: string
+}) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" strokeWidth="2" fill="currentColor"/>
+    <div
+      className={`${className} overflow-hidden rounded-full flex items-center justify-center text-white font-body font-bold shrink-0`}
+      style={{ backgroundColor: color }}
+      title={name}
+    >
+      {avatarUrl ? (
+        <img src={avatarUrl} alt={name} className="h-full w-full object-cover" />
+      ) : (
+        name[0] ?? '?'
+      )}
+    </div>
+  )
+}
+
+function IconSearch() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0 text-gray-400">
+      <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
+      <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function IconChat() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
@@ -61,29 +89,26 @@ export function RightPanelDashboard({
   group,
   isLoading = false,
   socket,
-  isSocketConnected = false,
-  accessToken,
-  currentUserId,
-  currentUserName = 'Usuario',
+  onOpenChat,
+  unreadCount = 0,
+  totalBudget,
+  committedBudget,
 }: {
   members?: MemberFromBackend[]
   group?: Group | null
   isLoading?: boolean
   socket?: Socket | null
-  isSocketConnected?: boolean
-  accessToken?: string | null
-  currentUserId?: string | number | null
-  currentUserName?: string
+  onOpenChat?: () => void
+  unreadCount?: number
+  totalBudget?: number
+  committedBudget?: number
 }) {
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [chatInput, setChatInput] = useState('')
-  const [chatError, setChatError] = useState<string | null>(null)
-  const [isChatLoading, setIsChatLoading] = useState(false)
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
-  const bottomRef = useRef<HTMLDivElement | null>(null)
+  const [popoverOpen, setPopoverOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const popoverRef = useRef<HTMLDivElement | null>(null)
 
   const groupId = group?.id ? String(group.id) : null
-  const currentUserIdStr = currentUserId != null ? String(currentUserId) : null
 
   const participants: Participant[] = useMemo(() => {
     const uniqueMembers: MemberFromBackend[] = []
@@ -106,158 +131,70 @@ export function RightPanelDashboard({
         role: member.rol === 'admin' ? 'Organizador' : 'Miembro',
         color: colors[index % colors.length],
         isOnline: onlineUserIds.includes(String(member.usuario_id ?? member.id)),
+        avatarUrl: member.avatar_url ?? null,
       }
     })
   }, [members, onlineUserIds])
 
-  const onlineCount = participants.filter((participant) => participant.isOnline).length
+  const onlineCount = participants.filter((p) => p.isOnline).length
 
-  useEffect(() => {
-    if (!groupId || !accessToken) {
-      setChatMessages([])
-      setOnlineUserIds([])
-      return
-    }
+  const filteredParticipants = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return participants
+    return participants.filter((p) => p.name.toLowerCase().includes(q))
+  }, [participants, search])
 
-    let isMounted = true
+  // Budget derived values
+  const budgetData = totalBudget != null
+    ? (() => {
+        const committed = committedBudget ?? 0
+        const available = totalBudget - committed
+        const pct = totalBudget > 0 ? Math.min((committed / totalBudget) * 100, 100) : 0
+        return { committed, available, pct }
+      })()
+    : null
 
-    const loadMessages = async () => {
-      try {
-        setIsChatLoading(true)
-        setChatError(null)
-        const response = await chatService.getMessages(groupId, accessToken, 50)
-
-        if (isMounted) {
-          setChatMessages(response.messages)
-        }
-      } catch (error) {
-        if (isMounted) {
-          setChatError(error instanceof Error ? error.message : 'No se pudo cargar el chat')
-        }
-      } finally {
-        if (isMounted) {
-          setIsChatLoading(false)
-        }
-      }
-    }
-
-    void loadMessages()
-
-    return () => {
-      isMounted = false
-    }
-  }, [groupId, accessToken])
-
+  // Presence-only socket listener — room joining is handled by ChatDrawer
   useEffect(() => {
     if (!socket || !groupId) return
-
-    socket.emit('join_room', { tripId: groupId })
-
-    const handleChatMessage = (message: ChatMessage & { clientId?: string | null }) => {
-      if (String(message.groupId) !== groupId) return
-
-      setChatMessages((prev) => {
-        const withoutOptimistic = message.clientId
-          ? prev.filter((item) => item.id !== message.clientId)
-          : prev
-
-        if (withoutOptimistic.some((item) => item.id === message.id)) {
-          return withoutOptimistic
-        }
-
-        return [...withoutOptimistic, message]
-      })
-    }
 
     const handlePresenceUpdate = (payload: { tripId: string; onlineUserIds: string[] }) => {
       if (String(payload.tripId) !== groupId) return
       setOnlineUserIds(payload.onlineUserIds.map(String))
     }
 
-    const handleError = (payload: { message?: string }) => {
-      setChatError(payload.message ?? 'Error de conexión del chat')
-    }
-
-    socket.on('chat_message', handleChatMessage)
     socket.on('presence_update', handlePresenceUpdate)
-    socket.on('error_event', handleError)
 
     return () => {
-      socket.emit('leave_room', { tripId: groupId })
-      socket.off('chat_message', handleChatMessage)
       socket.off('presence_update', handlePresenceUpdate)
-      socket.off('error_event', handleError)
       setOnlineUserIds([])
     }
   }, [socket, groupId])
 
+  // Close popover on click outside
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [chatMessages.length])
-
-  function handleSend() {
-    const text = chatInput.trim()
-    if (!text || !groupId || !accessToken) return
-
-    setChatError(null)
-    setChatInput('')
-
-    const clientId = `local-${Date.now()}`
-    const optimisticMessage: ChatMessage = {
-      id: clientId,
-      groupId,
-      userId: currentUserIdStr ?? 'me',
-      authorName: currentUserName,
-      authorEmail: null,
-      authorAvatarUrl: null,
-      contenido: text,
-      createdAt: new Date().toISOString(),
-      clientId,
+    if (!popoverOpen) return
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setPopoverOpen(false)
+        setSearch('')
+      }
     }
-
-    setChatMessages((prev) => [...prev, optimisticMessage])
-
-    if (socket && isSocketConnected) {
-      socket.timeout(7000).emit(
-        'chat_send_message',
-        { groupId, contenido: text, clientId },
-        (err: Error | null, response?: ChatAck) => {
-          if (err || !response?.ok) {
-            setChatMessages((prev) => prev.filter((message) => message.id !== clientId))
-            setChatError(response?.error ?? 'No se pudo enviar el mensaje por Socket.IO')
-          }
-        }
-      )
-      return
-    }
-
-    void chatService.sendMessage(groupId, text, accessToken).catch((error) => {
-      setChatMessages((prev) => prev.filter((message) => message.id !== clientId))
-      setChatError(error instanceof Error ? error.message : 'No se pudo enviar el mensaje')
-    })
-  }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [popoverOpen])
 
   if (isLoading) {
     return (
       <>
         <section className="shrink-0">
           <div className="mb-3 h-3 w-24 animate-pulse rounded bg-gray-200" />
-          <div className="mb-3 flex gap-2">
+          <div className="mb-2 flex gap-2">
             {[1, 2, 3].map((item) => (
-              <div key={item} className="h-8 w-8 animate-pulse rounded-full bg-gray-200" />
+              <div key={item} className="h-9 w-9 animate-pulse rounded-full bg-gray-200" />
             ))}
           </div>
-          <div className="flex flex-col gap-3">
-            {[1, 2, 3].map((item) => (
-              <div key={item} className="flex items-center gap-2.5">
-                <div className="h-8 w-8 animate-pulse rounded-full bg-gray-200" />
-                <div className="flex-1">
-                  <div className="mb-1 h-3 w-24 animate-pulse rounded bg-gray-200" />
-                  <div className="h-3 w-16 animate-pulse rounded bg-gray-200" />
-                </div>
-              </div>
-            ))}
-          </div>
+          <div className="h-3 w-28 animate-pulse rounded bg-gray-200" />
         </section>
 
         <section className="shrink-0">
@@ -267,12 +204,21 @@ export function RightPanelDashboard({
           <div className="h-3 w-40 animate-pulse rounded bg-gray-200" />
         </section>
 
-        <section className="flex flex-1 flex-col gap-2 min-h-0">
-          <div className="h-3 w-28 animate-pulse rounded bg-gray-200" />
-          <div className="flex-1 rounded-2xl border border-purpleMedium/20 bg-surface p-4">
-            <div className="mb-3 h-16 w-32 animate-pulse rounded-2xl bg-gray-200" />
-            <div className="ml-auto h-16 w-36 animate-pulse rounded-2xl bg-gray-200" />
+        <section className="shrink-0">
+          <div className="mb-3 h-3 w-24 animate-pulse rounded bg-gray-200" />
+          <div className="flex flex-col gap-1.5 mb-3">
+            {[1, 2, 3].map((item) => (
+              <div key={item} className="flex justify-between">
+                <div className="h-3 w-16 animate-pulse rounded bg-gray-200" />
+                <div className="h-3 w-12 animate-pulse rounded bg-gray-200" />
+              </div>
+            ))}
           </div>
+          <div className="h-1.5 w-full animate-pulse rounded-full bg-gray-200" />
+        </section>
+
+        <section className="shrink-0">
+          <div className="h-14 w-full animate-pulse rounded-2xl bg-gray-200" />
         </section>
       </>
     )
@@ -282,53 +228,88 @@ export function RightPanelDashboard({
     <>
       {/* Participants */}
       <section className="shrink-0">
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest">
-            Participantes
-          </span>
-          <span className="font-body text-[11px] font-semibold text-greenAccent bg-greenAccent/10 rounded-full px-2 py-0.5">
-            {onlineCount} en línea
-          </span>
+        <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest mb-3">
+          Participantes
+        </p>
+
+        {/* Trigger: avatars + summary text — wrapped with popover in same ref for click-outside */}
+        <div ref={popoverRef} className="relative">
+          <button
+            type="button"
+            onClick={() => { setPopoverOpen((o) => !o); setSearch('') }}
+            className="w-full text-left"
+          >
+            {participants.length > 0 && (
+              <div className="flex -space-x-2 mb-2">
+                {participants.map((participant) => (
+                  <ParticipantAvatar
+                    key={participant.id}
+                    name={participant.name}
+                    color={participant.color}
+                    avatarUrl={participant.avatarUrl}
+                    className="w-9 h-9 border-2 border-white text-sm"
+                  />
+                ))}
+              </div>
+            )}
+            <p className="font-body text-xs text-gray500 hover:text-gray700 transition-colors">
+              {participants.length} participante{participants.length !== 1 ? 's' : ''} · {onlineCount} en línea
+            </p>
+          </button>
+
+          {/* Popover */}
+          {popoverOpen && (
+            <div className="absolute top-full left-0 mt-2 w-full bg-white rounded-xl shadow-lg border border-[#E2E8F0] z-50 overflow-hidden">
+              {/* Search */}
+              <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[#E2E8F0]">
+                <IconSearch />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar miembro..."
+                  autoFocus
+                  className="flex-1 font-body text-xs outline-none text-gray700 placeholder-gray-400 bg-transparent"
+                />
+              </div>
+
+              {/* List */}
+              <div className="max-h-[280px] overflow-y-auto">
+                {filteredParticipants.length === 0 ? (
+                  <p className="font-body text-xs text-gray500 text-center py-4">Sin resultados</p>
+                ) : (
+                  filteredParticipants.map((participant) => (
+                    <div
+                      key={participant.id}
+                      className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-[#F0EEF8] transition-colors"
+                    >
+                      <ParticipantAvatar
+                        name={participant.name}
+                        color={participant.color}
+                        avatarUrl={participant.avatarUrl}
+                        className="w-7 h-7 text-[10px]"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-body text-xs font-semibold text-gray700 truncate leading-none">
+                          {participant.name}
+                        </p>
+                        <p
+                          className="font-body text-[10px] mt-0.5 leading-none"
+                          style={{ color: participant.color }}
+                        >
+                          {participant.role}
+                        </p>
+                      </div>
+                      {participant.isOnline && (
+                        <span className="w-2 h-2 rounded-full bg-greenAccent shrink-0" />
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
-
-        {participants.length > 1 && (
-          <div className="flex -space-x-2 mb-3">
-            {participants.map((participant) => (
-              <div
-                key={participant.id}
-                className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white font-body font-bold text-xs shrink-0"
-                style={{ backgroundColor: participant.color }}
-                title={participant.name}
-              >
-                {participant.name[0]}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <ul className="flex flex-col gap-2.5">
-          {participants.map((participant) => (
-            <li key={participant.id} className="flex items-center gap-2.5">
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-body font-bold text-xs shrink-0"
-                style={{ backgroundColor: participant.color }}
-              >
-                {participant.name[0]}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-body text-xs font-semibold text-gray700 truncate leading-none">
-                  {participant.name}
-                </p>
-                <p className="font-body text-[11px] mt-0.5 leading-none" style={{ color: participant.color }}>
-                  {participant.role}
-                </p>
-              </div>
-              {participant.isOnline && (
-                <span className="w-2 h-2 rounded-full bg-greenAccent shrink-0" />
-              )}
-            </li>
-          ))}
-        </ul>
       </section>
 
       {/* Mini map */}
@@ -365,101 +346,95 @@ export function RightPanelDashboard({
         )}
       </section>
 
-      {/* Group chat */}
-      <section className="flex flex-col gap-2 flex-1 min-h-0">
-        <div className="flex items-center justify-between">
-          <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest">
-            Chat del Grupo
-          </p>
-          <span className={`font-body text-[10px] font-semibold ${isSocketConnected ? 'text-greenAccent' : 'text-gray500'}`}>
-            {isSocketConnected ? 'En tiempo real' : 'Reconectando'}
-          </span>
-        </div>
+      {/* Mini budget */}
+      <section className="shrink-0">
+        <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest mb-3">
+          Presupuesto
+        </p>
 
-        <div className="bg-surface border border-purpleMedium/20 rounded-2xl p-4 flex flex-col gap-3 flex-1 min-h-0">
-          <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto scrollbar-hide">
-            {isChatLoading && (
-              <p className="font-body text-[12px] text-gray500">Cargando mensajes...</p>
-            )}
+        {budgetData === null ? (
+          <p className="font-body text-xs text-gray500">Sin presupuesto definido</p>
+        ) : (
+          <>
+            <div className="flex flex-col gap-1.5 mb-3">
+              <div className="flex items-center justify-between">
+                <span className="font-body text-[11px] text-gray500">Total</span>
+                <span className="font-body text-[11px] font-semibold text-[#1E0A4E]">
+                  {formatMXN(totalBudget!)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-body text-[11px] text-gray500">Comprometido</span>
+                <span className="font-body text-[11px] font-semibold text-[#EF4444]">
+                  {formatMXN(budgetData.committed)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-body text-[11px] text-gray500">Disponible</span>
+                <span className="font-body text-[11px] font-semibold text-[#35C56A]">
+                  {formatMXN(budgetData.available)}
+                </span>
+              </div>
+            </div>
 
-            {!isChatLoading && chatMessages.length === 0 && (
-              <p className="font-body text-[12px] text-gray500">
-                Aún no hay mensajes. Sé el primero en escribir al grupo.
-              </p>
-            )}
+            <div className="h-1.5 bg-[#E2E8F0] rounded-full overflow-hidden mb-1">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${budgetData.pct}%`,
+                  background: 'linear-gradient(90deg, #1E6FD9, #7A4FD6)',
+                }}
+              />
+            </div>
+            <p className="font-body text-[10px] text-gray500 text-right">
+              {budgetData.pct.toFixed(0)}% comprometido
+            </p>
+          </>
+        )}
+      </section>
 
-            {chatMessages.map((message) => {
-              const isOwn = currentUserIdStr ? String(message.userId) === currentUserIdStr : message.id.startsWith('local-')
-              const author = message.authorName || 'Usuario'
-
-              return (
-                <div key={message.id} className={`flex gap-2 ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                  {!isOwn && (
-                    <div
-                      className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-white font-body font-bold text-[10px] mt-4"
-                      style={{ backgroundColor: getParticipantColor(author, participants) }}
-                    >
-                      {author[0] ?? '?'}
-                    </div>
-                  )}
-                  <div className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'} max-w-[80%]`}>
-                    {!isOwn && (
-                      <span className="font-body text-[10px] text-gray500 mb-0.5 ml-1">
-                        {author}
-                      </span>
-                    )}
-                    <div
-                      className={[
-                        'font-body text-[13px] px-3 py-2 leading-relaxed',
-                        isOwn
-                          ? 'text-white rounded-2xl rounded-tr-sm shadow-md'
-                          : 'bg-white text-gray700 border border-[#E2E8F0] rounded-2xl rounded-tl-sm shadow-sm',
-                      ].join(' ')}
-                      style={isOwn ? { background: 'linear-gradient(135deg, #1E6FD9, #7A4FD6)' } : {}}
-                    >
-                      {message.contenido}
-                      <p
-                        className={`text-[9px] mt-1 text-right leading-none ${
-                          isOwn ? 'text-white/50' : 'text-gray500/60'
-                        }`}
-                      >
-                        {formatChatTime(message.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-            <div ref={bottomRef} />
-          </div>
-
-          {chatError && (
-            <p className="font-body text-[11px] text-red-500">{chatError}</p>
-          )}
-
-          <div className="border-t border-purpleMedium/10" />
-
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={chatInput}
-              onChange={(event) => setChatInput(event.target.value)}
-              onKeyDown={(event) => { if (event.key === 'Enter') handleSend() }}
-              placeholder="Escribe un mensaje..."
-              disabled={!groupId || !accessToken}
-              className="flex-1 bg-white border border-[#E2E8F0] focus:border-bluePrimary rounded-xl px-3 h-9 font-body text-[12px] text-gray700 placeholder-gray500 outline-none shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!chatInput.trim() || !groupId || !accessToken}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 hover:opacity-90 transition-opacity shadow-md p-2 disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, #1E6FD9, #7A4FD6)' }}
-              aria-label="Enviar mensaje"
+      {/* Open chat button */}
+      <section className="shrink-0">
+        <button
+          type="button"
+          onClick={onOpenChat}
+          disabled={!onOpenChat}
+          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3 hover:bg-[#F0EEF8] hover:border-[#7A4FD6]/30 transition-colors group shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0"
+              style={{ background: 'linear-gradient(135deg, #1E0A4E, #7A4FD6)' }}
             >
-              <IconSend />
-            </button>
+              <IconChat />
+            </div>
+            <div className="text-left">
+              <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">
+                Chat del grupo
+              </p>
+              <p className="font-body text-[11px] text-gray500 mt-0.5 leading-none">
+                {onlineCount > 0 ? `${onlineCount} en línea` : 'Abrir chat'}
+              </p>
+            </div>
           </div>
-        </div>
+
+          {unreadCount > 0 ? (
+            <span className="w-5 h-5 rounded-full bg-[#EF4444] flex items-center justify-center font-body text-[10px] font-bold text-white shrink-0">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          ) : (
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="text-gray500 group-hover:text-[#7A4FD6] transition-colors shrink-0"
+              aria-hidden="true"
+            >
+              <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
       </section>
     </>
   )

@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react'
 import { mapsService, type PlaceResult } from '../../services/maps'
 import { groupsService } from '../../services/groups'
+import { proposalsService } from '../../services/proposals'
 import type { Group } from '../../types/groups'
 import type { Activity } from '../ui/DayView/DayView'
+
+type EnrichedPlaceResult = PlaceResult & {
+  routeDistanceText?: string | null
+  routeDurationText?: string | null
+  routeDistanceMeters?: number | null
+}
 
 type ActivityProposalModalProps = {
   open: boolean
@@ -10,6 +17,7 @@ type ActivityProposalModalProps = {
   token?: string | null
   selectedDayNumber?: number | null
   editingActivity?: Activity | null
+  isCurrentUserAdmin?: boolean
   onClose: () => void
   onCreated: () => void
 }
@@ -25,14 +33,15 @@ export function ActivityProposalModal({
   token,
   selectedDayNumber,
   editingActivity,
+  isCurrentUserAdmin = false,
   onClose,
   onCreated,
 }: ActivityProposalModalProps) {
   const [query, setQuery] = useState('')
   const [description, setDescription] = useState('')
   const [timeValue, setTimeValue] = useState('12:00')
-  const [results, setResults] = useState<PlaceResult[]>([])
-  const [selectedPlace, setSelectedPlace] = useState<PlaceResult | null>(null)
+  const [results, setResults] = useState<EnrichedPlaceResult[]>([])
+  const [selectedPlace, setSelectedPlace] = useState<EnrichedPlaceResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -90,12 +99,52 @@ export function ActivityProposalModal({
           latitude: group?.destino_latitud ?? undefined,
           longitude: group?.destino_longitud ?? undefined,
           radius: 7000,
-          maxResultCount: 8,
+          maxResultCount: 10,
         },
         token
       )
 
-      setResults(response.data ?? [])
+      const fetchedResults: EnrichedPlaceResult[] = response.data ?? []
+
+      const originLat = group?.destino_latitud
+      const originLng = group?.destino_longitud
+
+      if (originLat != null && originLng != null && fetchedResults.length > 0) {
+        const topResults = fetchedResults.slice(0, 10)
+        
+        await Promise.all(topResults.map(async (place) => {
+          if (place.latitude != null && place.longitude != null) {
+            try {
+              const routeResponse = await mapsService.computeRoute(
+                {
+                  originLat,
+                  originLng,
+                  destinationLat: place.latitude,
+                  destinationLng: place.longitude,
+                  travelMode: 'DRIVE',
+                },
+                token
+              )
+              
+              place.routeDistanceText = routeResponse.data?.distanceText ?? null
+              place.routeDurationText = routeResponse.data?.durationText ?? routeResponse.data?.staticDurationText ?? null
+              place.routeDistanceMeters = routeResponse.data?.distanceMeters ?? null
+            } catch {
+              // Ignorar error de ruta
+            }
+          }
+        }))
+
+        topResults.sort((a, b) => {
+          const distA = a.routeDistanceMeters ?? Infinity
+          const distB = b.routeDistanceMeters ?? Infinity
+          return distA - distB
+        })
+
+        setResults(topResults)
+      } else {
+        setResults(fetchedResults)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudieron buscar lugares.')
     } finally {
@@ -113,7 +162,7 @@ export function ActivityProposalModal({
     const yyyy = selectedDate.getFullYear()
     const mm = String(selectedDate.getMonth() + 1).padStart(2, '0')
     const dd = String(selectedDate.getDate()).padStart(2, '0')
-    return new Date(`${yyyy}-${mm}-${dd}T${timeValue}:00`).toISOString()
+    return `${yyyy}-${mm}-${dd}T${timeValue}:00`
   }
 
   const buildActivityPayload = () => {
@@ -146,7 +195,7 @@ export function ActivityProposalModal({
     }
   }
 
-  const handleSave = async () => {
+  const handleSave = async (asAdminDirect = false) => {
     if (!group?.id) {
       setError('No se encontro el grupo actual.')
       return
@@ -173,7 +222,24 @@ export function ActivityProposalModal({
       if (editingActivity) {
         await groupsService.updateActivity(String(group.id), editingActivity.id, payload, token)
       } else {
-        await groupsService.createActivity(String(group.id), payload, token)
+        const created = await groupsService.createActivity(String(group.id), payload, token)
+        const proposalId = String(
+          created.activity?.propuesta_id ??
+          created.activity?.proposalId ??
+          ''
+        )
+
+        if (asAdminDirect && proposalId) {
+          await proposalsService.applyAdminDecision(
+            String(group.id),
+            proposalId,
+            {
+              decision: 'aprobar',
+              reason: 'Actividad agregada directamente por organizador (Tipo A)',
+            },
+            token
+          )
+        }
       }
 
       setQuery('')
@@ -307,6 +373,17 @@ export function ActivityProposalModal({
                     <p className="mt-0.5 font-body text-xs text-gray500">
                       {place.formattedAddress || 'Direccion no disponible'}
                     </p>
+                    {place.routeDistanceText && place.routeDurationText && (
+                      <p className="mt-1 flex items-center gap-1 font-body text-[11px] text-gray700">
+                        <span className="text-bluePrimary">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" />
+                            <circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2" />
+                          </svg>
+                        </span>
+                        {place.routeDistanceText} · {place.routeDurationText}
+                      </p>
+                    )}
                     {place.primaryCategory && (
                       <p className="mt-1 font-body text-[11px] text-bluePrimary">{place.primaryCategory}</p>
                     )}
@@ -328,9 +405,19 @@ export function ActivityProposalModal({
           >
             Cancelar
           </button>
+          {!editingActivity && isCurrentUserAdmin && (
+            <button
+              type="button"
+              onClick={() => void handleSave(true)}
+              disabled={saving || !selectedPlace}
+              className="rounded-xl border border-[#1E6FD9] bg-[#EEF4FF] px-4 py-3 font-body text-sm font-semibold text-[#1E6FD9] disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : 'Agregar como admin (directo)'}
+            </button>
+          )}
           <button
             type="button"
-            onClick={handleSave}
+            onClick={() => void handleSave(false)}
             disabled={saving || !selectedPlace}
             className="rounded-xl bg-bluePrimary px-4 py-3 font-body text-sm font-semibold text-white disabled:opacity-50"
           >

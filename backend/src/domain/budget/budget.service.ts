@@ -62,32 +62,67 @@ export const getBalances = async (group_id: string): Promise<Record<string, numb
   return balances;
 };
 
+/**
+ * Calcula la liquidación óptima de deudas para un grupo.
+ * Implementa el algoritmo de minimización de transacciones (Greedy Settlement).
+ * Garantiza que como máximo habrá n-1 transacciones, donde n es el número de miembros con saldo no nulo.
+ * 
+ * Este algoritmo es ideal para viajes grupales ya que reduce la complejidad de los pagos,
+ * asegurando que el deudor más grande le pague al acreedor más grande de forma iterativa.
+ */
 export const getMinimumSettlements = async (group_id: string) => {
+  // 1. Obtener los balances netos de cada usuario
   const balances = await getBalances(group_id);
 
-  const creditors: { id: string; amount: number }[] = [];
-  const debtors: { id: string; amount: number }[] = [];
+  // 2. Separar a los usuarios en deudores y acreedores (ignorando saldos insignificantes < 0.01)
+  // - Deudores: Tienen saldo negativo (deben dinero)
+  // - Acreedores: Tienen saldo positivo (les deben dinero)
+  const debtors: { userId: string; amount: number }[] = [];
+  const creditors: { userId: string; amount: number }[] = [];
 
-  for (const [userId, balance] of Object.entries(balances)) {
-    if (balance > 0) creditors.push({ id: userId, amount: balance });
-    if (balance < 0) debtors.push({ id: userId, amount: -balance });
+  for (const [userId, amount] of Object.entries(balances)) {
+    if (amount < -0.01) {
+      debtors.push({ userId, amount: Math.abs(amount) });
+    } else if (amount > 0.01) {
+      creditors.push({ userId, amount });
+    }
   }
+
+  // 3. Ordenar ambos grupos de mayor a menor monto.
+  // La estrategia Greedy (codiciosa) dicta que liquidar las deudas más grandes primero
+  // optimiza la percepción de orden y reduce el número de pagos pequeños fragmentados.
+  debtors.sort((a, b) => b.amount - a.amount);
+  creditors.sort((a, b) => b.amount - a.amount);
 
   const settlements: { from: string; to: string; amount: number }[] = [];
 
-  let i = 0, j = 0;
-  while (i < debtors.length && j < creditors.length) {
-    const payment = Math.min(debtors[i].amount, creditors[j].amount);
-    settlements.push({
-      from: debtors[i].id,
-      to: creditors[j].id,
-      amount: Math.round(payment * 100) / 100,
-    });
-    debtors[i].amount -= payment;
-    creditors[j].amount -= payment;
-    if (debtors[i].amount === 0) i++;
-    if (creditors[j].amount === 0) j++;
+  let d = 0; // Puntero para recorrer la lista de deudores
+  let c = 0; // Puntero para recorrer la lista de acreedores
+
+  // 4. Proceso de liquidación iterativo
+  while (d < debtors.length && c < creditors.length) {
+    // La transacción es por el mínimo entre lo que el deudor debe y lo que el acreedor espera recibir
+    const payment = Math.min(debtors[d].amount, creditors[c].amount);
+    
+    if (payment > 0.01) {
+      settlements.push({
+        from: debtors[d].userId,
+        to: creditors[c].userId,
+        amount: Math.round(payment * 100) / 100, // Redondeo para evitar errores de precisión de punto flotante
+      });
+    }
+
+    // Actualizar los saldos pendientes de los punteros actuales
+    debtors[d].amount -= payment;
+    creditors[c].amount -= payment;
+
+    // Si el deudor ya pagó todo su saldo neto, avanzamos al siguiente deudor
+    if (debtors[d].amount < 0.01) d++;
+    
+    // Si el acreedor ya recuperó todo su saldo neto, avanzamos al siguiente acreedor
+    if (creditors[c].amount < 0.01) c++;
   }
 
+  // Retornamos el arreglo de transacciones optimizado
   return settlements;
 };

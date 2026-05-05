@@ -160,7 +160,7 @@ export function AppLayout({
         </main>
 
         {showRightPanel && rightPanel && (
-          <aside className="hidden w-[280px] shrink-0 flex-col gap-4 overflow-hidden border-l border-[#E2E8F0] bg-[#FAF9FD] px-5 py-5 xl:flex">
+          <aside className="hidden w-[280px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-[#E2E8F0] bg-[#FAF9FD] px-5 py-5 xl:flex">
             {rightPanel}
           </aside>
         )}

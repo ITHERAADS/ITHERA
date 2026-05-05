@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { getCurrentGroup, groupsService } from '../../services/groups'
 import type { ItineraryDay } from '../../services/groups'
@@ -6,6 +6,7 @@ import { mapsService } from '../../services/maps'
 import { proposalsService, type ProposalComment, type VoteResult } from '../../services/proposals'
 import { useAuth } from '../../context/useAuth'
 import { AppLayout, RightPanelDashboard, SidebarDashboard } from '../../components/layout/AppLayout'
+import { ChatDrawer } from '../../components/chat/ChatDrawer'
 import { DayView } from '../../components/ui/DayView'
 import type { Activity as DayActivity, DayViewHandle } from '../../components/ui/DayView'
 import { ProposalCard } from '../../components/ProposalCard/ProposalCard'
@@ -586,6 +587,22 @@ export function DashboardPage() {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentText, setEditingCommentText] = useState('')
   const [visibleCommentsCountByProposal, setVisibleCommentsCountByProposal] = useState<Record<string, number>>({})
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatUnread, setChatUnread] = useState(0)
+  const chatOpenRef = useRef(chatOpen)
+
+  // Keep ref in sync so the unread socket listener never captures stale chatOpen
+  useEffect(() => { chatOpenRef.current = chatOpen }, [chatOpen])
+
+  // Increment unread badge when a chat message arrives while the drawer is closed
+  useEffect(() => {
+    if (!socket) return
+    const handleNewMessage = () => {
+      if (!chatOpenRef.current) setChatUnread((c) => c + 1)
+    }
+    socket.on('chat_message', handleNewMessage)
+    return () => { socket.off('chat_message', handleNewMessage) }
+  }, [socket])
 
   const handleDayChange = useCallback((dayNumber: number) => {
     const next = activeDay === dayNumber ? null : dayNumber
@@ -616,6 +633,24 @@ export function DashboardPage() {
   )
   const currentUserRole = currentMember?.rol ?? group?.myRole ?? currentGroup?.myRole ?? 'viajero'
   const isCurrentUserAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
+
+  const chatParticipants = useMemo(() => {
+    const colors = ['#1E6FD9', '#35C56A', '#7A4FD6', '#F59E0B']
+    const seen = new Set<string>()
+    return safeMembers
+      .filter((m) => {
+        const key = String(m.usuario_id ?? m.id)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map((m, i) => ({
+        id: String(m.usuario_id ?? m.id),
+        name: m.nombre || m.email || 'Usuario',
+        color: colors[i % colors.length],
+        avatarUrl: m.avatar_url ?? null,
+      }))
+  }, [safeMembers])
 
   useEffect(() => {
   const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
@@ -1169,11 +1204,10 @@ export function DashboardPage() {
           group={group}
           isLoading={isLoading}
           socket={socket}
-          isSocketConnected={isSocketConnected}
-          accessToken={accessToken}
-          currentUserId={localUser?.id_usuario}
-          currentUserName={userName}
-          currentUserAvatarUrl={localUser?.avatar_url ?? null}
+          onOpenChat={() => { setChatOpen(true); setChatUnread(0) }}
+          unreadCount={chatUnread}
+          totalBudget={24000}
+          committedBudget={14200}
         />
       }
     >
@@ -1563,6 +1597,19 @@ export function DashboardPage() {
           }}
         />
       )}
+
+      <ChatDrawer
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        groupId={resolvedGroupId}
+        groupName={group?.nombre || 'Grupo'}
+        socket={socket}
+        isSocketConnected={isSocketConnected}
+        accessToken={accessToken}
+        currentUserId={localUser?.id_usuario != null ? String(localUser.id_usuario) : null}
+        currentUserName={userName}
+        participants={chatParticipants}
+      />
     </AppLayout>
   )
 }

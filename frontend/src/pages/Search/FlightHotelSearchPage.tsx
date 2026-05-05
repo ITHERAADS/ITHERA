@@ -1,12 +1,6 @@
 import { useState } from 'react'
 import { AppLayout } from '../../components/layout/AppLayout'
 
-interface Props {
-  groupId: string
-  accessToken: string
-  destino?: string
-}
-
 type SearchTab = 'flights' | 'hotels'
 type ViewState = 'initial' | 'loading' | 'results' | 'error'
 
@@ -84,7 +78,7 @@ function SkeletonResult() {
   )
 }
 
-const FlightHotelSearchPage: React.FC<Props> = () => {
+const FlightHotelSearchPage = () => {
   const [activeTab, setActiveTab] = useState<SearchTab>('flights')
   const [viewState, setViewState] = useState<ViewState>('initial')
 

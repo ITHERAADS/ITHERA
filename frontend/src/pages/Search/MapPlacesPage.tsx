@@ -1,11 +1,6 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
-
-interface Props {
-  groupId: string
-  accessToken: string
-  destino?: string
-}
 
 type ViewMode = 'empty' | 'results' | 'loading' | 'detail' | 'error'
 
@@ -64,7 +59,9 @@ function IconAlert() {
   )
 }
 
-const MapPlacesPage: React.FC<Props> = ({ destino }) => {
+const MapPlacesPage = () => {
+  const location = useLocation()
+  const destino = (location.state as { destino?: string } | null)?.destino
   const [query, setQuery] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('empty')
   const [selectedPlaceId, setSelectedPlaceId] = useState('place-1')

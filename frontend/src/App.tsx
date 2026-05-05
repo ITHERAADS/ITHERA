@@ -81,7 +81,7 @@ function App() {
           path="/search/flights-hotels"
           element={
             <ProtectedRoute>
-              <FlightHotelSearchPage groupId="" accessToken="" destino="Cancún, México" />
+              <FlightHotelSearchPage />
             </ProtectedRoute>
           }
         />
@@ -90,7 +90,7 @@ function App() {
           path="/search/map-places"
           element={
             <ProtectedRoute>
-              <MapPlacesPage groupId="" accessToken="" destino="Cancún, México" />
+              <MapPlacesPage />
             </ProtectedRoute>
           }
         />
@@ -99,7 +99,7 @@ function App() {
           path="/search/routes-weather"
           element={
             <ProtectedRoute>
-              <RoutesTransportWeatherPage groupId="" accessToken="" destino="Cancún, México" />
+              <RoutesTransportWeatherPage />
             </ProtectedRoute>
           }
         />

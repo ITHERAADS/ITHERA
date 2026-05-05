@@ -1,11 +1,6 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
-
-interface Props {
-  groupId: string
-  accessToken: string
-  destino?: string
-}
 
 type TransportMode = 'auto' | 'walk' | 'public'
 type RouteState = 'empty' | 'loading' | 'result' | 'error'
@@ -86,7 +81,9 @@ function IconAlert() {
   )
 }
 
-const RoutesTransportWeatherPage: React.FC<Props> = ({ destino }) => {
+const RoutesTransportWeatherPage = () => {
+  const location = useLocation()
+  const destino = (location.state as { destino?: string } | null)?.destino
   const [routeState, setRouteState] = useState<RouteState>('empty')
   const [transportMode, setTransportMode] = useState<TransportMode>('auto')
 

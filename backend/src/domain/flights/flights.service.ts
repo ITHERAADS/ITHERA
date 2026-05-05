@@ -1,4 +1,4 @@
-import { amadeusGet } from '../../infrastructure/external-apis/amadeus.service';
+import { amadeusGetWithBreaker as amadeusGet } from '../../infrastructure/external-apis/circuit-breaker';
 import { FlightOffer, SearchFlightsParams } from './flights.entity';
 
 interface AmadeusFlightResponse {

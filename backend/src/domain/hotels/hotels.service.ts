@@ -1,4 +1,4 @@
-import { amadeusGet } from '../../infrastructure/external-apis/amadeus.service';
+import { amadeusGetWithBreaker as amadeusGet } from '../../infrastructure/external-apis/circuit-breaker';
 import { GetHotelOffersParams, HotelOffer, SearchHotelsByCityParams } from './hotels.entity';
 
 interface AmadeusHotelListResponse {

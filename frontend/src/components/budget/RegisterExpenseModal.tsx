@@ -21,6 +21,7 @@ const CATEGORIES: { value: Expense['categoria']; label: string }[] = [
 export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense, onClose, onSave }) => {
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [category, setCategory] = useState<Expense['categoria']>('transporte')
   const [paidBy, setPaidBy] = useState(members[0] ?? '')
   const [splitType, setSplitType] = useState<Expense['splitType']>('equitativa')
@@ -28,28 +29,27 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
 
   useEffect(() => {
     if (!open) return
-    const reset = () => {
-      if (editingExpense) {
-        setAmount(String(editingExpense.monto))
-        setDescription(editingExpense.titulo)
-        setCategory(editingExpense.categoria)
-        setPaidBy(editingExpense.pagadoPor)
-        setSplitType(editingExpense.splitType ?? 'equitativa')
-        setSplitAmounts(
-          Object.fromEntries(
-            Object.entries(editingExpense.splitAmounts ?? {}).map(([k, v]) => [k, String(v)])
-          )
+    if (editingExpense) {
+      setAmount(String(editingExpense.monto))
+      setDescription(editingExpense.titulo)
+      setDate(editingExpense.fecha)
+      setCategory(editingExpense.categoria)
+      setPaidBy(editingExpense.pagadoPor)
+      setSplitType(editingExpense.splitType ?? 'equitativa')
+      setSplitAmounts(
+        Object.fromEntries(
+          Object.entries(editingExpense.splitAmounts ?? {}).map(([k, v]) => [k, String(v)])
         )
-      } else {
-        setAmount('')
-        setDescription('')
-        setCategory('transporte')
-        setPaidBy(members[0] ?? '')
-        setSplitType('equitativa')
-        setSplitAmounts({})
-      }
+      )
+    } else {
+      setAmount('')
+      setDescription('')
+      setDate(new Date().toISOString().split('T')[0])
+      setCategory('transporte')
+      setPaidBy(members[0] ?? '')
+      setSplitType('equitativa')
+      setSplitAmounts({})
     }
-    reset()
   }, [open, editingExpense]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null
@@ -80,7 +80,7 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
       monto: totalAmount,
       pagadoPor: paidBy,
       splitType,
-      fecha: editingExpense ? editingExpense.fecha : new Date().toISOString().split('T')[0],
+      fecha: date || new Date().toISOString().split('T')[0],
       ...(parsedSplitAmounts !== undefined && { splitAmounts: parsedSplitAmounts }),
     }
 
@@ -108,9 +108,16 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
           <div className="mx-auto mb-5 h-1 w-12 rounded-full bg-[#E2E8F0]" />
 
           <div className="mb-6 flex items-center justify-between">
-            <h2 className="font-heading text-lg font-bold text-[#1E0A4E]">
-              {editingExpense ? 'Editar gasto' : 'Registrar gasto'}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-heading text-lg font-bold text-[#1E0A4E]">
+                {editingExpense ? 'Editar gasto' : 'Registrar gasto'}
+              </h2>
+              {editingExpense && (
+                <span className="rounded-full bg-[#7A4FD6]/10 px-2.5 py-0.5 font-body text-xs font-semibold text-[#7A4FD6]">
+                  Editando
+                </span>
+              )}
+            </div>
             <button onClick={onClose} className="text-[#7A8799] transition-colors hover:text-[#3D4A5C]">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -145,6 +152,16 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="ej. Vuelos, Hotel, Tour..."
+                className="w-full rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Fecha</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
                 className="w-full rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
               />
             </div>
@@ -239,7 +256,7 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
               disabled={!isValid}
               className="flex-1 rounded-xl bg-[#1E6FD9] py-3.5 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Guardar gasto
+              {editingExpense ? 'Guardar cambios' : 'Guardar gasto'}
             </button>
           </div>
         </div>

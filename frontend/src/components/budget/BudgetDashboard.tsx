@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FC } from 'react'
 import { RegisterExpenseModal } from './RegisterExpenseModal'
 import { MyWalletView } from './MyWalletView'
+import { getCurrentGroup } from '../../services/groups'
 
 export interface Expense {
   id: string
@@ -14,7 +15,7 @@ export interface Expense {
   splitAmounts?: Record<string, number>
 }
 
-const TOTAL_BUDGET = 15000
+const INITIAL_BUDGET = 15000
 
 const MOCK_EXPENSES: Expense[] = [
   { id: '1', titulo: 'Vuelo CDMX → Cancún', categoria: 'transporte', monto: 3200, pagadoPor: 'Carlos', splitType: 'equitativa', fecha: '2025-07-01' },
@@ -78,18 +79,32 @@ interface Props {
   groupId: string | null
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export const BudgetDashboard: FC<Props> = ({ groupId: _groupId }) => {
+export const BudgetDashboard: FC<Props> = ({ groupId }) => {
   const [expenses, setExpenses] = useState<Expense[]>(MOCK_EXPENSES)
   const [showModal, setShowModal] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [view, setView] = useState<'dashboard' | 'wallet'>('dashboard')
+  const [totalBudget, setTotalBudget] = useState(INITIAL_BUDGET)
+  const [showAdjustModal, setShowAdjustModal] = useState(false)
+  const [adjustValue, setAdjustValue] = useState('')
 
   const comprometido = expenses.reduce((sum, e) => sum + e.monto, 0)
-  const disponible = TOTAL_BUDGET - comprometido
-  const pct = Math.min((comprometido / TOTAL_BUDGET) * 100, 100)
+  const disponible = totalBudget - comprometido
+  const isOverBudget = comprometido > totalBudget
+  const pct = Math.min((comprometido / totalBudget) * 100, 100)
   const barColor = pct < 70 ? '#35C56A' : pct < 90 ? '#F59E0B' : '#EF4444'
   const barLabel = pct < 70 ? 'Presupuesto saludable' : pct < 90 ? 'Atención: presupuesto al límite' : 'Presupuesto excedido'
+
+  const myRole = getCurrentGroup()?.myRole ?? 'viajero'
+  const canModifyExpenses = myRole === 'admin'
+  const canAdjustBudget = myRole === 'admin'
+
+  const categoryTotals = {
+    transporte: expenses.filter(e => e.categoria === 'transporte').reduce((s, e) => s + e.monto, 0),
+    hospedaje: expenses.filter(e => e.categoria === 'hospedaje').reduce((s, e) => s + e.monto, 0),
+    actividad: expenses.filter(e => e.categoria === 'actividad').reduce((s, e) => s + e.monto, 0),
+    comida: expenses.filter(e => e.categoria === 'comida').reduce((s, e) => s + e.monto, 0),
+  }
 
   const handleSaveExpense = (expense: Expense) => {
     if (editingExpense) {
@@ -106,6 +121,21 @@ export const BudgetDashboard: FC<Props> = ({ groupId: _groupId }) => {
     setShowModal(true)
   }
 
+  const handleDelete = (id: string) => {
+    if (window.confirm('¿Eliminar este gasto? Esta acción no se puede deshacer.')) {
+      setExpenses((prev) => prev.filter((e) => e.id !== id))
+    }
+  }
+
+  const handleAdjustBudget = () => {
+    const val = parseFloat(adjustValue)
+    if (!isNaN(val) && val > 0) {
+      setTotalBudget(val)
+      setShowAdjustModal(false)
+      setAdjustValue('')
+    }
+  }
+
   if (view === 'wallet') {
     return <MyWalletView onBack={() => setView('dashboard')} />
   }
@@ -115,16 +145,39 @@ export const BudgetDashboard: FC<Props> = ({ groupId: _groupId }) => {
       {/* Header */}
       <div className="bg-[#1E0A4E] px-6 pt-6 pb-8">
         <p className="mb-1 font-body text-sm text-white/60">Presupuesto del viaje</p>
-        <h1 className="mb-6 font-heading text-2xl font-bold text-white">Finanzas del Grupo</h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="font-heading text-2xl font-bold text-white">Finanzas del Grupo</h1>
+          {canAdjustBudget && (
+            <button
+              onClick={() => { setAdjustValue(String(totalBudget)); setShowAdjustModal(true) }}
+              className="flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 font-body text-xs font-medium text-white/80 transition-colors hover:bg-white/20"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Ajustar presupuesto
+            </button>
+          )}
+        </div>
 
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-xl border-[0.5px] border-[#E2E8F0] bg-white px-3 py-3">
             <p className="mb-1 font-body text-[10px] text-[#7A8799]">Total Viaje</p>
-            <p className="font-heading text-base font-bold text-[#3D4A5C]">{formatMXN(TOTAL_BUDGET)}</p>
+            <p className="font-heading text-base font-bold text-[#3D4A5C]">{formatMXN(totalBudget)}</p>
           </div>
-          <div className="rounded-xl border-[0.5px] border-[#E2E8F0] bg-white px-3 py-3">
-            <p className="mb-1 font-body text-[10px] text-[#7A8799]">Comprometido</p>
-            <p className="font-heading text-base font-bold text-[#EF4444]">{formatMXN(comprometido)}</p>
+          <div
+            className={[
+              'rounded-xl border-[0.5px] px-3 py-3',
+              isOverBudget ? 'border-[#EF4444] bg-[#EF4444]' : 'border-[#E2E8F0] bg-white',
+            ].join(' ')}
+          >
+            <p className={['mb-1 font-body text-[10px]', isOverBudget ? 'text-white' : 'text-[#7A8799]'].join(' ')}>
+              Comprometido
+            </p>
+            <p className={['font-heading text-base font-bold', isOverBudget ? 'text-white' : 'text-[#EF4444]'].join(' ')}>
+              {formatMXN(comprometido)}
+            </p>
           </div>
           <div className="rounded-xl border-[0.5px] border-[#E2E8F0] bg-white px-3 py-3">
             <p className="mb-1 font-body text-[10px] text-[#7A8799]">Disponible</p>
@@ -132,6 +185,20 @@ export const BudgetDashboard: FC<Props> = ({ groupId: _groupId }) => {
           </div>
         </div>
       </div>
+
+      {/* Banner de alerta: presupuesto excedido */}
+      {isOverBudget && (
+        <div className="flex items-center gap-3 bg-[#B91C1C] px-6 py-3">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="white" strokeWidth="2" strokeLinejoin="round" />
+            <line x1="12" y1="9" x2="12" y2="13" stroke="white" strokeWidth="2" strokeLinecap="round" />
+            <circle cx="12" cy="17" r="1" fill="white" />
+          </svg>
+          <p className="font-body font-semibold text-white" style={{ fontSize: '14px' }}>
+            ¡Presupuesto excedido!
+          </p>
+        </div>
+      )}
 
       {/* Progress bar */}
       <div className="border-b border-[#E2E8F0] bg-white px-6 py-4">
@@ -175,6 +242,7 @@ export const BudgetDashboard: FC<Props> = ({ groupId: _groupId }) => {
           </button>
         </div>
 
+        {/* Gastos del grupo */}
         <div>
           <h2 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Gastos del grupo</h2>
           <div className="flex flex-col gap-2">
@@ -201,18 +269,78 @@ export const BudgetDashboard: FC<Props> = ({ groupId: _groupId }) => {
                 <span className="shrink-0 font-heading text-sm font-bold text-[#3D4A5C]">
                   {formatMXN(expense.monto)}
                 </span>
-                <button
-                  onClick={() => openEdit(expense)}
-                  aria-label="Editar gasto"
-                  className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#F4F6F8] hover:text-[#1E6FD9]"
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
+                {canModifyExpenses && (
+                  <button
+                    onClick={() => openEdit(expense)}
+                    aria-label="Editar gasto"
+                    className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#F4F6F8] hover:text-[#1E6FD9]"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
+                {canModifyExpenses && (
+                  <button
+                    onClick={() => handleDelete(expense.id)}
+                    aria-label="Eliminar gasto"
+                    className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#FEF2F2] hover:text-[#EF4444]"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Panel derecho: Participantes + Presupuesto Grupal */}
+        <div className="flex flex-col gap-5 rounded-2xl border border-[#E2E8F0] bg-white p-4">
+          <div>
+            <h3 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Participantes</h3>
+            <div className="flex flex-wrap gap-2">
+              {MOCK_MEMBERS.map((member) => (
+                <div key={member} className="flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-1.5">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1E0A4E] font-heading text-[10px] font-bold text-white">
+                    {member[0]}
+                  </div>
+                  <span className="font-body text-xs text-[#3D4A5C]">{member}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Presupuesto Grupal</h3>
+            <div className="flex flex-col gap-2.5">
+              {(
+                [
+                  { label: 'Vuelos', categoria: 'transporte' },
+                  { label: 'Hospedaje', categoria: 'hospedaje' },
+                  { label: 'Actividades', categoria: 'actividad' },
+                  { label: 'Comida', categoria: 'comida' },
+                ] as { label: string; categoria: keyof typeof categoryTotals }[]
+              ).map(({ label, categoria }) => (
+                <div key={categoria} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="flex h-7 w-7 items-center justify-center rounded-lg"
+                      style={{ backgroundColor: `${categoryColor(categoria)}18`, color: categoryColor(categoria) }}
+                    >
+                      <CategoryIcon categoria={categoria} />
+                    </span>
+                    <span className="font-body text-xs text-[#7A8799]">{label}</span>
+                  </div>
+                  <span className="font-body text-xs font-semibold text-[#3D4A5C]">
+                    {formatMXN(categoryTotals[categoria])}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -224,6 +352,50 @@ export const BudgetDashboard: FC<Props> = ({ groupId: _groupId }) => {
         onClose={() => { setShowModal(false); setEditingExpense(null) }}
         onSave={handleSaveExpense}
       />
+
+      {/* Modal: Ajustar presupuesto total */}
+      {showAdjustModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(13,8,32,0.75)' }}
+          onClick={() => setShowAdjustModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="mb-4 font-heading text-lg font-bold text-[#1E0A4E]">Ajustar presupuesto total</h2>
+            <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Nuevo presupuesto (MXN)</label>
+            <div className="relative mb-4">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-body text-sm text-[#7A8799]">$</span>
+              <input
+                type="number"
+                min="0"
+                value={adjustValue}
+                onChange={(e) => setAdjustValue(e.target.value)}
+                placeholder="0.00"
+                autoFocus
+                className="w-full rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] py-3 pl-7 pr-4 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowAdjustModal(false)}
+                className="flex-1 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] py-3 font-body text-sm font-semibold text-[#7A8799] transition-colors hover:border-[#3D4A5C] hover:text-[#3D4A5C]"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAdjustBudget}
+                disabled={!adjustValue || parseFloat(adjustValue) <= 0}
+                className="flex-1 rounded-xl bg-[#1E6FD9] py-3 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

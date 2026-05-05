@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useLocation } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
 
 type SearchTab = 'flights' | 'hotels'
@@ -80,8 +79,6 @@ function SkeletonResult() {
 }
 
 const FlightHotelSearchPage = () => {
-  const location = useLocation()
-  const _destino = (location.state as { destino?: string } | null)?.destino
   const [activeTab, setActiveTab] = useState<SearchTab>('flights')
   const [viewState, setViewState] = useState<ViewState>('initial')
 

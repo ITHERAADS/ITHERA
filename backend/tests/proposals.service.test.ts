@@ -1,78 +1,279 @@
-/// <reference types="jest" />
-
 import * as ProposalsService from '../src/domain/proposals/proposals.service';
 import { supabase } from '../src/infrastructure/db/supabase.client';
 import { getLocalUserId } from '../src/domain/groups/groups.service';
 
 jest.mock('../src/infrastructure/db/supabase.client', () => ({
-  supabase: { from: jest.fn() },
+  supabase: {
+    from: jest.fn((table: string) => mockFrom(table)),
+  },
 }));
 
 jest.mock('../src/domain/groups/groups.service', () => ({
   getLocalUserId: jest.fn(),
 }));
 
-const fromMock = (supabase as any).from as jest.Mock;
-const getLocalUserIdMock = getLocalUserId as jest.Mock;
+jest.mock('../src/domain/notifications/notifications.service', () => ({
+  getUserDisplayName: jest.fn().mockResolvedValue('Usuario prueba'),
+  createNotification: jest.fn().mockResolvedValue(undefined),
+  createNotificationForGroupMembers: jest.fn().mockResolvedValue(undefined),
+  emitGroupDashboardUpdated: jest.fn(),
+}));
 
-const buildMaybeSingleChain = (result: { data: any; error: any }) => {
-  const chain: any = {
-    select: jest.fn(() => chain),
-    eq: jest.fn(() => chain),
-    maybeSingle: jest.fn().mockResolvedValue(result),
-  };
-  return chain;
+type TableName = 'grupo_miembros' | 'propuestas' | 'voto' | 'comentario' | 'usuarios' | string;
+type Row = Record<string, any>;
+
+type MockDatabase = Record<TableName, Row[]>;
+
+const mockInitialDatabase = (): MockDatabase => ({
+  grupo_miembros: [
+    { id: '1', grupo_id: '7', usuario_id: '1', rol: 'miembro' },
+    { id: '2', grupo_id: '7', usuario_id: '2', rol: 'miembro' },
+    { id: '3', grupo_id: '7', usuario_id: '3', rol: 'miembro' },
+  ],
+  propuestas: [
+    {
+      id_propuesta: '1',
+      grupo_id: '7',
+      tipo_item: 'vuelo',
+      titulo: 'Propuesta 1',
+      estado: 'en_votacion',
+      creado_por: '2',
+      payload: null,
+    },
+    {
+      id_propuesta: '2',
+      grupo_id: '7',
+      tipo_item: 'hospedaje',
+      titulo: 'Propuesta 2',
+      estado: 'en_votacion',
+      creado_por: '2',
+      payload: null,
+    },
+    {
+      id_propuesta: '3',
+      grupo_id: '7',
+      tipo_item: 'vuelo',
+      titulo: 'Propuesta 3',
+      estado: 'en_votacion',
+      creado_por: '2',
+      payload: null,
+    },
+    {
+      id_propuesta: '99',
+      grupo_id: '7',
+      tipo_item: 'vuelo',
+      titulo: 'Propuesta de prueba',
+      estado: 'en_votacion',
+      creado_por: '2',
+      payload: null,
+    },
+  ],
+  voto: [
+    { id_voto: '1', id_propuesta: '1', id_usuario: '2', voto_tipo: 'a_favor', created_at: '2026-05-04T00:00:00.000Z' },
+    { id_voto: '2', id_propuesta: '2', id_usuario: '2', voto_tipo: 'a_favor', created_at: '2026-05-04T00:00:00.000Z' },
+    { id_voto: '3', id_propuesta: '2', id_usuario: '3', voto_tipo: 'a_favor', created_at: '2026-05-04T00:00:00.000Z' },
+  ],
+  comentario: [
+    {
+      id_comentario: '777',
+      id_propuesta: '99',
+      id_usuario: '2',
+      contenido: 'Comentario de otro usuario',
+      created_at: '2026-05-04T00:00:00.000Z',
+      updated_at: '2026-05-04T00:00:00.000Z',
+    },
+  ],
+  usuarios: [
+    { id_usuario: '1', nombre: 'Usuario prueba' },
+    { id_usuario: '2', nombre: 'Otro usuario' },
+    { id_usuario: '3', nombre: 'Tercer usuario' },
+  ],
+  actividades: [],
+});
+
+let mockDb: MockDatabase = mockInitialDatabase();
+
+const mockCloneRow = (row: Row): Row => ({ ...row });
+
+const mockSelectColumns = (rows: Row[], selectedColumns: string | undefined): Row[] => {
+  if (!selectedColumns || selectedColumns.trim() === '*' || selectedColumns.includes('count')) {
+    return rows.map(mockCloneRow);
+  }
+
+  const columns = selectedColumns
+    .split(',')
+    .map((column) => column.trim())
+    .filter(Boolean);
+
+  return rows.map((row) => {
+    const selected: Row = {};
+    for (const column of columns) {
+      if (column in row) selected[column] = row[column];
+    }
+    return selected;
+  });
 };
 
-const buildInsertSingleChain = (result: { data: any; error: any }) => {
-  const chain: any = {
-    insert: jest.fn(() => chain),
-    select: jest.fn(() => chain),
-    single: jest.fn().mockResolvedValue(result),
-  };
-  return chain;
+const mockMatchesFilter = (row: Row, filter: { type: 'eq' | 'in'; column: string; value: any }) => {
+  if (filter.type === 'eq') {
+    return String(row[filter.column]) === String(filter.value);
+  }
+
+  const values = Array.isArray(filter.value) ? filter.value.map(String) : [];
+  return values.includes(String(row[filter.column]));
 };
+
+const mockCreateQueryBuilder = (tableName: string) => {
+  const filters: Array<{ type: 'eq' | 'in'; column: string; value: any }> = [];
+  let selectedColumns: string | undefined;
+  let mutationData: Row | Row[] | null = null;
+  let deleteRequested = false;
+
+  const getTable = () => {
+    if (!mockDb[tableName]) mockDb[tableName] = [];
+    return mockDb[tableName];
+  };
+
+  const getFilteredRows = () => {
+    return getTable().filter((row) => filters.every((filter) => mockMatchesFilter(row, filter)));
+  };
+
+  const getResultRows = () => {
+    const baseRows = mutationData
+      ? Array.isArray(mutationData)
+        ? mutationData
+        : [mutationData]
+      : getFilteredRows();
+
+    return mockSelectColumns(baseRows, selectedColumns);
+  };
+
+  const builder: any = {
+    select: jest.fn((columns?: string) => {
+      selectedColumns = columns;
+      return builder;
+    }),
+
+    eq: jest.fn((column: string, value: any) => {
+      filters.push({ type: 'eq', column, value });
+      return builder;
+    }),
+
+    in: jest.fn((column: string, values: any[]) => {
+      filters.push({ type: 'in', column, value: values });
+      return builder;
+    }),
+
+    order: jest.fn(() => builder),
+    limit: jest.fn(() => builder),
+
+    maybeSingle: jest.fn(async () => ({
+      data: getResultRows()[0] ?? null,
+      error: null,
+    })),
+
+    single: jest.fn(async () => ({
+      data: getResultRows()[0] ?? null,
+      error: null,
+    })),
+
+    insert: jest.fn((payload: Row | Row[]) => {
+      const rows = Array.isArray(payload) ? payload : [payload];
+
+      const insertedRows = rows.map((row, index) => {
+        if (tableName === 'voto') {
+          return {
+            id_voto: row.id_voto ?? String(getTable().length + index + 1),
+            created_at: row.created_at ?? '2026-05-04T00:00:00.000Z',
+            ...row,
+          };
+        }
+
+        if (tableName === 'comentario') {
+          return {
+            id_comentario: row.id_comentario ?? String(getTable().length + index + 1),
+            created_at: row.created_at ?? '2026-05-04T00:00:00.000Z',
+            updated_at: row.updated_at ?? '2026-05-04T00:00:00.000Z',
+            ...row,
+          };
+        }
+
+        return { ...row };
+      });
+
+      getTable().push(...insertedRows);
+      mutationData = Array.isArray(payload) ? insertedRows : insertedRows[0];
+      return builder;
+    }),
+
+    update: jest.fn((payload: Row) => {
+      const updatedRows = getFilteredRows().map((row) => {
+        Object.assign(row, payload);
+        return row;
+      });
+      mutationData = updatedRows;
+      return builder;
+    }),
+
+    delete: jest.fn(() => {
+      deleteRequested = true;
+      return builder;
+    }),
+
+    then: (resolve: (value: { data: Row[] | null; error: null }) => any) => {
+      if (deleteRequested) {
+        const table = getTable();
+        const remainingRows = table.filter((row) => !filters.every((filter) => mockMatchesFilter(row, filter)));
+        mockDb[tableName] = remainingRows;
+        return Promise.resolve({ data: null, error: null }).then(resolve);
+      }
+
+      return Promise.resolve({ data: getResultRows(), error: null }).then(resolve);
+    },
+  };
+
+  return builder;
+};
+
+function mockFrom(table: string) {
+  return mockCreateQueryBuilder(table);
+}
 
 describe('ProposalsService integrity tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    getLocalUserIdMock.mockResolvedValue('10');
+    mockDb = mockInitialDatabase();
+    (getLocalUserId as jest.Mock).mockResolvedValue('1');
+    (supabase.from as jest.Mock).mockImplementation((table: string) => mockFrom(table));
   });
 
   it('castSingleVote: registra voto cuando no existe voto previo', async () => {
-    const memberChain = buildMaybeSingleChain({ data: { id: 1 }, error: null });
-    const proposalChain = buildMaybeSingleChain({ data: { id_propuesta: 99, grupo_id: 7 }, error: null });
-    const existingVoteChain = buildMaybeSingleChain({ data: null, error: null });
-    const insertVoteChain = buildInsertSingleChain({
-      data: { id_voto: 500, id_propuesta: 99, id_usuario: 10, created_at: '2026-04-19T00:00:00Z' },
-      error: null,
+    mockDb.voto = mockDb.voto.filter((vote) => String(vote.id_propuesta) !== '99');
+
+    const result = await ProposalsService.castSingleVote('auth-user', '7', '99', { voto: 'a_favor' });
+
+    expect(result).toMatchObject({
+      message: 'Voto registrado correctamente',
+      approved: false,
+      rejected: false,
+      votesFor: 1,
+      votesRequired: 2,
     });
-
-    fromMock
-      .mockReturnValueOnce(memberChain)
-      .mockReturnValueOnce(proposalChain)
-      .mockReturnValueOnce(existingVoteChain)
-      .mockReturnValueOnce(insertVoteChain);
-
-    const result = await ProposalsService.castSingleVote('auth-user', '7', '99', {});
-
-    expect(result.message).toBe('Voto registrado correctamente');
-    expect(result.vote.id_propuesta).toBe(99);
-    expect(fromMock).toHaveBeenNthCalledWith(1, 'grupo_miembros');
-    expect(fromMock).toHaveBeenNthCalledWith(2, 'propuestas');
-    expect(fromMock).toHaveBeenNthCalledWith(3, 'voto');
-    expect(fromMock).toHaveBeenNthCalledWith(4, 'voto');
+    expect(result.vote).toMatchObject({
+      id_propuesta: '99',
+      id_usuario: '1',
+      voto_tipo: 'a_favor',
+    });
   });
 
   it('castSingleVote: rechaza segundo voto del mismo usuario en la misma propuesta', async () => {
-    const memberChain = buildMaybeSingleChain({ data: { id: 1 }, error: null });
-    const proposalChain = buildMaybeSingleChain({ data: { id_propuesta: 99, grupo_id: 7 }, error: null });
-    const existingVoteChain = buildMaybeSingleChain({ data: { id_voto: 55 }, error: null });
-
-    fromMock
-      .mockReturnValueOnce(memberChain)
-      .mockReturnValueOnce(proposalChain)
-      .mockReturnValueOnce(existingVoteChain);
+    mockDb.voto.push({
+      id_voto: '99',
+      id_propuesta: '99',
+      id_usuario: '1',
+      voto_tipo: 'a_favor',
+      created_at: '2026-05-04T00:00:00.000Z',
+    });
 
     await expect(ProposalsService.castSingleVote('auth-user', '7', '99', {}))
       .rejects
@@ -80,37 +281,6 @@ describe('ProposalsService integrity tests', () => {
   });
 
   it('getProposalVoteResults: devuelve propuestas ordenadas por popularidad', async () => {
-    const memberChain = buildMaybeSingleChain({ data: { id: 1 }, error: null });
-
-    const proposalsChain: any = {
-      select: jest.fn(() => proposalsChain),
-      eq: jest.fn().mockResolvedValue({
-        data: [
-          { id_propuesta: 1, tipo_item: 'vuelo', titulo: 'Vuelo A' },
-          { id_propuesta: 2, tipo_item: 'hospedaje', titulo: 'Hotel B' },
-          { id_propuesta: 3, tipo_item: 'vuelo', titulo: 'Vuelo C' },
-        ],
-        error: null,
-      }),
-    };
-
-    const votesChain: any = {
-      select: jest.fn(() => votesChain),
-      in: jest.fn().mockResolvedValue({
-        data: [
-          { id_propuesta: 2 },
-          { id_propuesta: 2 },
-          { id_propuesta: 1 },
-        ],
-        error: null,
-      }),
-    };
-
-    fromMock
-      .mockReturnValueOnce(memberChain)
-      .mockReturnValueOnce(proposalsChain)
-      .mockReturnValueOnce(votesChain);
-
     const result = await ProposalsService.getProposalVoteResults('auth-user', '7');
 
     expect(result.totalVotes).toBe(3);
@@ -120,9 +290,7 @@ describe('ProposalsService integrity tests', () => {
   });
 
   it('createComment: valida seguridad de grupo (rechaza usuario fuera del grupo)', async () => {
-    const memberChain = buildMaybeSingleChain({ data: null, error: null });
-
-    fromMock.mockReturnValueOnce(memberChain);
+    mockDb.grupo_miembros = mockDb.grupo_miembros.filter((member) => String(member.usuario_id) !== '1');
 
     await expect(
       ProposalsService.createComment('auth-user', '7', '99', { contenido: 'Duda sobre este vuelo' }),
@@ -130,18 +298,6 @@ describe('ProposalsService integrity tests', () => {
   });
 
   it('updateComment: impide editar comentarios de otro usuario', async () => {
-    const memberChain = buildMaybeSingleChain({ data: { id: 1 }, error: null });
-    const proposalChain = buildMaybeSingleChain({ data: { id_propuesta: 99, grupo_id: 7 }, error: null });
-    const commentChain = buildMaybeSingleChain({
-      data: { id_comentario: 777, id_propuesta: 99, id_usuario: 999 },
-      error: null,
-    });
-
-    fromMock
-      .mockReturnValueOnce(memberChain)
-      .mockReturnValueOnce(proposalChain)
-      .mockReturnValueOnce(commentChain);
-
     await expect(
       ProposalsService.updateComment('auth-user', '7', '99', '777', { contenido: 'nuevo texto' }),
     ).rejects.toMatchObject({ statusCode: 403, message: 'No puedes editar comentarios de otro usuario' });

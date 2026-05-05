@@ -86,6 +86,7 @@ export async function googleNearbyPlaces<T>(body: Record<string, unknown>): Prom
         'places.location.latitude',
         'places.location.longitude',
         'places.types',
+        'places.photos.name',
       ].join(','),
     },
     body: JSON.stringify(body),
@@ -93,6 +94,112 @@ export async function googleNearbyPlaces<T>(body: Record<string, unknown>): Prom
 
   if (!response.ok) {
     throw new Error(`Error de Google Places (${response.status}): ${await response.text()}`);
+  }
+
+  return safeJson<T>(response);
+}
+
+export async function googlePlaceAutocomplete<T>(input: string): Promise<T> {
+  ensureGoogleEnv();
+
+  const response = await fetch(`${GOOGLE_PLACES_BASE_URL}/v1/places:autocomplete`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY!,
+      'X-Goog-FieldMask': [
+        'suggestions.placePrediction.placeId',
+        'suggestions.placePrediction.text.text',
+        'suggestions.placePrediction.structuredFormat.mainText.text',
+        'suggestions.placePrediction.structuredFormat.secondaryText.text',
+      ].join(','),
+    },
+    body: JSON.stringify({
+      input,
+      languageCode: 'es-MX',
+      includedRegionCodes: ['mx'],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Error de Google Places Autocomplete (${response.status}): ${await response.text()}`);
+  }
+
+  return safeJson<T>(response);
+}
+
+export async function googlePlaceDetails<T>(placeId: string): Promise<T> {
+  ensureGoogleEnv();
+
+  const response = await fetch(`${GOOGLE_PLACES_BASE_URL}/v1/places/${encodeURIComponent(placeId)}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY!,
+      'X-Goog-FieldMask': [
+        'id',
+        'displayName.text',
+        'formattedAddress',
+        'location.latitude',
+        'location.longitude',
+        'types',
+        'photos.name',
+      ].join(','),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Error de Google Place Details (${response.status}): ${await response.text()}`);
+  }
+
+  return safeJson<T>(response);
+}
+
+export async function googleTextSearchPlaces<T>(body: Record<string, unknown>): Promise<T> {
+  ensureGoogleEnv();
+
+  const response = await fetch(`${GOOGLE_PLACES_BASE_URL}/v1/places:searchText`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY!,
+      'X-Goog-FieldMask': [
+        'places.id',
+        'places.displayName.text',
+        'places.formattedAddress',
+        'places.location.latitude',
+        'places.location.longitude',
+        'places.types',
+        'places.photos.name',
+      ].join(','),
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Error de Google Places Text Search (${response.status}): ${await response.text()}`);
+  }
+
+  return safeJson<T>(response);
+}
+export async function googlePlacePhotoMedia<T>(photoName: string, maxWidthPx = 900): Promise<T> {
+  ensureGoogleEnv();
+
+  const normalizedName = photoName.endsWith('/media') ? photoName : `${photoName}/media`;
+  const url = new URL(`/v1/${normalizedName}`, GOOGLE_PLACES_BASE_URL);
+  url.searchParams.set('maxWidthPx', String(maxWidthPx));
+  url.searchParams.set('skipHttpRedirect', 'true');
+  url.searchParams.set('key', GOOGLE_MAPS_API_KEY!);
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Error de Google Place Photo (${response.status}): ${await response.text()}`);
   }
 
   return safeJson<T>(response);

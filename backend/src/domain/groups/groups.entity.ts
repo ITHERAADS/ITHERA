@@ -14,6 +14,12 @@ export interface GrupoViaje {
   creado_por: string;
   estado: GroupStatus;
   created_at?: string;
+  destino_latitud?: number | null;
+  destino_longitud?: number | null;
+  destino_place_id?: string | null;
+  destino_formatted_address?: string | null;
+  destino_photo_name?: string | null;
+  destino_photo_url?: string | null;
 }
 
 export interface GrupoMiembro {
@@ -30,6 +36,12 @@ export interface CreateGroupPayload {
   fecha_inicio?: string;
   fecha_fin?: string;
   maximo_miembros?: number;
+  destino_latitud?: number | null;
+  destino_longitud?: number | null;
+  destino_place_id?: string | null;
+  destino_formatted_address?: string | null;
+  destino_photo_name?: string | null;
+  destino_photo_url?: string | null;
 }
 
 export interface UpdateGroupPayload {
@@ -39,6 +51,12 @@ export interface UpdateGroupPayload {
   fecha_inicio?: string;
   fecha_fin?: string;
   maximo_miembros?: number;
+  destino_latitud?: number | null;
+  destino_longitud?: number | null;
+  destino_place_id?: string | null;
+  destino_formatted_address?: string | null;
+  destino_photo_name?: string | null;
+  destino_photo_url?: string | null;
 }
 
 export interface JoinGroupPayload {

@@ -1,4 +1,5 @@
-import { ITINERARY_DAYS } from '../../../mock/itinerary.mock'
+import type { ItineraryDay } from '../../../services/groups'
+import type { Group } from '../../../types/groups'
 
 // ── Mock budget data ──────────────────────────────────────────────────────────
 
@@ -12,68 +13,109 @@ const BUDGET_ITEMS = [
 
 export interface SidebarDashboardProps {
   activeDay: number | null
+  days: ItineraryDay[]
   onDayChange: (day: number) => void
   onOpenGroupPanel?: () => void
+  group?: Group | null
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function SidebarDashboard({
   activeDay,
+  days,
   onDayChange,
   onOpenGroupPanel,
+  group,
 }: SidebarDashboardProps) {
+  const destinationImage = group?.destino_photo_url
+  const destinationLabel = group?.destino || group?.destino_formatted_address || 'Destino pendiente'
+
   return (
     <div className="flex flex-col">
+      {/* Destination cover */}
+      <div className="mb-4 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-[0_10px_25px_rgba(0,0,0,0.16)]">
+        <div className="relative h-28 w-full overflow-hidden bg-white/10">
+          {destinationImage ? (
+            <img
+              src={destinationImage}
+              alt={destinationLabel}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1E6FD9]/60 via-[#7A4FD6]/50 to-[#1E0A4E]">
+              <span className="font-heading text-3xl font-bold text-white/80">
+                {(group?.nombre || 'V')[0]}
+              </span>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#1E0A4E]/90 via-[#1E0A4E]/20 to-transparent" />
+          <div className="absolute bottom-3 left-3 right-3">
+            <p className="truncate font-heading text-sm font-bold leading-tight text-white">
+              {group?.nombre || 'Viaje activo'}
+            </p>
+            <p className="mt-0.5 line-clamp-2 font-body text-[11px] leading-tight text-white/70">
+              {destinationLabel}
+            </p>
+          </div>
+        </div>
+      </div>
       {/* Section label */}
       <p className="font-body text-[10px] text-white/40 uppercase tracking-widest mb-2">
         Itinerario
       </p>
 
-      {/* Day list — always visible */}
+      {/* Day list — real itinerary data */}
       <ul className="flex flex-col gap-1 mb-2">
-        {ITINERARY_DAYS.map((day) => {
-          const isActive = day.dayNumber === activeDay
-          const count    = day.activities.length
-          return (
-            <li key={day.dayNumber}>
-              <button
-                onClick={() => onDayChange(day.dayNumber)}
-                className={[
-                  'w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all duration-200',
-                  isActive ? 'bg-bluePrimary' : 'hover:bg-white/10',
-                ].join(' ')}
-              >
-                <div>
-                  <p
-                    className={`font-body text-[13px] leading-none ${
-                      isActive ? 'font-bold text-white' : 'font-normal text-white/60'
-                    }`}
-                  >
-                    Día {day.dayNumber}
-                  </p>
-                  <p
-                    className={`font-body text-xs mt-0.5 leading-none ${
-                      isActive ? 'text-white/70' : 'text-white/40'
-                    }`}
-                  >
-                    {day.date} · {count} actividad{count !== 1 ? 'es' : ''}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span
-                    className={`font-body text-xs ${isActive ? 'text-white/70' : 'text-white/40'}`}
-                  >
-                    {count}
-                  </span>
-                  {isActive && (
-                    <span className="w-2 h-2 rounded-full bg-greenAccent shrink-0" />
-                  )}
-                </div>
-              </button>
-            </li>
-          )
-        })}
+        {days.length === 0 ? (
+          <li className="px-3 py-2.5 font-body text-xs text-white/40">
+            Sin días disponibles
+          </li>
+        ) : (
+          days.map((day) => {
+            const isActive = day.dayNumber === activeDay
+            const count = day.activities.length
+
+            return (
+              <li key={day.dayNumber}>
+                <button
+                  onClick={() => onDayChange(day.dayNumber)}
+                  className={[
+                    'w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all duration-200',
+                    isActive ? 'bg-bluePrimary' : 'hover:bg-white/10',
+                  ].join(' ')}
+                >
+                  <div>
+                    <p
+                      className={`font-body text-[13px] leading-none ${
+                        isActive ? 'font-bold text-white' : 'font-normal text-white/60'
+                      }`}
+                    >
+                      Día {day.dayNumber}
+                    </p>
+                    <p
+                      className={`font-body text-xs mt-0.5 leading-none ${
+                        isActive ? 'text-white/70' : 'text-white/40'
+                      }`}
+                    >
+                      {day.date} · {count} actividad{count !== 1 ? 'es' : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className={`font-body text-xs ${isActive ? 'text-white/70' : 'text-white/40'}`}
+                    >
+                      {count}
+                    </span>
+                    {isActive && (
+                      <span className="w-2 h-2 rounded-full bg-greenAccent shrink-0" />
+                    )}
+                  </div>
+                </button>
+              </li>
+            )
+          })
+        )}
       </ul>
 
       {/* Divider */}
@@ -118,10 +160,14 @@ export function SidebarDashboard({
         className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all duration-200 hover:bg-white/10"
       >
         <div>
+          <p className="font-body text-[13px] leading-none font-semibold text-white/70">
+            Configuración
+          </p>
           <p className="font-body text-xs mt-0.5 leading-none text-white/40">
-            Configuración y miembros
+            Miembros y ajustes
           </p>
         </div>
+        <span className="font-body text-xs text-white/40">›</span>
       </button>
     </div>
   )

@@ -207,7 +207,7 @@ function RolBadge({ rol, dark = false }: { rol: string; dark?: boolean }) {
 function FeaturedCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => void }) {
   const g = item.grupos_viaje
   return (
-    <div className="rounded-2xl bg-[#1E0A4E] p-5 shadow-lg">
+    <div className="overflow-hidden rounded-2xl border border-[#2D1266] bg-[#1E0A4E] p-5 shadow-lg">
       <div className="mb-3 flex items-center justify-between">
         <StatusChip estado="activo"/>
         <RolBadge rol={item.rol} dark />
@@ -227,12 +227,14 @@ function FeaturedCard({ item, onClick }: { item: GroupHistoryItem; onClick: () =
           {formatRange(g.fecha_inicio, g.fecha_fin)}
         </p>
       </div>
-      <button
-        onClick={onClick}
-        className="rounded-full bg-white px-5 py-2 font-body text-[13px] font-semibold text-[#1E0A4E] transition-opacity hover:opacity-90"
-      >
-        Abrir viaje →
-      </button>
+      <div className="flex justify-end">
+        <button
+          onClick={onClick}
+          className="inline-flex min-w-[132px] items-center justify-center rounded-full border border-white/80 bg-white px-5 py-2.5 font-body text-[13px] font-semibold text-[#1E0A4E] shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md"
+        >
+          Abrir viaje →
+        </button>
+      </div>
     </div>
   )
 }
@@ -246,10 +248,10 @@ function TripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => vo
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left rounded-2xl p-5 shadow-sm transition-all hover:shadow-md ${
+      className={`w-full overflow-hidden rounded-2xl border p-5 text-left shadow-sm transition-all hover:shadow-md ${
         isAdmin
-          ? 'bg-[#1E0A4E] text-white border border-[#1E0A4E]'
-          : 'bg-white text-[#1E0A4E] border border-[#E2E8F0] hover:border-[#1E6FD9]/40'
+          ? 'border-[#2D1266] bg-[#1E0A4E] text-white'
+          : 'border-[#C3D3EC] bg-white text-[#1E0A4E] shadow-[0_8px_22px_rgba(30,10,78,0.08)] hover:border-[#1E6FD9]/50'
       }`}
     >
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -294,12 +296,12 @@ function TripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => vo
           {isAdmin ? 'Tú organizas este viaje' : 'Participas como viajero'}
         </span>
 
-        <span className={`rounded-full px-4 py-2 font-body text-xs font-semibold ${
+        <span className={`inline-flex min-w-[132px] items-center justify-center rounded-full border px-5 py-2.5 font-body text-[13px] font-semibold shadow-sm transition-all ${
           isAdmin
-            ? 'bg-white text-[#1E0A4E]'
-            : 'bg-[#1E6FD9]/10 text-[#1E6FD9]'
+            ? 'border-white/80 bg-white text-[#1E0A4E]'
+            : 'border-[#9FC0F4] bg-[#EAF2FF] text-[#1E6FD9]'
         }`}>
-          Abrir →
+          Abrir viaje →
         </span>
       </div>
     </button>
@@ -386,7 +388,7 @@ export function MyTripsPage() {
 
   const navUser = {
     name: fullName,
-    role: 'Viajero',
+    role: 'Usuario',
     initials,
   }
 

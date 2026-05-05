@@ -2,7 +2,10 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as AuthService from '../domain/auth/auth.service';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-import multer from 'multer';
+const multer = require('multer');
+
+type MulterFile = AuthService.UploadedAvatarFile;
+type RequestWithFile = Request & { file?: MulterFile };
 
 const router = Router();
 
@@ -11,7 +14,7 @@ const upload = multer({
   limits: {
     fileSize: 5 * 1024 * 1024,
   },
-  fileFilter: (_req, file, cb) => {
+  fileFilter: (_req: Request, file: MulterFile, cb: (error: Error | null, acceptFile?: boolean) => void) => {
     if (!file.mimetype.startsWith('image/')) {
       cb(new Error('Solo se permiten imágenes'));
       return;
@@ -318,7 +321,7 @@ router.patch(
   '/me/avatar',
   requireAuth,
   upload.single('avatar'),
-  async (req: Request, res: Response): Promise<void> => {
+  async (req: RequestWithFile, res: Response): Promise<void> => {
     try {
       if (!req.file) {
         res.status(400).json({

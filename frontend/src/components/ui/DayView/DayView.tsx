@@ -4,6 +4,9 @@ import { useState, useRef, useImperativeHandle, forwardRef } from 'react'
 
 export interface Activity {
   id: string
+  proposalId?: string | null
+  createdBy?: string | null
+  hasVoted?: boolean
   title: string
   description: string
   category: 'transporte' | 'hospedaje' | 'actividad'
@@ -15,6 +18,13 @@ export interface Activity {
   votes?: number
   proposedBy?: string
   image: string
+  externalReference?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  routeDistanceText?: string | null
+  routeDurationText?: string | null
+  routeTravelMode?: string | null
+  adminDecisionType?: 'A' | 'B' | 'C' | null
 }
 
 export interface DayViewProps {
@@ -23,12 +33,14 @@ export interface DayViewProps {
   activities: Activity[]
   isActive?: boolean
   defaultExpanded?: boolean
-  /** Controlled expansion — when provided, overrides internal state */
   isExpanded?: boolean
-  /** Called when the header is clicked so the parent can update activeDay */
   onSelect?: (dayNumber: number) => void
   onAccept?: (activityId: string) => void
   onDelete?: (activityId: string) => void
+  onEdit?: (activityId: string) => void
+  currentUserId?: string | number | null
+  currentUserRole?: 'admin' | 'viajero' | string | null
+  onAddActivity?: (dayNumber: number) => void
 }
 
 export interface DayViewHandle {
@@ -78,6 +90,15 @@ function IconTrash({ size = 14 }: { size?: number }) {
       <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  )
+}
+
+function IconEdit({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -156,6 +177,13 @@ function formatPrice(price: number, currency: string): string {
   return `$${price.toLocaleString('es-MX')} ${currency}`
 }
 
+function getGoogleMapsRouteUrl(activity: Activity): string | null {
+  if (activity.latitude == null || activity.longitude == null) return null
+  const destination = `${activity.latitude},${activity.longitude}`
+  const travelMode = String(activity.routeTravelMode ?? 'DRIVE').toLowerCase()
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=${encodeURIComponent(travelMode)}`
+}
+
 // ── SectionLabel ──────────────────────────────────────────────────────────────
 
 function SectionLabel({ emoji, text }: { emoji: string; text: string }) {
@@ -171,8 +199,25 @@ function SectionLabel({ emoji, text }: { emoji: string; text: string }) {
 
 // ── ActivityCardConfirmed ─────────────────────────────────────────────────────
 
-function ActivityCardConfirmed({ activity }: { activity: Activity }) {
+function ActivityCardConfirmed({
+  activity,
+  currentUserId,
+  currentUserRole,
+  onDelete,
+  onEdit,
+}: {
+  activity: Activity
+  currentUserId?: string | number | null
+  currentUserRole?: 'admin' | 'viajero' | string | null
+  onDelete?: (id: string) => void
+  onEdit?: (id: string) => void
+}) {
   const iconColor = getCategoryColor(activity.category)
+  const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
+  const canEdit = isOwner
+  const canDelete = isOwner || isAdmin
+  const routeUrl = getGoogleMapsRouteUrl(activity)
 
   return (
     <div className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden mb-3">
@@ -223,6 +268,21 @@ function ActivityCardConfirmed({ activity }: { activity: Activity }) {
               {activity.location}
             </span>
           )}
+          {activity.routeDistanceText && activity.routeDurationText && (
+            <a
+              href={routeUrl ?? '#'}
+              target="_blank"
+              rel="noreferrer"
+              title={routeUrl ? 'Abrir ruta en Google Maps' : 'Ruta no disponible'}
+              onClick={(event) => {
+                if (!routeUrl) event.preventDefault()
+              }}
+              className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
+            >
+              <span className="text-bluePrimary"><IconMapPin /></span>
+              {activity.routeDistanceText} · {activity.routeDurationText}
+            </a>
+          )}
         </div>
 
         {/* Confirmation status */}
@@ -232,6 +292,30 @@ function ActivityCardConfirmed({ activity }: { activity: Activity }) {
             Reservación confirmada
           </span>
         </div>
+        {(canEdit || canDelete) && (
+          <div className="mt-3 flex items-center justify-end gap-2">
+            {canEdit && (
+              <button
+                onClick={() => onEdit?.(activity.id)}
+                className="w-9 h-9 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0"
+                aria-label="Editar actividad confirmada"
+                title="Editar (volverá a votación)"
+              >
+                <IconEdit size={14} />
+              </button>
+            )}
+
+            {canDelete && (
+              <button
+                onClick={() => onDelete?.(activity.id)}
+                className="w-9 h-9 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
+                aria-label="Eliminar actividad confirmada"
+              >
+                <IconTrash size={14} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -239,8 +323,28 @@ function ActivityCardConfirmed({ activity }: { activity: Activity }) {
 
 // ── ActivityCardPending ───────────────────────────────────────────────────────
 
-function ActivityCardPending({ activity, onAccept, onDelete }: { activity: Activity; onAccept?: (id: string) => void; onDelete?: (id: string) => void }) {
+function ActivityCardPending({
+  activity,
+  currentUserId,
+  currentUserRole,
+  onAccept,
+  onDelete,
+  onEdit,
+}: {
+  activity: Activity
+  currentUserId?: string | number | null
+  currentUserRole?: 'admin' | 'viajero' | string | null
+  onAccept?: (id: string) => void
+  onDelete?: (id: string) => void
+  onEdit?: (id: string) => void
+}) {
   const iconColor = getCategoryColor(activity.category)
+  const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
+  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
+  const canEdit = isOwner
+  const canDelete = isOwner || isAdmin
+  const hasVoted = activity.hasVoted === true
+  const routeUrl = getGoogleMapsRouteUrl(activity)
 
   return (
     <div className="bg-white rounded-2xl border-2 border-dashed border-[#E2E8F0] overflow-hidden mb-3">
@@ -290,6 +394,21 @@ function ActivityCardPending({ activity, onAccept, onDelete }: { activity: Activ
               {activity.location}
             </span>
           )}
+          {activity.routeDistanceText && activity.routeDurationText && (
+            <a
+              href={routeUrl ?? '#'}
+              target="_blank"
+              rel="noreferrer"
+              title={routeUrl ? 'Abrir ruta en Google Maps' : 'Ruta no disponible'}
+              onClick={(event) => {
+                if (!routeUrl) event.preventDefault()
+              }}
+              className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
+            >
+              <span className="text-bluePrimary"><IconMapPin /></span>
+              {activity.routeDistanceText} · {activity.routeDurationText}
+            </a>
+          )}
           {activity.votes !== undefined && (
             <span className="inline-flex items-center gap-1 font-body text-xs text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 font-medium">
               ↑ {activity.votes} votos
@@ -302,23 +421,55 @@ function ActivityCardPending({ activity, onAccept, onDelete }: { activity: Activ
             Propuesto por {activity.proposedBy}
           </p>
         )}
+        {activity.adminDecisionType === 'A' && (
+          <p className="font-body text-xs text-[#1E6FD9] font-semibold mt-1 mb-3">
+            Puesta por el admin directamente (Tipo A)
+          </p>
+        )}
 
         {/* Accept / Delete row */}
         <div className="flex items-center gap-2 mt-3">
-          <button
-            onClick={() => onAccept?.(activity.id)}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 font-body text-sm font-bold text-white bg-bluePrimary rounded-xl h-11 hover:bg-bluePrimary/90 transition-colors"
-          >
-            <IconCheck size={12} />
-            Aceptar propuesta
-          </button>
-          <button
-            onClick={() => onDelete?.(activity.id)}
-            className="w-11 h-11 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
-            aria-label="Eliminar propuesta"
-          >
-            <IconTrash size={14} />
-          </button>
+          {hasVoted ? (
+            <button
+              disabled
+              className="flex-1 inline-flex items-center justify-center gap-1.5 font-body text-sm font-bold text-[#64748B] bg-[#E5E7EB] rounded-xl h-11 cursor-not-allowed"
+            >
+              <IconCheck size={12} />
+              Ya votaste
+            </button>
+          ) : (
+            <button
+              onClick={() => onAccept?.(activity.id)}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 font-body text-sm font-bold text-white bg-bluePrimary rounded-xl h-11 hover:bg-bluePrimary/90 transition-colors"
+            >
+              <IconCheck size={12} />
+              Aceptar propuesta
+            </button>
+          )}
+
+          {(canDelete || canEdit) && (
+            <>
+              {canDelete && (
+                <button
+                  onClick={() => onDelete?.(activity.id)}
+                  className="w-11 h-11 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
+                  aria-label="Eliminar propuesta"
+                >
+                  <IconTrash size={14} />
+                </button>
+              )}
+
+              {canEdit && (
+                <button
+                  onClick={() => onEdit?.(activity.id)}
+                  className="w-11 h-11 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0"
+                  aria-label="Editar propuesta"
+                >
+                  <IconEdit size={14} />
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -327,9 +478,13 @@ function ActivityCardPending({ activity, onAccept, onDelete }: { activity: Activ
 
 // ── AddActivityRow ────────────────────────────────────────────────────────────
 
-function AddActivityRow() {
+function AddActivityRow({ onClick }: { onClick?: () => void }) {
   return (
-    <button className="w-full bg-surface border border-dashed border-purpleMedium/30 rounded-2xl h-14 flex items-center justify-center gap-2 hover:border-bluePrimary/50 hover:bg-[#EEF4FF] transition-colors group">
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full bg-surface border border-dashed border-purpleMedium/30 rounded-2xl h-14 flex items-center justify-center gap-2 hover:border-bluePrimary/50 hover:bg-[#EEF4FF] transition-colors group"
+    >
       <span className="text-gray500 group-hover:text-bluePrimary transition-colors">
         <IconSearch size={16} />
       </span>
@@ -342,7 +497,7 @@ function AddActivityRow() {
 
 // ── EmptyDayState ─────────────────────────────────────────────────────────────
 
-function EmptyDayState() {
+function EmptyDayState({ onClick }: { onClick?: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center py-8 text-center">
       <div className="w-14 h-14 rounded-2xl bg-bluePrimary/10 flex items-center justify-center mb-3">
@@ -351,7 +506,11 @@ function EmptyDayState() {
       <p className="font-body text-sm text-gray500 mb-4">
         No hay actividades para este día aún
       </p>
-      <button className="inline-flex items-center gap-1.5 font-body text-sm font-semibold text-white bg-bluePrimary rounded-xl px-4 py-2.5 hover:bg-bluePrimary/90 transition-colors">
+      <button
+        type="button"
+        onClick={onClick}
+        className="inline-flex items-center gap-1.5 font-body text-sm font-semibold text-white bg-bluePrimary rounded-xl px-4 py-2.5 hover:bg-bluePrimary/90 transition-colors"
+      >
         <IconPlus size={14} />
         Agregar primera actividad
       </button>
@@ -361,7 +520,23 @@ function EmptyDayState() {
 
 // ── ActivitiesBody ────────────────────────────────────────────────────────────
 
-function ActivitiesBody({ activities, onAccept, onDelete }: { activities: Activity[]; onAccept?: (id: string) => void; onDelete?: (id: string) => void }) {
+function ActivitiesBody({
+  activities,
+  currentUserId,
+  currentUserRole,
+  onAccept,
+  onDelete,
+  onAddActivity,
+  onEdit,
+}: {
+  activities: Activity[]
+  currentUserId?: string | number | null
+  currentUserRole?: 'admin' | 'viajero' | string | null
+  onAccept?: (id: string) => void
+  onDelete?: (id: string) => void
+  onAddActivity?: () => void
+  onEdit?: (id: string) => void
+}) {
   const transport = activities.filter((a) => a.category === 'transporte')
   const lodging   = activities.filter((a) => a.category === 'hospedaje')
   const acts      = activities.filter((a) => a.category === 'actividad')
@@ -373,8 +548,8 @@ function ActivitiesBody({ activities, onAccept, onDelete }: { activities: Activi
           <SectionLabel {...getSectionLabel('transporte')} />
           {transport.map((a) =>
             a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} />
-              : <ActivityCardPending   key={a.id} activity={a} onAccept={onAccept} onDelete={onDelete} />
+              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} />
+              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} />
           )}
         </section>
       )}
@@ -384,8 +559,8 @@ function ActivitiesBody({ activities, onAccept, onDelete }: { activities: Activi
           <SectionLabel {...getSectionLabel('hospedaje')} />
           {lodging.map((a) =>
             a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} />
-              : <ActivityCardPending   key={a.id} activity={a} onAccept={onAccept} onDelete={onDelete} />
+              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} />
+              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} />
           )}
         </section>
       )}
@@ -395,13 +570,13 @@ function ActivitiesBody({ activities, onAccept, onDelete }: { activities: Activi
           <SectionLabel {...getSectionLabel('actividad')} />
           {acts.map((a) =>
             a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} />
-              : <ActivityCardPending   key={a.id} activity={a} onAccept={onAccept} onDelete={onDelete} />
+              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} />
+              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} />
           )}
         </section>
       )}
 
-      <AddActivityRow />
+      <AddActivityRow onClick={onAddActivity} />
     </div>
   )
 }
@@ -418,6 +593,10 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
     onSelect,
     onAccept,
     onDelete,
+    onEdit,
+    onAddActivity,
+    currentUserId,
+    currentUserRole,
   },
   ref,
 ) {
@@ -498,9 +677,17 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
       >
         <div className="bg-white border-x border-b border-[#E2E8F0] rounded-b-2xl px-5 pb-5 pt-4">
           {isEmpty ? (
-            <EmptyDayState />
+            <EmptyDayState onClick={() => onAddActivity?.(dayNumber)} />
           ) : (
-            <ActivitiesBody activities={activities} onAccept={onAccept} onDelete={onDelete} />
+            <ActivitiesBody
+              activities={activities}
+              currentUserId={currentUserId}
+              currentUserRole={currentUserRole}
+              onAccept={onAccept}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              onAddActivity={() => onAddActivity?.(dayNumber)}
+            />
           )}
         </div>
       </div>

@@ -50,6 +50,7 @@ export interface UpdateProposalPayload {
   titulo?: string;
   descripcion?: string;
   estado?: ProposalStatus;
+  updatedAt?: string;
   payload?: Record<string, unknown>;
   detalle?: {
     aerolinea?: string;
@@ -85,6 +86,7 @@ export interface Proposal {
   titulo?: string;
   descripcion?: string;
   fecha_creacion?: string;
+  ultima_actualizacion?: string;
 }
 
 export interface ProposalVote {
@@ -94,13 +96,24 @@ export interface ProposalVote {
   created_at?: string;
 }
 
-export interface CreateVotePayload {}
+export type ProposalVoteType = 'a_favor' | 'en_contra' | 'abstencion';
+
+export interface CreateVotePayload {
+  voto?: ProposalVoteType;
+}
 
 export interface ProposalVoteResult {
   id_propuesta: string;
   tipo_item: 'vuelo' | 'hospedaje';
   titulo: string;
   votos: number;
+  votos_a_favor: number;
+  votos_en_contra: number;
+  abstenciones: number;
+  votos_pendientes: number;
+  requiere_desempate_admin: boolean;
+  estado_actual: string;
+  mi_voto?: ProposalVoteType | null;
 }
 
 export interface ProposalComment {

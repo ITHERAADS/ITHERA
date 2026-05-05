@@ -14,6 +14,12 @@ export interface Group {
   created_at?: string
   memberCount?: number
   myRole?: GroupRole
+  destino_latitud?: number | null
+  destino_longitud?: number | null
+  destino_place_id?: string | null
+  destino_formatted_address?: string | null
+  destino_photo_name?: string | null
+  destino_photo_url?: string | null
 }
 
 export interface GroupHistoryItem {
@@ -27,6 +33,7 @@ export interface GroupMember {
   rol: GroupRole
   nombre: string
   email: string
+  avatar_url?: string | null
 }
 
 export interface CreateGroupPayload {
@@ -36,6 +43,12 @@ export interface CreateGroupPayload {
   fecha_inicio?: string
   fecha_fin?: string
   maximo_miembros?: number
+  destino_latitud?: number | null
+  destino_longitud?: number | null
+  destino_place_id?: string | null
+  destino_formatted_address?: string | null
+  destino_photo_name?: string | null
+  destino_photo_url?: string | null
 }
 
 export interface UpdateGroupPayload {
@@ -45,6 +58,12 @@ export interface UpdateGroupPayload {
   fecha_inicio?: string
   fecha_fin?: string
   maximo_miembros?: number
+  destino_latitud?: number | null
+  destino_longitud?: number | null
+  destino_place_id?: string | null
+  destino_formatted_address?: string | null
+  destino_photo_name?: string | null
+  destino_photo_url?: string | null
 }
 
 export interface CreateInvitationsPayload {

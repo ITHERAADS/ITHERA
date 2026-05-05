@@ -104,6 +104,19 @@ const assertProposalAccess = async (proposalId: number, authUserId: string) => {
   return { usuarioId, proposal, membership };
 };
 
+const assertCanManageProposal = async (proposalId: number, authUserId: string) => {
+  const access = await assertProposalAccess(proposalId, authUserId);
+  const isCreator = String(access.proposal.creado_por) === String(access.usuarioId);
+  const role = String(access.membership.rol ?? '').toLowerCase();
+  const isAdmin = role === 'admin' || role === 'organizador';
+
+  if (!isCreator && !isAdmin) {
+    throw Object.assign(new Error('Solo el creador o el organizador pueden modificar esta propuesta'), { statusCode: 403 });
+  }
+
+  return access;
+};
+
 export const createFlightProposal = async (authUserId: string, payload: SaveFlightProposalPayload) => {
   const { usuarioId } = await assertGroupMembership(payload.grupoId, authUserId);
 
@@ -277,7 +290,7 @@ export const getProposalById = async (proposalId: number, authUserId: string) =>
 };
 
 export const updateProposal = async (proposalId: number, authUserId: string, payload: UpdateProposalPayload) => {
-  const { proposal } = await assertProposalAccess(proposalId, authUserId);
+  const { proposal } = await assertCanManageProposal(proposalId, authUserId);
 
   if (payload.updatedAt && proposal.ultima_actualizacion) {
     const dbDate = new Date(proposal.ultima_actualizacion).getTime();
@@ -409,7 +422,7 @@ export const updateProposal = async (proposalId: number, authUserId: string, pay
 };
 
 export const deleteProposal = async (proposalId: number, authUserId: string) => {
-  const { proposal } = await assertProposalAccess(proposalId, authUserId);
+  const { proposal } = await assertCanManageProposal(proposalId, authUserId);
 
   const { error: voteError } = await supabase.from('voto').delete().eq('id_propuesta', proposalId);
   if (voteError) throw new Error(voteError.message);
@@ -640,7 +653,7 @@ const evaluateProposalOutcome = async (groupId: string, proposalId: string) => {
 const applyProposalResolution = async (
 	groupId: string,
 	proposalId: string,
-	resolution: 'aprobada' | 'rechazada',
+	resolution: 'aprobada' | 'descartada',
 	meta?: Record<string, unknown>,
 ) => {
 	const nowIso = new Date().toISOString();
@@ -854,7 +867,7 @@ export const castSingleVote = async (
 			}
 
 			if (outcome.rejected) {
-				await applyProposalResolution(groupId, proposalId, 'rechazada', { decisionType: 'B', resolution: 'majority_against' });
+				await applyProposalResolution(groupId, proposalId, 'descartada', { decisionType: 'B', resolution: 'majority_against' });
 			}
 
 			return {
@@ -862,7 +875,7 @@ export const castSingleVote = async (
 				message: outcome.approved
 					? 'Voto registrado y propuesta aprobada'
 					: outcome.rejected
-						? 'Voto registrado y propuesta rechazada'
+						? 'Voto registrado y propuesta descartada'
 						: outcome.tied
 							? 'Votacion empatada: requiere desempate del organizador'
 							: 'Voto registrado correctamente',
@@ -916,7 +929,7 @@ export const castSingleVote = async (
 	}
 
 	if (outcome.rejected) {
-		await applyProposalResolution(groupId, proposalId, 'rechazada', { decisionType: 'B', resolution: 'majority_against' });
+		await applyProposalResolution(groupId, proposalId, 'descartada', { decisionType: 'B', resolution: 'majority_against' });
 	}
 
 	return {
@@ -924,7 +937,7 @@ export const castSingleVote = async (
 		message: outcome.approved
 			? 'Voto registrado y propuesta aprobada'
 			: outcome.rejected
-				? 'Voto registrado y propuesta rechazada'
+				? 'Voto registrado y propuesta descartada'
 				: outcome.tied
 					? 'Votacion empatada: requiere desempate del organizador'
 					: 'Voto registrado correctamente',
@@ -951,7 +964,7 @@ export const applyAdminDecisionToProposal = async (
 	await ensureUserIsAdmin(groupId, localUserId);
 	await ensureProposalBelongsToGroup(groupId, proposalId);
 
-	const decision = payload.decision === 'rechazar' ? 'rechazada' : 'aprobada';
+	const decision = payload.decision === 'rechazar' ? 'descartada' : 'aprobada';
 	await applyProposalResolution(groupId, proposalId, decision, {
 		decisionType: 'A',
 		adminDecisionBy: localUserId,
@@ -964,7 +977,7 @@ export const applyAdminDecisionToProposal = async (
 		resolution: decision,
 		message: decision === 'aprobada'
 			? 'Decision administrativa aplicada: propuesta aprobada'
-			: 'Decision administrativa aplicada: propuesta rechazada',
+			: 'Decision administrativa aplicada: propuesta descartada',
 	};
 };
 
@@ -1156,7 +1169,15 @@ export const updateComment = async (
 	if (!existing || String((existing as { id_propuesta: string | number }).id_propuesta) !== proposalId) {
 		throw createError('Comentario no encontrado', 404);
 	}
-	if (String((existing as { id_usuario: string | number }).id_usuario) !== localUserIdStr) {
+	const { data: membershipForComment } = await supabase
+		.from('grupo_miembros')
+		.select('rol')
+		.eq('grupo_id', groupId)
+		.eq('usuario_id', localUserId)
+		.maybeSingle();
+	const roleForComment = String((membershipForComment as { rol?: string } | null)?.rol ?? '').toLowerCase();
+	const canManageComment = String((existing as { id_usuario: string | number }).id_usuario) === localUserIdStr || roleForComment === 'admin' || roleForComment === 'organizador';
+	if (!canManageComment) {
 		throw createError('No puedes editar comentarios de otro usuario', 403);
 	}
 
@@ -1215,7 +1236,15 @@ export const deleteComment = async (
 	if (!existing || String((existing as { id_propuesta: string | number }).id_propuesta) !== proposalId) {
 		throw createError('Comentario no encontrado', 404);
 	}
-	if (String((existing as { id_usuario: string | number }).id_usuario) !== localUserIdStr) {
+	const { data: membershipForComment } = await supabase
+		.from('grupo_miembros')
+		.select('rol')
+		.eq('grupo_id', groupId)
+		.eq('usuario_id', localUserId)
+		.maybeSingle();
+	const roleForComment = String((membershipForComment as { rol?: string } | null)?.rol ?? '').toLowerCase();
+	const canManageComment = String((existing as { id_usuario: string | number }).id_usuario) === localUserIdStr || roleForComment === 'admin' || roleForComment === 'organizador';
+	if (!canManageComment) {
 		throw createError('No puedes eliminar comentarios de otro usuario', 403);
 	}
 

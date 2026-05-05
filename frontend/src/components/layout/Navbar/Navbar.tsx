@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Logo } from '../../ui/Logo'
 import { useAuth } from '../../../context/useAuth'
 import { useNotifications } from '../../../hooks/useNotifications'
+import { groupsService, saveCurrentGroup } from '../../../services/groups'
+import type { Group, GroupHistoryItem } from '../../../types/groups'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -268,6 +270,38 @@ const DEFAULT_USER: NavUserInfo = {
   color: '#1E6FD9',
 }
 
+function formatTripRange(start?: string | null, end?: string | null): string {
+  if (!start && !end) return 'Fechas pendientes'
+  if (start && end) return `${start} – ${end}`
+  return start ?? end ?? 'Fechas pendientes'
+}
+
+function TripThumbnail({ group }: { group: Group }) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const imageUrl = group.destino_photo_url
+  const label = group.destino || group.destino_formatted_address || group.nombre || 'Viaje'
+
+  if (imageUrl && !imageFailed) {
+    return (
+      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl border border-[#E2E8F0] bg-[#EEF4FF] shadow-sm">
+        <img
+          src={imageUrl}
+          alt={label}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          onError={() => setImageFailed(true)}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1E6FD9]/10 font-body text-xs font-bold text-[#1E6FD9]">
+      {(group.nombre || 'V')[0]}
+    </div>
+  )
+}
+
 function DashboardMobileMenu({ trip, user }: { trip: TripInfo; user: NavUserInfo }) {
   const { localUser } = useAuth()
   const avatarUrl = localUser?.avatar_url
@@ -327,7 +361,7 @@ function DashboardNavContent({
   onTripSelect,
 }: DashboardContentProps) {
   const navigate = useNavigate()
-  const { logout, localUser } = useAuth()
+  const { logout, localUser, accessToken } = useAuth()
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -336,6 +370,16 @@ function DashboardNavContent({
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
   const notifRef = useRef<HTMLDivElement>(null)
   const avatarUrl = localUser?.avatar_url
+  const [tripMenuOpen, setTripMenuOpen] = useState(false)
+  const [tripHistory, setTripHistory] = useState<GroupHistoryItem[]>([])
+  const [tripMenuLoading, setTripMenuLoading] = useState(false)
+  const [tripMenuError, setTripMenuError] = useState<string | null>(null)
+  const [tripSwitchingId, setTripSwitchingId] = useState<string | null>(null)
+  const tripMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setTripSwitchingId(null)
+  }, [trip.name, trip.subtitle])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -359,6 +403,44 @@ function DashboardNavContent({
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [notifOpen])
 
+  useEffect(() => {
+    if (!tripMenuOpen) return
+    function handleOutside(e: MouseEvent) {
+      if (tripMenuRef.current && !tripMenuRef.current.contains(e.target as Node)) {
+        setTripMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [tripMenuOpen])
+
+  useEffect(() => {
+    if (!tripMenuOpen || !accessToken) return
+
+    let isMounted = true
+
+    const loadTrips = async () => {
+      try {
+        setTripMenuLoading(true)
+        setTripMenuError(null)
+        const response = await groupsService.getMyHistory(accessToken)
+        if (!isMounted) return
+        setTripHistory([...(response.activos ?? []), ...(response.pasados ?? [])])
+      } catch (error) {
+        if (!isMounted) return
+        setTripMenuError(error instanceof Error ? error.message : 'No se pudieron cargar tus grupos')
+      } finally {
+        if (isMounted) setTripMenuLoading(false)
+      }
+    }
+
+    void loadTrips()
+
+    return () => {
+      isMounted = false
+    }
+  }, [tripMenuOpen, accessToken])
+
   function handleToggleNotif() {
     setNotifOpen((o) => !o)
   }
@@ -369,26 +451,128 @@ function DashboardNavContent({
     navigate('/login')
   }
 
+  function handleTripSelect(item: GroupHistoryItem) {
+    const selectedGroup = item.grupos_viaje
+    if (!selectedGroup?.id) return
+
+    const nextGroupId = String(selectedGroup.id)
+    setTripSwitchingId(nextGroupId)
+    setTripMenuError(null)
+
+    saveCurrentGroup({
+      ...selectedGroup,
+      id: nextGroupId,
+      myRole: item.rol,
+    })
+    setTripMenuOpen(false)
+    navigate(`/dashboard?groupId=${encodeURIComponent(nextGroupId)}`, {
+      state: {
+        groupId: nextGroupId,
+        switchingGroup: {
+          id: nextGroupId,
+          nombre: selectedGroup.nombre,
+          destino: selectedGroup.destino,
+          destino_formatted_address: selectedGroup.destino_formatted_address,
+          destino_photo_url: selectedGroup.destino_photo_url,
+          fecha_inicio: selectedGroup.fecha_inicio,
+          fecha_fin: selectedGroup.fecha_fin,
+          myRole: item.rol,
+        },
+      },
+    })
+  }
+
   return (
     <>
       {/* Center — trip selector or plain title */}
       {showTripSelector ? (
-        <button
-          onClick={onTripSelect}
-          className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-2.5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl px-4 py-2 hover:bg-white/20 transition-colors"
-          aria-label="Seleccionar viaje"
-        >
-          <span className="text-white/60 shrink-0">
-            <IconGlobe />
-          </span>
-          <div className="flex flex-col items-start">
-            <span className="font-body text-sm font-bold text-white leading-tight">{trip.name}</span>
-            <span className="font-body text-[11px] text-white/60 leading-tight">{trip.subtitle}</span>
-          </div>
-          <span className="text-white/60 ml-0.5 shrink-0">
-            <IconChevronDown />
-          </span>
-        </button>
+        <div ref={tripMenuRef} className="hidden md:block absolute left-1/2 -translate-x-1/2">
+          <button
+            onClick={() => {
+              onTripSelect?.()
+              setTripMenuOpen((open) => !open)
+            }}
+            className="flex min-w-[250px] items-center gap-2.5 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl px-4 py-2 hover:bg-white/20 transition-colors"
+            aria-label="Seleccionar viaje"
+            aria-expanded={tripMenuOpen}
+          >
+            <span className="text-white/60 shrink-0">
+              <IconGlobe />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col items-start">
+              <span className="max-w-[170px] truncate font-body text-sm font-bold text-white leading-tight">{trip.name}</span>
+              <span className="max-w-[170px] truncate font-body text-[11px] text-white/60 leading-tight">{trip.subtitle}</span>
+            </div>
+            <span className={`text-white/60 ml-0.5 shrink-0 transition-transform duration-200 ${tripMenuOpen ? 'rotate-180' : ''}`}>
+              <IconChevronDown />
+            </span>
+          </button>
+
+          {tripMenuOpen && (
+            <div className="absolute left-1/2 top-full z-50 mt-2 w-[360px] -translate-x-1/2 overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-xl">
+              <div className="border-b border-[#E2E8F0] px-4 py-3">
+                <p className="font-heading text-sm font-bold text-[#1E0A4E]">Cambiar de grupo</p>
+                <p className="mt-0.5 font-body text-[11px] text-gray500">Selecciona otro viaje sin volver a Mis viajes.</p>
+              </div>
+
+              <div className="max-h-80 overflow-y-auto py-2">
+                {tripMenuLoading && (
+                  <p className="px-4 py-4 font-body text-sm text-gray500">Cargando tus grupos...</p>
+                )}
+
+                {!tripMenuLoading && tripMenuError && (
+                  <p className="px-4 py-4 font-body text-sm text-red-500">{tripMenuError}</p>
+                )}
+
+                {!tripMenuLoading && !tripMenuError && tripHistory.length === 0 && (
+                  <p className="px-4 py-4 font-body text-sm text-gray500">No tienes otros grupos disponibles.</p>
+                )}
+
+                {!tripMenuLoading && !tripMenuError && tripHistory.map((item) => {
+                  const option = item.grupos_viaje
+                  const isActive = option?.nombre === trip.name && (option?.destino || 'Destino pendiente') === trip.subtitle
+
+                  return (
+                    <button
+                      key={`${option.id}-${item.rol}`}
+                      onClick={() => handleTripSelect(item)}
+                      disabled={tripSwitchingId === String(option.id)}
+                      className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[#F8FAFC] disabled:cursor-wait disabled:opacity-70 ${isActive ? 'bg-[#F4F1FF]' : ''}`}
+                    >
+                      <TripThumbnail group={option} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate font-body text-sm font-bold text-[#1E0A4E]">{option.nombre}</p>
+                          {isActive && (
+                            <span className="rounded-full bg-greenAccent/10 px-2 py-0.5 font-body text-[10px] font-semibold text-greenAccent">Activo</span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 truncate font-body text-[11px] text-gray500">
+                          {option.destino || option.destino_formatted_address || 'Destino pendiente'}
+                        </p>
+                        <p className="mt-0.5 font-body text-[10px] text-gray500/80">
+                          {formatTripRange(option.fecha_inicio, option.fecha_fin)}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-[#EEF4FF] px-2 py-1 font-body text-[10px] font-semibold text-[#1E6FD9]">
+                        {tripSwitchingId === String(option.id) ? 'Cambiando...' : item.rol === 'admin' ? 'Organizador' : 'Viajero'}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="border-t border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+                <button
+                  onClick={() => { setTripMenuOpen(false); navigate('/my-trips') }}
+                  className="font-body text-xs font-semibold text-[#1E6FD9] hover:underline"
+                >
+                  Ver todos mis viajes →
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : centerTitle ? (
         <span className="hidden md:block absolute left-1/2 -translate-x-1/2 font-heading font-bold text-white text-base pointer-events-none select-none">
           {centerTitle}

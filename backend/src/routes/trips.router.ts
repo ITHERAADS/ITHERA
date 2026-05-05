@@ -5,6 +5,7 @@ import * as GroupsService from '../domain/groups/groups.service';
 import { MemberRole } from '../domain/groups/groups.entity';
 import itineraryRouter from './itinerary.router';
 import chatRouter from './chat.router';
+import budgetRouter from './budget.router';
 
 const router = Router();
 
@@ -100,6 +101,7 @@ router.get('/invite-preview/:code', async (req: Request, res: Response): Promise
 
 router.use('/:groupId/itinerary', itineraryRouter);
 router.use('/:groupId/chat', chatRouter);
+router.use('/:groupId', budgetRouter);
 
 router.get('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {

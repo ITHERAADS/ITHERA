@@ -125,6 +125,18 @@ const getActivityDate = (activity: any, fallbackDate: string): string => {
   return String(activity.fecha_inicio).slice(0, 10);
 };
 
+const addDays = (dateValue: string, days: number): string => {
+  const date = new Date(`${dateValue}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+const minDate = (dates: string[]): string | null =>
+  dates.length > 0 ? dates.reduce((min, date) => (date < min ? date : min), dates[0]) : null;
+
+const maxDate = (dates: string[]): string | null =>
+  dates.length > 0 ? dates.reduce((max, date) => (date > max ? date : max), dates[0]) : null;
+
 const getActivityCategory = (activity: any): 'transporte' | 'hospedaje' | 'actividad' => {
   const tipo = activity.propuestas?.tipo_item;
 
@@ -153,20 +165,42 @@ export const getGroupItinerary = async (
 ): Promise<{ itinerary: any | null; days: ItineraryDay[] }> => {
   const { usuarioId } = await ensureGroupMember(authUserId, groupId);
 
-  const { data: itinerary, error: itineraryError } = await supabase
+  const { data: group, error: groupError } = await supabase
+    .from('grupos_viaje')
+    .select('id, nombre, fecha_inicio, fecha_fin')
+    .eq('id', groupId)
+    .single();
+
+  if (groupError || !group) {
+    throw Object.assign(new Error('Grupo no encontrado'), { statusCode: 404 });
+  }
+
+  const { data: itineraries, error: itineraryError } = await supabase
     .from('itinerarios')
     .select('*')
     .eq('grupo_id', groupId)
-    .order('fecha_creacion', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .order('fecha_creacion', { ascending: false });
 
   if (itineraryError) throw new Error(itineraryError.message);
 
-  if (!itinerary) {
+  const itinerary = (itineraries ?? [])[0] ?? null;
+  const itineraryIds = (itineraries ?? []).map((item: any) => item.id_itinerario).filter(Boolean);
+
+  if (itineraryIds.length === 0) {
+    const startDate = group.fecha_inicio ?? new Date().toISOString().slice(0, 10);
+    const endDate = group.fecha_fin ?? startDate;
+    const totalDays = Math.max(1, diffDays(startDate, endDate) + 1);
+
     return {
       itinerary: null,
-      days: [],
+      days: Array.from({ length: totalDays }, (_, index) => {
+        const isoDate = addDays(startDate, index);
+        return {
+          dayNumber: index + 1,
+          date: formatDateLabel(isoDate),
+          activities: [],
+        };
+      }),
     };
   }
 
@@ -194,7 +228,7 @@ export const getGroupItinerary = async (
         payload
       )
     `)
-    .eq('itinerario_id', itinerary.id_itinerario)
+    .in('itinerario_id', itineraryIds)
     .neq('estado', 'cancelada')
     .order('fecha_inicio', { ascending: true });
 
@@ -283,16 +317,36 @@ export const getGroupItinerary = async (
     (myVotes ?? []).map((vote: any) => String(vote.id_propuesta))
   );
 
-  const startDate = itinerary.fecha_inicio ?? new Date().toISOString().slice(0, 10);
-  const endDate = itinerary.fecha_fin ?? startDate;
+  const activityDates = (activities ?? [])
+    .map((activity: any) => activity.fecha_inicio ? String(activity.fecha_inicio).slice(0, 10) : null)
+    .filter((date: string | null): date is string => Boolean(date));
+
+  const plannedStartDate =
+    itinerary.fecha_inicio ??
+    group.fecha_inicio ??
+    minDate(activityDates) ??
+    new Date().toISOString().slice(0, 10);
+  const plannedEndDate =
+    itinerary.fecha_fin ??
+    group.fecha_fin ??
+    maxDate(activityDates) ??
+    plannedStartDate;
+
+  const earliestActivityDate = minDate(activityDates);
+  const latestActivityDate = maxDate(activityDates);
+  const startDate =
+    earliestActivityDate && earliestActivityDate < plannedStartDate
+      ? earliestActivityDate
+      : plannedStartDate;
+  const endDate =
+    latestActivityDate && latestActivityDate > plannedEndDate
+      ? latestActivityDate
+      : plannedEndDate;
 
   const totalDays = Math.max(1, diffDays(startDate, endDate) + 1);
 
   const days: ItineraryDay[] = Array.from({ length: totalDays }, (_, index) => {
-    const date = new Date(`${startDate}T00:00:00.000Z`);
-    date.setUTCDate(date.getUTCDate() + index);
-
-    const isoDate = date.toISOString().slice(0, 10);
+    const isoDate = addDays(startDate, index);
 
     return {
       dayNumber: index + 1,

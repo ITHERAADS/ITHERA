@@ -1,8 +1,14 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { FC } from 'react'
 import { RegisterExpenseModal } from './RegisterExpenseModal'
 import { MyWalletView } from './MyWalletView'
-import { getCurrentGroup } from '../../services/groups'
+import { useAuth } from '../../context/useAuth'
+import {
+  budgetService,
+  type BudgetDashboardResponse,
+  type BudgetMember,
+  type BudgetSummary,
+} from '../../services/budget'
 
 export interface Expense {
   id: string
@@ -10,23 +16,39 @@ export interface Expense {
   categoria: 'transporte' | 'hospedaje' | 'actividad' | 'comida' | 'otro'
   monto: number
   pagadoPor: string
+  pagadoPorId: string
   splitType: 'equitativa' | 'personalizada'
   fecha: string
   splitAmounts?: Record<string, number>
 }
 
-const INITIAL_BUDGET = 15000
+interface Props {
+  groupId: string | null
+  onSummaryChange?: (summary: BudgetSummary | null) => void
+}
 
-const MOCK_EXPENSES: Expense[] = [
-  { id: '1', titulo: 'Vuelo CDMX → Cancún', categoria: 'transporte', monto: 3200, pagadoPor: 'Carlos', splitType: 'equitativa', fecha: '2025-07-01' },
-  { id: '2', titulo: 'Hotel Marriott (3 noches)', categoria: 'hospedaje', monto: 4500, pagadoPor: 'Ximena', splitType: 'equitativa', fecha: '2025-07-02' },
-  { id: '3', titulo: 'Snorkel en Cozumel', categoria: 'actividad', monto: 800, pagadoPor: 'Bryan', splitType: 'equitativa', fecha: '2025-07-03' },
-]
+const CATEGORY_LABELS: Record<Expense['categoria'], string> = {
+  transporte: 'Vuelos',
+  hospedaje: 'Hospedaje',
+  actividad: 'Actividades',
+  comida: 'Comida',
+  otro: 'Otros',
+}
 
-const MOCK_MEMBERS = ['Yo', 'Carlos', 'Ximena', 'Bryan']
+const EMPTY_TOTALS: Record<Expense['categoria'], number> = {
+  transporte: 0,
+  hospedaje: 0,
+  actividad: 0,
+  comida: 0,
+  otro: 0,
+}
 
 function formatMXN(n: number): string {
-  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(n)
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    maximumFractionDigits: 0,
+  }).format(n)
 }
 
 function categoryColor(categoria: Expense['categoria']): string {
@@ -75,45 +97,108 @@ function CategoryIcon({ categoria }: { categoria: Expense['categoria'] }) {
   )
 }
 
-interface Props {
-  groupId: string | null
+function normalizeExpense(expense: BudgetDashboardResponse['expenses'][number]): Expense {
+  const dateSource = expense.expenseDate ?? expense.createdAt ?? new Date().toISOString()
+  return {
+    id: expense.id,
+    titulo: expense.description,
+    categoria: expense.category,
+    monto: Number(expense.amount),
+    pagadoPor: expense.paidByName,
+    pagadoPorId: expense.paidByUserId,
+    splitType: expense.splitType,
+    fecha: dateSource.split('T')[0],
+    splitAmounts: expense.splitAmounts,
+  }
 }
 
-export const BudgetDashboard: FC<Props> = ({ groupId }) => {
-  const [expenses, setExpenses] = useState<Expense[]>(MOCK_EXPENSES)
+export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange }) => {
+  const { accessToken, localUser } = useAuth()
+  const [dashboard, setDashboard] = useState<BudgetDashboardResponse | null>(null)
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [members, setMembers] = useState<BudgetMember[]>([])
   const [showModal, setShowModal] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [view, setView] = useState<'dashboard' | 'wallet'>('dashboard')
-  const [totalBudget, setTotalBudget] = useState(INITIAL_BUDGET)
   const [showAdjustModal, setShowAdjustModal] = useState(false)
   const [adjustValue, setAdjustValue] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const comprometido = expenses.reduce((sum, e) => sum + e.monto, 0)
-  const disponible = totalBudget - comprometido
-  const isOverBudget = comprometido > totalBudget
-  const pct = Math.min((comprometido / totalBudget) * 100, 100)
-  const barColor = pct < 70 ? '#35C56A' : pct < 90 ? '#F59E0B' : '#EF4444'
-  const barLabel = pct < 70 ? 'Presupuesto saludable' : pct < 90 ? 'Atención: presupuesto al límite' : 'Presupuesto excedido'
+  const applyDashboard = useCallback((nextDashboard: BudgetDashboardResponse) => {
+    setDashboard(nextDashboard)
+    setExpenses(nextDashboard.expenses.map(normalizeExpense))
+    setMembers(nextDashboard.members)
+    onSummaryChange?.(nextDashboard.summary)
+  }, [onSummaryChange])
 
-  const myRole = getCurrentGroup()?.myRole ?? 'viajero'
-  const canModifyExpenses = myRole === 'admin'
-  const canAdjustBudget = myRole === 'admin'
-
-  const categoryTotals = {
-    transporte: expenses.filter(e => e.categoria === 'transporte').reduce((s, e) => s + e.monto, 0),
-    hospedaje: expenses.filter(e => e.categoria === 'hospedaje').reduce((s, e) => s + e.monto, 0),
-    actividad: expenses.filter(e => e.categoria === 'actividad').reduce((s, e) => s + e.monto, 0),
-    comida: expenses.filter(e => e.categoria === 'comida').reduce((s, e) => s + e.monto, 0),
-  }
-
-  const handleSaveExpense = (expense: Expense) => {
-    if (editingExpense) {
-      setExpenses((prev) => prev.map((e) => (e.id === expense.id ? expense : e)))
-    } else {
-      setExpenses((prev) => [...prev, expense])
+  const loadDashboard = useCallback(async () => {
+    if (!groupId || !accessToken) {
+      setIsLoading(false)
+      onSummaryChange?.(null)
+      return
     }
-    setShowModal(false)
-    setEditingExpense(null)
+
+    setIsLoading(true)
+    setError(null)
+    try {
+      applyDashboard(await budgetService.getDashboard(groupId, accessToken))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo cargar el presupuesto')
+      onSummaryChange?.(null)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [accessToken, applyDashboard, groupId, onSummaryChange])
+
+  useEffect(() => {
+    void loadDashboard()
+  }, [loadDashboard])
+
+  const totalBudget = dashboard?.summary.totalBudget ?? 0
+  const comprometido = dashboard?.summary.committed ?? 0
+  const disponible = dashboard?.summary.available ?? 0
+  const categoryTotals = dashboard?.summary.categoryTotals ?? EMPTY_TOTALS
+  const isOverBudget = totalBudget > 0 && comprometido > totalBudget
+  const pct = totalBudget > 0 ? Math.min((comprometido / totalBudget) * 100, 100) : 0
+  const barColor = pct < 70 ? '#35C56A' : pct < 90 ? '#F59E0B' : '#EF4444'
+  const barLabel = totalBudget === 0
+    ? 'Define un presupuesto para activar seguimiento'
+    : pct < 70 ? 'Presupuesto saludable' : pct < 90 ? 'Atencion: presupuesto al limite' : 'Presupuesto excedido'
+  const canModifyExpenses = dashboard?.myRole === 'admin'
+  const canAdjustBudget = dashboard?.myRole === 'admin'
+
+  const handleSaveExpense = async (expense: Expense) => {
+    if (!groupId || !accessToken) return
+    setIsSaving(true)
+    setError(null)
+
+    const payload = {
+      paid_by_user_id: expense.pagadoPorId,
+      amount: expense.monto,
+      description: expense.titulo,
+      category: expense.categoria,
+      split_type: expense.splitType,
+      member_ids: expense.splitType === 'equitativa'
+        ? members.map((member) => member.usuario_id)
+        : undefined,
+      split_amounts: expense.splitType === 'personalizada' ? expense.splitAmounts : undefined,
+      expense_date: expense.fecha,
+    }
+
+    try {
+      const nextDashboard = editingExpense
+        ? await budgetService.updateExpense(groupId, expense.id, payload, accessToken)
+        : await budgetService.createExpense(groupId, payload, accessToken)
+      applyDashboard(nextDashboard)
+      setShowModal(false)
+      setEditingExpense(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo guardar el gasto')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const openEdit = (expense: Expense) => {
@@ -121,28 +206,78 @@ export const BudgetDashboard: FC<Props> = ({ groupId }) => {
     setShowModal(true)
   }
 
-  const handleDelete = (id: string) => {
-    if (window.confirm('¿Eliminar este gasto? Esta acción no se puede deshacer.')) {
-      setExpenses((prev) => prev.filter((e) => e.id !== id))
+  const handleDelete = async (id: string) => {
+    if (!groupId || !accessToken) return
+    if (!window.confirm('Eliminar este gasto? Esta accion no se puede deshacer.')) return
+
+    setIsSaving(true)
+    setError(null)
+    try {
+      applyDashboard(await budgetService.deleteExpense(groupId, id, accessToken))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar el gasto')
+    } finally {
+      setIsSaving(false)
     }
   }
 
-  const handleAdjustBudget = () => {
+  const handleAdjustBudget = async () => {
+    if (!groupId || !accessToken) return
     const val = parseFloat(adjustValue)
-    if (!isNaN(val) && val > 0) {
-      setTotalBudget(val)
+    if (!Number.isFinite(val) || val < 0) return
+
+    setIsSaving(true)
+    setError(null)
+    try {
+      applyDashboard(await budgetService.updateBudget(groupId, val, accessToken))
       setShowAdjustModal(false)
       setAdjustValue('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo ajustar el presupuesto')
+    } finally {
+      setIsSaving(false)
     }
   }
 
   if (view === 'wallet') {
-    return <MyWalletView onBack={() => setView('dashboard')} />
+    return (
+      <MyWalletView
+        onBack={() => setView('dashboard')}
+        settlements={dashboard?.settlements ?? []}
+        paymentHistory={dashboard?.paymentHistory ?? []}
+        members={members}
+        myRole={dashboard?.myRole ?? 'viajero'}
+        currentUserId={localUser?.id_usuario != null ? String(localUser.id_usuario) : null}
+        onMarkPaid={async (payload) => {
+          if (!groupId || !accessToken) return
+          setIsSaving(true)
+          setError(null)
+          try {
+            const nextDashboard = await budgetService.markSettlementPaid(groupId, payload, accessToken)
+            applyDashboard(nextDashboard)
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'No se pudo marcar el pago')
+          } finally {
+            setIsSaving(false)
+          }
+        }}
+      />
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center bg-[#F4F6F8] p-8">
+        <div className="rounded-2xl border border-[#E2E8F0] bg-white px-6 py-5 text-center">
+          <div className="mx-auto mb-3 h-7 w-7 animate-spin rounded-full border-2 border-[#1E6FD9] border-t-transparent" />
+          <p className="font-body text-sm text-[#7A8799]">Cargando presupuesto...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto bg-[#F4F6F8]">
-      {/* Header */}
       <div className="bg-[#1E0A4E] px-6 pt-6 pb-8">
         <p className="mb-1 font-body text-sm text-white/60">Presupuesto del viaje</p>
         <div className="mb-6 flex items-center justify-between">
@@ -150,12 +285,9 @@ export const BudgetDashboard: FC<Props> = ({ groupId }) => {
           {canAdjustBudget && (
             <button
               onClick={() => { setAdjustValue(String(totalBudget)); setShowAdjustModal(true) }}
-              className="flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 font-body text-xs font-medium text-white/80 transition-colors hover:bg-white/20"
+              disabled={isSaving}
+              className="flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 font-body text-xs font-medium text-white/80 transition-colors hover:bg-white/20 disabled:opacity-50"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
               Ajustar presupuesto
             </button>
           )}
@@ -166,12 +298,7 @@ export const BudgetDashboard: FC<Props> = ({ groupId }) => {
             <p className="mb-1 font-body text-[10px] text-[#7A8799]">Total Viaje</p>
             <p className="font-heading text-base font-bold text-[#3D4A5C]">{formatMXN(totalBudget)}</p>
           </div>
-          <div
-            className={[
-              'rounded-xl border-[0.5px] px-3 py-3',
-              isOverBudget ? 'border-[#EF4444] bg-[#EF4444]' : 'border-[#E2E8F0] bg-white',
-            ].join(' ')}
-          >
+          <div className={['rounded-xl border-[0.5px] px-3 py-3', isOverBudget ? 'border-[#EF4444] bg-[#EF4444]' : 'border-[#E2E8F0] bg-white'].join(' ')}>
             <p className={['mb-1 font-body text-[10px]', isOverBudget ? 'text-white' : 'text-[#7A8799]'].join(' ')}>
               Comprometido
             </p>
@@ -186,21 +313,12 @@ export const BudgetDashboard: FC<Props> = ({ groupId }) => {
         </div>
       </div>
 
-      {/* Banner de alerta: presupuesto excedido */}
       {isOverBudget && (
-        <div className="flex items-center gap-3 bg-[#B91C1C] px-6 py-3">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0">
-            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="white" strokeWidth="2" strokeLinejoin="round" />
-            <line x1="12" y1="9" x2="12" y2="13" stroke="white" strokeWidth="2" strokeLinecap="round" />
-            <circle cx="12" cy="17" r="1" fill="white" />
-          </svg>
-          <p className="font-body font-semibold text-white" style={{ fontSize: '14px' }}>
-            ¡Presupuesto excedido!
-          </p>
+        <div className="bg-[#B91C1C] px-6 py-3 font-body text-sm font-semibold text-white">
+          Presupuesto excedido
         </div>
       )}
 
-      {/* Progress bar */}
       <div className="border-b border-[#E2E8F0] bg-white px-6 py-4">
         <div className="mb-2 flex items-center justify-between">
           <span className="font-body text-xs text-[#7A8799]">Comprometido del total</span>
@@ -209,88 +327,70 @@ export const BudgetDashboard: FC<Props> = ({ groupId }) => {
           </span>
         </div>
         <div className="h-2.5 overflow-hidden rounded-full bg-[#E2E8F0]">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{ width: `${pct}%`, backgroundColor: barColor }}
-          />
+          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
         </div>
         <p className="mt-1.5 font-body text-[11px] text-[#7A8799]">{barLabel}</p>
       </div>
 
-      {/* Body */}
       <div className="flex flex-1 flex-col gap-4 px-6 py-5">
         <div className="flex gap-3">
           <button
             onClick={() => { setEditingExpense(null); setShowModal(true) }}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E6FD9] py-3 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6]"
+            disabled={!groupId || members.length === 0 || isSaving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E6FD9] py-3 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-            Registrar gasto
+            + Registrar gasto
           </button>
           <button
             onClick={() => setView('wallet')}
             className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#1E6FD9] py-3 font-body text-sm font-semibold text-[#1E6FD9] transition-colors hover:bg-[#1E6FD9]/5"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <rect x="1" y="4" width="22" height="16" rx="2" ry="2" stroke="currentColor" strokeWidth="2" />
-              <line x1="1" y1="10" x2="23" y2="10" stroke="currentColor" strokeWidth="2" />
-            </svg>
             Mi Cartera
           </button>
         </div>
 
-        {/* Gastos del grupo */}
+        {error && (
+          <div className="rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-4 py-3 font-body text-sm text-[#C03535]">
+            {error}
+          </div>
+        )}
+
         <div>
           <h2 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Gastos del grupo</h2>
           <div className="flex flex-col gap-2">
-            {expenses.map((expense) => (
-              <div
-                key={expense.id}
-                className="flex items-center gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3"
-              >
+            {expenses.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-4 py-8 text-center font-body text-sm text-[#7A8799]">
+                Aun no hay gastos registrados para este viaje.
+              </div>
+            ) : expenses.map((expense) => (
+              <div key={expense.id} className="flex items-center gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
                 <div
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                  style={{
-                    backgroundColor: `${categoryColor(expense.categoria)}18`,
-                    color: categoryColor(expense.categoria),
-                  }}
+                  style={{ backgroundColor: `${categoryColor(expense.categoria)}18`, color: categoryColor(expense.categoria) }}
                 >
                   <CategoryIcon categoria={expense.categoria} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-body text-sm font-semibold text-[#3D4A5C]">{expense.titulo}</p>
-                  <p className="font-body text-xs text-[#7A8799]">
-                    Pagó {expense.pagadoPor} · {expense.fecha}
-                  </p>
+                  <p className="font-body text-xs text-[#7A8799]">Pago {expense.pagadoPor} - {expense.fecha}</p>
                 </div>
-                <span className="shrink-0 font-heading text-sm font-bold text-[#3D4A5C]">
-                  {formatMXN(expense.monto)}
-                </span>
+                <span className="shrink-0 font-heading text-sm font-bold text-[#3D4A5C]">{formatMXN(expense.monto)}</span>
                 {canModifyExpenses && (
                   <button
                     onClick={() => openEdit(expense)}
                     aria-label="Editar gasto"
                     className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#F4F6F8] hover:text-[#1E6FD9]"
                   >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    Editar
                   </button>
                 )}
                 {canModifyExpenses && (
                   <button
-                    onClick={() => handleDelete(expense.id)}
+                    onClick={() => void handleDelete(expense.id)}
                     aria-label="Eliminar gasto"
                     className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#FEF2F2] hover:text-[#EF4444]"
                   >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                    Eliminar
                   </button>
                 )}
               </div>
@@ -298,17 +398,16 @@ export const BudgetDashboard: FC<Props> = ({ groupId }) => {
           </div>
         </div>
 
-        {/* Panel derecho: Participantes + Presupuesto Grupal */}
         <div className="flex flex-col gap-5 rounded-2xl border border-[#E2E8F0] bg-white p-4">
           <div>
             <h3 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Participantes</h3>
             <div className="flex flex-wrap gap-2">
-              {MOCK_MEMBERS.map((member) => (
-                <div key={member} className="flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-1.5">
+              {members.map((member) => (
+                <div key={member.usuario_id} className="flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-1.5">
                   <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1E0A4E] font-heading text-[10px] font-bold text-white">
-                    {member[0]}
+                    {(member.nombre || member.email || '?')[0]}
                   </div>
-                  <span className="font-body text-xs text-[#3D4A5C]">{member}</span>
+                  <span className="font-body text-xs text-[#3D4A5C]">{member.nombre || member.email}</span>
                 </div>
               ))}
             </div>
@@ -317,14 +416,7 @@ export const BudgetDashboard: FC<Props> = ({ groupId }) => {
           <div>
             <h3 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Presupuesto Grupal</h3>
             <div className="flex flex-col gap-2.5">
-              {(
-                [
-                  { label: 'Vuelos', categoria: 'transporte' },
-                  { label: 'Hospedaje', categoria: 'hospedaje' },
-                  { label: 'Actividades', categoria: 'actividad' },
-                  { label: 'Comida', categoria: 'comida' },
-                ] as { label: string; categoria: keyof typeof categoryTotals }[]
-              ).map(({ label, categoria }) => (
+              {(Object.keys(CATEGORY_LABELS) as Expense['categoria'][]).map((categoria) => (
                 <div key={categoria} className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span
@@ -333,10 +425,10 @@ export const BudgetDashboard: FC<Props> = ({ groupId }) => {
                     >
                       <CategoryIcon categoria={categoria} />
                     </span>
-                    <span className="font-body text-xs text-[#7A8799]">{label}</span>
+                    <span className="font-body text-xs text-[#7A8799]">{CATEGORY_LABELS[categoria]}</span>
                   </div>
                   <span className="font-body text-xs font-semibold text-[#3D4A5C]">
-                    {formatMXN(categoryTotals[categoria])}
+                    {formatMXN(categoryTotals[categoria] ?? 0)}
                   </span>
                 </div>
               ))}
@@ -347,23 +439,19 @@ export const BudgetDashboard: FC<Props> = ({ groupId }) => {
 
       <RegisterExpenseModal
         open={showModal}
-        members={MOCK_MEMBERS}
+        members={members}
         editingExpense={editingExpense}
         onClose={() => { setShowModal(false); setEditingExpense(null) }}
-        onSave={handleSaveExpense}
+        onSave={(expense) => void handleSaveExpense(expense)}
       />
 
-      {/* Modal: Ajustar presupuesto total */}
       {showAdjustModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center px-4"
           style={{ background: 'rgba(13,8,32,0.75)' }}
           onClick={() => setShowAdjustModal(false)}
         >
-          <div
-            className="w-full max-w-sm rounded-2xl bg-white p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-4 font-heading text-lg font-bold text-[#1E0A4E]">Ajustar presupuesto total</h2>
             <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Nuevo presupuesto (MXN)</label>
             <div className="relative mb-4">
@@ -386,8 +474,8 @@ export const BudgetDashboard: FC<Props> = ({ groupId }) => {
                 Cancelar
               </button>
               <button
-                onClick={handleAdjustBudget}
-                disabled={!adjustValue || parseFloat(adjustValue) <= 0}
+                onClick={() => void handleAdjustBudget()}
+                disabled={isSaving || !adjustValue || parseFloat(adjustValue) < 0}
                 className="flex-1 rounded-xl bg-[#1E6FD9] py-3 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Guardar

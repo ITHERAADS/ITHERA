@@ -20,6 +20,7 @@ export interface Group {
   destino_formatted_address?: string | null
   destino_photo_name?: string | null
   destino_photo_url?: string | null
+  presupuesto_total?: number | string | null
 }
 
 export interface GroupHistoryItem {

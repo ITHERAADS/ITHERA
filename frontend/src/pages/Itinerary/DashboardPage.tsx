@@ -15,6 +15,7 @@ import { ProposalDetailModal } from '../../components/ProposalDetailModal/Propos
 import { ConfirmProposalModal } from '../../components/ConfirmProposalModal/ConfirmProposalModal'
 import { ActivityProposalModal } from '../../components/ActivityProposalModal/ActivityProposalModal'
 import { BudgetDashboard } from '../../components/budget/BudgetDashboard'
+import type { BudgetSummary } from '../../services/budget'
 import { useSocket } from '../../hooks/useSocket'
 import type { Group } from '../../types/groups'
 
@@ -576,6 +577,7 @@ export function DashboardPage() {
   const [days,        setDays]        = useState<ItineraryDay[]>([])
   const [group, setGroup] = useState<typeof currentGroup>(currentGroup)
   const [members, setMembers] = useState<Parameters<typeof RightPanelDashboard>[0]['members']>([])
+  const [budgetSummary, setBudgetSummary] = useState<BudgetSummary | null>(null)
   const dayRefs = useRef<Record<number, DayViewHandle | null>>({})
   const collaborativeRefreshTimerRef = useRef<number | null>(null)
   const [showActivityModal, setShowActivityModal] = useState(false)
@@ -674,37 +676,45 @@ export function DashboardPage() {
 
   let isMounted = true
 
-  const loadDashboard = async () => {
-    try {
-      setIsLoading(true)
+    const loadDashboard = async () => {
+      try {
+        setIsLoading(true)
 
-      const groupRes = await groupsService.getGroupDetails(resolvedGroupId, accessToken)
-      const membersRes = await groupsService.getMembers(resolvedGroupId, accessToken)
-      const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-      const votesRes = await proposalsService.getVoteResults(String(resolvedGroupId), accessToken)
-      const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupRes.group, accessToken)
-      const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
-        acc[String(item.id_propuesta)] = item
-        return acc
-      }, {})
+        const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
+        const [groupResult, membersResult, votesResult] = await Promise.allSettled([
+          groupsService.getGroupDetails(resolvedGroupId, accessToken),
+          groupsService.getMembers(resolvedGroupId, accessToken),
+          proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
+        ])
 
-      if (isMounted) {
-        setGroup(groupRes.group)
-        setMembers(membersRes.members ?? [])
-        setDays(daysWithRoutes)
-        setVoteResultByProposal(nextVotesMap)
-        setVotedActivityIds({})
-      }
-    } catch (error) {
-      console.error('Error cargando dashboard:', error)
+        const groupData =
+          groupResult.status === 'fulfilled'
+            ? groupResult.value.group
+            : null
 
-      if (isMounted) {
-        setDays([])
-      }
-    } finally {
-      if (isMounted) {
-        setIsLoading(false)
-      }
+        const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupData, accessToken)
+        const nextVotesMap = (votesResult.status === 'fulfilled' ? votesResult.value.results : []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
+          acc[String(item.id_propuesta)] = item
+          return acc
+        }, {})
+
+        if (isMounted) {
+          if (groupResult.status === 'fulfilled') {
+            setGroup(groupResult.value.group)
+          }
+          if (membersResult.status === 'fulfilled') {
+            setMembers(membersResult.value.members ?? [])
+          }
+          setDays(daysWithRoutes)
+          setVoteResultByProposal(nextVotesMap)
+          setVotedActivityIds({})
+        }
+      } catch (error) {
+        console.error('Error cargando dashboard:', error)
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
     }
   }
 
@@ -720,21 +730,30 @@ export function DashboardPage() {
 
     if (!resolvedGroupId || !accessToken) return
 
-    const [groupRes, membersRes, itineraryRes, votesRes] = await Promise.all([
+    const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
+    const [groupResult, membersResult, votesResult] = await Promise.allSettled([
       groupsService.getGroupDetails(resolvedGroupId, accessToken),
       groupsService.getMembers(resolvedGroupId, accessToken),
-      groupsService.getItinerary(resolvedGroupId, accessToken),
       proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
     ])
 
-    const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupRes.group, accessToken)
-    const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
+    const groupData =
+      groupResult.status === 'fulfilled'
+        ? groupResult.value.group
+        : null
+
+    const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupData, accessToken)
+    const nextVotesMap = (votesResult.status === 'fulfilled' ? votesResult.value.results : []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
       acc[String(item.id_propuesta)] = item
       return acc
     }, {})
 
-    setGroup(groupRes.group)
-    setMembers(membersRes.members ?? [])
+    if (groupResult.status === 'fulfilled') {
+      setGroup(groupResult.value.group)
+    }
+    if (membersResult.status === 'fulfilled') {
+      setMembers(membersResult.value.members ?? [])
+    }
     setDays(daysWithRoutes)
     setVotedActivityIds({})
     setVoteResultByProposal(nextVotesMap)
@@ -1216,8 +1235,8 @@ export function DashboardPage() {
           socket={socket}
           onOpenChat={() => { setChatOpen(true); setChatUnread(0) }}
           unreadCount={chatUnread}
-          totalBudget={24000}
-          committedBudget={14200}
+          totalBudget={budgetSummary?.totalBudget}
+          committedBudget={budgetSummary?.committed}
         />
       }
     >
@@ -1235,7 +1254,10 @@ export function DashboardPage() {
         </div>
       ) : activeTab === 'pagar' ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
-          <BudgetDashboard groupId={resolvedGroupId ?? null} />
+          <BudgetDashboard
+            groupId={resolvedGroupId ?? null}
+            onSummaryChange={setBudgetSummary}
+          />
         </div>
       ) : activeTab === 'buscar' ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-8">

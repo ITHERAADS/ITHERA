@@ -339,6 +339,16 @@ function BottomNavbar({
 }) {
   const tabs = [
     {
+      id: 'inicio',
+      label: 'Inicio',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    {
       id: 'buscar',
       label: 'Buscar',
       icon: (
@@ -561,7 +571,7 @@ export function DashboardPage() {
 
   const [activeDay,   setActiveDay]   = useState<number | null>(null)
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
-  const [activeTab,   setActiveTab]   = useState('pagar')
+  const [activeTab,   setActiveTab]   = useState('inicio')
   const [isLoading,   setIsLoading]   = useState(false)
   const [days,        setDays]        = useState<ItineraryDay[]>([])
   const [group, setGroup] = useState<typeof currentGroup>(currentGroup)
@@ -1226,6 +1236,74 @@ export function DashboardPage() {
       ) : activeTab === 'pagar' ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
           <BudgetDashboard groupId={resolvedGroupId ?? null} />
+        </div>
+      ) : activeTab === 'buscar' ? (
+        <div className="flex-1 overflow-y-auto bg-surface px-6 py-8">
+          <h2 className="font-heading font-bold text-[#1E0A4E] text-xl mb-1">Buscar</h2>
+          <p className="font-body text-sm text-gray-500 mb-6">
+            {group?.destino ? `Opciones para ${group.destino}` : 'Encuentra opciones para tu viaje'}
+          </p>
+          <div className="flex flex-col gap-4">
+            <button
+              type="button"
+              onClick={() => navigate('/search/flights-hotels', { state: { destino: group?.destino } })}
+              className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#1E6FD9]/40 hover:bg-[#F0EEF8] transition-colors group"
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #1E6FD9, #2C8BE6)' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M3 11l18-8-8 18-2-8-8-2z" stroke="white" strokeWidth="2" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">Vuelos y Hoteles</p>
+                <p className="font-body text-xs text-gray-500 mt-1">Busca y propone opciones al grupo</p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-gray-400 group-hover:text-[#1E6FD9] transition-colors shrink-0" aria-hidden="true">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/search/map-places', { state: { destino: group?.destino } })}
+              className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#7A4FD6]/40 hover:bg-[#F0EEF8] transition-colors group"
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #7A4FD6, #9B72F0)' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z" fill="white" />
+                  <circle cx="12" cy="10" r="2.5" fill="#7A4FD6" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">Lugares de interés</p>
+                <p className="font-body text-xs text-gray-500 mt-1">Explora atracciones y actividades</p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-gray-400 group-hover:text-[#7A4FD6] transition-colors shrink-0" aria-hidden="true">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/search/routes-weather', { state: { destino: group?.destino } })}
+              className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#35C56A]/40 hover:bg-[#F0EEF8] transition-colors group"
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #35C56A, #22A85A)' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <line x1="8" y1="2" x2="8" y2="18" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="16" y1="6" x2="16" y2="22" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">Rutas y Clima</p>
+                <p className="font-body text-xs text-gray-500 mt-1">Cómo llegar y pronóstico del tiempo</p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-gray-400 group-hover:text-[#35C56A] transition-colors shrink-0" aria-hidden="true">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">

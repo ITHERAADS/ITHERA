@@ -1,3 +1,5 @@
+// Módulo M4 - Presupuesto y Gastos
+
 import { supabaseAdmin } from '../../infrastructure/db/supabase.client';
 import { Expense } from './budget.entity';
 export const createExpense = async (data: {

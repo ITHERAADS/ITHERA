@@ -145,15 +145,13 @@ export const voteProposal = async (proposalId: number, authUserId: string) => {
       ? 'hospedaje'
       : 'propuesta';
 
-  const proposalCreatorId = Number((proposal as any).creado_por);
-
-  if (Number.isFinite(proposalCreatorId) && proposalCreatorId !== Number(usuarioId)) {
-    await NotificationsService.createNotification({
-      usuarioId: proposalCreatorId,
-      grupoId: Number(proposal.grupo_id),
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(proposal.grupo_id),
+    Number(usuarioId),
+    {
       tipo: `voto_${itemTypeLabel}_nuevo`,
       titulo: `Nuevo voto en ${itemTypeLabel}`,
-      mensaje: `${actorName} votó a favor en tu propuesta de ${itemTypeLabel} "${proposal.titulo}".`,
+      mensaje: `${actorName} votó a favor en la propuesta de ${itemTypeLabel} "${proposal.titulo}".`,
       entidadTipo: 'propuesta',
       entidadId: Number(proposalId),
       metadata: {
@@ -163,26 +161,10 @@ export const voteProposal = async (proposalId: number, authUserId: string) => {
         itemType,
         voteType: 'a_favor',
         voteLabel: 'a favor',
-        proposalCreatorId,
+        proposalCreatorId: Number((proposal as any).creado_por),
       },
-    });
-  }
-
-  NotificationsService.emitGroupDashboardUpdated(Number(proposal.grupo_id), {
-    tipo: `voto_${itemTypeLabel}_nuevo`,
-    entidadTipo: 'propuesta',
-    entidadId: Number(proposalId),
-    actorUsuarioId: Number(usuarioId),
-    metadata: {
-      actorName,
-      actorUsuarioId: Number(usuarioId),
-      itemTitle: proposal.titulo,
-      itemType,
-      voteType: 'a_favor',
-      voteLabel: 'a favor',
-      proposalCreatorId,
-    },
-  });
+    }
+  );
 
   emitProposalVoteUpdated({
     groupId: summary.groupId,

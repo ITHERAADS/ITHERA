@@ -53,15 +53,13 @@ const notifyProposalVote = async (
   const voteLabel = getVoteLabel(voteType);
   const itemTitle = String(proposal.titulo ?? 'Sin título');
 
-  const proposalCreatorId = Number(proposal.creado_por);
-
-  if (Number.isFinite(proposalCreatorId) && proposalCreatorId !== Number(actorUsuarioId)) {
-    await NotificationsService.createNotification({
-      usuarioId: proposalCreatorId,
-      grupoId: Number(groupId),
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(groupId),
+    Number(actorUsuarioId),
+    {
       tipo: `voto_${itemTypeLabel}_nuevo`,
       titulo: `Nuevo voto en ${itemTypeLabel}`,
-      mensaje: `${actorName} votó ${voteLabel} en tu propuesta de ${itemTypeLabel} "${itemTitle}".`,
+      mensaje: `${actorName} votó ${voteLabel} en la propuesta de ${itemTypeLabel} "${itemTitle}".`,
       entidadTipo: 'propuesta',
       entidadId: Number(proposalId),
       metadata: {
@@ -71,25 +69,10 @@ const notifyProposalVote = async (
         itemType,
         voteType,
         voteLabel,
-        proposalCreatorId,
+        proposalCreatorId: Number(proposal.creado_por),
       },
-    });
-  }
-
-  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
-    tipo: `voto_${itemTypeLabel}_nuevo`,
-    entidadTipo: 'propuesta',
-    entidadId: Number(proposalId),
-    actorUsuarioId: Number(actorUsuarioId),
-    metadata: {
-      actorName,
-      itemTitle,
-      itemType,
-      voteType,
-      voteLabel,
-      proposalCreatorId,
-    },
-  });
+    }
+  );
 };
 
 const buildProposalResponse = async (proposalId: number) => {

@@ -25,6 +25,56 @@ const getVoteLabel = (voteType: ProposalVoteType): string => {
   return 'en abstención';
 };
 
+
+const notifyProposalVote = async (
+  groupId: string | number,
+  proposalId: string | number,
+  actorUsuarioId: number,
+  voteType: ProposalVoteType,
+): Promise<void> => {
+  const { data: proposal, error } = await supabase
+    .from('propuestas')
+    .select('id_propuesta, grupo_id, tipo_item, titulo, creado_por')
+    .eq('id_propuesta', proposalId)
+    .maybeSingle();
+
+  if (error || !proposal) {
+    console.error('[Proposals] No se pudo consultar la propuesta para notificar voto:', error?.message);
+    return;
+  }
+
+  const actorName = await NotificationsService.getUserDisplayName(actorUsuarioId);
+  const itemType = String(proposal.tipo_item ?? 'propuesta');
+  const itemTypeLabel = itemType === 'vuelo'
+    ? 'vuelo'
+    : itemType === 'hospedaje'
+      ? 'hospedaje'
+      : 'propuesta';
+  const voteLabel = getVoteLabel(voteType);
+  const itemTitle = String(proposal.titulo ?? 'Sin título');
+
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(groupId),
+    Number(actorUsuarioId),
+    {
+      tipo: `voto_${itemTypeLabel}_nuevo`,
+      titulo: `Nuevo voto en ${itemTypeLabel}`,
+      mensaje: `${actorName} votó ${voteLabel} en la propuesta de ${itemTypeLabel} "${itemTitle}".`,
+      entidadTipo: 'propuesta',
+      entidadId: Number(proposalId),
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(actorUsuarioId),
+        itemTitle,
+        itemType,
+        voteType,
+        voteLabel,
+        proposalCreatorId: Number(proposal.creado_por),
+      },
+    }
+  );
+};
+
 const buildProposalResponse = async (proposalId: number) => {
   const { data: proposal, error } = await supabase
     .from('propuestas')
@@ -175,7 +225,7 @@ export const createFlightProposal = async (authUserId: string, payload: SaveFlig
     Number(payload.grupoId),
     Number(usuarioId),
     {
-      tipo: 'propuesta_creada',
+      tipo: 'propuesta_vuelo_creada',
       titulo: 'Nueva propuesta de vuelo',
       mensaje: `${actorName} propuso el vuelo "${payload.titulo}".`,
       entidadTipo: 'propuesta',
@@ -256,7 +306,7 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
     Number(payload.grupoId),
     Number(usuarioId),
     {
-      tipo: 'propuesta_creada',
+      tipo: 'propuesta_hospedaje_creada',
       titulo: 'Nueva propuesta de hospedaje',
       mensaje: `${actorName} propuso el hospedaje "${payload.titulo}".`,
       entidadTipo: 'propuesta',
@@ -809,7 +859,6 @@ export const castSingleVote = async (
 	payload: CreateVotePayload,
 ) => {
 	const localUserId = await getLocalUserId(authUserId);
-	const localUserIdStr = String(localUserId);
 	await ensureUserBelongsToGroup(groupId, localUserId);
 	await ensureProposalBelongsToGroup(groupId, proposalId);
 
@@ -849,34 +898,7 @@ export const castSingleVote = async (
 
 			if (fallbackInsert.error) throw createError(fallbackInsert.error.message, 500);
 
-      // Notificar al creador si es otro usuario
-      const { data: proposalAuthor } = await supabase.from('propuestas').select('creado_por, titulo').eq('id_propuesta', proposalId).single();
-      const actorName = await NotificationsService.getUserDisplayName(localUserId);
-      if (proposalAuthor && String(proposalAuthor.creado_por) !== localUserIdStr) {
-        await NotificationsService.createNotification({
-          usuarioId: Number(proposalAuthor.creado_por),
-          grupoId: Number(groupId),
-          tipo: 'voto_nuevo',
-          titulo: 'Nuevo voto',
-          mensaje: `${actorName} votó ${getVoteLabel(desiredVoteType)} en tu propuesta "${proposalAuthor.titulo}".`,
-          entidadTipo: 'propuesta',
-          entidadId: Number(proposalId),
-          metadata: {
-            actorName,
-            actorUsuarioId: Number(localUserId),
-            itemTitle: proposalAuthor.titulo,
-            itemType: 'propuesta',
-            voteType: desiredVoteType,
-          },
-        });
-      }
-      NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
-        tipo: 'voto_nuevo',
-        entidadTipo: 'propuesta',
-        entidadId: Number(proposalId),
-        actorUsuarioId: Number(localUserId),
-        metadata: { actorName, voteType: desiredVoteType },
-      });
+      await notifyProposalVote(groupId, proposalId, Number(localUserId), desiredVoteType);
 
 			const outcome = await evaluateProposalOutcome(groupId, proposalId);
 
@@ -911,34 +933,7 @@ export const castSingleVote = async (
 		throw createError(insertError.message, 500);
 	}
 
-  // Notificar al creador si es otro usuario
-  const { data: proposalAuthor } = await supabase.from('propuestas').select('creado_por, titulo').eq('id_propuesta', proposalId).single();
-  const actorName = await NotificationsService.getUserDisplayName(localUserId);
-  if (proposalAuthor && String(proposalAuthor.creado_por) !== localUserIdStr) {
-    await NotificationsService.createNotification({
-      usuarioId: Number(proposalAuthor.creado_por),
-      grupoId: Number(groupId),
-      tipo: 'voto_nuevo',
-      titulo: 'Nuevo voto',
-      mensaje: `${actorName} votó ${getVoteLabel(desiredVoteType)} en tu propuesta "${proposalAuthor.titulo}".`,
-      entidadTipo: 'propuesta',
-      entidadId: Number(proposalId),
-      metadata: {
-        actorName,
-        actorUsuarioId: Number(localUserId),
-        itemTitle: proposalAuthor.titulo,
-        itemType: 'propuesta',
-        voteType: desiredVoteType,
-      },
-    });
-  }
-  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
-    tipo: 'voto_nuevo',
-    entidadTipo: 'propuesta',
-    entidadId: Number(proposalId),
-    actorUsuarioId: Number(localUserId),
-    metadata: { actorName, voteType: desiredVoteType },
-  });
+  await notifyProposalVote(groupId, proposalId, Number(localUserId), desiredVoteType);
 
 	const outcome = await evaluateProposalOutcome(groupId, proposalId);
 
@@ -1147,7 +1142,6 @@ export const listComments = async (
 	proposalId: string,
 ) => {
 	const localUserId = await getLocalUserId(authUserId);
-	const localUserIdStr = String(localUserId);
 	await ensureUserBelongsToGroup(groupId, localUserId);
 	await ensureProposalBelongsToGroup(groupId, proposalId);
 

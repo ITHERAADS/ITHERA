@@ -42,6 +42,13 @@ export interface SaveHotelProposalPayload {
     precioTotal?: number;
     moneda?: string;
     calificacion?: number;
+    liteapiHotelId?: string;
+    liteapiOfferId?: string;
+    liteapiPrebookId?: string;
+    googlePlaceId?: string;
+    fotoUrl?: string;
+    reservaEstado?: string;
+    reservaSimuladaPayload?: Record<string, unknown>;
     payload?: Record<string, unknown>;
   };
 }
@@ -75,6 +82,13 @@ export interface UpdateProposalPayload {
     checkOut?: string;
     precioTotal?: number;
     calificacion?: number;
+    liteapiHotelId?: string;
+    liteapiOfferId?: string;
+    liteapiPrebookId?: string;
+    googlePlaceId?: string;
+    fotoUrl?: string;
+    reservaEstado?: string;
+    reservaSimuladaPayload?: Record<string, unknown>;
     payload?: Record<string, unknown>;
   };
 }

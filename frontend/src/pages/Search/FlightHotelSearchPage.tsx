@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppLayout } from '../../components/layout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { flightsService, type CabinClass, type FlightAirportOption, type FlightOffer } from '../../services/flights'
+import { hotelsService, type HotelOffer } from '../../services/hotels'
 import { getCurrentGroup } from '../../services/groups'
 import { proposalsService } from '../../services/proposals'
 
@@ -13,14 +14,9 @@ interface Flight extends FlightOffer {
   saving?: boolean
 }
 
-interface Hotel {
-  id: string
-  name: string
-  location: string
-  price: number
-  rating: number
-  amenities: string[]
+interface Hotel extends HotelOffer {
   proposed: boolean
+  saving?: boolean
 }
 
 
@@ -143,6 +139,26 @@ const DEFAULT_FLIGHT_FORM: FlightFormState = {
   children: 0,
   infantsWithoutSeat: 0,
   cabinClass: 'economy',
+}
+
+interface HotelFormState {
+  destination: string
+  checkIn: string
+  checkOut: string
+  adults: number
+  children: number
+  rooms: number
+  currency: string
+}
+
+const DEFAULT_HOTEL_FORM: HotelFormState = {
+  destination: '',
+  checkIn: '',
+  checkOut: '',
+  adults: 2,
+  children: 0,
+  rooms: 1,
+  currency: 'MXN',
 }
 
 function IconSearch() {
@@ -339,8 +355,11 @@ const FlightHotelSearchPage = () => {
 
   const [flightForm, setFlightForm] = useState<FlightFormState>(DEFAULT_FLIGHT_FORM)
   const [lastFlightSearch, setLastFlightSearch] = useState<FlightFormState | null>(null)
+  const [hotelForm, setHotelForm] = useState<HotelFormState>(DEFAULT_HOTEL_FORM)
+  const [lastHotelSearch, setLastHotelSearch] = useState<HotelFormState | null>(null)
   const [flights, setFlights] = useState<Flight[]>([])
   const [hotels, setHotels] = useState<Hotel[]>([])
+  const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null)
 
   const currentGroup = useMemo(() => getCurrentGroup(), [])
   const passengerTotal = flightForm.adults + flightForm.children + flightForm.infantsWithoutSeat
@@ -360,6 +379,13 @@ const FlightHotelSearchPage = () => {
       ...prev,
       departureDate: currentGroup.fecha_inicio ?? prev.departureDate,
       returnDate: currentGroup.fecha_fin ?? prev.returnDate,
+    }))
+
+    setHotelForm((prev) => ({
+      ...prev,
+      destination: currentGroup.destino_formatted_address ?? currentGroup.destino ?? prev.destination,
+      checkIn: currentGroup.fecha_inicio ?? prev.checkIn,
+      checkOut: currentGroup.fecha_fin ?? prev.checkOut,
     }))
   }, [currentGroup])
 
@@ -462,6 +488,47 @@ const FlightHotelSearchPage = () => {
     })
   }
 
+
+  const handleHotelFieldChange = <K extends keyof HotelFormState>(field: K, value: HotelFormState[K]) => {
+    setHotelForm((prev) => {
+      const next = { ...prev, [field]: value }
+
+      if (field === 'adults') next.adults = Math.max(1, Number(value))
+      if (field === 'children') next.children = Math.max(0, Number(value))
+      if (field === 'rooms') next.rooms = Math.max(1, Number(value))
+
+      return next
+    })
+  }
+
+  const validateHotelForm = () => {
+    const destination = hotelForm.destination.trim() || currentGroup?.destino_formatted_address || currentGroup?.destino || ''
+
+    if (!destination && !currentGroup?.destino_latitud && !currentGroup?.destino_longitud) {
+      throw new Error('Captura un destino o selecciona un viaje con destino configurado.')
+    }
+
+    if (!hotelForm.checkIn) {
+      throw new Error('Selecciona una fecha de check-in.')
+    }
+
+    if (!hotelForm.checkOut) {
+      throw new Error('Selecciona una fecha de check-out.')
+    }
+
+    if (hotelForm.checkOut <= hotelForm.checkIn) {
+      throw new Error('El check-out debe ser posterior al check-in.')
+    }
+
+    return {
+      ...hotelForm,
+      destination,
+      adults: Math.max(1, hotelForm.adults),
+      children: Math.max(0, hotelForm.children),
+      rooms: Math.max(1, hotelForm.rooms),
+    }
+  }
+
   const resolveFlightAirport = async (field: 'origin' | 'destination') => {
     const rawValue = flightForm[field].trim()
     const localCode = sanitizeAirportCode(rawValue)
@@ -536,39 +603,41 @@ const FlightHotelSearchPage = () => {
     setErrorMessage(null)
 
     if (activeTab === 'hotels') {
-      setViewState('loading')
-      window.setTimeout(() => {
-        setHotels([
+      try {
+        if (!accessToken) {
+          throw new Error('Tu sesión no está disponible. Inicia sesión de nuevo.')
+        }
+
+        const validatedForm = validateHotelForm()
+        setViewState('loading')
+        setLastHotelSearch(validatedForm)
+
+        const response = await hotelsService.search(
           {
-            id: 'hotel-1',
-            name: 'Hotel Playa del Carmen',
-            location: 'Playa del Carmen, Quintana Roo',
-            price: 18000,
-            rating: 4.5,
-            amenities: ['WiFi', 'Desayuno', 'Estacionamiento'],
-            proposed: false,
+            destination: validatedForm.destination,
+            latitude: currentGroup?.destino_latitud ?? null,
+            longitude: currentGroup?.destino_longitud ?? null,
+            placeId: currentGroup?.destino_place_id ?? null,
+            checkIn: validatedForm.checkIn,
+            checkOut: validatedForm.checkOut,
+            adults: validatedForm.adults,
+            childrenAges: Array.from({ length: validatedForm.children }, () => 8),
+            rooms: validatedForm.rooms,
+            currency: validatedForm.currency,
+            guestNationality: 'MX',
+            countryCode: 'MX',
+            limit: 12,
+            radius: 20000,
           },
-          {
-            id: 'hotel-2',
-            name: 'Hotel Xcaret',
-            location: 'Xcaret, Quintana Roo',
-            price: 22000,
-            rating: 4.8,
-            amenities: ['WiFi', 'Desayuno'],
-            proposed: false,
-          },
-          {
-            id: 'hotel-3',
-            name: 'Hotel Cancún Resort',
-            location: 'Cancún, Quintana Roo',
-            price: 16500,
-            rating: 4.6,
-            amenities: ['WiFi', 'Desayuno', 'Estacionamiento'],
-            proposed: false,
-          },
-        ])
+          accessToken
+        )
+
+        setHotels((response.data ?? []).map((hotel) => ({ ...hotel, proposed: false })))
         setViewState('results')
-      }, 700)
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'No pudimos cargar los hospedajes.')
+        setViewState('error')
+      }
       return
     }
 
@@ -682,12 +751,94 @@ const FlightHotelSearchPage = () => {
     }
   }
 
-  const toggleHotel = (id: string) => {
-    setHotels((prev) =>
-      prev.map((hotel) =>
-        hotel.id === id ? { ...hotel, proposed: !hotel.proposed } : hotel
+  const toggleHotel = async (hotel: Hotel) => {
+    if (hotel.proposed) {
+      setHotels((prev) => prev.map((item) => item.id === hotel.id ? { ...item, proposed: false } : item))
+      return
+    }
+
+    if (!currentGroup?.id || !accessToken) {
+      setHotels((prev) => prev.map((item) => item.id === hotel.id ? { ...item, proposed: true } : item))
+      return
+    }
+
+    try {
+      setHotels((prev) => prev.map((item) => item.id === hotel.id ? { ...item, saving: true } : item))
+
+      const prebookResponse = hotel.offerId
+        ? await hotelsService.prebook(hotel.offerId, accessToken).catch(() => null)
+        : null
+
+      const title = `${hotel.name} · ${hotel.roomName ?? 'Habitación disponible'}`
+      const description = [
+        hotel.address,
+        `${hotel.nights} noche(s)`,
+        `${lastHotelSearch?.adults ?? hotelForm.adults} adulto(s)`,
+        (lastHotelSearch?.children ?? hotelForm.children) > 0 ? `${lastHotelSearch?.children ?? hotelForm.children} niño(s)` : null,
+        `${lastHotelSearch?.rooms ?? hotelForm.rooms} habitación(es)`,
+        hotel.boardName,
+      ].filter(Boolean).join(' · ')
+
+      await proposalsService.saveHotelProposal(
+        {
+          grupoId: String(currentGroup.id),
+          fuente: 'liteapi',
+          titulo: title,
+          descripcion: description,
+          payload: {
+            provider: 'liteapi',
+            search: lastHotelSearch,
+            normalizedOffer: hotel,
+            offerId: hotel.offerId,
+            prebook: prebookResponse?.data ?? null,
+            googlePlaceId: hotel.googlePlaceId,
+            photoUrl: hotel.photoUrl,
+            reservaSimulada: {
+              status: 'PENDING_GROUP_APPROVAL',
+              paymentStatus: 'not_started',
+            },
+          },
+          hospedaje: {
+            nombre: hotel.name,
+            proveedor: hotel.supplier ?? 'liteapi',
+            referenciaExterna: hotel.offerId ?? hotel.hotelId,
+            direccion: hotel.address,
+            latitud: hotel.latitude,
+            longitud: hotel.longitude,
+            checkIn: hotel.checkIn,
+            checkOut: hotel.checkOut,
+            precioTotal: hotel.price,
+            moneda: hotel.currency ?? 'MXN',
+            calificacion: hotel.rating,
+            liteapiHotelId: hotel.hotelId,
+            liteapiOfferId: hotel.offerId,
+            liteapiPrebookId: prebookResponse?.data?.prebookId ? String(prebookResponse.data.prebookId) : null,
+            googlePlaceId: hotel.googlePlaceId,
+            fotoUrl: hotel.photoUrl,
+            reservaEstado: 'pendiente',
+            reservaSimuladaPayload: {
+              status: 'PENDING_GROUP_APPROVAL',
+              paymentStatus: 'not_started',
+              source: 'liteapi_sandbox_search',
+            },
+            payload: {
+              raw: hotel.raw,
+              normalizedOffer: hotel,
+              prebook: prebookResponse?.data ?? null,
+              photoUrl: hotel.photoUrl,
+              googlePlaceId: hotel.googlePlaceId,
+              rooms: hotel.rooms,
+            },
+          },
+        },
+        accessToken
       )
-    )
+
+      setHotels((prev) => prev.map((item) => item.id === hotel.id ? { ...item, proposed: true, saving: false } : item))
+    } catch (error) {
+      setHotels((prev) => prev.map((item) => item.id === hotel.id ? { ...item, saving: false } : item))
+      setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar la propuesta de hospedaje.')
+    }
   }
 
   const searchSummary = lastFlightSearch
@@ -743,11 +894,11 @@ const FlightHotelSearchPage = () => {
               <div className="flex gap-3">
                 <div className="rounded-xl border border-white/20 bg-white/15 px-5 py-3 backdrop-blur-sm">
                   <p className="text-xs text-white/60">Viaje con</p>
-                  <p className="font-semibold">{passengerTotal} persona(s)</p>
+                  <p className="font-semibold">{activeTab === 'flights' ? passengerTotal : hotelForm.adults + hotelForm.children} persona(s)</p>
                 </div>
                 <div className="rounded-xl border border-white/20 bg-white/15 px-5 py-3 backdrop-blur-sm">
-                  <p className="text-xs text-white/60">Proveedor vuelos</p>
-                  <p className="font-semibold">Duffel API</p>
+                  <p className="text-xs text-white/60">Proveedor</p>
+                  <p className="font-semibold">{activeTab === 'flights' ? 'Duffel API' : 'LiteAPI + Google'}</p>
                 </div>
               </div>
             </div>
@@ -862,23 +1013,27 @@ const FlightHotelSearchPage = () => {
               <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
                 <label className="text-xs font-semibold text-[#1E0A4E] md:col-span-2">
                   ¿A dónde viajan?
-                  <input className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" placeholder="Ej: Cancún, México" />
+                  <input value={hotelForm.destination} onChange={(event) => handleHotelFieldChange('destination', event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" placeholder="Ej: Cancún, México" />
                 </label>
                 <label className="text-xs font-semibold text-[#1E0A4E]">
                   Check-in
-                  <input type="date" className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" />
+                  <input type="date" value={hotelForm.checkIn} onChange={(event) => handleHotelFieldChange('checkIn', event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" />
                 </label>
                 <label className="text-xs font-semibold text-[#1E0A4E]">
                   Check-out
-                  <input type="date" className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" />
+                  <input type="date" value={hotelForm.checkOut} onChange={(event) => handleHotelFieldChange('checkOut', event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" />
                 </label>
                 <label className="text-xs font-semibold text-[#1E0A4E]">
-                  Huéspedes
-                  <input className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" placeholder="4 personas" />
+                  Adultos
+                  <input type="number" min="1" value={hotelForm.adults} onChange={(event) => handleHotelFieldChange('adults', parseNumericInput(event.target.value, 1))} className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" placeholder="Adultos" />
+                </label>
+                <label className="text-xs font-semibold text-[#1E0A4E]">
+                  Niños
+                  <input type="number" min="0" value={hotelForm.children} onChange={(event) => handleHotelFieldChange('children', parseNumericInput(event.target.value, 0))} className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" placeholder="Niños" />
                 </label>
                 <label className="text-xs font-semibold text-[#1E0A4E]">
                   Habitaciones
-                  <input className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" placeholder="2 habitaciones" />
+                  <input type="number" min="1" value={hotelForm.rooms} onChange={(event) => handleHotelFieldChange('rooms', parseNumericInput(event.target.value, 1))} className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]" placeholder="2 habitaciones" />
                 </label>
               </div>
             )}
@@ -1043,7 +1198,7 @@ const FlightHotelSearchPage = () => {
                         </div>
 
                         <div className="rounded-xl border border-gray-100 p-4 text-center">
-                          <p className="text-[10px] uppercase text-gray-400">Total Duffel</p>
+                          <p className="text-[10px] uppercase text-gray-400">Total</p>
                           <p className="text-2xl font-bold text-[#1E0A4E]">
                             {formatPrice(flight.price, flight.currency)}
                           </p>
@@ -1075,8 +1230,8 @@ const FlightHotelSearchPage = () => {
             <section className="mx-auto mt-8 max-w-5xl">
               <div className="mb-4 rounded-xl border border-gray-100 bg-white px-5 py-3 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-500">
-                  <span>Cancún, Quintana Roo · 15–22 Abr 2026 · 4 huéspedes</span>
-                  <button className="font-semibold text-[#1E6FD9]">
+                  <span>{lastHotelSearch ? `${lastHotelSearch.destination} · ${lastHotelSearch.checkIn} a ${lastHotelSearch.checkOut} · ${lastHotelSearch.adults + lastHotelSearch.children} huésped(es) · ${lastHotelSearch.rooms} habitación(es)` : 'Búsqueda de hospedaje'}</span>
+                  <button onClick={() => setViewState('initial')} className="font-semibold text-[#1E6FD9]">
                     Editar búsqueda
                   </button>
                 </div>
@@ -1086,7 +1241,7 @@ const FlightHotelSearchPage = () => {
                 {hotels.length} hospedajes disponibles
               </h2>
               <p className="mb-4 text-sm text-gray-500">
-                Selecciona las mejores opciones para tu grupo
+                Selecciona las mejores opciones para tu grupo. Cada tarjeta agrupa un hotel; en detalles puedes comparar habitaciones y tarifas.
               </p>
 
               <div className="space-y-4">
@@ -1094,39 +1249,46 @@ const FlightHotelSearchPage = () => {
                   <article key={hotel.id} className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
                     <div className="grid gap-5 md:grid-cols-[1fr_160px] md:items-center">
                       <div className="flex gap-4">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[#EEF4FF] text-[#1E6FD9]">
-                          <IconHotel />
-                        </div>
+                        {hotel.photoUrl ? (
+                          <img src={hotel.photoUrl} alt={hotel.name} className="h-24 w-28 rounded-xl object-cover" />
+                        ) : (
+                          <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[#EEF4FF] text-[#1E6FD9]">
+                            <IconHotel />
+                          </div>
+                        )}
                         <div>
                           <h3 className="font-semibold text-[#1E0A4E]">{hotel.name}</h3>
-                          <p className="text-sm text-gray-500">{hotel.location}</p>
+                          <p className="text-sm text-gray-500">{hotel.address ?? 'Dirección no disponible'}</p>
                           <p className="mt-2 text-sm text-[#F59E0B]">
-                            ★★★★★ <span className="text-gray-500">{hotel.rating}</span>
+                            ★★★★★ <span className="text-gray-500">{hotel.rating ? hotel.rating.toFixed(1) : 'Sin calificación'}</span>
+                            {hotel.googleUserRatingCount ? <span className="text-gray-400"> · {hotel.googleUserRatingCount} reseñas</span> : null}
                           </p>
                           <div className="mt-2 flex flex-wrap gap-2">
-                            {hotel.amenities.map((item) => (
-                              <span key={item} className="rounded-full bg-[#EEF4FF] px-2 py-1 text-xs text-[#1E6FD9]">
-                                {item}
-                              </span>
-                            ))}
+                            <span className="rounded-full bg-[#EEF4FF] px-2 py-1 text-xs text-[#1E6FD9]">{hotel.roomName ?? 'Habitación disponible'}</span>
+                            {hotel.boardName ? <span className="rounded-full bg-[#EEF4FF] px-2 py-1 text-xs text-[#1E6FD9]">{hotel.boardName}</span> : null}
+                            <span className="rounded-full bg-[#EEF4FF] px-2 py-1 text-xs text-[#1E6FD9]">{hotel.nights} noche(s)</span>
+                            {hotel.refundableTag ? <span className="rounded-full bg-[#FEF3C7] px-2 py-1 text-xs text-[#F59E0B]">{hotel.refundableTag}</span> : null}
                           </div>
+                          <p className="mt-2 text-[11px] text-gray-400">Hotel ID: {hotel.hotelId} · Offer: {hotel.offerId ? `${hotel.offerId.slice(0, 12)}…` : 'no disponible'}</p>
                         </div>
                       </div>
 
                       <div className="rounded-xl border border-gray-100 p-4 text-center">
-                        <p className="text-[10px] uppercase text-gray-400">Total grupo</p>
+                        <p className="text-[10px] uppercase text-gray-400">Total</p>
                         <p className="text-2xl font-bold text-[#1E0A4E]">
-                          ${hotel.price.toLocaleString('es-MX')}
+                          {formatPrice(hotel.price, hotel.currency)}
                         </p>
+                        <p className="mt-1 text-[11px] text-gray-400">{hotel.checkIn} → {hotel.checkOut}</p>
                         <button
-                          onClick={() => toggleHotel(hotel.id)}
-                          className={`mt-3 w-full rounded-lg px-3 py-2 text-xs font-semibold text-white ${
+                          onClick={() => toggleHotel(hotel)}
+                          disabled={hotel.saving || hotel.proposed}
+                          className={`mt-3 w-full rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-80 ${
                             hotel.proposed ? 'bg-[#35C56A]' : 'bg-[#1E6FD9] hover:bg-[#1557B0]'
                           }`}
                         >
-                          {hotel.proposed ? 'Seleccionado' : 'Seleccionar hospedaje'}
+                          {hotel.saving ? 'Guardando...' : hotel.proposed ? 'Propuesto' : 'Proponer hospedaje'}
                         </button>
-                        <button className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-500">
+                        <button type="button" onClick={() => setSelectedHotel(hotel)} className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 hover:border-[#1E6FD9] hover:text-[#1E6FD9]">
                           Ver detalles
                         </button>
                       </div>
@@ -1152,6 +1314,58 @@ const FlightHotelSearchPage = () => {
               </button>
             </div>
           )}
+
+
+          {selectedHotel && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setSelectedHotel(null)}>
+              <div className="max-h-[86vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-heading text-2xl font-bold text-[#1E0A4E]">{selectedHotel.name}</h3>
+                    <p className="mt-1 text-sm text-gray-500">{selectedHotel.address ?? 'Dirección no disponible'}</p>
+                  </div>
+                  <button type="button" onClick={() => setSelectedHotel(null)} className="rounded-full border border-gray-200 px-3 py-1 text-sm text-gray-500 hover:bg-gray-50">Cerrar</button>
+                </div>
+
+                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl bg-[#F8FAFC] p-4">
+                    <p className="text-xs font-semibold uppercase text-gray-400">Calificación</p>
+                    <p className="mt-1 text-lg font-bold text-[#1E0A4E]">{selectedHotel.rating ? selectedHotel.rating.toFixed(1) : 'N/D'}</p>
+                    <p className="text-xs text-gray-500">{selectedHotel.googleUserRatingCount ? `${selectedHotel.googleUserRatingCount} reseñas Google` : 'Sin reseñas Google'}</p>
+                  </div>
+                  <div className="rounded-xl bg-[#F8FAFC] p-4">
+                    <p className="text-xs font-semibold uppercase text-gray-400">Tarifas detectadas</p>
+                    <p className="mt-1 text-lg font-bold text-[#1E0A4E]">{selectedHotel.rateCount ?? selectedHotel.rooms.length}</p>
+                    <p className="text-xs text-gray-500">Mismo hotel, diferentes habitaciones/precios</p>
+                  </div>
+                  <div className="rounded-xl bg-[#F8FAFC] p-4">
+                    <p className="text-xs font-semibold uppercase text-gray-400">Rango</p>
+                    <p className="mt-1 text-lg font-bold text-[#1E0A4E]">{formatPrice(selectedHotel.priceMin ?? selectedHotel.price, selectedHotel.currency)}</p>
+                    <p className="text-xs text-gray-500">a {formatPrice(selectedHotel.priceMax ?? selectedHotel.price, selectedHotel.currency)}</p>
+                  </div>
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  <h4 className="font-semibold text-[#1E0A4E]">Habitaciones y tarifas</h4>
+                  {selectedHotel.rooms.length > 0 ? selectedHotel.rooms.map((room, index) => (
+                    <div key={`${room.offerId ?? index}-${room.rateId ?? index}`} className="rounded-xl border border-gray-100 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-[#1E0A4E]">{room.name ?? 'Habitación disponible'}</p>
+                          <p className="text-xs text-gray-500">{room.boardName ?? 'Plan no especificado'} · {room.refundableTag ?? 'Política no especificada'}</p>
+                          <p className="mt-1 text-[11px] text-gray-400">Adultos: {room.adultCount ?? '-'} · Niños: {room.childCount ?? '-'} · Ocupación máx.: {room.maxOccupancy ?? '-'}</p>
+                        </div>
+                        <p className="text-lg font-bold text-[#1E0A4E]">{formatPrice(room.price, room.currency ?? selectedHotel.currency)}</p>
+                      </div>
+                    </div>
+                  )) : (
+                    <p className="rounded-xl bg-[#F8FAFC] p-4 text-sm text-gray-500">LiteAPI no regresó el desglose de habitaciones para esta opción.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
         </main>
       </div>
     </AppLayout>

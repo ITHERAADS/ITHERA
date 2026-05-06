@@ -13,6 +13,10 @@ import {
 import * as NotificationsService from '../notifications/notifications.service';
 
 const isPresent = (value: unknown): boolean => value !== undefined;
+const dbText = (value: string | null | undefined, max = 190): string | null => {
+  if (!value) return null;
+  return value.length > max ? value.slice(0, max) : value;
+};
 
 
 const getVoteLabel = (voteType: ProposalVoteType): string => {
@@ -125,9 +129,9 @@ export const createFlightProposal = async (authUserId: string, payload: SaveFlig
     .insert({
       grupo_id: payload.grupoId,
       tipo_item: 'vuelo',
-      titulo: payload.titulo,
+      titulo: dbText(payload.titulo) ?? payload.titulo,
       descripcion: payload.descripcion ?? null,
-      referencia_externa: payload.vuelo.numeroVuelo ?? null,
+      referencia_externa: dbText(payload.vuelo.numeroVuelo ?? null),
       fuente: payload.fuente,
       payload: payload.payload ?? null,
       estado: 'guardada',
@@ -146,11 +150,11 @@ export const createFlightProposal = async (authUserId: string, payload: SaveFlig
     .from('vuelos')
     .insert({
       propuesta_id: proposal.id_propuesta,
-      aerolinea: payload.vuelo.aerolinea,
-      numero_vuelo: payload.vuelo.numeroVuelo ?? null,
-      origen_codigo: payload.vuelo.origenCodigo,
+      aerolinea: dbText(payload.vuelo.aerolinea) ?? payload.vuelo.aerolinea,
+      numero_vuelo: dbText(payload.vuelo.numeroVuelo ?? null),
+      origen_codigo: dbText(payload.vuelo.origenCodigo, 20) ?? payload.vuelo.origenCodigo,
       origen_nombre: payload.vuelo.origenNombre ?? null,
-      destino_codigo: payload.vuelo.destinoCodigo,
+      destino_codigo: dbText(payload.vuelo.destinoCodigo, 20) ?? payload.vuelo.destinoCodigo,
       destino_nombre: payload.vuelo.destinoNombre ?? null,
       salida: payload.vuelo.salida,
       llegada: payload.vuelo.llegada,
@@ -200,9 +204,9 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
     .insert({
       grupo_id: payload.grupoId,
       tipo_item: 'hospedaje',
-      titulo: payload.titulo,
+      titulo: dbText(payload.titulo) ?? payload.titulo,
       descripcion: payload.descripcion ?? null,
-      referencia_externa: payload.hospedaje.referenciaExterna ?? null,
+      referencia_externa: dbText(payload.hospedaje.referenciaExterna ?? null),
       fuente: payload.fuente,
       payload: payload.payload ?? null,
       estado: 'guardada',
@@ -221,9 +225,9 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
     .from('hospedajes')
     .insert({
       propuesta_id: proposal.id_propuesta,
-      nombre: payload.hospedaje.nombre,
-      proveedor: payload.hospedaje.proveedor ?? null,
-      referencia_externa: payload.hospedaje.referenciaExterna ?? null,
+      nombre: dbText(payload.hospedaje.nombre) ?? payload.hospedaje.nombre,
+      proveedor: dbText(payload.hospedaje.proveedor ?? null),
+      referencia_externa: dbText(payload.hospedaje.referenciaExterna ?? null),
       direccion: payload.hospedaje.direccion ?? null,
       latitud: payload.hospedaje.latitud ?? null,
       longitud: payload.hospedaje.longitud ?? null,
@@ -232,6 +236,13 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
       precio_total: payload.hospedaje.precioTotal ?? null,
       moneda: payload.hospedaje.moneda ?? null,
       calificacion: payload.hospedaje.calificacion ?? null,
+      liteapi_hotel_id: dbText(payload.hospedaje.liteapiHotelId ?? null),
+      liteapi_offer_id: dbText(payload.hospedaje.liteapiOfferId ?? payload.hospedaje.referenciaExterna ?? null),
+      liteapi_prebook_id: dbText(payload.hospedaje.liteapiPrebookId ?? null),
+      google_place_id: dbText(payload.hospedaje.googlePlaceId ?? null),
+      foto_url: payload.hospedaje.fotoUrl ?? null,
+      reserva_estado: payload.hospedaje.reservaEstado ?? 'pendiente',
+      reserva_simulada_payload: payload.hospedaje.reservaSimuladaPayload ?? {},
       payload: payload.hospedaje.payload ?? null,
     });
 
@@ -385,6 +396,13 @@ export const updateProposal = async (proposalId: number, authUserId: string, pay
       if (isPresent(payload.detalle.precioTotal)) hotelPatch.precio_total = payload.detalle.precioTotal;
       if (isPresent(payload.detalle.moneda)) hotelPatch.moneda = payload.detalle.moneda;
       if (isPresent(payload.detalle.calificacion)) hotelPatch.calificacion = payload.detalle.calificacion;
+      if (isPresent(payload.detalle.liteapiHotelId)) hotelPatch.liteapi_hotel_id = payload.detalle.liteapiHotelId ?? null;
+      if (isPresent(payload.detalle.liteapiOfferId)) hotelPatch.liteapi_offer_id = payload.detalle.liteapiOfferId ?? null;
+      if (isPresent(payload.detalle.liteapiPrebookId)) hotelPatch.liteapi_prebook_id = payload.detalle.liteapiPrebookId ?? null;
+      if (isPresent(payload.detalle.googlePlaceId)) hotelPatch.google_place_id = payload.detalle.googlePlaceId ?? null;
+      if (isPresent(payload.detalle.fotoUrl)) hotelPatch.foto_url = payload.detalle.fotoUrl ?? null;
+      if (isPresent(payload.detalle.reservaEstado)) hotelPatch.reserva_estado = payload.detalle.reservaEstado ?? 'pendiente';
+      if (isPresent(payload.detalle.reservaSimuladaPayload)) hotelPatch.reserva_simulada_payload = payload.detalle.reservaSimuladaPayload ?? {};
       if (isPresent(payload.detalle.payload)) hotelPatch.payload = payload.detalle.payload ?? null;
 
       const { error } = await supabase

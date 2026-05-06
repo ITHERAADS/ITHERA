@@ -2,6 +2,19 @@ import { createOfferRequest, DuffelOffer, DuffelSegment, DuffelSlice } from '../
 import { FlightBaggage, FlightOffer, FlightSegment, FlightSliceSummary, SearchFlightsParams } from './flights.entity';
 
 const DEFAULT_MAX_RESULTS = 20;
+const FALLBACK_USD_TO_MXN = 17.2;
+
+function currencyRateToMxn(currency: string | null | undefined): number {
+  const normalized = (currency ?? '').toUpperCase();
+  if (normalized === 'MXN') return 1;
+  if (normalized === 'USD') return Number(process.env['USD_MXN_RATE'] ?? FALLBACK_USD_TO_MXN);
+  return 1;
+}
+
+function convertPriceToMxn(amount: number | null, currency: string | null | undefined): number | null {
+  if (amount === null) return null;
+  return Math.round(amount * currencyRateToMxn(currency) * 100) / 100;
+}
 
 function toNumber(value: string | null | undefined): number | null {
   if (value === undefined || value === null || value === '') return null;
@@ -92,6 +105,9 @@ function normalizeOffer(offer: DuffelOffer, params: SearchFlightsParams): Flight
   const children = Math.max(0, params.children ?? 0);
   const infantsWithoutSeat = Math.max(0, params.infantsWithoutSeat ?? 0);
 
+  const originalPrice = toNumber(offer.total_amount);
+  const originalCurrency = offer.total_currency ?? null;
+
   return {
     id: offer.id ?? '',
     provider: 'duffel',
@@ -107,8 +123,8 @@ function normalizeOffer(offer: DuffelOffer, params: SearchFlightsParams): Flight
     arrivalAt: outboundSlice?.arrivalAt ?? null,
     duration: outboundSlice?.duration ?? null,
     stops: outboundSlice?.stops ?? 0,
-    price: toNumber(offer.total_amount),
-    currency: offer.total_currency ?? null,
+    price: convertPriceToMxn(originalPrice, originalCurrency),
+    currency: 'MXN',
     cabinClass: firstSegment?.passengers?.[0]?.cabin_class ?? params.cabinClass ?? 'economy',
     fareBrand: slices[0]?.fare_brand_name ?? null,
     aircraft: firstSegment?.aircraft?.name ?? null,
@@ -122,7 +138,7 @@ function normalizeOffer(offer: DuffelOffer, params: SearchFlightsParams): Flight
     outboundSlice,
     returnSlice,
     slices: slices.map((slice) => (slice.segments ?? []).map(normalizeSegment)),
-    raw: offer as unknown as Record<string, unknown>,
+    raw: { ...(offer as unknown as Record<string, unknown>), originalPrice, originalCurrency },
   };
 }
 

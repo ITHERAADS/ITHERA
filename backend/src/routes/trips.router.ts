@@ -109,7 +109,6 @@ router.get('/invite-preview/:code', async (req: Request, res: Response): Promise
 
 router.use('/:groupId/itinerary', itineraryRouter);
 router.use('/:groupId/chat', chatRouter);
-router.use('/:groupId', budgetRouter);
 
 router.get('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -287,5 +286,7 @@ router.delete('/:groupId', requireAuth, async (req: Request, res: Response): Pro
     res.status(status).json({ ok: false, error: msg });
   }
 });
+
+router.use('/:groupId', budgetRouter);
 
 export default router;

@@ -20,6 +20,13 @@ export interface SubgroupMembership {
   usuarios?: {
     id_usuario: number
     nombre?: string | null
+    email?: string | null
+    avatar_url?: string | null
+  } | null
+  user?: {
+    id_usuario: number
+    nombre?: string | null
+    email?: string | null
     avatar_url?: string | null
   } | null
 }

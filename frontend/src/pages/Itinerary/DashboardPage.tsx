@@ -1338,6 +1338,7 @@ export function DashboardPage() {
           </div>
           <SubgroupSchedulePanel
             groupId={resolvedGroupId ?? null}
+            group={group}
             isAdmin={isCurrentUserAdmin}
             tripStartDate={group?.fecha_inicio ?? null}
             tripEndDate={group?.fecha_fin ?? null}

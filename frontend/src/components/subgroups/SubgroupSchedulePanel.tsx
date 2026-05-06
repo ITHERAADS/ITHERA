@@ -405,10 +405,13 @@ export function SubgroupSchedulePanel({
         )}
 
         {slots.map((slot) => {
-          const myMembership = slot.memberships.find((membership) =>
-            Number(membership.user_id) === Number(myUserId) || Number(membership.usuarios?.id_usuario) === Number(myUserId),
-          )
-          const mySubgroup = slot.subgroups.find((subgroup) => Number(subgroup.id) === Number(myMembership?.subgroup_id))
+          const myMembership = slot.memberships.find((membership) => {
+            const mUid = membership.user_id != null ? String(membership.user_id) : String(membership.usuarios?.id_usuario)
+            return String(mUid) === String(myUserId)
+          })
+          const mySubgroupId = myMembership?.subgroup_id != null ? String(myMembership.subgroup_id) : null
+          const mySubgroup = slot.subgroups.find((sg) => mySubgroupId != null && String(sg.id) === mySubgroupId)
+
           const draft = activityDraftBySlot[slot.id] ?? {
             query: '',
             description: '',
@@ -560,7 +563,7 @@ export function SubgroupSchedulePanel({
               <div className="grid gap-3 lg:grid-cols-2">
                 {slot.subgroups.map((subgroup) => {
                   const canManageSubgroup = isAdmin || Number(subgroup.created_by) === Number(myUserId)
-                  const isMine = Number(myMembership?.subgroup_id) === Number(subgroup.id)
+                  const isMine = mySubgroupId != null && String(mySubgroupId) === String(subgroup.id)
                   const details = primaryActivity(subgroup)
 
                   return (

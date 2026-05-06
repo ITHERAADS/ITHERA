@@ -1344,6 +1344,10 @@ export function DashboardPage() {
             tripEndDate={group?.fecha_fin ?? null}
             onOpenBudget={() => setActiveTab('pagar')}
             onOpenVault={() => setActiveTab('boveda')}
+            socket={socket}
+            isSocketConnected={isSocketConnected}
+            currentUserId={localUser?.id_usuario != null ? String(localUser.id_usuario) : null}
+            currentUserName={userName}
           />
         </div>
       ) : activeTab === 'buscar' ? (

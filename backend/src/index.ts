@@ -64,6 +64,8 @@ app.use('/api/proposals', votesCommentsRouter);
 app.use('/api/budget', budgetRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/documents', documentsRouter);
+app.use('/api/groups/:groupId/documents', documentsRouter);
+app.use('/api/groups/:groupId/vault', documentsRouter);
 app.use(errorHandler);
 
 // ── Socket.IO + Scheduler ─────────────────────────────────────────

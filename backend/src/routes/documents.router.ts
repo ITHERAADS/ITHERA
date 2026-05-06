@@ -8,7 +8,10 @@ import {
 } from '../domain/documents/documents.service';
 import { MAX_FILE_SIZE_BYTES, ALLOWED_MIME_TYPES } from '../domain/documents/documents.entity';
 
-const router = Router();
+const router = Router({ mergeParams: true });
+
+const resolveTripId = (req: Request): string | null =>
+  req.params.tripId ?? req.params.groupId ?? null;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -22,15 +25,36 @@ const upload = multer({
   },
 });
 
-// POST: Subir documento
-router.post('/:tripId', requireAuth, upload.single('file'), async (req: Request, res: Response) => {
+const parsePersonReferences = (value: unknown): string[] | null => {
+  if (!value || typeof value !== 'string') return null;
   try {
-    const { tripId } = req.params;
-    const userId = req.user?.id; // Usar ID real del token
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.map((item) => String(item));
+  } catch {
+    return null;
+  }
+};
+
+const uploadHandler = async (req: Request, res: Response) => {
+  try {
+    const tripId = resolveTripId(req);
+    const userId = req.user?.id;
     const category = req.body.category || 'otro';
 
+    if (!tripId) return res.status(400).json({ ok: false, error: 'tripId/groupId es requerido' });
     if (!userId) return res.status(401).json({ ok: false, error: 'No autorizado' });
-    if (!req.file) return res.status(400).json({ ok: false, error: 'No se recibió archivo' });
+    if (!req.file) return res.status(400).json({ ok: false, error: 'No se recibio archivo' });
+
+    const metadata = {
+      linked_entity_type: req.body.linked_entity_type || null,
+      linked_entity_id: req.body.linked_entity_id || null,
+      person_reference: req.body.person_reference || null,
+      person_references: parsePersonReferences(req.body.person_references),
+      expense_reason: req.body.expense_reason || null,
+      expense_amount: req.body.expense_amount ? Number(req.body.expense_amount) : null,
+      notes: req.body.notes || null,
+    };
 
     const doc = await uploadDocument({
       tripId,
@@ -40,19 +64,20 @@ router.post('/:tripId', requireAuth, upload.single('file'), async (req: Request,
       mimeType: req.file.mimetype,
       fileSize: req.file.size,
       category,
+      metadata,
     });
 
     res.status(201).json({ ok: true, document: doc });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
-});
+};
 
-// GET: Listar documentos
-router.get('/:tripId', requireAuth, async (req: Request, res: Response) => {
+const listHandler = async (req: Request, res: Response) => {
   try {
-    const { tripId } = req.params;
+    const tripId = resolveTripId(req);
     const userId = req.user?.id;
+    if (!tripId) return res.status(400).json({ ok: false, error: 'tripId/groupId es requerido' });
     if (!userId) return res.status(401).json({ ok: false, error: 'No autorizado' });
 
     const docs = await getDocumentsByTrip(tripId, userId);
@@ -60,13 +85,15 @@ router.get('/:tripId', requireAuth, async (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
-});
+};
 
-// DELETE: Eliminar documento
-router.delete('/:tripId/:docId', requireAuth, async (req: Request, res: Response) => {
+const deleteHandler = async (req: Request, res: Response) => {
   try {
-    const { tripId, docId } = req.params;
+    const tripId = resolveTripId(req);
+    const docId = req.params.docId;
     const userId = req.user?.id;
+    if (!tripId) return res.status(400).json({ ok: false, error: 'tripId/groupId es requerido' });
+    if (!docId) return res.status(400).json({ ok: false, error: 'docId es requerido' });
     if (!userId) return res.status(401).json({ ok: false, error: 'No autorizado' });
 
     await deleteDocument(docId, tripId, userId);
@@ -74,6 +101,15 @@ router.delete('/:tripId/:docId', requireAuth, async (req: Request, res: Response
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
-});
+};
+
+router.post('/:tripId', requireAuth, upload.single('file'), uploadHandler);
+router.get('/:tripId', requireAuth, listHandler);
+router.delete('/:tripId/:docId', requireAuth, deleteHandler);
+
+// Compatibilidad para /api/groups/:groupId/documents y /api/groups/:groupId/vault
+router.post('/', requireAuth, upload.single('file'), uploadHandler);
+router.get('/', requireAuth, listHandler);
+router.delete('/:docId', requireAuth, deleteHandler);
 
 export default router;

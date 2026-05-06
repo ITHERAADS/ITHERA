@@ -8,6 +8,7 @@ export interface TripDocument {
   mime_type?: string;
   file_size?: number;
   category: string;
+  metadata?: Record<string, unknown>;
   created_at?: string;
 }
 

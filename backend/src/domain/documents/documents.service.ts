@@ -7,9 +7,9 @@ const BUCKET = 'trip-documents';
 async function assertUserIsMember(tripId: string | number, userId: string): Promise<void> {
   const { data, error } = await supabaseAdmin
     .from('grupo_miembros')
-    .select('id')
+    .select('id, usuarios!inner(auth_user_id)')
     .eq('grupo_id', tripId)
-    .eq('usuario_id', userId)
+    .eq('usuarios.auth_user_id', userId)
     .maybeSingle();
 
   if (error) throw error;
@@ -24,6 +24,7 @@ export const uploadDocument = async (data: {
   mimeType: string;
   fileSize: number;
   category: string;
+  metadata?: Record<string, unknown>;
 }): Promise<TripDocument> => {
   await assertUserIsMember(data.tripId, data.userId);
 
@@ -55,6 +56,7 @@ export const uploadDocument = async (data: {
       mime_type: data.mimeType,
       file_size: data.fileSize,
       category: data.category,
+      metadata: data.metadata ?? {},
     })
     .select()
     .single();

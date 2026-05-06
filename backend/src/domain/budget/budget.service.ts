@@ -92,31 +92,39 @@ export const ensureGroupAdmin = async (authUserId: string, groupId: string) => {
 };
 
 const getMembers = async (groupId: string): Promise<BudgetMember[]> => {
-  const { data, error } = await supabaseAdmin
+  const { data: memberships, error } = await supabaseAdmin
     .from('grupo_miembros')
-    .select(`
-      id,
-      usuario_id,
-      rol,
-      usuarios (
-        id_usuario,
-        nombre,
-        email,
-        avatar_url
-      )
-    `)
+    .select('id, usuario_id, rol')
     .eq('grupo_id', groupId);
 
   if (error) throw createError(error.message, 500);
 
-  return (data ?? []).map((item: any) => ({
+  const userIds = Array.from(new Set((memberships ?? [])
+    .map((item: any) => Number(item.usuario_id))
+    .filter((id) => Number.isFinite(id))));
+
+  const { data: users, error: usersError } = userIds.length > 0
+    ? await supabaseAdmin
+      .from('usuarios')
+      .select('id_usuario, nombre, email, avatar_url')
+      .in('id_usuario', userIds)
+    : { data: [], error: null };
+
+  if (usersError) throw createError(usersError.message, 500);
+
+  const usersById = new Map((users ?? []).map((user: any) => [String(user.id_usuario), user]));
+
+  return (memberships ?? []).map((item: any) => {
+    const user = usersById.get(String(item.usuario_id));
+    return ({
     id: String(item.id),
     usuario_id: String(item.usuario_id),
     rol: item.rol,
-    nombre: item.usuarios?.nombre ?? item.usuarios?.email ?? `Usuario ${item.usuario_id}`,
-    email: item.usuarios?.email ?? '',
-    avatar_url: item.usuarios?.avatar_url ?? null,
-  }));
+    nombre: user?.nombre ?? user?.email ?? `Usuario ${item.usuario_id}`,
+    email: user?.email ?? '',
+    avatar_url: user?.avatar_url ?? null,
+  });
+  });
 };
 
 const assertUserInGroup = (members: BudgetMember[], userId: string, message: string) => {

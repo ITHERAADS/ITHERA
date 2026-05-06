@@ -108,6 +108,27 @@ const ensureSubgroupInSlot = async (subgroupId: string, slotId: string) => {
   return data;
 };
 
+const getGroupUserProfiles = async (groupId: string) => {
+  const { data: groupMembers, error } = await supabase
+    .from('grupo_miembros')
+    .select('usuario_id')
+    .eq('grupo_id', groupId);
+  if (error) throw new Error(error.message);
+
+  const userIds = Array.from(new Set((groupMembers ?? [])
+    .map((row: any) => Number(row.usuario_id))
+    .filter((id) => Number.isFinite(id))));
+  if (userIds.length === 0) return new Map<number, any>();
+
+  const { data: users, error: usersError } = await supabase
+    .from('usuarios')
+    .select('id_usuario, nombre, email, avatar_url')
+    .in('id_usuario', userIds);
+  if (usersError) throw new Error(usersError.message);
+
+  return new Map((users ?? []).map((user: any) => [Number(user.id_usuario), user]));
+};
+
 export const getSubgroupSchedule = async (authUserId: string, groupId: string) => {
   const member = await ensureGroupMember(authUserId, groupId);
 
@@ -123,10 +144,11 @@ export const getSubgroupSchedule = async (authUserId: string, groupId: string) =
     return { slots: [], myUserId: member.userId };
   }
 
-  const [{ data: subgroups, error: subgroupsError }, { data: activities, error: activitiesError }, { data: memberships, error: membershipsError }] = await Promise.all([
+  const [{ data: subgroups, error: subgroupsError }, { data: activities, error: activitiesError }, { data: memberships, error: membershipsError }, userProfiles] = await Promise.all([
     supabase.from('subgroups').select('*').in('slot_id', slotIds).order('created_at', { ascending: true }),
     supabase.from('subgroup_activities').select('*').in('slot_id', slotIds).order('created_at', { ascending: true }),
-    supabase.from('subgroup_memberships').select('*, usuarios(id_usuario, nombre, avatar_url)').in('slot_id', slotIds),
+    supabase.from('subgroup_memberships').select('*').in('slot_id', slotIds),
+    getGroupUserProfiles(groupId),
   ]);
 
   if (subgroupsError) throw new Error(subgroupsError.message);
@@ -153,7 +175,12 @@ export const getSubgroupSchedule = async (authUserId: string, groupId: string) =
   for (const row of memberships ?? []) {
     const slotId = Number((row as any).slot_id);
     const list = membershipsBySlot.get(slotId) ?? [];
-    list.push(row);
+    const user = userProfiles.get(Number((row as any).user_id)) ?? null;
+    list.push({
+      ...row,
+      usuarios: user,
+      user,
+    });
     membershipsBySlot.set(slotId, list);
   }
 
@@ -256,6 +283,21 @@ export const createSubgroup = async (
     .select('*')
     .single();
   if (error || !data) throw new Error(error?.message ?? 'No se pudo crear subgrupo');
+
+  const { error: membershipError } = await supabase
+    .from('subgroup_memberships')
+    .upsert({
+      slot_id: Number(slotId),
+      subgroup_id: Number((data as any).id),
+      user_id: member.userId,
+      assigned_by: member.userId,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'slot_id,user_id' });
+  if (membershipError) {
+    await supabase.from('subgroups').delete().eq('id', (data as any).id);
+    throw new Error(membershipError.message);
+  }
+
   return data;
 };
 
@@ -317,6 +359,31 @@ export const joinSubgroup = async (
   await ensureSlotInGroup(slotId, groupId);
   if (subgroupId) await ensureSubgroupInSlot(subgroupId, slotId);
 
+  const { data: currentMembership, error: currentMembershipError } = await supabase
+    .from('subgroup_memberships')
+    .select('subgroup_id')
+    .eq('slot_id', slotId)
+    .eq('user_id', member.userId)
+    .maybeSingle();
+  if (currentMembershipError) throw new Error(currentMembershipError.message);
+
+  const currentSubgroupId = (currentMembership as any)?.subgroup_id;
+  if (currentSubgroupId && Number(currentSubgroupId) !== Number(subgroupId)) {
+    const { count, error: countError } = await supabase
+      .from('subgroup_memberships')
+      .select('id', { count: 'exact', head: true })
+      .eq('slot_id', slotId)
+      .eq('subgroup_id', currentSubgroupId)
+      .neq('user_id', member.userId);
+    if (countError) throw new Error(countError.message);
+    if ((count ?? 0) === 0) {
+      throw Object.assign(
+        new Error('El subgrupo debe tener al menos una persona. Eliminalo o espera a que alguien mas se una.'),
+        { statusCode: 400 },
+      );
+    }
+  }
+
   const now = new Date().toISOString();
   const { data, error } = await supabase
     .from('subgroup_memberships')
@@ -341,8 +408,24 @@ export const createSubgroupActivity = async (
   payload: { title: string; description?: string | null; location?: string | null; starts_at?: string | null; ends_at?: string | null },
 ) => {
   const member = await ensureGroupMember(authUserId, groupId);
-  await ensureSlotInGroup(slotId, groupId);
+  const slot = await ensureSlotInGroup(slotId, groupId);
   await ensureSubgroupInSlot(subgroupId, slotId);
+
+  const startsAt = payload.starts_at ?? null;
+  if (startsAt) {
+    const starts = new Date(startsAt);
+    const slotStarts = new Date(String((slot as any).starts_at));
+    const slotEnds = new Date(String((slot as any).ends_at));
+    if (Number.isNaN(starts.getTime()) || starts < slotStarts || starts >= slotEnds) {
+      throw Object.assign(
+        new Error('La hora estimada debe estar dentro del horario de subgrupos y antes de la hora de termino'),
+        { statusCode: 400 },
+      );
+    }
+    if (!isThirtyMinuteBoundary(startsAt)) {
+      throw Object.assign(new Error('La hora estimada debe estar en intervalos de 30 minutos exactos'), { statusCode: 400 });
+    }
+  }
 
   const { data, error } = await supabase
     .from('subgroup_activities')
@@ -353,7 +436,7 @@ export const createSubgroupActivity = async (
       description: payload.description ?? null,
       location: payload.location ?? null,
       starts_at: payload.starts_at ?? null,
-      ends_at: payload.ends_at ?? null,
+      ends_at: payload.ends_at ?? (startsAt ? String((slot as any).ends_at) : null),
       created_by: member.userId,
     })
     .select('*')

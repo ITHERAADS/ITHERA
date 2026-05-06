@@ -19,6 +19,7 @@ interface FormData {
   startDate: string
   endDate: string
   maxMembers: string
+  totalBudget: string
   description: string
   isPublic: boolean
 }
@@ -172,6 +173,7 @@ export function CreateGroupPage() {
     startDate: '',
     endDate: '',
     maxMembers: '10',
+    totalBudget: '',
     description: '',
     isPublic: false,
   })
@@ -191,6 +193,7 @@ export function CreateGroupPage() {
     if (!form.destination) e.destination = 'Selecciona un destino.'
     if (!form.startDate) e.startDate = 'Fecha de inicio requerida.'
     if (!form.endDate) e.endDate = 'Fecha de regreso requerida.'
+    if (!form.totalBudget || Number(form.totalBudget) <= 0) e.totalBudget = 'Define un presupuesto mayor a cero.'
     if (form.startDate && form.endDate && form.startDate > form.endDate)
       e.endDate = 'La fecha de regreso debe ser después de la de inicio.'
     setErrors(e)
@@ -199,6 +202,11 @@ export function CreateGroupPage() {
 
   const handleCreate = async () => {
     if (!validate()) return
+
+    if (!form.totalBudget || Number(form.totalBudget) <= 0) {
+      setErrors((prev) => ({ ...prev, totalBudget: 'Define un presupuesto mayor a cero.' }))
+      return
+    }
 
     if (!accessToken) {
       setServerError('Tu sesión expiró. Vuelve a iniciar sesión.')
@@ -221,6 +229,7 @@ export function CreateGroupPage() {
             fecha_inicio: form.startDate || undefined,
             fecha_fin: form.endDate || undefined,
             maximo_miembros: Number(form.maxMembers),
+            presupuesto_total: Number(form.totalBudget),
           },
         accessToken
       )
@@ -441,6 +450,17 @@ export function CreateGroupPage() {
                   <span className="font-heading font-bold text-[#1E0A4E] text-sm">{form.maxMembers}</span>
                 </div>
               </div>
+            </div>
+            <div className="mt-4">
+              <InputField
+                label="Presupuesto total (MXN)"
+                type="number"
+                placeholder="Ej: 25000"
+                value={form.totalBudget}
+                onChange={set('totalBudget') as (v: string) => void}
+                error={errors.totalBudget}
+                hint="Requisito obligatorio para iniciar el viaje"
+              />
             </div>
           </div>
 

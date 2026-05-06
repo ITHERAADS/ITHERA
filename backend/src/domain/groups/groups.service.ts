@@ -297,6 +297,7 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
       fecha_inicio: payload.fecha_inicio ?? null,
       fecha_fin: payload.fecha_fin ?? null,
       maximo_miembros: payload.maximo_miembros ?? null,
+      presupuesto_total: payload.presupuesto_total,
       codigo_invitacion: codigo,
       creado_por: Number(usuarioId),
       estado: 'activo',

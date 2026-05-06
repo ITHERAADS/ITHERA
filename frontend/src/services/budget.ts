@@ -1,73 +1,205 @@
 import { apiClient } from './apiClient'
 
+export type BudgetCategory = 'transporte' | 'hospedaje' | 'actividad' | 'comida' | 'otro'
+export type BudgetSplitType = 'equitativa' | 'personalizada'
+
 export interface BudgetMember {
   id: string
+  usuario_id: string
   nombre: string
-  email?: string | null
+  email: string
+  avatar_url?: string | null
+  rol: string
 }
 
-export interface BudgetSplit {
+export interface BudgetExpense {
   id: string
-  user_id: string
-  user_name: string
-  share: number
-  settled: boolean
-}
-
-export interface BudgetExpenseApi {
-  id: string
-  group_id: string
-  paid_by_user_id: string
-  paid_by_name: string
-  amount: number
-  description: string
-  category: 'transporte' | 'hospedaje' | 'actividad' | 'comida' | 'otro'
-  split_type: 'equitativa' | 'personalizada'
-  expense_date: string
-  created_at: string
-  updated_at: string
-  splits: BudgetSplit[]
-}
-
-export interface BudgetDashboardApi {
   groupId: string
-  totalBudget: number
-  expenses: BudgetExpenseApi[]
-  members: BudgetMember[]
-  balances: Record<string, number>
+  paidByUserId: string
+  paidByName: string
+  amount: number
+  description: string
+  category: BudgetCategory
+  splitType: BudgetSplitType
+  splitAmounts: Record<string, number>
+  expenseDate: string | null
+  createdAt: string | null
 }
 
-export interface SaveExpensePayload {
-  group_id: string
+export interface BudgetSummary {
+  totalBudget: number
+  committed: number
+  available: number
+  percentCommitted: number
+  categoryTotals: Record<BudgetCategory, number>
+}
+
+export interface BudgetSettlement {
+  from: string
+  to: string
+  amount: number
+}
+
+export interface BudgetPaymentHistoryItem {
+  id: string
+  from: string
+  to: string
+  amount: number
+  paid_at: string
+  created_by_user_id: string
+  note?: string | null
+}
+
+export interface BudgetDashboardResponse {
+  ok: boolean
+  groupId: string
+  myRole: string
+  summary: BudgetSummary
+  members: BudgetMember[]
+  expenses: BudgetExpense[]
+  balances: Record<string, number>
+  settlements: BudgetSettlement[]
+  paymentHistory: BudgetPaymentHistoryItem[]
+}
+
+export interface SaveBudgetExpensePayload {
   paid_by_user_id: string
   amount: number
   description: string
-  category: BudgetExpenseApi['category']
-  split_type: BudgetExpenseApi['split_type']
-  expense_date: string
-  member_ids: string[]
+  category: BudgetCategory
+  split_type: BudgetSplitType
+  member_ids?: string[]
   split_amounts?: Record<string, number>
+  expense_date?: string | null
+}
+
+export interface MarkSettlementPaymentPayload {
+  from_user_id: string
+  to_user_id: string
+  amount: number
+  note?: string | null
 }
 
 export const budgetService = {
   getDashboard: async (groupId: string, token: string) => {
-    const response = await apiClient.get<{ ok: boolean; data: BudgetDashboardApi }>(`/budget/groups/${groupId}/dashboard`, token)
-    return response.data
+    try {
+      return await apiClient.get<BudgetDashboardResponse>(`/groups/${groupId}/budget`, token)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      const shouldFallback =
+        message.includes('Cannot GET /api/groups/') ||
+        message.includes('HTTP 404')
+
+      if (!shouldFallback) throw error
+      return apiClient.get<BudgetDashboardResponse>(`/budget/${groupId}`, token)
+    }
   },
 
-  createExpense: async (payload: SaveExpensePayload, token: string) => {
-    return apiClient.post<{ ok: boolean; data: unknown }>('/budget/expenses', payload, token)
+  updateBudget: async (groupId: string, totalBudget: number, token: string) => {
+    try {
+      return await apiClient.patch<BudgetDashboardResponse>(
+        `/groups/${groupId}/budget`,
+        { totalBudget },
+        token
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      const shouldFallback =
+        message.includes('Cannot PATCH /api/groups/') ||
+        message.includes('HTTP 404')
+
+      if (!shouldFallback) throw error
+      return apiClient.patch<BudgetDashboardResponse>(
+        `/budget/${groupId}`,
+        { totalBudget },
+        token
+      )
+    }
   },
 
-  updateExpense: async (expenseId: string, payload: SaveExpensePayload, token: string) => {
-    return apiClient.put<{ ok: boolean; data: unknown }>(`/budget/expenses/${expenseId}`, payload, token)
+  createExpense: async (groupId: string, payload: SaveBudgetExpensePayload, token: string) => {
+    try {
+      return await apiClient.post<BudgetDashboardResponse>(
+        `/groups/${groupId}/expenses`,
+        payload,
+        token
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      const shouldFallback =
+        message.includes('Cannot POST /api/groups/') ||
+        message.includes('HTTP 404')
+
+      if (!shouldFallback) throw error
+      return apiClient.post<BudgetDashboardResponse>(
+        `/budget/${groupId}/expenses`,
+        payload,
+        token
+      )
+    }
+  },
+
+  updateExpense: async (groupId: string, expenseId: string, payload: SaveBudgetExpensePayload, token: string) => {
+    try {
+      return await apiClient.put<BudgetDashboardResponse>(
+        `/groups/${groupId}/expenses/${expenseId}`,
+        payload,
+        token
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      const shouldFallback =
+        message.includes('Cannot PUT /api/groups/') ||
+        message.includes('HTTP 404')
+
+      if (!shouldFallback) throw error
+      return apiClient.put<BudgetDashboardResponse>(
+        `/budget/${groupId}/expenses/${expenseId}`,
+        payload,
+        token
+      )
+    }
   },
 
   deleteExpense: async (groupId: string, expenseId: string, token: string) => {
-    return apiClient.delete<{ ok: boolean }>(`/budget/groups/${groupId}/expenses/${expenseId}`, token)
+    try {
+      return await apiClient.delete<BudgetDashboardResponse>(
+        `/groups/${groupId}/expenses/${expenseId}`,
+        token
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      const shouldFallback =
+        message.includes('Cannot DELETE /api/groups/') ||
+        message.includes('HTTP 404')
+
+      if (!shouldFallback) throw error
+      return apiClient.delete<BudgetDashboardResponse>(
+        `/budget/${groupId}/expenses/${expenseId}`,
+        token
+      )
+    }
   },
 
-  updateGroupBudget: async (groupId: string, totalBudget: number, token: string) => {
-    return apiClient.patch<{ ok: boolean; data: unknown }>(`/budget/groups/${groupId}/budget`, { totalBudget }, token)
+  markSettlementPaid: async (groupId: string, payload: MarkSettlementPaymentPayload, token: string) => {
+    try {
+      return await apiClient.post<BudgetDashboardResponse>(
+        `/groups/${groupId}/settlements/payments`,
+        payload,
+        token
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      const shouldFallback =
+        message.includes('Cannot POST /api/groups/') ||
+        message.includes('HTTP 404')
+
+      if (!shouldFallback) throw error
+      return apiClient.post<BudgetDashboardResponse>(
+        `/budget/${groupId}/settlements/payments`,
+        payload,
+        token
+      )
+    }
   },
 }

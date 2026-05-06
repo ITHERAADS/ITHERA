@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { AppLayout } from '../../components/layout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { apiClient } from '../../services/apiClient'
@@ -402,6 +403,10 @@ export function ProfilePage() {
   // ── Preferences state ─────────────────────────────────────────────────────
   const [notifEmail, setNotifEmail] = useState(true)
   const [notifGroup, setNotifGroup] = useState(true)
+  const [notifVotes, setNotifVotes] = useState(true)
+  const [notifFinance, setNotifFinance] = useState(true)
+  const [notifFlights, setNotifFlights] = useState(true)
+  const [notifHotels, setNotifHotels] = useState(true)
 
   useEffect(() => {
     if (accessToken) {
@@ -410,25 +415,52 @@ export function ProfilePage() {
           if (res.ok && res.preferences) {
             setNotifEmail(res.preferences.notificaciones_correo)
             setNotifGroup(res.preferences.notificaciones_grupo)
+            setNotifVotes(res.preferences.notificaciones_votos ?? true)
+            setNotifFinance(res.preferences.notificaciones_finanzas ?? true)
+            setNotifFlights(res.preferences.notificaciones_vuelos ?? true)
+            setNotifHotels(res.preferences.notificaciones_hospedajes ?? true)
           }
         })
         .catch(console.error)
     }
   }, [accessToken])
 
-  const handleTogglePref = async (key: 'notificaciones_correo' | 'notificaciones_grupo', val: boolean) => {
+  type NotificationPreferenceKey =
+    | 'notificaciones_correo'
+    | 'notificaciones_grupo'
+    | 'notificaciones_votos'
+    | 'notificaciones_finanzas'
+    | 'notificaciones_vuelos'
+    | 'notificaciones_hospedajes'
+
+  const preferenceSetters: Record<NotificationPreferenceKey, Dispatch<SetStateAction<boolean>>> = {
+    notificaciones_correo: setNotifEmail,
+    notificaciones_grupo: setNotifGroup,
+    notificaciones_votos: setNotifVotes,
+    notificaciones_finanzas: setNotifFinance,
+    notificaciones_vuelos: setNotifFlights,
+    notificaciones_hospedajes: setNotifHotels,
+  }
+
+  const preferenceValues: Record<NotificationPreferenceKey, boolean> = {
+    notificaciones_correo: notifEmail,
+    notificaciones_grupo: notifGroup,
+    notificaciones_votos: notifVotes,
+    notificaciones_finanzas: notifFinance,
+    notificaciones_vuelos: notifFlights,
+    notificaciones_hospedajes: notifHotels,
+  }
+
+  const handleTogglePref = async (key: NotificationPreferenceKey, val: boolean) => {
     if (!accessToken) return
-    const prevEmail = notifEmail
-    const prevGroup = notifGroup
-    if (key === 'notificaciones_correo') setNotifEmail(val)
-    if (key === 'notificaciones_grupo') setNotifGroup(val)
+    const prevValue = preferenceValues[key]
+    preferenceSetters[key](val)
 
     try {
       await notificationsService.updatePreferences({ [key]: val }, accessToken)
     } catch (err) {
       console.error('Failed to update pref', err)
-      if (key === 'notificaciones_correo') setNotifEmail(prevEmail)
-      if (key === 'notificaciones_grupo') setNotifGroup(prevGroup)
+      preferenceSetters[key](prevValue)
     }
   }
 
@@ -748,6 +780,30 @@ export function ProfilePage() {
                 description="Alertas cuando un miembro realiza cambios en el grupo."
                 checked={notifGroup}
                 onChange={(val) => handleTogglePref('notificaciones_grupo', val)}
+              />
+              <Toggle
+                label="Votos y propuestas"
+                description="Avisos cuando votan o cambian propuestas colaborativas."
+                checked={notifVotes}
+                onChange={(val) => handleTogglePref('notificaciones_votos', val)}
+              />
+              <Toggle
+                label="Finanzas"
+                description="Avisos cuando registran gastos, pagos o ajustes de presupuesto."
+                checked={notifFinance}
+                onChange={(val) => handleTogglePref('notificaciones_finanzas', val)}
+              />
+              <Toggle
+                label="Vuelos"
+                description="Avisos cuando alguien propone o actualiza vuelos."
+                checked={notifFlights}
+                onChange={(val) => handleTogglePref('notificaciones_vuelos', val)}
+              />
+              <Toggle
+                label="Hospedajes"
+                description="Avisos cuando alguien propone o actualiza hospedajes."
+                checked={notifHotels}
+                onChange={(val) => handleTogglePref('notificaciones_hospedajes', val)}
               />
             </div>
           </section>

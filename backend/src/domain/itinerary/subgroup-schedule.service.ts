@@ -120,11 +120,15 @@ const getGroupUserProfiles = async (groupId: string) => {
     .filter((id) => Number.isFinite(id))));
   if (userIds.length === 0) return new Map<number, any>();
 
-  const { data: users, error: usersError } = await supabase
-    .from('usuarios')
-    .select('id_usuario, nombre, email, avatar_url')
-    .in('id_usuario', userIds);
-  if (usersError) throw new Error(usersError.message);
+  const users = await Promise.all(userIds.map(async (userId) => {
+    const { data, error: userError } = await supabase
+      .from('usuarios')
+      .select('id_usuario, nombre, email, avatar_url')
+      .eq('id_usuario', userId)
+      .maybeSingle();
+    if (userError) throw new Error(userError.message);
+    return data;
+  }));
 
   return new Map((users ?? []).map((user: any) => [Number(user.id_usuario), user]));
 };

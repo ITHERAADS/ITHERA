@@ -426,14 +426,15 @@ export const getGroupMembers = async (authUserId: string, groupId: string) => {
     .map((item: any) => Number(item.usuario_id))
     .filter((id) => Number.isFinite(id))));
 
-  const { data: users, error: usersError } = userIds.length > 0
-    ? await supabase
+  const users = await Promise.all(userIds.map(async (userId) => {
+    const { data, error: userError } = await supabase
       .from('usuarios')
       .select('id_usuario, nombre, email, avatar_url')
-      .in('id_usuario', userIds)
-    : { data: [], error: null };
-
-  if (usersError) throw new Error(usersError.message);
+      .eq('id_usuario', userId)
+      .maybeSingle();
+    if (userError) throw new Error(userError.message);
+    return data;
+  }));
 
   const usersById = new Map((users ?? []).map((user: any) => [String(user.id_usuario), user]));
 
@@ -639,14 +640,15 @@ export const createGroupInvitations = async (
     .map((item: any) => Number(item.usuario_id))
     .filter((id) => Number.isFinite(id))));
 
-  const { data: memberUsers, error: memberUsersError } = memberUserIds.length > 0
-    ? await supabase
+  const memberUsers = await Promise.all(memberUserIds.map(async (userId) => {
+    const { data, error: memberUserError } = await supabase
       .from('usuarios')
       .select('id_usuario, email')
-      .in('id_usuario', memberUserIds)
-    : { data: [], error: null };
-
-  if (memberUsersError) throw new Error(memberUsersError.message);
+      .eq('id_usuario', userId)
+      .maybeSingle();
+    if (memberUserError) throw new Error(memberUserError.message);
+    return data;
+  }));
 
   const memberEmails = new Set(
     (memberUsers ?? [])

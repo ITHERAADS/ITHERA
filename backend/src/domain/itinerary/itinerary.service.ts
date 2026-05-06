@@ -753,3 +753,79 @@ export const deleteGroupActivity = async (
 
   return true;
 };
+
+
+export const getGroupDashboard = async (
+  authUserId: string,
+  groupId: string
+) => {
+  await ensureGroupMember(authUserId, groupId);
+
+  // 1. Info general del grupo
+  const { data: group, error: groupError } = await supabase
+    .from('grupos_viaje')
+    .select('id, nombre, destino, fecha_inicio, fecha_fin, estado')
+    .eq('id', groupId)
+    .single();
+
+  if (groupError || !group) {
+    throw Object.assign(new Error('Grupo no encontrado'), { statusCode: 404 });
+  }
+
+  // 2. Resumen del itinerario
+  const { itinerary, days } = await getGroupItinerary(authUserId, groupId);
+
+  const totalDays = days.length;
+  const now = new Date();
+
+  const nextActivity = days
+    .flatMap((day) => day.activities)
+    .find((activity) => {
+      if (!activity.time || activity.time === 'Hora pendiente') return false;
+      return activity.status === 'confirmada';
+    }) ?? null;
+
+  // 3. Resumen del presupuesto
+  const { data: expenses, error: expensesError } = await supabase
+    .from('expenses')
+    .select('amount')
+    .eq('group_id', groupId);
+
+  const totalSpent = expensesError
+    ? 0
+    : (expenses ?? []).reduce((sum, e) => sum + Number(e.amount), 0);
+
+  // 4. Miembros del grupo
+  const { data: members, error: membersError } = await supabase
+    .from('grupo_miembros')
+    .select('usuario_id, rol, usuarios(nombre, avatar_url)')
+    .eq('grupo_id', groupId);
+
+  const memberList = (members ?? []).map((m: any) => ({
+    userId: String(m.usuario_id),
+    rol: m.rol,
+    nombre: m.usuarios?.nombre ?? 'Sin nombre',
+    avatarUrl: m.usuarios?.avatar_url ?? null,
+  }));
+
+  return {
+    group: {
+      id: String(group.id),
+      nombre: group.nombre,
+      destino: group.destino,
+      fechaInicio: group.fecha_inicio,
+      fechaFin: group.fecha_fin,
+      estado: group.estado,
+    },
+    itinerarySummary: {
+      totalDays,
+      hasItinerary: itinerary !== null,
+      nextActivity,
+    },
+    budgetSummary: {
+      totalSpent: Math.round(totalSpent * 100) / 100,
+      currency: 'MXN',
+    },
+    members: memberList,
+  };
+};

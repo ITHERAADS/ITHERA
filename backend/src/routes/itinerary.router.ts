@@ -151,3 +151,29 @@ router.delete('/activities/:activityId', requireAuth, async (req: Request, res: 
   }
 });
 export default router;
+
+router.get('/dashboard', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const groupId = req.params.groupId;
+
+    if (!groupId) {
+      res.status(400).json({ ok: false, error: 'groupId inválido' });
+      return;
+    }
+
+    const dashboard = await ItineraryService.getGroupDashboard(req.user!.id, groupId);
+
+    res.status(200).json({
+      ok: true,
+      ...dashboard,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+
+    res.status(status).json({
+      ok: false,
+      error: msg,
+    });
+  }
+});

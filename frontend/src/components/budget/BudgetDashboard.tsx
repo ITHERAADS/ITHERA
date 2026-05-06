@@ -79,7 +79,7 @@ interface Props {
   groupId: string | null
 }
 
-export const BudgetDashboard: FC<Props> = ({ groupId }) => {
+export const BudgetDashboard: FC<Props> = () => {
   const [expenses, setExpenses] = useState<Expense[]>(MOCK_EXPENSES)
   const [showModal, setShowModal] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)

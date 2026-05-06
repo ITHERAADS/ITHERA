@@ -74,6 +74,36 @@ export interface SaveFlightProposalRequest {
   }
 }
 
+
+export interface SaveHotelProposalRequest {
+  grupoId: string
+  fuente: string
+  titulo: string
+  descripcion?: string | null
+  payload?: Record<string, unknown> | null
+  hospedaje: {
+    nombre: string
+    proveedor?: string | null
+    referenciaExterna?: string | null
+    direccion?: string | null
+    latitud?: number | null
+    longitud?: number | null
+    checkIn?: string | null
+    checkOut?: string | null
+    precioTotal?: number | null
+    moneda?: string | null
+    calificacion?: number | null
+    liteapiHotelId?: string | null
+    liteapiOfferId?: string | null
+    liteapiPrebookId?: string | null
+    googlePlaceId?: string | null
+    fotoUrl?: string | null
+    reservaEstado?: string | null
+    reservaSimuladaPayload?: Record<string, unknown> | null
+    payload?: Record<string, unknown> | null
+  }
+}
+
 export interface VoteResult {
   id_propuesta: string
   tipo_item: string
@@ -160,6 +190,22 @@ export const proposalsService = {
   saveFlightProposal: async (body: SaveFlightProposalRequest, token: string) => {
     const response = await apiClient.post<{ ok: boolean; message: string; data?: RawProposal; proposal?: RawProposal }>(
       '/proposals/flights',
+      body,
+      token
+    )
+
+    return {
+      ok: response.ok,
+      message: response.message,
+      proposal: normalizeProposal(response.proposal ?? response.data ?? {}),
+    }
+  },
+
+
+
+  saveHotelProposal: async (body: SaveHotelProposalRequest, token: string) => {
+    const response = await apiClient.post<{ ok: boolean; message: string; data?: RawProposal; proposal?: RawProposal }>(
+      '/proposals/hotels',
       body,
       token
     )

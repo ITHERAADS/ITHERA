@@ -1,0 +1,3434 @@
+                       ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+___
+
+
+
+
+      Página 1 de 68
+                                                           ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+
+INTEGRANTES DEL EQUIPO
+#       Nombre completo                     Rol / Subequipo
+    1   Ayala Baños Bryan                   Frontend — Líder
+    2   Romero Bautista Demian              SCRUM Master
+    3   Juarez Gomez Carlos Daniel          Frontend Developer
+    4   Hernández Flores Gabriel            Análisis y Documentación — Líder
+    5   López Toledo Kevin Antonio          Frontend Developer
+    6   Riaño Ortiz Ali Yair                Backend Developer
+    7   Cárdenas Hernandez Ximena           Frontend Developer
+    8   Sangrador Curiel Yael Sebastian     Backend Developer
+    9   Díaz Maturano Emilio                Análisis y Documentación
+ 10     Correa Cano Edgar                   Análisis y Documentación
+ 11     Ferreira Rodriguez Hector Said      Backend — Líder
+ 12     Olivares Valdez Leonardo Esau       Backend Developer¿
+
+
+
+
+                                          Página 2 de 68
+                                                       ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+Índice de Contenido
+Índice de Contenido​                                                                       3
+1. Descripción General del Proyecto​                                                       4
+2. Sprint 1 — Planteamiento Inicial y Configuración del Entorno​                           5
+3. Sprint 2 — Análisis, Diseño Visual y Bases de Arquitectura​                            10
+4. Sprint 3 — Identidad de Marca, Arquitectura Base y Avance de Análisis​                 14
+5 Sprint 4 — Casos de uso, Interfaces. Mock-ups y Avance de Backend​                      19
+6. Sprint 5 — Casos de uso, Interfaces. Mock-ups y Avance de Backend​                     24
+7. Sprint 6 — Diagramas y detalles de casos de uso, autenticación del sistema​            29
+8. Sprint 7 — Módulo de Itinerario, Dashboard e Integración​                              34
+9. Sprint 8 — Recuperación Técnica y Cierre de Módulos Base​                              39
+10. Planeación Sprint 9 — Sincronización en Tiempo Real e Integración de APIs​            44
+11. Análisis del Sistema​                                                                 45
+12. Diseño de Pantallas​                                                                  48
+13. Planeación de Sprints​                                                                49
+14. Resultados de Asistencia — Daily SCRUM (Actualizado al Sprint 8)​                     67
+
+
+
+
+                                      Página 3 de 68
+                                                               ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+1. Descripción General del Proyecto
+ITHERA es un ecosistema digital centralizado desarrollado como proyecto académico de
+Análisis y Diseño de Sistemas (ADS) en la Escuela Superior de Cómputo del IPN, supervisado
+por la Profesora Idalia Maldonado Castillo. Su propósito es resolver la problemática de la
+organización dispersa de viajes grupales, unificando logística de transporte, hospedaje,
+presupuesto e itinerario en una sola interfaz con sincronización multiusuario en tiempo real
+mediante WebSockets.
+El desarrollo sigue la metodología Scrum con sprints de 1 semana cada uno. El equipo está
+conformado por 12 integrantes distribuidos en 4 células activas: Backend, Frontend, Análisis y
+Documentación, y el Liderazgo Scrum (SCRUM Master + Product Owner). Las áreas de
+Pruebas, Base de Datos y DevOps están programadas para sprints posteriores.
+
+
+ Área                    Tecnología / Herramienta
+ Backend                 Node.js · TypeScript · Express.js · Socket.io · PostgreSQL · Redis
+ Frontend                React.js · Tailwind CSS · Figma (diseño de interfaces)
+ Docs / ADS              Notion · Google Docs · Diagramas UML
+ Gestión                 Notion (Kanban) · Google Sheets (seguimiento) · GitHub (Gitflow)
+ APIs Externas           Amadeus · Kiwi · Google Maps · OpenWeatherMap · Navitia ·
+                         ExchangeRate-API
+
+
+
+
+                                          Página 4 de 68
+                                                                      ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+2. Sprint 1 — Planteamiento Inicial y Configuración del
+Entorno
+Período: 2 de marzo — 5 de marzo de 2026
+
+
+2.1 Objetivo del Sprint 1
+El Sprint 1 tuvo como propósito fundamental sentar las bases del proyecto: definir el alcance
+técnico y funcional del sistema, configurar el entorno colaborativo de trabajo y establecer los
+primeros artefactos de análisis. Este sprint fue el punto de arranque desde el cual el equipo
+alineó su metodología, sus herramientas y su visión de producto antes de entrar al desarrollo
+iterativo.
+Los objetivos específicos del Sprint 1 fueron:
+      •​    Definir actores, requerimientos funcionales y no funcionales del sistema ITHERA.
+      •​    Configurar el repositorio en GitHub bajo la metodología Gitflow para el control de
+            versiones.
+      •​    Establecer el tablero Kanban en Notion como herramienta central de gestión del equipo.
+      •​    Configurar el tablero de seguimiento de actividades en Google Sheets (Excel) para el
+            registro de cumplimiento de sprints.
+      •​    Crear el servidor de comunicación en Discord con canales diferenciados por célula de
+            trabajo.
+      •​    Configurar el entorno de diseño en Figma con la cuenta institucional y el espacio de
+            trabajo compartido del equipo.
+      •​    Investigar y analizar el stack tecnológico y las APIs externas a integrar (vuelos,
+            hospedaje, clima y transporte).
+      •​    Finalizar y entregar el documento de Planteamiento Inicial del proyecto.
+
+
+2.2 Actividades Realizadas — Sprint 1
+2.2.1 Subequipo Backend / Investigación Técnica
+El subequipo de Backend llevó a cabo la investigación del stack tecnológico, la selección de
+APIs externas y la definición de la estructura de sprints. Todas las actividades fueron
+completadas dentro del período del Sprint 1.
+
+
+ #         Actividad                          Responsable(s)           Estado             % Cumpl.
+  1        Definición de actores y            Gabriel Hernández        Completado               80%
+           requerimientos funcionales y no    Flores, Emilio Díaz
+           funcionales                        Maturano, Edgar
+                                              Correa Cano
+  2        Configuración del repositorio en   Demian Romero            Completado              100%
+           GitHub (Gitflow) y tablero en      Bautista
+           Notion
+  3        Configuración del entorno de       Kevin Antonio López      Completado              100%
+           diseño en Figma (cuenta            Toledo, Carlos Daniel
+
+
+
+                                                 Página 5 de 68
+                                                                   ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+      institucional y espacio de trabajo   Juárez Gómez, Bryan
+      compartido)                          Ayala Baños
+  4   Investigación y análisis del stack   Hector Said Ferreira     Completado              100%
+      tecnológico (Node.js,                Rodríguez, Yael
+      PostgreSQL, APIs externas) y         Sebastián Sangrador
+      arquitectura del sistema             Curiel
+  5   Investigación de APIs y servicios    Yael Sebastián           Completado              100%
+      externos (vuelos, hospedajes,        Sangrador Curiel, Ali
+      clima y transporte)                  Yair Riaño Ortiz,
+                                           Leonardo Esaú
+                                           Olivares Valdez
+  6   Definición de Sprints para           Yael Sebastián           Completado              100%
+      backend                              Sangrador Curiel,
+                                           Hector Said Ferreira
+                                           Rodríguez
+  7   Finalización y entrega del           Equipo completo —        Completado              100%
+      documento de Planteamiento           Coordinación: Demian
+      Inicial                              Romero Bautista
+  8   Establecimiento del tablero          Demian Romero            Completado              100%
+      Kanban en Notion                     Bautista, Ximena
+                                           Cárdenas Hernández
+  9   Configuración del tablero de         Demian Romero            Completado              100%
+      seguimiento en Google Sheets         Bautista, Ximena
+      (Excel)                              Cárdenas Hernández
+ 10   Establecimiento del servidor de      Demian Romero            Completado              100%
+      comunicación en Discord y            Bautista
+      definición de canales
+
+
+
+2.2.2 Subequipo Frontend / Configuración de Diseño
+El subequipo de Frontend configuró el entorno de trabajo en Figma con acceso compartido
+entre todos los miembros del equipo, preparando la plataforma para el inicio del diseño de
+interfaces en el Sprint 2.
+
+
+ #    Actividad                            Responsable(s)           Estado             % Cumpl.
+  1   Configuración del entorno de         Kevin Antonio López      Completado              100%
+      diseño en Figma: creación de         Toledo, Carlos Daniel
+      cuenta institucional y espacio de    Juárez Gómez, Bryan
+      trabajo compartido del equipo        Ayala Baños
+
+
+
+2.2.3 Subequipo Análisis y Documentación
+La célula de Análisis y Documentación fue responsable de la generación del artefacto central
+del Sprint 1: la definición formal de los requerimientos del sistema y la descripción de actores,
+que sirvió como base para todos los sprints subsecuentes.
+
+
+
+
+                                              Página 6 de 68
+                                                                   ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+ #    Actividad                              Responsable(s)         Estado             % Cumpl.
+  1   Definición de actores,                 Gabriel Hernández      Completado              100%
+      requerimientos funcionales y no        Flores, Emilio Díaz
+      funcionales del sistema iThera         Maturano, Edgar
+                                             Correa Cano
+
+
+
+2.2.4 SCRUM Master
+Demian Romero Bautista cumplió íntegramente con su rol de SCRUM Master durante el Sprint
+1, conduciendo las ceremonias Scrum, configurando las herramientas de gestión del equipo y
+elaborando el informe de sprint.
+
+
+ #    Actividad                              Responsable(s)         Estado             % Cumpl.
+  1   Conducción de sesiones Daily           Demian Romero          Completado              100%
+      SCRUM (5 sesiones del sprint)          Bautista
+  2   Facilitación de la planificación del   Demian Romero          Completado              100%
+      Sprint 1 y distribución de tareas      Bautista
+  3   Elaboración del Informe de Sprint      Demian Romero          Completado              100%
+      No. 1                                  Bautista
+
+
+
+2.2.5 Product Owner
+Ximena Cárdenas Hernández ejerció su rol de Product Owner participando activamente en la
+definición del alcance, la gestión del backlog y la aclaración de requisitos del sistema con el
+equipo de análisis.
+
+
+ #    Actividad                              Responsable(s)         Estado             % Cumpl.
+  1   Disponibilidad continua para           Ximena Cárdenas        Completado              100%
+      aclaración de requisitos y             Hernández
+      definición del alcance
+  2   Participación activa en la             Ximena Cárdenas        Completado              100%
+      planificación del Sprint 1             Hernández
+  3   Gestión y priorización del             Ximena Cárdenas        Completado              100%
+      Backlog del producto (Sprint 1)        Hernández
+
+
+
+2.2.6 Gestión — Herramientas Colaborativas
+Como parte esencial del Sprint 1, el equipo configuró el ecosistema de herramientas
+colaborativas que sería utilizado durante todo el proyecto. Estas tres iniciativas de gestión
+garantizaron la transparencia, trazabilidad y comunicación efectiva entre los 12 integrantes a lo
+largo de todos los sprints.
+
+
+ #    Actividad                              Responsable(s)         Estado             % Cumpl.
+
+
+
+
+                                                Página 7 de 68
+                                                                   ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+ 1    Establecimiento del tablero            Demian Romero          Completado              100%
+      Kanban en Notion: configuración        Bautista, Ximena
+      del espacio de trabajo, definición     Cárdenas Hernández
+      de columnas (Backlog, En
+      Progreso, Revisión, Completado)
+      y estructura de tarjetas por sprint
+ 2    Configuración del tablero de           Demian Romero          Completado              100%
+      seguimiento en Google Sheets           Bautista, Ximena
+      (Excel): creación de la matriz de      Cárdenas Hernández
+      control de actividades, registro
+      histórico de cumplimiento por
+      sprint y sección de justificaciones
+ 3    Establecimiento del servidor de        Demian Romero          Completado              100%
+      Discord: creación del servidor,        Bautista
+      definición de canales por célula
+      (backend, frontend,
+      documentación, general,
+      anuncios) y configuración de
+      roles
+
+
+
+2.3 Resumen de Cumplimiento — Sprint 1
+Todas las actividades planificadas para el Sprint 1 fueron completadas satisfactoriamente al
+100% antes del cierre del sprint (5 de marzo de 2026).
+
+
+ Categoría                  Total           Complet    En         Bloquea    %           Story Pts
+                            Tareas          adas       Progreso   das        Cumpli
+                                                                             miento
+ Backend / Investigación         5             5           0         0         100%            5
+ Frontend / Diseño               2             2           0         0         100%            2
+ Documentación / ADS             1             1           0         0         80%             1
+ SCRUM Master                    3             3           0         0         100%            3
+ Product Owner                   3             3           0         0         100%            3
+ Gestión (Notion, Sheets,        3             3           0         0         100%            3
+ Discord)
+ TOTAL SPRINT 1                 17            17           0         0         100%            17
+
+
+
+2.4 Observaciones del SCRUM Master — Sprint 1
+Cumplimiento general del Sprint 1:
+El Sprint 1 fue completado de manera exitosa. La totalidad de las actividades planeadas para
+los subequipos activos fueron finalizadas al 100% antes del cierre del sprint. El equipo
+demostró un alto nivel de compromiso desde el inicio del proyecto, lo cual estableció una base
+sólida para los sprints de desarrollo que seguirían.
+
+
+
+
+                                                Página 8 de 68
+                                                             ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+Logros destacados del Sprint 1:
+   •​   El documento de Planteamiento Inicial fue finalizado y entregado con todos sus
+        componentes: requerimientos funcionales y no funcionales, descripción de actores,
+        reglas de negocio, stack tecnológico y plan de sprints completo.
+   •​   El ecosistema de herramientas colaborativas (Notion, Google Sheets, Discord, GitHub)
+        quedó completamente operativo, permitiendo la coordinación eficiente de los 12
+        integrantes desde el primer día.
+   •​   El tablero Kanban en Notion quedó configurado con la estructura de sprints, facilitando
+        la visibilidad del progreso en tiempo real para todo el equipo.
+   •​   La investigación de APIs externas permitió tomar decisiones informadas sobre la
+        arquitectura del sistema antes de iniciar el desarrollo.
+
+Áreas de atención:
+   •​   Se detectó desde la Semana 1 una tendencia de inasistencias en Olivares Valdez
+        Leonardo Esaú, con 11 faltas justificadas distribuidas entre las semanas 1 y 2. Se
+        estableció seguimiento formal para el Sprint 2.
+   •​   Se recomendó al equipo mantener las tarjetas del tablero Kanban actualizadas en
+        tiempo real durante el Sprint 2 para mejorar la visibilidad del progreso diario.
+
+Próximos pasos — Sprint 2:
+Avanzar al 50% en los Diagramas de Casos de Uso, generar la definición inicial de Reglas de
+Negocio, producir el Diccionario de Datos en borrador, diseñar las vistas principales en Figma e
+iniciar la construcción del modelo Entidad-Relación.
+
+
+
+
+                                          Página 9 de 68
+                                                                        ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+3. Sprint 2 — Análisis, Diseño Visual y Bases de Arquitectura
+Período: 5 de marzo — 12 de marzo de 2026
+
+
+3.1 Objetivo del Sprint 2
+El Sprint 2 tuvo como propósito avanzar en el análisis formal del sistema, establecer el diseño
+visual de la plataforma y sentar las bases de la arquitectura backend:
+     •​    Completar el 50% de los Diagramas de Casos de Uso.
+     •​    Generar la Definición inicial de Reglas de Negocio del sistema.
+     •​    Producir el Diccionario de Datos en versión borrador.
+     •​    Diseñar las vistas principales de Login, Registro y Landing Page en Figma.
+     •​    Analizar y normalizar las estructuras de datos de las APIs externas seleccionadas.
+     •​    Investigar y validar los límites de uso (cuota) de las APIs de vuelos y hospedaje.
+     •​    Iniciar la construcción del modelo Entidad-Relación del sistema.
+     •​    Definir el logotipo y sistema de diseño visual del proyecto iThera.
+     •​    Consolidar el tablero Kanban y los flujos del SCRUM Master.
+     •​    Gestionar el backlog y la planificación del sprint por el Product Owner.
+
+
+3.2 Actividades Realizadas por Subequipo — Sprint 2
+3.2.1 Subequipo Backend
+El subequipo de Backend realizó investigación, análisis y diseño de la capa de datos y
+servicios. Todas las tareas fueron finalizadas antes del cierre del sprint.
+ #        Actividad                            Responsable(s)            Estado             % Cumpl.
+ 1        Definición de Sprint del equipo      Yael Sangrador Curiel     Completado              100%
+          del Backend
+ 2        Investigación y análisis de APIs y   Yael Sangrador Curiel     Completado              100%
+          revisión de límites de uso (cuota)
+ 3        Normalización de Vuelos y            Yael Sangrador Curiel,    Completado              100%
+          Hospedajes (20%)                     Hector Said Ferreira
+                                               Rodríguez
+ 4        Diagrama de secuencia del flujo      Hector Said Ferreira      Completado              100%
+          de bloqueo en tiempo real            Rodríguez
+ 5        Propuesta inicial del modelo         Olivarez Valdez           Completado              100%
+          Entidad-Relación inicial             Leonardo Esau
+ 7        Diccionario de datos (Módulo de      Ali Yair Riaño Ortiz      Completado              100%
+          logística)
+ 8        Análisis de clima y divisas          Ali Yair Riaño Ortiz,     Completado              100%
+                                               Leonardo Esaú
+                                               Olivares Valdez
+ 9        Diccionario de datos (Módulo de      Ali Yair Riaño Ortiz      Completado              100%
+          logística)
+
+
+
+                                                 Página 10 de 68
+                                                                  ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+3.2.2 Subequipo Frontend
+El subequipo de Frontend elaboró el sistema de diseño visual y los primeros prototipos de las
+pantallas principales en Figma. Todas las actividades fueron completadas al 100%.
+
+
+ #    Actividad                           Responsable(s)           Estado             % Cumpl.
+ 1    Diseño y definición de logotipo     Bryan Ayala Baños        Completado              100%
+      de iThera
+ 2    Diseño de mock-ups iniciales en     Kevin Antonio López      Completado              100%
+      Figma (Login, Registro y Landing    Toledo, Carlos Daniel
+      Page)                               Juárez Gómez, Bryan
+                                          Ayala Baños
+
+
+
+3.2.3 Subequipo Análisis y Documentación
+La célula de Análisis y Documentación entregó los artefactos formales de análisis del sistema
+correspondientes al Sprint 2, todos dentro del tiempo establecido.
+
+
+ #    Actividad                           Responsable(s)           Estado             % Cumpl.
+ 1    Diagramas de Casos de Uso           Gabriel Hernández        Completado              100%
+      (50% de avance)                     Flores
+ 2    Definición inicial de Reglas de     Emilio Díaz Maturano     Completado              100%
+      Negocio
+ 3    Diccionario de Datos (Borrador)     Edgar Correa Cano        Completado              100%
+
+
+
+3.2.4 SCRUM Master
+Demian Romero Bautista cumplió íntegramente con su rol de SCRUM Master durante el Sprint
+2: condujo las Daily SCRUM diarias, mantuvo el tablero Kanban actualizado, facilitó la
+planificación y revisión del sprint, y gestionó los impedimentos del equipo.
+
+
+ #    Actividad                           Responsable(s)           Estado             % Cumpl.
+ 1    Revisión y establecimiento del      Demian Romero            Completado              100%
+      tablero Kanban para sprints         Bautista
+ 2    Conducción de sesiones Daily        Demian Romero            Completado              100%
+      SCRUM (5 sesiones del sprint)       Bautista
+ 3    Seguimiento del progreso y          Demian Romero            Completado              100%
+      gestión de impedimentos del         Bautista
+      equipo
+ 4    Elaboración del Informe de Sprint   Demian Romero            Completado              100%
+      No. 2                               Bautista
+
+
+
+
+                                            Página 11 de 68
+                                                              ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+3.2.5 Product Owner
+Ximena Cárdenas Hernández cumplió su rol de Product Owner, manteniendo disponibilidad
+continua para aclaración de requisitos, participando en la planificación del sprint y gestionando
+el backlog del producto.
+
+
+ #    Actividad                          Responsable(s)         Estado            % Cumpl.
+  1   Disponibilidad continua y          Ximena Cárdenas        Completado             100%
+      aclaración de requisitos del       Hernández
+      sistema
+  2   Participación activa en la         Ximena Cárdenas        Completado             100%
+      planificación del Sprint           Hernández
+  3   Gestión y priorización del         Ximena Cárdenas        Completado             100%
+      Backlog del producto               Hernández
+
+
+
+3.3 Resumen de Cumplimiento por Categoría — Sprint 2
+Las áreas de Pruebas, Base de Datos y DevOps no se contemplaron en este sprint por diseño
+del plan de proyecto; su incorporación está calendarizada para sprints posteriores.
+
+
+ Categoría                  Total       Complet   En         Bloquea     %          Story Pts
+                            Tareas      adas      Progreso   das         Cumpli
+                                                                         miento
+ Backend                           8       8           0         0        100%            8
+ Frontend                          2       2           0         0        100%            2
+ Documentación/ADS                 3       3           0         0        100%            3
+ SCRUM Master                      4       4           0         0        100%            4
+ Product Owner                     3       3           0         0        100%            3
+ TOTAL SPRINT 2                    20     20           0         0        100%            20
+
+
+
+3.4 Observaciones del SCRUM Master — Sprint 2
+Cumplimiento general del Sprint 2:
+El Sprint 2 fue completado satisfactoriamente. Las 20 actividades planeadas para los
+subequipos activos fueron finalizadas al 100% antes del cierre del sprint.
+
+
+SCRUM Master — Demian Romero Bautista:
+Cumplió íntegramente con su rol: condujo las Daily SCRUM, mantuvo el tablero Kanban
+actualizado en Notion, gestionó impedimentos y elaboró el presente informe de sprint.
+
+
+Product Owner — Ximena Cárdenas Hernández:
+
+
+
+
+                                           Página 12 de 68
+                                                             ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+Cumplió con sus responsabilidades de gestión del backlog, planificación del sprint y
+disponibilidad continua para resolver dudas del equipo sobre los requisitos del sistema.
+
+
+Subequipo de Backend:
+Se registró un bloqueo temporal en la tarea 'Entidades de colaboración (Votos y comentarios)'
+el día 10/03, resuelto el mismo día. El equipo reportó estar trabajando en ajustes al modelo de
+datos.
+
+
+Subequipo de Frontend:
+Los diseños en Figma fueron entregados. Se recomienda corregir la tipografía para alinearla
+con las clases utilitarias de Tailwind CSS antes del inicio del Sprint 3.
+
+
+Próximos pasos — Sprint 3:
+Finalizar el 80% de Diagramas de Casos de Uso, iniciar con la creación fundamentada de las
+interfaces que tendremos para nuestro sitio web.
+
+
+
+
+                                         Página 13 de 68
+                                                              ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+4. Sprint 3 — Identidad de Marca, Arquitectura Base y Avance
+de Análisis
+Período: 12 de marzo — 19 de marzo de 2026
+
+
+4.1 Objetivo del Sprint 3
+El Sprint 3 tuvo como propósito consolidar la identidad visual definitiva del proyecto, avanzar en
+el análisis formal del sistema y sentar las bases del desarrollo técnico:
+   •​   Definir y publicar la Guía Maestra de Diseño (paleta de colores, tipografía,
+        componentes) de ITHERA.
+   •​   Avanzar los Diagramas de Casos de Uso al 80% (para cerrarlos al 100% en Sprint 4).
+   •​   Avanzar el diseño de interfaces en texto al 80% como paso previo a los mock-ups
+        oficiales en Figma.
+   •​   Continuar con el Diccionario de Datos, enriqueciendo módulos adicionales.
+   •​   Realizar investigación funcional y de UX de Splitwise y Expedia como referentes de
+        diseño.
+   •​   Iniciar la estructura del Monolito Desacoplado en Backend.
+   •​   Continuar con la normalización de APIs externas (Vuelos, Hospedaje y Google Maps al
+        100%).
+   •​   Reunir dudas del equipo para la próxima presentación de sprint.
+   •​   Añadir planeación general al backlog para Sprints 5, 6 y 7.
+
+
+
+
+                                          Página 14 de 68
+                                                                  ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+4.2 Actividades Realizadas por Subequipo — Sprint 3
+4.2.1 Subequipo Backend
+El subequipo de Backend avanzó con la normalización completa de APIs externas, la
+investigación técnica de BD, la definición de JSONs y eventos, y el inicio de la estructura del
+Monolito Desacoplado.
+
+
+ #    Actividad                          Responsable(s)            Estado             % Cumpl.
+  1   Normalización de Vuelos y          Yael Sangrador Curiel,    Completado              100%
+      Hospedaje (100%)                   Hector Said Ferreira
+                                         Rodríguez
+  2   Normalización de APIs Google       Yael Sangrador Curiel,    Completado              100%
+      Maps (100%)                        Hector Said Ferreira
+                                         Rodríguez
+  3   Continuación de Investigación      Hector Said Ferreira      Completado               90%
+      Técnica Backend (APIs y BD)        Rodríguez, Yael
+                                         Sangrador Curiel
+  4   Definición del Diccionario de      Riaño Ortiz Ali Yair      Completado              100%
+      Datos (módulos adicionales)
+  5   Definición de JSONs y Eventos      Hector Said Ferreira      En Progreso              60%
+      (AVANCE)                           Rodríguez
+  6   Propuesta del Modelo               Olivarez Valdez           En Progreso              70%
+      Entidad-Relación (refinamiento)    Leonardo Esau
+  8   Reunir dudas del equipo para       Demian Romero             Completado              100%
+      próxima presentación de sprint     Bautista
+
+
+
+4.2.2 Subequipo Frontend / Diseño
+El subequipo de Frontend consolidó la identidad de marca con la publicación de la Guía
+Maestra de Diseño (paleta de colores, tipografía, componentes — disponible en:
+https://sbryantayala.github.io/GUIA-DE-PALETA-DE-COLORES/). Se avanzó el diseño de
+interfaces en texto al 80% como proceso de validación previo a los mock-ups oficiales, los
+cuales quedan planificados para el Sprint 4.
+
+
+ #    Actividad                          Responsable(s)            Estado             % Cumpl.
+  1   Concretar Identidad de Marca y     Bryan Ayala Banos         Completado              100%
+      Estilo
+  2   Decisión Final del Estilo Visual   Bryan Ayala Banos         Completado              100%
+  3   Diseño de interfaces en texto —    Kevin López Toledo,       En Progreso              80%
+      módulos principales (80%           Carlos Daniel Juarez,
+      avance)                            Bryan Ayala Baños
+  5   Investigación Funcional y de UX    Carlos Daniel Juarez      Completado              100%
+      de Splitwise y Expedia             Gomez
+
+
+
+
+                                           Página 15 de 68
+                                                                 ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+4.2.3 Subequipo Análisis y Documentación
+La célula de Análisis y Documentación avanzó en los Casos de Uso al 80%, en el diseño de
+interfaces en texto al 80%, y completó la investigación de reglas y heurísticas y la tarea grupal
+de UI/UX.
+
+
+ #    Actividad                           Responsable(s)          Estado             % Cumpl.
+  1   Diagramas de Casos de Uso           Gabriel Hernández       En Progreso              80%
+      (80% de avance)                     Flores
+  2   Llevar a cabo Investigación de      Edgar Cano              Completado              100%
+      Reglas y Heurísticas
+  3   Tarea Grupal de UI/UX —             Equipo Análisis         Completado              100%
+      Revisión Heurísticas
+  4   Borrador Interfaces en Texto —      Gabriel Hernández       En Progreso              80%
+      módulos principales (80%)           Flores, Emilio Díaz
+                                          Maturano, Edgar
+                                          Correa Cano
+      Investigación de RF, RNF y
+ 5                                        Emilio Diaz Maturano    En Progreso             100%
+      reglas de negocio al 80%
+
+
+
+4.2.4 SCRUM Master
+Demian Romero Bautista cumplió íntegramente con su rol de SCRUM Master durante el Sprint
+3: condujo las Daily SCRUM diarias, mantuvo el tablero Kanban actualizado en Notion,
+gestionó los impedimentos del equipo y elaboró el presente informe de sprint.
+
+
+ #    Actividad                           Responsable(s)          Estado             % Cumpl.
+  1   Conducción de sesiones Daily        Demian Romero           Completado              100%
+      SCRUM (5 sesiones del sprint)       Bautista
+  2   Mantenimiento y actualización       Demian Romero           Completado              100%
+      del tablero Kanban en Notion        Bautista
+  3   Seguimiento del progreso y          Demian Romero           Completado              100%
+      gestión de impedimentos del         Bautista
+      equipo
+  4   Elaboración del Informe de Sprint   Demian Romero           Completado              100%
+      No. 3                               Bautista
+
+
+
+
+                                            Página 16 de 68
+                                                             ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+4.2.5 Product Owner
+Ximena Cárdenas Hernández cumplió su rol de Product Owner, añadiendo la planeación
+general al backlog, manteniendo disponibilidad continua para aclaración de requisitos y
+gestionando el backlog del producto.
+
+
+ #    Actividad                         Responsable(s)         Estado            % Cumpl.
+ 1    Disponibilidad continua y         Ximena Cárdenas        Completado             100%
+      aclaración de requisitos del      Hernández
+      sistema
+ 2    Añadir planeación general al      Ximena Cárdenas        Completado             100%
+      backlog (Sprints 5–7)             Hernández
+ 3    Gestión y priorización del        Ximena Cárdenas        Completado             100%
+      Backlog del producto              Hernández
+
+
+
+4.3 Resumen de Cumplimiento por Categoría — Sprint 3
+Las tareas 'En Progreso' reflejan trabajo iniciado intencionalmente con continuidad planificada
+en el Sprint 4. Todo el equipo mantuvo asistencia del 100% a los Daily SCRUM.
+
+
+ Categoría                  Total      Complet   En         Bloquea     %          Story Pts
+                            Tareas     adas      Progreso   das         Cumpli
+                                                                        miento
+ Backend                           8      6           2         0         85%            8
+ Frontend / Diseño                 4      2           2         0         75%            4
+ Documentación/ADS                 4      2           2         0         75%            4
+ SCRUM Master                      4      4           0         0        100%            4
+ Product Owner                     3      3           0         0        100%            3
+ TOTAL SPRINT 3                23        17           6         0         87%            23
+
+
+
+
+                                          Página 17 de 68
+                                                              ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+4.4 Observaciones del SCRUM Master — Sprint 3
+Cumplimiento general del Sprint 3:
+El Sprint 3 cerró con un 87% de cumplimiento. Las tareas en progreso corresponden a
+entregables iniciados intencionalmente cuya continuación está planificada en el Sprint 4: los
+mock-ups oficiales en Figma (requieren primero cerrar el diseño en texto), los Diagramas de
+Casos de Uso (al 80%, se cerrarán al 100% en Sprint 4), la definición de JSONs y Eventos, y el
+refinamiento del modelo Entidad-Relación.
+
+
+Logros destacados del Sprint 3:
+   •​   La Guía Maestra de Diseño fue publicada y define la identidad visual definitiva de
+        ITHERA (paleta de colores, tipografía, componentes). Disponible en:
+        https://sbryantayala.github.io/GUIA-DE-PALETA-DE-COLORES/
+   •​   La investigación de UX de Splitwise y Expedia aportó referentes concretos para el
+        diseño de interfaces.
+   •​   El Diccionario de Datos fue enriquecido con módulos adicionales.
+   •​   Se completó la normalización al 100% de las APIs de Vuelos, Hospedaje y Google
+        Maps.
+   •​   Todo el equipo mantuvo asistencia del 100% a los Daily SCRUM durante el Sprint 3,
+        incluyendo Olivares Valdez Leonardo Esau, que había registrado ausencias en sprints
+        anteriores.
+   •​   La planeación general de los Sprints 5, 6 y 7 fue añadida al backlog de forma preliminar.
+
+Áreas de atención:
+   •​   El diseño de interfaces en Figma (mock-ups oficiales) debe cerrarse obligatoriamente en
+        el Sprint 4.
+   •​   Los Diagramas de Casos de Uso deben alcanzar el 100% en el Sprint 4.
+   •​   El refinamiento de RF, RNF y reglas de negocio deben de alcanzar el 100% en el sprint
+        4.
+   •​   Se requiere completar la estructura del Monolito Desacoplado al inicio del Sprint 4 para
+        no bloquear el desarrollo de los módulos de autenticación.
+
+Próximos pasos — Sprint 4:
+Cerrar Casos de Uso al 100%, producir mock-ups oficiales completos en Figma, implementar el
+módulo de autenticación en Backend (registro, login, JWT), configurar el proyecto React +
+Tailwind CSS, maquetar componentes base, y publicar la planeación detallada de los Sprints 5,
+6 y 7.
+
+
+
+
+                                          Página 18 de 68
+                                                                      ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+5 Sprint 4 — Casos de uso, Interfaces. Mock-ups y Avance de
+Backend
+Período: 19 de marzo — 25 de marzo de 2026
+
+
+5.1 Planeación de actividades a realizar por Subequipo — Sprint 4
+El Sprint 4 tuvo como propósito cerrar los artefactos de análisis iniciados, producir los mock-ups
+oficiales de la plataforma, iniciar el desarrollo funcional del backend y tener la planeación
+completa de los Sprints 5, 6 y 7:
+      •​    Finalizar los Diagramas de Casos de Uso al 100%.
+      •​    Producir los mock-ups oficiales en Figma (vistas completas del sistema).
+      •​    Implementar el módulo de autenticación en Backend (registro, login, JWT).
+      •​    Maquetación de vistas de Login y Registro con validaciones visuales.
+      •​    Definir y publicar la planeación completa de los Sprints 5, 6 y 7.
+      •​    Actualizar la documentación base del proyecto.
+
+
+5.1.1 Subequipo Análisis y Documentación
+ #         Actividad                           Responsable(s)               Estado           % Cumpl.
+                                               Gabriel Hernández
+  1        Diagrama de Clases finalizado                                    Revisión             100%
+                                               Flores, Edgar Cano
+           Corrección y cierre de Casos de     Emilio Díaz Maturano,
+  2                                                                         Completado           90%
+           Uso al 100%                         Gabriel Hernandez
+           Actualización de documentación
+  3                                            Edgar Cano                   Revisión             80%
+           base del proyecto
+           Cierre de RF, RNF y reglas de       Demian Romero, Emilio
+  4                                                                         Completado           100%
+           negocio                             Diaz
+           Cierre de diseño de interfaces en   Demian Romero, Gabriel
+  5                                                                         Completado           100%
+           texto                               Hernández
+
+  6        Diagramas individuales              Actividad individual         Completado           100%
+
+
+
+
+                                               Página 19 de 68
+                                                                  ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+5.1.2 Subequipo Frontend
+#    Actividad                            Responsable(s)             Estado            % Cumpl.
+     Configuración del proyecto
+     React con Tailwind CSS               Bryan Ayala Baños,
+ 1                                                                   Pendiente               0%
+     (instalación, carpetas, clases       Kevin López Toledo,
+     globales)
+     Mock-ups oficiales en Figma —
+                                          Bryan Ayala Baños,
+     vistas completas del sistema
+ 2                                        Ximena Cárdenas            Completado             100%
+     (Login, Registro, Dashboard,
+                                          Hernández
+     Itinerario, Buscador, Mapa)
+     Maquetación de vistas de Login
+                                          Kevin López Toledo,
+ 3   y Registro con validaciones                                     Pendiente               0%
+                                          Carlos Daniel Juarez
+     visuales
+     Maquetación de componentes           Carlos Daniel Juarez,
+ 4   base: Navbar, Footer, tarjeta de     Ximena Cárdenas            Pendiente               0%
+     actividad y layout general           Hernández
+ 5   Casos de Uso individuales            Actividad Individual       En progreso            50%
+
+
+
+5.1.3 Subequipo Backend
+#    Actividad                          Responsable(s)             Estado            % Cumpl.
+     Definición de la estructura del    Hector Said Ferreira
+ 1                                                                 Completado              100%
+     Monolito Desacoplado (inicio)      Rodríguez
+     Corrección final del modelo
+                                        Leonardo Esaú Olivares
+ 2   Entidad-Relación y modelo                                     Completado              100%
+                                        Valdez
+     relacional
+     Implementación del módulo de
+     autenticación: registro con
+ 3                                      Yael Sangrador Curiel      Completado              100%
+     hash de contraseña y
+     validaciones
+     Implementación de inicio de
+     sesión (login) con generación
+ 4                                      Yael Sangrador Curiel      Completado              100%
+     de token JWT y control de
+     sesión
+     Implementación de middleware       Hector Said Ferreira
+ 5                                                                 En progreso             60%
+     de autenticación y autorización    Rodríguez
+     Implementación de endpoints
+ 6   del módulo de usuarios: perfil     Ali Yair Riaño Ortiz       Completado              100%
+     (/me), actualización
+     Estandarización de respuestas
+ 7   del backend (formato JSON) y       Ali Yair Riaño Ortiz       Completado              100%
+     catálogo de errores
+
+
+
+
+                                            Página 20 de 68
+                                                                    ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+     Pruebas funcionales del
+ 8   módulo de autenticación y           Equipo Backend              Pendiente                0%
+     usuarios
+ 9   Casos de Uso individuales           Actividad Individual        En progreso             50%
+
+
+
+5.1.4 SCRUM Master
+#    Actividad                               Responsable(s)               Estado           % Cumpl.
+     Conducción de sesiones Daily
+ 1                                           Demian Romero Bautista       Pendiente            100%
+     SCRUM (5 sesiones del sprint)
+     Mantenimiento del tablero Kanban
+ 2                                           Demian Romero Bautista       Pendiente            100%
+     en Notion
+     Gestión de impedimentos y
+ 3                                           Demian Romero Bautista       Pendiente            100%
+     seguimiento del equipo
+     Elaboración del Informe de Sprint
+ 4                                           Demian Romero Bautista       Completado           100%
+     No. 4
+
+
+
+5.1.5 Product Owner
+#    Actividad                               Responsable(s)               Estado           % Cumpl.
+     Disponibilidad continua y
+                                             Ximena Cárdenas
+ 1   aclaración de requisitos del                                         Completado           100%
+                                             Hernández
+     sistema
+     Publicación y comunicación de la
+                                             Ximena Cárdenas
+ 2   planeación completa Sprints 5, 6 y                                   Completado           100%
+                                             Hernández
+     7
+     Gestión y priorización del Backlog      Ximena Cárdenas
+ 3                                                                        Completado           100%
+     del producto                            Hernández
+
+
+
+5.3 Resumen de Cumplimiento — Sprint 4
+Categoría      Total      Completadas          En               Bloqu    % Cumplimiento        Story
+               Tareas                          Progreso         eadas                          Pts
+Backend        9          6                    2                1        78%                   9
+Frontend /     5          1                    1                3        40%                   5
+Diseño
+Documenta      6          4                    2                0        83%                   6
+ción / ADS
+SCRUM          4          4                    0                0        100%                  4
+Master
+
+
+
+
+                                             Página 21 de 68
+                                                               ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+ Product       3         3                 0               0        100%                  3
+ Owner
+ TOTAL         27        18                5               4        74%                   27
+ SPRINT 4
+
+
+
+5.4 Observaciones del SCRUM Master — Sprint 4
+Cumplimiento general del Sprint 4:
+El Sprint 4 cerró con un 74% de cumplimiento global. Las tareas completadas representan los
+avances más importantes del proyecto hasta la fecha: el módulo de autenticación en backend
+quedó funcional con registro, login y JWT implementados; los mock-ups oficiales del sistema
+fueron entregados en Figma cubriendo todos los módulos; y los artefactos de análisis
+principales (RF, RNF, Reglas de Negocio, interfaces en texto) fueron cerrados al 100%.
+
+Logros destacados del Sprint 4:
+• Los mock-ups oficiales en Figma (Login, Registro, Dashboard, Itinerario, Buscador y Mapa)
+siguen en progreso, ya se tiene un completo entendimiento de las interfaces,
+• El módulo de autenticación fue implementado exitosamente por el equipo de Backend:
+registro con hash de contraseña (bcrypt), inicio de sesión con generación de JWT y control de
+sesión operativos.
+• La estructura del Monolito Desacoplado fue definida y documentada, desbloqueando el
+desarrollo modular de los sprints subsecuentes.
+• El Diagrama de Clases y el modelo Entidad-Relación definitivo fueron entregados, cerrando
+los artefactos de análisis y diseño de datos.
+• RF, RNF y Reglas de Negocio fueron cerrados al 100%, completando el corpus de análisis del
+sistema.
+• El equipo mantuvo asistencia del 100% a los Daily SCRUM durante el Sprint 4.
+
+Tareas no completadas — arrastradas al Sprint 5:
+• Configuración del proyecto React con Tailwind CSS: No fue posible iniciar la configuración del
+entorno de desarrollo frontend por bloqueos de prioridad con los mock-ups. Se mueve al Sprint
+5 como primera tarea del subequipo Frontend.
+• Maquetación de vistas de Login y Registro: Depende de la configuración de React + Tailwind.
+Se traslada al Sprint 5.
+• Maquetación de componentes base (Navbar, Footer, tarjeta de actividad, layout): Depende de
+los dos puntos anteriores. Se traslada al Sprint 5.
+• Pruebas funcionales del módulo de autenticación y usuarios: No se ejecutaron por falta de
+tiempo dentro del sprint. Se integran al Sprint 5 junto con las pruebas del módulo de viajes.
+• Middleware de autenticación y autorización: Avance al 60%. Se traslada como prioridad al
+Sprint 5 para desbloquear los endpoints protegidos.
+
+
+
+
+                                         Página 22 de 68
+                                                            ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+Áreas de atención:
+• El subequipo de Frontend presenta un rezago técnico en la configuración del entorno React +
+Tailwind que deberá ser la prioridad absoluta en el Sprint 5. Este bloqueo impide iniciar la
+maquetación de cualquier pantalla.
+• Se recomienda que el Líder de Frontend coordine con el SCRUM Master para asegurar que la
+configuración del entorno quede completada en los primeros dos días del Sprint 5.
+• La actualización de la documentación base del proyecto (Edgar Cano) quedó en estado de
+revisión. Deberá cerrarse al inicio del Sprint 5.
+
+Próximos pasos — Sprint 5:
+Iniciar la maquetación del sistema React + Tailwind, completar el middleware de autenticación,
+desarrollar el módulo de viajes y gestión de miembros en Backend, ejecutar las pruebas
+funcionales pendientes, y crear los diagramas de actividades para los flujos principales del
+sistema. A partir del Sprint 5 se inicia el desarrollo orientado por módulos conforme a los 7
+módulos funcionales del sistema.
+
+
+
+
+                                         Página 23 de 68
+                                                             ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+6. Sprint 5 — Casos de uso, Interfaces. Mock-ups y Avance
+de Backend
+Período: 25 de marzo — 2 de marzo de 2026
+
+5.1 Objetivo del Sprint 5
+El Sprint 5 representó un punto de inflexión decisivo en el proyecto ITHERA. Tras la
+retroalimentación recibida por parte de la Profesora Idalia Maldonado Castillo, el equipo
+identificó que existía un entendimiento superficial del sistema en su totalidad, lo que ponía en
+riesgo la coherencia del desarrollo técnico en los sprints siguientes. En respuesta, el equipo
+tomó la decisión estratégica de pausar el avance técnico e invertir el sprint completo en sanear
+los fundamentos del análisis y diseño.
+Los objetivos específicos del Sprint 5 fueron:
+    •​ Replantear el sistema completo desde su modelado por medio de diagramas de flujo en
+         Figma, logrando un entendimiento profundo y unificado del equipo.
+    •​ Completar y consolidar los Casos de Uso detallados de los 7 módulos funcionales del
+         sistema (M1–M7).
+    •​ Finalizar los Requerimientos Funcionales, No Funcionales y Reglas de Negocio de
+         todos los módulos.
+    •​ Producir los mock-ups oficiales completos en Figma para todos los módulos del sistema,
+         como referencia de implementación para el equipo de Frontend.
+Reorganizar las células del equipo de forma temporal para eliminar el cuello de botella en
+Análisis y Frontend: 2 integrantes de Backend reforzaron Análisis y 2 reforzaron Frontend.
+    •​ Establecer la planeación estratégica detallada de los Sprints 6 a 12, enfocada en el
+         desarrollo técnico orientado por módulos.
+
+
+
+5.2 Actividades Realizadas por Subequipo — Sprint 5
+5.2.1 Subequipo Análisis y Documentación (reforzado con 2 integrantes de Backend)
+Para este sprint, Ali Yair Riaño Ortiz y Leonardo Esaú Olivares Valdez (originalmente Backend)
+se incorporaron temporalmente a este subequipo, permitiendo distribuir la carga de los 10
+Casos de Uso a consolidar de forma paralela. El resultado fue la entrega completa y
+consistente del corpus de análisis del sistema.
+
+
+  # Actividad                          Responsable(s)             Estado           % Cumpl.
+    Replantamiento del sistema         Demian Romero
+  1 desde su modelado por medio        Bautista, Equipo        Completado             100%
+    de diagramas de flujo (Figma)      ADS
+    [M1] Requerimientos y Reglas
+                                       Emilio Díaz
+  2 de Negocio — Autenticación y                               Completado             100%
+                                       Maturano
+    Acceso
+      [M1] Casos de Uso —              Emilio Díaz
+  3
+      Autenticación y Acceso           Maturano
+                                                               Completado            100%
+
+
+
+
+                                         Página 24 de 68
+                                                                 ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+     # Actividad                          Responsable(s)              Estado           % Cumpl.
+         [M2] Casos de Uso — Gestión      Leonardo Esaú
+     4                                                             Completado             100%
+         de Grupo                         Olivares Valdez
+         [M3] Casos de Uso — Itinerario
+     5                                    Ali Yair Riaño Ortiz     Completado             100%
+         Colaborativo
+         [M4] Casos de Uso —
+     6                                    Edgar Correa Cano        Completado             100%
+         Búsqueda y APIs Externas
+         [M5] Casos de Uso —              Gabriel Hernández
+     7                                                             Completado             100%
+         Sincronización en Tiempo Real    Flores
+         [M6] Casos de Uso —              Gabriel Hernández
+     8                                                             Completado             100%
+         Presupuesto y Gastos             Flores
+       [M7] Casos de Uso —
+                                          Gabriel Hernández
+     9 Notificaciones, Historial y                                 Completado             100%
+                                          Flores
+       Exportación
+       Consolidación Final de Casos
+     1                                    Gabriel Hernández
+       de Uso y Coordinación de                                    Completado             100%
+     0                                    Flores
+       Tareas
+
+
+5.2.2 Subequipo Frontend / Diseño (reforzado con 2 integrantes de Backend)
+Yael Sebastián Sangrador Curiel y Hector Said Ferreira Rodríguez se incorporaron
+temporalmente al subequipo de Frontend para acelerar la producción de mock-ups. Gracias a
+esta reorganización, el equipo logró cubrir los 8 módulos en paralelo. Los mock-ups de M4 y
+M6 quedaron en estado de revisión pendiente de ajustes menores.
+
+
+ #       Actividad                        Responsable(s)               Estado           % Cumpl.
+         Preparación del espacio de
+ 1       trabajo MOCKUPS para el          Bryan Ayala Baños         Completado             100%
+         equipo de Frontend (Figma)
+         [M0] Mock-ups — Landing
+ 2                                        Bryan Ayala Baños         Completado             100%
+         Page
+         [M1] Mock-ups —                  Ximena Cárdenas
+ 3                                                                  Completado             100%
+         Autenticación y Acceso           Hernández
+         [M2] Mock-ups — Gestión de       Kevin Antonio López
+ 4                                                                  Completado             100%
+         Grupo                            Toledo
+         [M3] Mock-ups — Itinerario       Carlos Daniel Juárez
+ 5                                                                  Completado             100%
+         Colaborativo (Vista A)           Gómez
+         [M3] Mock-ups — Itinerario
+ 6                                        Bryan Ayala Baños         Completado             100%
+         Colaborativo (Vista B)
+
+
+
+
+                                            Página 25 de 68
+                                                            ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+ #   Actividad                       Responsable(s)               Estado           % Cumpl.
+     [M4] Mock-ups — Búsqueda y      Yael Sebastián
+ 7                                                               Revisión             90%
+     APIs Externas                   Sangrador Curiel
+     [M5] Mock-ups —
+ 8                                   Bryan Ayala Baños         Completado             100%
+     Sincronización en Tiempo Real
+     [M6] Mock-ups — Presupuesto     Hector Said Ferreira
+ 9                                                               Revisión             90%
+     y Gastos                        Rodríguez
+     [M7] Mock-ups —
+ 1                                   Ximena Cárdenas
+     Notificaciones, Historial y                               Completado             100%
+ 0                                   Hernández
+     Exportación
+
+
+5.2.3 SCRUM Master
+ #   Actividad                       Responsable(s)               Estado            % Cumpl.
+     Conducción de sesiones Daily    Demian Romero
+ 1                                                             Completado             100%
+     SCRUM (5 sesiones del sprint)   Bautista
+     Mantenimiento del tablero       Demian Romero
+ 2                                                             Completado             100%
+     Kanban en Notion                Bautista
+     Replantamiento de planeación    Demian Romero
+ 3                                                             Completado             100%
+     para sprints posteriores        Bautista
+     Actualización de documento      Demian Romero
+ 4                                                             Completado             100%
+     oficial del proyecto            Bautista
+     Elaboración del Informe de      Demian Romero
+ 5                                                             Completado             100%
+     Sprint No. 5                    Bautista
+
+
+5.2.4 Product Owner
+ #   Actividad                       Responsable(s)               Estado             % Cumpl.
+     Disponibilidad continua y
+                                     Ximena Cárdenas
+ 1   aclaración de requisitos del                              Completado              100%
+                                     Hernández
+     sistema
+     Participación activa en la
+                                     Ximena Cárdenas
+ 2   planificación del Sprint 5 y                              Completado              100%
+                                     Hernández
+     reorganización de células
+     Gestión y priorización del      Ximena Cárdenas
+ 3                                                             Completado              100%
+     Backlog del producto            Hernández
+
+
+
+
+                                       Página 26 de 68
+                                                                ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+5.3 Resumen de Cumplimiento — Sprint 5
+                       Total                 En
+                                Complet              Bloquead
+ Categoría             Tarea                Progr                  % Cumplimiento        Story Pts
+                                 adas                   as
+                         s                   eso
+ Análisis y
+                        10         10         0             0            100%                10
+ Documentación
+ Frontend / Diseño
+                        10          8         2             0             92%                10
+ (+ 2 Backend)
+ SCRUM Master            5          5         0             0            100%                 5
+ Product Owner           3          3         0             0            100%                 3
+ TOTAL SPRINT 5         28         26         2             0             96%                28
+
+
+5.4 Observaciones del SCRUM Master — Sprint 5
+Cumplimiento general del Sprint 5:
+El Sprint 5 cerró con un 96% de cumplimiento global, el más alto registrado en un sprint con
+tareas en progreso hasta la fecha. La decisión de reorganizar temporalmente las células del
+equipo demostró ser altamente efectiva: los 10 artefactos de Análisis y Documentación fueron
+entregados al 100%, y 8 de los 10 mock-ups de Frontend quedaron completados. Los 2
+restantes (M4 y M6) están en estado de revisión con ajustes menores por integrar.
+
+
+Logros destacados del Sprint 5:
+   •​   El replanteamiento del sistema mediante diagramas de flujo en Figma permitió que el
+        equipo completo alcanzara un entendimiento profundo y unificado de la arquitectura del
+        producto, cerrando la brecha identificada en la retroalimentación de la Profesora.
+   •​   Los Casos de Uso de los 7 módulos (M1–M7) fueron entregados con detalle completo:
+        actor, descripción, precondiciones, flujos alternos y postcondiciones. Esto constituye el
+        corpus de análisis definitivo que guiará el desarrollo técnico de los Sprints 6 a 12.
+   •​   Los mock-ups oficiales en Figma quedaron disponibles como referencia visual de
+        implementación para el equipo de Frontend, eliminando la ambigüedad en el diseño de
+        componentes.
+   •​   El equipo mantuvo asistencia del 91.7% global a los Daily SCRUM durante el Sprint 5,
+        con 10 de 12 integrantes al 100%.
+   •​   La planeación estratégica de los Sprints 6 a 12 fue elaborada, orientada al desarrollo
+        técnico por módulos sobre una base de análisis blindada.
+
+
+Áreas de atención:
+   •​   Los mock-ups de M4 (Búsqueda y APIs Externas) y M6 (Presupuesto y Gastos)
+        quedaron en estado de Revisión. Deberán ser cerrados al inicio del Sprint 6 sin
+        bloquear el arranque técnico.
+
+
+
+
+                                          Página 27 de 68
+                                                             ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+   •​   El subequipo de Backend regresa a sus funciones técnicas originales en el Sprint 6. Es
+        crítico que la configuración del entorno React + Tailwind quede completada en los
+        primeros dos días del Sprint 6 para no generar un nuevo bloqueo en Frontend.
+   •​   Olivares Valdez Leonardo Esaú registró 1 ausencia en el Sprint 5. Se continúa el
+        seguimiento establecido en sprints anteriores.
+
+
+Próximos pasos — Sprint 6:
+Retornar al desarrollo técnico con la base de análisis completamente blindada. El Sprint 6
+arrancará con la configuración del entorno React + Tailwind CSS, la maquetación de las vistas
+de Login y Registro, la finalización del middleware de autenticación en Backend, el inicio del
+módulo de Grupos de Viaje y la elaboración de Diagramas de Actividades para los flujos
+principales del sistema.
+
+
+
+
+                                         Página 28 de 68
+                                                                 ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+7. Sprint 6 — Diagramas y detalles de casos de uso,
+autenticación del sistema
+Período: 2 de abril — 9 de abril de 2026
+
+
+7.1 Objetivo del Sprint 6
+El Sprint 6 marcó el retorno al desarrollo técnico con la base de análisis completamente
+consolidada. Tras el Sprint 5, el equipo contaba con los Casos de Uso de los 7 módulos
+cerrados, los mock-ups oficiales en Figma disponibles y el corpus de análisis blindado. Los
+objetivos específicos del Sprint 6 fueron:
+
+     •​     Configurar el entorno React + Tailwind CSS e implementar las vistas de autenticación
+            (Login y Registro).
+     •​     Realizar los componentes base: Navbar, Footer y layout general.
+     •​     Desarrollar y cerrar el middleware de autenticación y autorización (JWT) en Backend.
+     •​     Desarrollar el módulo de Grupos de Viaje: creación, unión por código/QR e historial.
+     •​     Ejecutar las pruebas funcionales del módulo de autenticación y usuarios.
+     •​     Estandarizar y documentar internamente el módulo de autenticación en el repositorio.
+     •​     Revisar y ajustar la base de datos conforme al replanteamiento del sistema.
+     •​     Completar los Detalles de Casos de Uso de los módulos M1 al M7.
+     •​     Elaborar el Diagrama de Casos de Uso consolidado.
+
+
+7.2 Actividades Realizadas por Subequipo — Sprint 6
+7.2.1 Subequipo Backend
+El subequipo de Backend cerró todas sus tareas técnicas al 100%. El middleware de
+autenticación fue finalizado desbloqueando los endpoints protegidos; el módulo de Grupos de
+Viaje quedó operativo; se ejecutaron las pruebas funcionales de autenticación; y la base de
+datos fue revisada y ajustada conforme al replanteamiento del sistema.
+
+Actividades — Backend
+ #                Actividad                              Responsable(s)       Estado       % Cumpl.
+          Cierre del middleware de autenticación y      Hector Said
+                                                                             Completa
+ 1        autorización (endpoints protegidos con        Ferreira                              100%
+                                                                               do
+          JWT)                                          Rodríguez
+          Desarrollo del módulo de Grupos de Viaje:
+                                                        Yael Sangrador       Completa
+ 2        creación, unión por código/QR, consulta de                                          100%
+                                                        Curiel                 do
+          historial
+                                                        Yael Sangrador
+          Pruebas funcionales del módulo de
+                                                        Curiel y Hector      Completa
+ 3        autenticación y usuarios (casos correctos e                                         100%
+                                                        Said Ferreira          do
+          incorrectos)
+                                                        Rodríguez
+
+
+
+
+                                             Página 29 de 68
+                                                               ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+ #                    Actividad                       Responsable(s)        Estado       % Cumpl.
+     Estandarización y documentación interna
+                                                     Ali Yair Riaño        Completa
+ 4   del módulo de autenticación en repositorio                                             100%
+                                                     Ortiz                   do
+     GitHub
+     Revisión de la Base de Datos de acuerdo al      Leonardo Esaú         Completa
+ 5                                                                                          100%
+     replanteamiento                                 Olivares Valdez         do
+
+7.2.2 Subequipo Frontend
+El subequipo de Frontend completó la configuración del entorno React + Tailwind CSS, la
+implementación de las vistas de Login y Registro con validaciones visuales, la maquetación de
+los componentes base (Navbar, Footer, layout general) y la Landing Page. Todas las tareas
+fueron entregadas al 100%.
+
+Actividades — Frontend
+                                                                                          %
+ #                   Actividad                      Responsable(s)         Estado        Cum
+                                                                                          pl.
+     Configuración del proyecto React +
+                                                 Bryan Ayala
+ 1   Tailwind CSS (instalación, carpetas, clases                        Completado       100%
+                                                 Baños
+     globales, variables de diseño)
+                                                    Kevin López
+     Realización de vistas de Login y Registro
+ 2                                                  Toledo y Carlos     Completado       100%
+     con validaciones visuales
+                                                    Daniel Juárez
+     Realización de componentes base:               Ximena
+ 3   Navbar, Footer, tarjeta de actividad y         Cárdenas            Completado       100%
+     layout general                                 Hernández
+                                                    Bryan Ayala
+ 4   Landing Page                                                       Completado       100%
+                                                    Baños
+
+7.2.3 Subequipo Análisis y Documentación
+La célula de Análisis y Documentación tuvo resultados mixtos en este sprint. Los Detalles de
+Casos de Uso de M2, M3, M5, M6 y M7 fueron entregados al 100% por sus responsables. El
+Diagrama de Casos de Uso consolidado fue completado por Gabriel Hernández Flores. Sin
+embargo, Edgar Correa Cano no cumplió con la entrega de los Detalles de Casos de Uso de
+M1 y M4: no siguió el formato establecido por el equipo, no acató las indicaciones del SCRUM
+Master y no entregó en tiempo y forma, aun habiendo contado con el tiempo y los recursos
+necesarios.
+
+
+
+
+                                          Página 30 de 68
+                                                                ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+Actividades — Análisis y Documentación
+ #                 Actividad                            Responsable(s)       Estado        % Cumpl.
+     [M1 y M4] Detalles de Casos de Uso —
+                                                       Edgar Correa           No
+ 1   Autenticación y Acceso / Búsqueda y APIs                                                 50%
+                                                       Cano                 cumplido
+     Externas
+     [M2 y M3] Detalles de Casos de Uso —              Emilio Díaz          Completa
+ 2                                                                                           100%
+     Gestión de Grupo / Itinerario Colaborativo        Maturano               do
+     [M5 y M6] Detalles de Casos de Uso —
+                                                       Demian Romero        Completa
+ 3   Sincronización en Tiempo Real /                                                         100%
+                                                       Bautista               do
+     Presupuesto y Gastos
+     [M7] Detalles de Casos de Uso —                   Gabriel              Completa
+ 4                                                                                           100%
+     Notificaciones, Historial y Exportación           Hernández Flores       do
+                                                       Gabriel              Completa
+ 5   Diagrama de Casos de Uso consolidado                                                    100%
+                                                       Hernández Flores       do
+
+7.2.4 SCRUM Master
+Demian Romero Bautista cumplió íntegramente con su rol de SCRUM Master durante el Sprint
+6: condujo las 5 sesiones Daily SCRUM, mantuvo el tablero Kanban actualizado en Notion,
+elaboró el presente informe de sprint y gestionó la priorización del backlog del producto
+asumiendo adicionalmente las responsabilidades de la Product Owner.
+
+Actividades — SCRUM Master
+ #                Actividad                             Responsable(s)       Estado        % Cumpl.
+     Conducción de sesiones Daily SCRUM (5             Demian Romero        Completa
+ 1                                                                                           100%
+     sesiones del sprint)                              Bautista               do
+                                                       Demian Romero        Completa
+ 2   Elaboración del Informe de Sprint No. 6                                                 100%
+                                                       Bautista               do
+     Gestión y priorización del Backlog del            Demian Romero        Completa
+ 3                                                                                           100%
+     producto — Sprint 6                               Bautista               do
+     Invitar integrantes al repositorio y              Demian Romero        Completa
+ 4                                                                                           100%
+     configuración interna GitHub                      Bautista               do
+
+
+
+
+                                            Página 31 de 68
+                                                                    ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+7.3 Resumen de Cumplimiento — Sprint 6
+El Sprint 6 cerró con un 91% de cumplimiento global. La única tarea no cumplida corresponde a
+Edgar Correa Cano con los Detalles de Casos de Uso de M1 y M4.
+
+
+                                    Com         En
+                            Total                            Bloquead          %                Story
+ Categoría                          pleta     Progres
+                           Tareas                               as         Cumplimiento          Pts
+                                     das         o
+ Backend                      5       5           0             0               100%               5
+ Frontend                     4       4           0             0               100%               4
+ Documentación / ADS          5       4           0             1                80%               5
+ SCRUM Master                 4       4           0             0               100%               4
+ TOTAL SPRINT 6              18       17          0             1                91%              18
+
+
+7.4 Observaciones del SCRUM Master — Sprint 6
+Cumplimiento general del Sprint 6:
+El Sprint 6 cerró con un 91% de cumplimiento global. El retorno al desarrollo técnico fue
+exitoso: el entorno Frontend quedó completamente configurado, el middleware de autenticación
+fue cerrado desbloqueando los endpoints protegidos, el módulo de Grupos de Viaje quedó
+operativo y los artefactos de análisis de cinco de los siete módulos fueron entregados con el
+nivel de detalle requerido. La excepción fue la entrega de Edgar Correa Cano, que no cumplió
+ni en forma ni en tiempo.
+
+Logros destacados del Sprint 6:
+   •​   El entorno React + Tailwind CSS quedó completamente configurado, desbloqueando el
+        desarrollo de interfaces para los sprints subsecuentes.
+   •​   Las vistas de Login y Registro fueron implementadas con validaciones visuales
+        funcionales, alineadas a los mock-ups de Figma.
+   •​   El middleware de autenticación y autorización fue cerrado al 100%, habilitando los
+        endpoints protegidos con JWT para el resto del sistema.
+   •​   El módulo de Grupos de Viaje fue desarrollado cubriendo creación, unión por código/QR
+        e historial de viajes.
+   •​   Las pruebas funcionales del módulo de autenticación y usuarios fueron ejecutadas para
+        casos correctos e incorrectos.
+   •​   Los Detalles de Casos de Uso de M2, M3, M5, M6 y M7 fueron entregados al 100% por
+        sus responsables.
+   •​   El Diagrama de Casos de Uso consolidado fue completado por Gabriel Hernández
+        Flores.
+   •​   Todo el equipo mantuvo asistencia del 100% a los Daily SCRUM durante el Sprint 6.
+
+Tareas no completadas — arrastradas al Sprint 7:
+   •​   [M1 y M4] Detalles de Casos de Uso — Edgar Correa Cano: No entregó en tiempo y
+        forma. No siguió el formato establecido por el equipo, no acató las indicaciones del
+
+
+                                           Página 32 de 68
+                                                           ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+        SCRUM Master y no completó la tarea a pesar de contar con el tiempo y los recursos
+        disponibles. La tarea se arrastra al Sprint 7 con seguimiento formal.
+
+Áreas de atención:
+   •​   Edgar Correa Cano registra incumplimiento formal en este sprint: entrega incompleta,
+        formato no respetado e instrucciones no acatadas. Se establece seguimiento estricto
+        para el Sprint 7. De repetirse el incumplimiento, se escala a la instancia
+        correspondiente.
+   •​   Los Detalles de Casos de Uso de M1 y M4 deben ser cerrados en los primeros días del
+        Sprint 7 para no bloquear el avance de documentación.
+
+Próximos pasos — Sprint 7:
+   •​  Implementación completa del módulo de Grupos: roles Admin/Viajero, invitación,
+       expulsión y delegación.
+   •​ Implementación de endpoints de viaje: creación, unión, cierre e historial.
+   •​ Implementación del Modelo de Datos de Itinerario: entidades Día, Propuesta y Actividad.
+   •​ Realización del Dashboard principal y del Selector de Viajes en Frontend.
+   •​ Realización del Panel del Grupo — Miembros y Roles con acciones Admin.
+   •​ Elaboración de Diagramas de Actividades para los flujos principales M3 y M4.
+Cierre de los Detalles de Casos de Uso de M1 y M4 (tarea arrastrada de Edgar Correa Cano).
+
+
+
+
+                                        Página 33 de 68
+                                                               ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+8. Sprint 7 — Módulo de Itinerario, Dashboard e Integración
+Período: 9 de abril — 16 de abril de 2026
+
+
+
+
+8.1 Objetivo del Sprint 7
+El Sprint 7 marcó el inicio de la fase de desarrollo de módulos funcionales avanzados en
+ITHERA. Tras haber consolidado el entorno React + Tailwind en el Sprint 6 y haber cerrado los
+artefactos de análisis de la mayoría de los módulos, este sprint tuvo como propósito central
+avanzar en la implementación técnica del módulo de Itinerario en Backend, producir las
+primeras vistas del Dashboard y la Gestión de Grupo en Frontend, y continuar con la
+documentación formal de los flujos del sistema.
+
+Adicionalmente, durante la retrospectiva de este sprint, la Profesora Idalia Maldonado Castillo
+proporcionó retroalimentación formal al equipo, dentro de la cual se indicó al equipo iniciar con
+la estandarización de errores del sistema. Esta tarea fue iniciada en el sprint y continuará en el
+Sprint 8 como parte de las actividades de documentación y análisis.
+
+Los objetivos específicos del Sprint 7 fueron:
+   •​ Implementar el Modelo de Datos de Itinerario: entidades Día, Propuesta y Actividad.
+   •​ Realizar la integración de APIs externas (Amadeus, Kiwi, Google Maps, etc.) en el
+       backend.
+   •​ Implementar el mecanismo de bloqueo en tiempo real de propuestas de itinerario.
+   •​ Avanzar en el controlador de votaciones y comentarios (módulo colaborativo).
+   •​ Desarrollar el Dashboard principal e Itinerario por Día en Frontend (páginas P8 y P9).
+   •​ Desarrollar el Panel de Miembros y Modal de Invitación en Frontend (páginas P5 y P6).
+   •​ Implementar las pantallas de Recuperar Contraseña, Crear Grupo y Configuración (P3,
+       P4, P7).
+   •​ Completar las Trayectorias de Casos de Uso de los módulos M1, M2, M3 y avanzar en
+       M4.
+   •​ Iniciar la estandarización de errores del sistema (actividad asignada en retro de sprint).
+   •​ Conducir las 5 sesiones Daily SCRUM del sprint y elaborar el presente informe.
+
+
+8.2 Actividades Realizadas por Subequipo — Sprint 7
+8.2.1 Subequipo Backend
+El subequipo de Backend tuvo resultados mixtos en este sprint. Las tareas técnicas de mayor
+complejidad — el Modelo de Datos de Itinerario, la Integración de APIs externas y el Bloqueo
+en Tiempo Real — fueron completadas al 100%, lo cual constituye un avance técnico
+significativo para el proyecto. Sin embargo, las tareas de Módulo de Grupos completo y
+Endpoints de Viaje fueron pospuestas al Sprint 8 por reajuste de prioridades en favor de los
+entregables de mayor impacto técnico. El controlador de votaciones y comentarios avanzó al
+40% y continuará en el Sprint 8.
+
+
+
+
+                                            Página 34 de 68
+                                                                 ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+                                                                                              %
+ #   Actividad                           Responsable(s)                  Estado
+                                                                                            Cumpl.
+     Implementación completa del
+                                         Yael Sangrador
+     módulo de Grupos: roles
+ 1                                       Curiel, Ali Yair              Pospuesta               0%
+     Admin/Viajero, invitación,
+                                         Riaño Ortiz
+     expulsión y delegación
+     Implementación de endpoints
+                                         Hector Said
+ 2   de viaje: creación, unión, cierre                                 Pospuesta               0%
+                                         Ferreira Rodríguez
+     e historial de viajes
+     Implementación del Modelo de
+                                         Leonardo Olivares
+ 3   Datos de Itinerario: entidades                                   Completado             100%
+                                         Valdez
+     Día, Propuesta, Actividad
+     Integración de APIs externas
+     (Amadeus, Kiwi, Google Maps,        Hector Said
+ 4                                                                    Completado             100%
+     Navitia, OpenWeatherMap,            Ferreira Rodríguez
+     ExchangeRate-API)
+     Bloqueo en tiempo real de           Leonardo Olivares
+ 5                                                                    Completado             100%
+     propuestas de itinerario            Valdez
+                                         Ali Yair Riaño Ortiz,
+                                         Hector Said
+     Controlador de votaciones y
+ 6                                       Ferreira Rodríguez,         Se continuará            40%
+     comentarios
+                                         Yael Sangrador
+                                         Curiel
+
+8.2.2 Subequipo Frontend
+
+El subequipo de Frontend tuvo un sprint productivo. Las vistas del Dashboard principal e
+Itinerario por Día (P8 y P9), el Panel de Miembros y Modal de Invitación (P5 y P6), y las
+pantallas de Recuperar Contraseña, Crear Grupo y Configuración (P3, P4 y P7) fueron
+completadas al 100%. La Tarjeta de Propuesta y Comparación de Opciones (P10 y P12)
+avanzó al 50% y se completa en el Sprint 8.
+
+                                                                                               %
+ #   Actividad                             Responsable(s)                Estado
+                                                                                             Cumpl.
+     [M3] Dashboard e Itinerario por       Bryan Ayala
+ 1                                                                    Completado              100%
+     Día — Páginas P8, P9                  Baños
+     [M3] Tarjeta de Propuesta y
+                                           Kevin Antonio
+ 2   Comparación de Opciones —                                       Se continuará             50%
+                                           López Toledo
+     Páginas P10, P12
+     [M2] Panel de Miembros y Modal        Carlos Daniel
+ 3                                                                    Completado              100%
+     de Invitación — Páginas P5, P6        Juárez
+
+
+
+
+                                           Página 35 de 68
+                                                              ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+                                                                                            %
+ #   Actividad                            Responsable(s)              Estado
+                                                                                          Cumpl.
+     [M1 y M2] Recuperar Contraseña,
+                                          Ximena Cárdenas
+ 4   Crear Grupo y Configuración —                                 Completado              100%
+                                          Hernández
+     Páginas P3, P4, P7
+
+8.2.3 Subequipo Análisis y Documentación
+
+La célula de Análisis y Documentación completó las Trayectorias de Casos de Uso de los
+módulos M1, M2 y M3, logrando cerrar estos artefactos formales. Edgar Correa Cano entregó
+las trayectorias de M1 conforme al formato establecido, cerrando también la tarea arrastrada
+del Sprint 6 (Detalles de Casos de Uso M1 y M4, completados en este sprint). Las trayectorias
+de M4 avanzaron al 70% y continúan en el Sprint 8. La estandarización de errores, indicada por
+la Profesora Maldonado Castillo durante la retroalimentación de este sprint, fue iniciada por el
+SCRUM Master al 50% y continuará en los sprints subsecuentes. La actualización continua del
+documento principal fue pospuesta para el Sprint 8 por reajuste de carga de trabajo.
+
+                                                                                            %
+ #   Actividad                          Responsable(s)                Estado
+                                                                                          Cumpl.
+     Trayectorias de Casos de Uso
+ 1                                      Edgar Correa Cano          Completado              100%
+     M1 — Autenticación y Acceso
+     Trayectorias de Casos de Uso       Emilio Díaz
+ 2                                                                 Completado              100%
+     M2 — Gestión de Grupo              Maturano
+     Trayectorias de Casos de Uso       Hernández Flores
+ 3                                                                 Completado              100%
+     M3 — Itinerario Colaborativo       Gabriel
+     Trayectorias de Casos de Uso
+ 4   M4 — Búsqueda y APIs               Edgar Correa Cano         Se continuará             70%
+     Externas
+     Plan de pruebas funcionales e      Demian Romero
+ 5                                                                  Pospuesto                0%
+     integración — módulos M1, M2       Bautista
+     Estandarización de errores
+                                        Demian Romero
+ 6   general (asignada en retro de                                Se continuará             50%
+                                        Bautista
+     sprint por la Profesora)
+     Actualización continua del
+                                        Hernández Flores
+ 7   documento principal con la                                     Pospuesto                0%
+                                        Gabriel
+     evolución del proyecto
+
+8.2.4 SCRUM Master
+
+Demian Romero Bautista cumplió íntegramente con su rol de SCRUM Master durante el Sprint
+7: condujo las 5 sesiones Daily SCRUM, mantuvo el tablero Kanban actualizado en Notion,
+gestionó el backlog del producto y elaboró el presente informe de sprint. Adicionalmente, inició
+el trabajo de estandarización de errores derivado de la retroalimentación de la Profesora.
+
+
+
+                                         Página 36 de 68
+                                                            ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+
+                                                                                           %
+ #   Actividad                        Responsable(s)                  Estado
+                                                                                         Cumpl.
+     Conducción de sesiones Daily     Demian Romero
+ 1                                                                  Completado            100%
+     SCRUM (5 sesiones del sprint)    Bautista
+     Elaboración del Informe de       Demian Romero
+ 2                                                                  Completado            100%
+     Sprint No. 7                     Bautista
+     Gestión y priorización del
+                                      Demian Romero
+ 3   Backlog del producto — Sprint                                  Completado            100%
+                                      Bautista
+     7
+
+
+8.3 Resumen de Cumplimiento — Sprint 7
+
+
+                                                                             %
+                        Total     Completa          En      Bloquead                      Story
+     Categoría                                                           Cumplimie
+                       Tareas       das          Progreso      as                          Pts
+                                                                            nto
+ Backend                  6          3               1          2            67%             6
+ Frontend / Diseño        4          3               1          0            88%             4
+ Documentación /
+                          7          3               2          2            64%             7
+ ADS
+ SCRUM Master             3          3               0          0           100%             3
+ TOTAL SPRINT 7          20          12              4          4              80           20
+
+
+8.4 Observaciones del SCRUM Master — Sprint 7
+Cumplimiento general del Sprint 7:
+El Sprint 7 cerró con un 80% de cumplimiento global, reflejando una semana de avance técnico
+concreto pero con tareas estratégicamente diferidas hacia el Sprint 8. Es importante destacar
+que las postergaciones no corresponden a bloqueos técnicos ni a falta de compromiso del
+equipo, sino a una decisión deliberada de priorizar los entregables de mayor complejidad e
+impacto inmediato — el Modelo de Datos de Itinerario, la Integración de APIs y el Dashboard —
+sobre tareas que pueden ser absorbidas con eficiencia en el Sprint 8 gracias a la mejor
+organización actual del equipo.
+
+Logros destacados del Sprint 7:
+   •​ El Modelo de Datos de Itinerario fue implementado completamente, incluyendo las
+      entidades Día, Propuesta y Actividad, lo que habilita el desarrollo del módulo
+      colaborativo central del sistema.
+   •​ La integración de APIs externas (Amadeus, Kiwi, Google Maps, Navitia,
+      OpenWeatherMap y ExchangeRate-API) fue completada, cerrando un eje técnico
+      fundamental del backend de ITHERA.
+   •​ El mecanismo de bloqueo en tiempo real de propuestas fue implementado, avanzando
+      en la capa de sincronización concurrente del sistema.
+
+
+
+                                          Página 37 de 68
+                                                              ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+   •​   El Dashboard principal e Itinerario por Día (P8, P9) fueron realizados en Frontend,
+        entregando las vistas centrales del sistema que los usuarios verán al iniciar sesión.
+   •​   Las pantallas de Panel de Miembros, Modal de Invitación, Recuperar Contraseña, Crear
+        Grupo y Configuración fueron completadas, cerrando los flujos de M1 y M2 en Frontend.
+   •​   Las Trayectorias de Casos de Uso de M1, M2 y M3 fueron completadas al 100%,
+        avanzando sólidamente en la documentación formal del sistema.
+   •​   Edgar Correa Cano completó las trayectorias de M1 conforme al formato establecido,
+        cerrando la tarea arrastrada del Sprint 6 y mostrando una mejora en su cumplimiento.
+   •​   La estandarización de errores fue iniciada a raíz de la retroalimentación de la Profesora
+        Maldonado Castillo y continuará en el Sprint 8 como tarea formal del equipo de Análisis
+        y Documentación.
+
+Tareas diferidas al Sprint 8 — con recuperación planificada:
+El Sprint 8 está ya planificado para absorber las tareas diferidas de este sprint. El equipo
+cuenta con mejor organización y distribución de carga que en sprints anteriores, por lo que se
+tiene alta confianza en la recuperación al 100% de los siguientes pendientes:
+    •​ Módulo de Grupos completo (roles, invitación, expulsión, delegación) — Backend.
+    •​ Endpoints de viaje (creación, unión, cierre, historial) — Backend.
+    •​ Controlador de votaciones y comentarios (60% restante) — Backend.
+    •​ Tarjeta de Propuesta y Comparación de Opciones, Páginas P10 y P12 (50% restante) —
+        Frontend.
+    •​ Trayectorias de Casos de Uso M4 (30% restante) — Análisis/Docs.
+    •​ Estandarización de errores (50% restante) — Análisis/Docs.
+    •​ Plan de pruebas funcionales e integración M1 y M2 — Análisis/Docs.
+    •​ Actualización continua del documento principal — Análisis/Docs.
+
+Áreas de atención:
+   •​ La estandarización de errores indicada por la Profesora Maldonado Castillo en la retro
+      deberá ser prioridad en el Sprint 8 para mostrar avance formal en la siguiente revisión.
+   •​ Se recomienda que el Módulo de Grupos completo sea la primera tarea del subequipo
+      Backend al inicio del Sprint 8, ya que su cierre desbloquea pruebas de integración.
+
+Próximos pasos — Sprint 8:
+Completar el Módulo de Grupos, los Endpoints de Viaje y la configuración base de Socket.io +
+Redis. Finalizar las vistas de Tarjeta de Propuesta y el Dashboard del Itinerario en Frontend.
+Cerrar las trayectorias de M4 y avanzar en M5 y M6. Ejecutar el plan de pruebas de M1 y M2.
+Continuar la estandarización de errores y la actualización del documento principal.
+
+
+
+
+                                          Página 38 de 68
+                                                                   ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+9. Sprint 8 — Recuperación Técnica y Cierre de Módulos
+Base
+Período: 16 de abril — 23 de abril de 2026
+
+
+9.1 Objetivo del Sprint 8
+El Sprint 8 representó un hito de recuperación y consolidación técnica para ITHERA. Tras el
+Sprint 7, en el que varias tareas de backend y frontend quedaron diferidas de forma planificada,
+el Sprint 8 tuvo como objetivo central cerrar la totalidad de dichas deudas técnicas y avanzar de
+manera decisiva en la integración del sistema.
+
+Los objetivos específicos del Sprint 8 fueron:
+  • Implementar el CRUD completo del módulo de Itinerario con bloqueo atómico y
+     transacciones ACID en PostgreSQL.
+  • Configurar la base de Socket.io + Redis con salas de viaje y eventos de presencia.
+  • Cerrar el Módulo de Grupos completo (roles, invitación, expulsión y delegación) y los
+     Endpoints de Viaje.
+  • Completar el Controlador de Votaciones y Comentarios (60% restante del Sprint 7).
+  • Finalizar las vistas de Tarjeta de Propuesta, Comparación de Opciones e integración de
+     Auth en Frontend.
+  • Cerrar las Trayectorias de Casos de Uso de M5, M6 y M7 en Análisis y Documentación.
+  • Completar la Estandarización de Errores del sistema (50% restante).
+  • Conducir las sesiones Daily SCRUM del sprint y elaborar el presente informe.
+
+
+9.2 Actividades Realizadas por Subequipo — Sprint 8
+
+9.2.1 Subequipo Backend
+El subequipo de Backend tuvo su sprint más productivo hasta la fecha. La totalidad de las
+tareas planificadas fueron completadas al 100%, incluyendo las deudas técnicas del Sprint 7. El
+CRUD del Itinerario con transacciones ACID, la configuración de Socket.io + Redis, el cierre del
+Módulo de Grupos completo, los Endpoints de Viaje y el Controlador de Votaciones y
+Comentarios fueron todos entregados. Adicionalmente, se completó la documentación de
+endpoints y la integración del apiClient con Auth completa, desbloqueando el avance del
+subequipo de Frontend.
+
+
+ #                Actividad                   Responsable(s)             Estado           % Cumpl.
+      Implementación CRUD del
+                                             Yael Sangrador
+      módulo de Itinerario: días,
+ 1                                           Curiel, Hector Said      Completado             100%
+      propuestas y bloqueo atómico
+                                             Ferreira
+      (transacción ACID PostgreSQL)
+      Configuración base de Socket.io        Ali Yair Riaño
+ 2    + Redis: salas de viaje (trip_id),     Ortiz, Leonardo          Completado             100%
+      eventos básicos de presencia           Olivares Valdez
+
+
+                                             Página 39 de 68
+                                                              ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+ #               Actividad                Responsable(s)            Estado           % Cumpl.
+      Implementación completa del
+                                         Yael Sangrador
+      módulo de Grupos: roles
+ 3                                       Curiel, Ali Yair        Completado             100%
+      Admin/Viajero, invitación,
+                                         Riaño Ortiz
+      expulsión y delegación
+      Implementación de endpoints de
+                                         Hector Said
+ 4    viaje: creación, unión, cierre y                           Completado             100%
+                                         Ferreira Rodríguez
+      historial de viajes
+                                         Ali Yair Riaño
+      Controlador de votaciones y        Ortiz, Hector Said
+ 5    comentarios (60% restante del      Ferreira                Completado             100%
+      Sprint 7)                          Rodríguez, Yael
+                                         Sangrador Curiel
+                                         Yael Sangrador
+ 6    Documentación de Endpoints                                 Completado             100%
+                                         Curiel
+      Implementación del Módulo de
+                                         Yael Sangrador
+ 7    Votaciones y Comentarios en                                Completado             100%
+                                         Curiel
+      Propuestas
+      Integración apiClient.ts +         Yael Sangrador
+ 8                                                               Completado             100%
+      Integración Auth completa (M1)     Curiel
+
+
+9.2.2 Subequipo Frontend
+El subequipo de Frontend cerró todas sus tareas pendientes del Sprint 7 y avanzó en nuevas
+integraciones. La Tarjeta de Propuesta completa (P10), la Comparación de Opciones (P12) y el
+fix del Dashboard fueron entregados, junto con la integración del apiClient.ts + Auth (M1) y la
+integración API de Crear Grupo y Panel del Grupo (M2). Ximena Cárdenas realizó los ajustes
+de layout en CreateGroup, GroupSettings e InviteModal, cerrando los flujos visuales de M2. El
+sprint de Frontend cerró al 100%.
+
+
+ #               Actividad                Responsable(s)            Estado           % Cumpl.
+      [M3] Tarjeta de Propuesta y
+      Comparación de Opciones —          Kevin Antonio
+ 1                                                               Completado             100%
+      P10, P12 (50% restante del         López Toledo
+      Sprint 7)
+      [M3] Tarjeta de Propuesta
+      completa (P10) + Comparación       Kevin Antonio
+ 2                                                               Completado             100%
+      de Opciones (P12) + fix            López Toledo
+      Dashboard
+      Implementar apiClient.ts +         Bryan Ayala
+ 3                                                               Completado             100%
+      Integración Auth completa (M1)     Baños
+
+
+
+
+                                         Página 40 de 68
+                                                           ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+ #              Actividad                Responsable(s)          Estado           % Cumpl.
+     [M2] Integración API — Crear       Carlos Daniel
+ 4                                                            Completado             100%
+     Grupo y Panel del Grupo            Juárez Gómez
+     [M2] Fix de layout en
+                                        Ximena Cárdenas
+ 5   CreateGroup, GroupSettings e                             Completado             100%
+                                        Hernández
+     InviteModal
+
+
+9.2.3 Subequipo Análisis y Documentación
+La célula de Análisis y Documentación alcanzó su mejor desempeño del proyecto, completando
+la totalidad de las tareas asignadas al 100%. Las Trayectorias de Casos de Uso de los módulos
+M5, M6 y M7 fueron cerradas con la colaboración del SCRUM Master. La estandarización de
+errores del sistema fue finalizada por Demian Romero Bautista y Gabriel Hernández Flores.
+Edgar Correa Cano estandarizó los documentos a la identidad de marca de Ithera; Emilio Díaz
+Maturano realizó la revisión general de análisis del sistema; y Gabriel Hernández Flores
+completó las correcciones al diagrama de casos de uso y la actualización del documento
+principal. Demian Romero Bautista aplicó heurísticas y correcciones al rediseño del perfil
+grupal.
+
+
+ #              Actividad                Responsable(s)          Estado           % Cumpl.
+     Trayectorias de Casos de Uso       Hernández Flores
+ 1   M5 — Sincronización en Tiempo      Gabriel, Demian       Completado             100%
+     Real                               Romero Bautista
+                                        Emilio Díaz
+     Trayectorias de Casos de Uso
+ 2                                      Maturano, Demian      Completado             100%
+     M6 — Presupuesto y Gastos
+                                        Romero Bautista
+     Trayectorias de Casos de Uso       Edgar Correa
+ 3   M7 — Notificaciones, Historial y   Cano, Demian          Completado             100%
+     Exportación                        Romero Bautista
+                                        Demian Romero
+     Estandarización de errores
+                                        Bautista,
+ 4   general (50% restante del Sprint                         Completado             100%
+                                        Hernández Flores
+     7)
+                                        Gabriel
+     Actualización continua del
+                                        Hernández Flores
+ 5   documento principal con la                               Completado             100%
+                                        Gabriel
+     evolución del proyecto
+     Correcciones al diagrama de        Hernández Flores
+ 6                                                            Completado             100%
+     casos de uso                       Gabriel
+     Estandarización de documentos      Edgar Correa
+ 7                                                            Completado             100%
+     a identidad de marca de Ithera     Cano
+     Revisión general de análisis de    Emilio Díaz
+ 8                                                            Completado             100%
+     sistema de Ithera                  Maturano
+
+
+
+                                        Página 41 de 68
+                                                                ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+ #                Actividad                    Responsable(s)           Estado          % Cumpl.
+      Aplicación de heurísticas y
+                                              Demian Romero
+ 9    errores al rediseño del perfil                               Completado             100%
+                                              Bautista
+      grupal
+
+
+9.2.4 SCRUM Master
+Demian Romero Bautista cumplió con su rol de SCRUM Master durante el Sprint 8. Es
+importante destacar que durante este sprint se presentó un día en el que no fue posible realizar
+el Daily SCRUM, reduciéndose las sesiones efectivas a cuatro. A pesar de ello, Demian
+mantuvo el tablero Kanban actualizado en Notion, condujo todas las sesiones posibles,
+gestionó el backlog y elaboró el presente informe.
+
+
+ #                Actividad                    Responsable(s)           Estado          % Cumpl.
+      Conducción de sesiones Daily
+      SCRUM (4 sesiones efectivas
+                                              Demian Romero
+ 1    del sprint — un día no se realizó                            Completado             100%
+                                              Bautista
+      Daily por ausencia de
+      condiciones)
+      Elaboración del Informe de              Demian Romero
+ 2                                                                 Completado             100%
+      Sprint No. 8                            Bautista
+      Gestión y priorización del              Demian Romero
+ 3                                                                 Completado             100%
+      Backlog — Sprint 8                      Bautista
+
+
+9.3 Resumen de Cumplimiento — Sprint 8
+El Sprint 8 cerró con un 100% de cumplimiento global, el primer sprint en alcanzar este nivel en
+el proyecto. Las 25 tareas planificadas fueron completadas en su totalidad, sin tareas diferidas
+ni bloqueos activos.
+
+
+                                                        En                       %
+                          Total        Completa                 Bloquea                      Story
+      Categoría                                       Progres                Cumplimie
+                         Tareas          das                      das                         Pts
+                                                         o                      nto
+ Backend                     8            8               0         0            100%          8
+ Frontend / Diseño           5            5               0         0            100%          5
+ Documentación /
+                             9            9               0         0            100%          9
+ ADS
+ SCRUM Master                3            3               0         0            100%          3
+ TOTAL SPRINT 8             25            25              0         0            100%          25
+
+
+
+
+                                              Página 42 de 68
+                                                             ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+9.4 Observaciones del SCRUM Master — Sprint 8
+
+
+Cumplimiento general del Sprint 8:
+El Sprint 8 cerró con un 100% de cumplimiento global, el mejor resultado obtenido por el equipo
+en todo el proyecto hasta la fecha. Todas las deudas técnicas acumuladas de sprints anteriores
+fueron absorbidas y cerradas, lo que coloca al equipo en una posición técnica sólida para
+abordar el Sprint 9 con módulos base estables y un entorno de integración funcionando.
+
+Logros destacados del Sprint 8:
+  • El CRUD completo del Itinerario con bloqueo atómico y transacciones ACID en PostgreSQL
+     fue implementado, estableciendo la base de concurrencia del módulo colaborativo central.
+  • La configuración base de Socket.io + Redis quedó operativa, habilitando la capa de
+     sincronización en tiempo real para los sprints subsecuentes.
+  • El Módulo de Grupos completo (roles Admin/Viajero, invitación, expulsión y delegación) fue
+     cerrado, desbloqueando las pruebas de integración de este módulo.
+  • Los Endpoints de Viaje y el Controlador de Votaciones y Comentarios fueron finalizados al
+     100%, cerrando dos de los pendientes más críticos del Sprint 7.
+  • La integración de apiClient.ts + Auth completa fue realizada tanto en Backend como en
+     Frontend (M1), conectando la capa de autenticación con las vistas.
+  • Las Trayectorias de Casos de Uso de M5, M6 y M7 fueron completadas, cerrando la
+     totalidad de los artefactos de Trayectorias de los 7 módulos del sistema.
+  • La Estandarización de Errores del sistema fue finalizada, dando cierre a la tarea derivada
+     de la retroalimentación de la Profesora Maldonado Castillo.
+  • La documentación fue estandarizada a la identidad de marca de Ithera y el análisis del
+     sistema fue revisado de forma integral.
+
+Área de atención — Asistencia:
+El Sprint 8 registró una caída significativa en la asistencia al Daily SCRUM, cerrando con un
+56.7% global (34 de 60 posibles), la más baja del proyecto. Adicionalmente, un día del sprint no
+pudo realizarse el Daily SCRUM. Varios integrantes acumularon dos o más ausencias en la
+semana. Si bien el cumplimiento de tareas no se vio afectado, la asistencia al Daily es un
+indicador de alineación del equipo que requiere atención en el Sprint 9.
+
+Próximos pasos — Sprint 9:
+El Sprint 9 se enfoca en la implementación de la sincronización en tiempo real completa, la
+integración con Amadeus API via Service Gateway y los primeros componentes React
+reactivos. Se destaca que el subequipo de Análisis y Documentación apoyará activamente al
+equipo de Frontend, uniéndose en actividades de integración, revisión de pantallas y corrección
+de inconsistencias del sistema, ampliando la capacidad operativa del equipo de cara a los
+módulos más complejos. Se espera recuperar el porcentaje de asistencia a los niveles
+observados en sprints anteriores (>90%).
+
+
+
+
+                                         Página 43 de 68
+                                                              ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+10. Planeación Sprint 9 — Sincronización en Tiempo Real e
+Integración de APIs
+Período: 23 de abril — 30 de abril de 2026
+
+Foco: Sincronización en tiempo real completa (heartbeat, offline, Last Write Wins) e integración
+del Service Gateway con Amadeus. Componentes React reactivos y pantalla de Búsqueda de
+Vuelos y Hospedaje.
+
+Nota importante — Apoyo de Análisis al equipo de Frontend:
+Durante el Sprint 9, el subequipo de Análisis y Documentación se unirá activamente a las
+actividades del equipo de Frontend. Esta colaboración tiene como propósito reforzar la
+capacidad de desarrollo en un sprint de alta complejidad técnica, asegurando la revisión de
+consistencia entre los artefactos de análisis (pantallas, mensajes de error, detalles de casos de
+uso) y las implementaciones visuales del equipo de Frontend. Gabriel Hernández Flores y
+Emilio Díaz Maturano participarán en las actividades de integración y corrección de
+inconsistencias del sistema, aportando visión analítica al trabajo de interfaz.
+
+
+                                                                                            %
+  #             Actividad              Responsable(s)          Equipo         Estado
+                                                                                          Cumpl.
+       Implementación completa
+       de sincronización en
+                                      Hector Said
+       tiempo real: heartbeat,                                               Pendient
+  1                                   Ferreira, Ali Yair      Backend                       0%
+       modo offline, cola diferida                                              e
+                                      Riaño Ortiz
+       (IndexedDB) y política Last
+       Write Wins
+       Integración del Service
+       Gateway con Amadeus            Yael Sangrador
+                                                                             Pendient
+  2    API: búsqueda de vuelos y      Curiel, Leonardo        Backend                       0%
+                                                                                e
+       hospedaje con Circuit          Olivares Valdez
+       Breaker
+       Implementación del
+       módulo de Presupuesto:         Ali Yair Riaño Ortiz,
+                                                                             Pendient
+  3    registro de gastos,            Leonardo Olivares       Backend                       0%
+                                                                                e
+       divisiones ACID, saldos        Valdez
+       netos y liquidación mínima
+                                      Hector Said
+                                                                             Pendient
+  4    Test del backend               Ferreira, Gabriel       Backend                       0%
+                                                                                e
+                                      Hernández
+       Conexión de Google Maps
+                                      Yael Sangrador
+       Platform: autocompletado                               Backend /      Pendient
+  5                                   Curiel, Demian                                        0%
+       de lugares, mapa                                       Frontend          e
+                                      Romero Bautista
+       interactivo, rutas
+
+
+
+
+                                          Página 44 de 68
+                                                          ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+                                                                                        %
+#            Actividad              Responsable(s)         Equipo         Estado
+                                                                                      Cumpl.
+                                   Demian Romero
+     Integración del dashboard                           Backend /       Pendient
+6                                  Bautista, Gabriel                                    0%
+     de itinerario                                       Frontend           e
+                                   Hernández
+     Componentes React en
+     tiempo real: tarjeta de       Bryan Ayala
+                                                                         Pendient
+7    propuesta reactiva, banner    Baños, Carlos          Frontend                      0%
+                                                                            e
+     offline, indicador de         Daniel Juárez
+     presencia
+     Realización de pantalla de    Kevin López
+     Búsqueda de Vuelos y          Toledo, Ximena                        Pendient
+8                                                         Frontend                      0%
+     Hospedaje con resultados      Cárdenas                                 e
+     paginados                     Hernández
+     Mantenimiento con vacíos
+                                                         Análisis/Do
+     de análisis del sistema —     Gabriel Hernández
+                                                            cs →         Pendient
+9    apoyo al equipo de            Flores, Emilio Díaz                                  0%
+                                                          Frontend          e
+     Frontend en actividades de    Maturano
+                                                           (apoyo)
+     integración y revisión
+     Actualización del             Gabriel Hernández     Análisis/Do     Pendient
+10                                                                                      0%
+     documento oficial             Flores                    cs             e
+     Revisión y cumplimiento
+     del M1 al M4: pantallas,      Gabriel Hernández
+                                                         Análisis/Do     Pendient
+11   mensajes de error, detalles   Flores, Emilio Díaz                                  0%
+                                                             cs             e
+     de CU e inconsistencias       Maturano
+     del sistema
+     Conducción de sesiones
+                                   Demian Romero          SCRUM          Pendient
+12   Daily SCRUM (5 sesiones                                                            0%
+                                   Bautista               Master            e
+     del sprint)
+     Elaboración del Informe de    Demian Romero          SCRUM          Pendient
+13                                                                                      0%
+     Sprint No. 9                  Bautista               Master            e
+     Gestión y priorización del    Demian Romero          SCRUM          Pendient
+14                                                                                      0%
+     Backlog — Sprint 9            Bautista               Master            e
+
+
+
+
+                                      Página 45 de 68
+                                                             ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+11. Análisis del Sistema
+11.1 Diagrama de análisis del sistema
+La realización de este diagrama nos permite entender correctamente el funcionamiento del
+sistema.
+
+https://www.figma.com/board/EPyKuR3wPB9sSOUjUpxMQD/Ithera-%E2%80%94-System-Map
+-Final-11?node-id=0-1&t=mvjM9zgfZ0hl2OYZ-1
+
+
+11.2 Análisis de requerimientos
+En el siguiente enlace se encuentra el análisis de requerimientos de Ithera, se divide en 7
+módulos, de los cuales se muestra: requerimientos funcionales, requerimientos no funcionales,
+reglas de negocio y se mencionan los casos de uso.
+
+   Ithera_Requerimientos_Oficial.docx
+
+
+11.3 Casos de uso
+En el siguiente enlace se encuentran al detalle los casos de uso de Ithera dado el formato
+otorgado por la profesora.
+
+   ITHERA_Casos_de_Uso.docx
+
+
+11.4 Estandarización de manejo de errores
+En el siguiente enlace se muestra el documento donde creamos una estandarización de errores
+considerando los 7 módulos de Ithera.
+
+   Ithera_Estandar_Errores.docx
+
+
+11.5 Diseño de pantallas
+En el siguiente enlace se muestra la documentación realizada por cada pantalla del sistema
+Ithera, donde además se muestra en cada pantalla la implementacion de las heuristicas de
+Nielsen.
+
+   ITHERA_Pantallas
+
+
+
+
+                                         Página 46 de 68
+                                                  ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+11.6 Diagramas de caso de uso
+
+
+
+
+                                Página 47 de 68
+                                                             ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+
+12. Diseño de Pantallas
+
+En el siguiente enlace se encuentra la realización de los mock-ups del sistema Ithera, previos a
+la implementacion de frontend.
+
+https://www.figma.com/design/moiUWVHchiFkOY5gGZjGRP/MOCKUPS?node-id=219-2&t=vB
+mAApRxvgMSNVOG-1
+
+
+
+
+                                         Página 48 de 68
+                                                                         ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+
+13. Planeación de Sprints
+A continuación se presenta el plan completo de los 12 sprints del proyecto ITHERA. Cada sprint tiene una duración
+de 1 semana e incluye las actividades asignadas, los responsables y el porcentaje de cumplimiento actualizado.
+
+Sprint 1 | Completado | 2 mar — 5 mar de 2026
+
+                                                                                                          %
+ #     Actividad                                      Responsable(s)                  Estado              Cumpl
+                                                                                                          .
+       Definición de actores y requerimientos
+  1                                                   Gabriel, Emilio, Edgar          Completado           100%
+       funcionales y no funcionales
+       Configuración del repositorio en GitHub
+  2                                                   SCRUM Master / PO               Completado           100%
+       (Gitflow) y tablero en Notion
+       Configuración del entorno de diseño en
+  3                                                   Kevin, Carlos, Bryan            Completado           100%
+       Figma
+       Investigación del stack tecnológico y
+  4                                                   Hector, Yael                    Completado           100%
+       arquitectura
+       Investigación de APIs externas (vuelos,
+  5                                                   Yael, Ali, Leonardo             Completado           100%
+       hospedaje, clima, transporte)
+       Definición de Sprints del subequipo de
+  6                                                   Yael, Hector                    Completado           100%
+       Backend
+       Finalización y entrega del documento de
+  7                                                   Equipo completo                 Completado           100%
+       Planteamiento Inicial
+  8    Establecimiento del tablero Kanban en Notion   SCRUM Master / PO               Completado           100%
+       Configuración del tablero de seguimiento en
+  9                                                   SCRUM Master / PO               Completado           100%
+       Google Sheets
+ 10    Establecimiento del servidor de Discord        Demian Romero Bautista          Completado           100%
+
+
+
+
+                                                 Página 49 de 68
+                                                                          ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+Sprint 2 | Completado | 5 mar — 12 mar de 2026
+
+                                                                                                        %
+ #    Actividad                                         Responsable(s)               Estado             Cumpl
+                                                                                                        .
+      Diagramas de Casos de Uso (50% de
+  1                                                     Gabriel                      Completado         100%
+      avance)
+  2   Definición inicial de Reglas de Negocio           Emilio                       Completado         100%
+  3   Diccionario de Datos (Borrador)                   Edgar                        Completado         100%
+      Definición de propuestas para el sistema de
+  4   diseño en Figma (paleta, tipografías,             Kevin, Carlos, Bryan         Completado         100%
+      componentes)
+      Diseño de mock-ups iniciales: Login, Registro
+  5                                                     Kevin, Carlos, Bryan         Completado         100%
+      y Landing Page
+      Análisis de APIs externas y revisión de límites
+  6                                                     Yael                         Completado         100%
+      de uso
+      Normalización de estructuras de datos APIs
+  7                                                     Yael, Hector                 Completado         100%
+      externas (vuelos y hospedaje 20%)
+      Identificación y definición de entidades
+  8                                                     Hector                       Completado         100%
+      principales del sistema
+      Análisis para la construcción inicial del
+  9                                                     Hector                       Completado         100%
+      modelo Entidad-Relación
+ 10   Análisis de clima y divisas                       Ali, Leonardo                Completado         100%
+ 11   Diccionario de datos (Módulo de logística)        Ali                          Completado         100%
+      Entidades de colaboración (votos y
+ 12                                                     Leonardo                     Completado         100%
+      comentarios)
+
+
+
+
+                                                   Página 50 de 68
+                                                                          ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+Sprint 3 | En Cierre | 12 mar — 19 mar de 2026
+
+                                                                                                        %
+ #    Actividad                                        Responsable(s)                Estado             Cumpl
+                                                                                                        .
+      Concretar identidad de marca y estilo —
+  1                                                    Bryan Ayala Baños             Completado         100%
+      Decisión final del estilo visual
+      Publicación de la Guía Maestra de Diseño
+  2                                                    Bryan Ayala Baños             Completado         100%
+      (paleta, tipografía, componentes)
+      Diagramas de Casos de Uso (80% de avance
+  3                                                    Gabriel Hernández Flores      En Progreso         80%
+      — cierre en Sprint 4)
+      Borrador interfaces en texto — módulos
+  4                                                    Gabriel, Emilio, Edgar        En Progreso         80%
+      principales (80% avance)
+  5   Investigación de Reglas y Heurísticas de UX      Edgar Correa Cano             Completado         100%
+      Tarea grupal de UI/UX — Revisión
+  6                                                    Equipo Análisis               Completado         100%
+      Heurísticas
+      Investigación funcional y de UX de Splitwise y
+  7                                                    Carlos Daniel Juárez          Completado         100%
+      Expedia
+      Continuación investigación técnica Backend       Hector Said Ferreira, Yael
+  8                                                                                  Completado         100%
+      (APIs y BD)                                      Sangrador Curiel
+  9   Normalización de Vuelos y Hospedaje (100%)       Yael Sangrador, Hector Said   Completado         100%
+ 10   Normalización APIs Google Maps (100%)            Yael Sangrador Curiel         Completado         100%
+      Definición del Diccionario de Datos (módulos
+ 11                                                    Ali Yair Riaño Ortiz          Completado         100%
+      adicionales)
+      Definición de JSONs y Eventos (avance —
+ 12                                                    Hector Said Ferreira          En Progreso         60%
+      continúa Sprint 4)
+      Propuesta del Modelo Entidad-Relación
+ 13                                                    Leonardo Olivares Valdez      En Progreso         70%
+      (refinamiento — continúa Sprint 4)
+      Añadir planeación general al backlog (Sprints    Ximena Cárdenas
+ 14                                                                                  Completado         100%
+      5–7)                                             Hernández
+      Reunir dudas del equipo para próxima
+ 15                                                    Demian Romero Bautista        Completado         100%
+      presentación de sprint
+
+
+
+
+                                                 Página 51 de 68
+                                                                            ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+Sprint 4 | Planificado | 19 mar — 26 mar de 2026
+
+                                                                                                          %
+ #    Actividad                                          Responsable(s)                Estado             Cumpl
+                                                                                                          .
+                                                         Gabriel Hernández Flores,
+  1   Diagrama de Clases finalizado                                                    Revisión           100%
+                                                         Edgar Cano
+                                                         Emilio Díaz Maturano,
+  2   Corrección y cierre de Casos de Uso al 100%                                      Completado          90%
+                                                         Gabriel Hernandez
+      Cierre de RF, RNF y Reglas de Negocio al
+  3                                                      Demian Romero, Emilio Diaz    Completado         100%
+      100%
+      Cierre de diseño de interfaces en texto            Demian Romero, Gabriel
+  4                                                                                    Completado         100%
+      (100%)                                             Hernández
+      Actualización de documentación base del
+  5                                                      Edgar Cano                    Revisión            80%
+      proyecto
+      Mock-ups oficiales en Figma — vistas               Bryan Ayala Avalos,
+  6   completas del sistema (Login, Registro,            Cardenas Hernandez            Completado         100%
+      Dashboard, Itinerario, Buscador, Mapa)             Ximena
+      Maquetación de vistas de Login y Registro          Kevin Lopez Taledo, Carlos
+  7                                                                                    Pendiente            0%
+      con validaciones visuales en React + Tailwind      Daniel Juarez
+      Configuración del proyecto React con
+                                                         Bryan Ayala Avalos Kevin
+  8   Tailwind CSS (instalación, carpetas, clases                                      Pendiente            0%
+                                                         Lopez Toledo
+      globales)
+                                                         Carlos Daniel Juarez,
+      Maquetación de componentes base: Navbar,
+  9                                                      Ximena Cardenas               Pendiente            0%
+      Footer, tarjeta de actividad y layout general
+                                                         Hernandez
+      Definición de la estructura del Monolito
+ 10                                                      Hector Said Ferreira          Completado         100%
+      Desacoplado (cierre de arquitectura base)
+      Corrección final del modelo Entidad-Relación
+ 11                                                      Leonardo Olivares Valdez      Completado         100%
+      y modelo relacional
+      Cierre de Definición de JSONs y Eventos del
+ 12                                                      Hector Said Ferreira          Completado         100%
+      sistema
+      Implementación del módulo de autenticación:
+ 13   registro con hash de contraseña y                  Yael Sangrador Curiel         Completado         100%
+      validaciones
+      Implementación de inicio de sesión (login)
+ 14   con generación de token JWT y control de           Yael Sangrador Curiel         Completado         100%
+      sesión
+      Implementación de middleware de
+ 15   autenticación y autorización para proteger         Hector Said Ferreira          En Progreso         60%
+      endpoints
+      Implementación de endpoints del módulo de
+ 16                                                      Ali Yair Riaño Ortiz          Completado         100%
+      usuarios: perfil (/me) y actualización básica
+      Estandarización de respuestas del backend
+ 17                                                      Ali Yair Riaño Ortiz          Completado         100%
+      (formato JSON) y catálogo de errores
+      Pruebas funcionales del módulo de
+ 18   autenticación y usuarios (casos correctos e        Equipo Backend                Pendiente            0%
+      incorrectos)
+
+
+
+
+                                                    Página 52 de 68
+                                                                      ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+                                                                                                    %
+#    Actividad                                      Responsable(s)               Estado             Cumpl
+                                                                                                    .
+     Publicación y comunicación de la planeación    Ximena Cárdenas
+19                                                                               Completado         100%
+     completa Sprints 5, 6 y 7                      Hernández
+     Conducción de sesiones Daily SCRUM (5
+20                                                  Demian Romero Bautista       Completado         100%
+     sesiones del sprint)
+21   Elaboración del Informe de Sprint No. 4        Demian Romero Bautista       Completado         100%
+22   Diagramas de casos de uso                      Todos                        Pendiente           66%
+
+
+
+
+                                               Página 53 de 68
+                                                                        ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+Sprint 5 | Planificado | 26 mar — 2 abr de 2026
+Foco: Reestructuración crítica del sistema. Replantamiento por diagramas de flujo, consolidación de Casos de Uso
+de los 7 módulos, producción de mock-ups oficiales y reorganización temporal de células del equipo.
+
+
+
+                                                                                                            %
+  #    Actividad                                   Responsable(s)       Equipo            Estado
+                                                                                                          Cumpl.
+
+       Replantamiento del sistema desde su         Demian Romero
+                                                                       Análisis/D
+  1    modelado por medio de diagramas de          Bautista, Equipo                    Completado          100%
+                                                                         ocs
+       flujo (Figma)                               ADS
+
+       [M1] Requerimientos y Reglas de Negocio     Emilio Díaz         Análisis/D
+  2                                                                                    Completado          100%
+       — Autenticación y Acceso                    Maturano              ocs
+
+       [M1] Casos de Uso — Autenticación y         Emilio Díaz         Análisis/D
+  3                                                                                    Completado          100%
+       Acceso                                      Maturano              ocs
+
+                                                   Leonardo Esaú       Análisis/D
+  4    [M2] Casos de Uso — Gestión de Grupo                                            Completado          100%
+                                                   Olivares Valdez       ocs
+
+       [M3] Casos de Uso — Itinerario              Ali Yair Riaño      Análisis/D
+  5                                                                                    Completado          100%
+       Colaborativo                                Ortiz                 ocs
+
+       [M4] Casos de Uso — Búsqueda y APIs         Edgar Correa        Análisis/D
+  6                                                                                    Completado          100%
+       Externas                                    Cano                  ocs
+
+                                                   Gabriel
+       [M5] Casos de Uso — Sincronización en                           Análisis/D
+  7                                                Hernández                           Completado          100%
+       Tiempo Real                                                       ocs
+                                                   Flores
+
+                                                   Gabriel
+       [M6] Casos de Uso — Presupuesto y                               Análisis/D
+  8                                                Hernández                           Completado          100%
+       Gastos                                                            ocs
+                                                   Flores
+
+                                                   Gabriel
+       [M7] Casos de Uso — Notificaciones,                             Análisis/D
+  9                                                Hernández                           Completado          100%
+       Historial y Exportación                                           ocs
+                                                   Flores
+
+                                                   Gabriel
+       Consolidación Final de Casos de Uso y                           Análisis/D
+ 10                                                Hernández                           Completado          100%
+       Coordinación de Tareas                                            ocs
+                                                   Flores
+
+       Preparación del espacio de trabajo
+                                                   Bryan Ayala
+ 11    MOCKUPS para el equipo de Frontend                              Frontend        Completado          100%
+                                                   Baños
+       (Figma)
+
+                                                   Bryan Ayala
+ 12    [M0] Mock-ups — Landing Page                                    Frontend        Completado          100%
+                                                   Baños
+
+                                                   Ximena
+       [M1] Mock-ups — Autenticación y Acceso      Cárdenas            Frontend        Completado          100%
+                                                   Hernández
+
+                                                   Kevin Antonio
+ 14    [M2] Mock-ups — Gestión de Grupo                                Frontend        Completado          100%
+                                                   López Toledo
+
+       [M3] Mock-ups — Itinerario Colaborativo     Carlos Daniel
+ 15                                                                    Frontend        Completado          100%
+       (Vista A)                                   Juárez Gómez
+
+       [M3] Mock-ups — Itinerario Colaborativo     Bryan Ayala
+ 16                                                                    Frontend        Completado          100%
+       (Vista B)                                   Baños
+
+       [M4] Mock-ups — Búsqueda y APIs             Yael Sebastián
+ 17                                                                    Frontend        Completado          90%
+       Externas                                    Sangrador Curiel
+
+
+
+                                                 Página 54 de 68
+                                                                      ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+                                                                                                      %
+#    Actividad                                       Responsable(s)   Equipo          Estado
+                                                                                                    Cumpl.
+
+     [M5] Mock-ups — Sincronización en               Bryan Ayala
+18                                                                    Frontend     Completado        100%
+     Tiempo Real                                     Baños
+
+                                                     Hector Said
+19   [M6] Mock-ups — Presupuesto y Gastos            Ferreira         Frontend       Revisión        100%
+                                                     Rodríguez
+
+                                                     Ximena
+     [M7] Mock-ups — Notificaciones, Historial
+20                                                   Cárdenas         Frontend     Completado        100%
+     y Exportación
+                                                     Hernández
+
+     Conducción de sesiones Daily SCRUM (5           Demian Romero    SCRUM
+21                                                                                 Completado        100%
+     sesiones del sprint)                            Bautista         Master
+
+     Replantamiento de planeación para               Demian Romero    SCRUM
+22                                                                                 Completado        100%
+     sprints posteriores                             Bautista         Master
+
+     Actualización de documento oficial del          Demian Romero    SCRUM
+23                                                                                 Completado        100%
+     proyecto                                        Bautista         Master
+
+                                                     Demian Romero    SCRUM
+24   Elaboración del Informe de Sprint No. 5                                       Completado        100%
+                                                     Bautista         Master
+
+                                                     Ximena
+     Disponibilidad continua y aclaración de                          Product
+25                                                   Cárdenas                      Completado        100%
+     requisitos del sistema                                           Owner
+                                                     Hernández
+
+                                                     Ximena
+     Participación activa en la planificación del                     Product
+                                                     Cárdenas                      Completado        100%
+26   Sprint 5 y reorganización de células                             Owner
+                                                     Hernández
+
+                                                     Ximena
+     Gestión y priorización del Backlog del                           Product
+27                                                   Cárdenas                      Completado        100%
+     producto                                                         Owner
+                                                     Hernández
+
+
+
+
+                                                    Página 55 de 68
+                                                                           ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+
+ Sprint 6 | Planificado | 2 abr — 9 abr de 2026
+Foco: Retorno al desarrollo técnico. Configuración del entorno React + Tailwind, realización de vistas de
+autenticación, finalización del middleware de Backend y arranque del módulo de Grupos.
+
+
+
+  #    Actividad                                   Responsable(s)           Equipo         Estado           % Cumpl.
+
+       Configuración del proyecto React +
+  1    Tailwind CSS (instalación, carpetas,        Bryan Ayala Baños       Frontend      Completado          100%
+       clases globales, variables de diseño)
+
+                                                   Kevin López Toledo,
+       Realización de vistas de Login y
+  2                                                Carlos Daniel           Frontend      Completado          100%
+       Registro con validaciones visuales
+                                                   Juárez
+
+       Realización de componentes base:
+  3    Navbar, Footer, tarjeta de actividad y      Ximena                  Frontend      Completado          100%
+       layout general
+
+  4    Landing Page                                Bryan Ayala             Frontend      Completado          100%
+
+       Cierre del middleware de autenticación
+                                                   Hector Said Ferreira
+  4    y autorización (endpoints protegidos                                Backend       Completado          100%
+                                                   Rodríguez
+       con JWT)
+
+       Desarrollo del módulo de Grupos de
+                                                   Yael Sangrador
+  5    Viaje: creación, unión por código/QR,                               Backend       Completado          100%
+                                                   Curiel
+       consulta de historial
+
+       Pruebas funcionales del módulo de           Yael Sangrador
+  6    autenticación y usuarios (casos             Curiel y Hector Said    Backend       Completado          100%
+       correctos e incorrectos)                    Ferreira Rodríguez
+
+       Estandarización y documentación
+  7    interna del módulo de autenticación en      Ali Yair Riaño Ortiz    Backend       Completado          100%
+       repositorio GitHub
+
+       Revisión de la Base de Datos de             Leonardo Esaú
+  8                                                                        Backend       Completado          100%
+       acuerdo al replanteamiento                  Olivares Valdez
+
+       Elaboración de Diagramas de
+                                                                           Análisis/D
+  8    Actividades — flujos principales del        Pendiente                             Pospuesto            0%
+                                                                             ocs
+       sistema (M1, M2)
+
+                                                                           Análisis/D
+  9    Detalles de Casos de uso M1 y M4            Edgar Correa Cano                     No cumplió           50%
+                                                                             ocs
+
+                                                   Emilio Díaz             Análisis/D
+  10   Detalles Casos de uso M2 y M3                                                     Completado          100%
+                                                   Maturano                  ocs
+
+                                                   Demian Romero           Análisis/D
+  11   Detalles Casos de uso M5 y M6                                                     Completado          100%
+                                                   Bautista                  ocs
+
+                                                   Gabriel Hernández       Análisis/D
+  12   Detalles de Caso de Uso M7                                                        Completado          100%
+                                                   Flores                    ocs
+
+                                                   Gabriel Hernández       Análisis/D
+  13   Diagrama de Casos de Uso                                                          Completado          100%
+                                                   Flores                    ocs
+
+       Conducción de sesiones Daily SCRUM          Demian Romero            SCRUM
+  9                                                                                      Completado          100%
+       (5 sesiones del sprint)                     Bautista                 Master
+
+
+
+
+                                                  Página 56 de 68
+                                                                 ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+#    Actividad                                 Responsable(s)     Equipo       Estado        % Cumpl.
+
+                                               Demian Romero     SCRUM
+10   Elaboración del Informe de Sprint No. 6                                 Completado        100%
+                                               Bautista          Master
+
+     Gestión y priorización del Backlog del    Demian Romero     SCRUM
+11                                                                           Completado        100%
+     producto — Sprint 6                       Bautista          Master
+
+
+
+
+                                               Página 57 de 68
+                                                                          ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+
+ Sprint 7 | Planificado | 9 abr — 16 abr de 2026
+Foco: Módulo de Gestión de Grupos completo (Backend) y primeras vistas del Dashboard y Gestión de Grupo
+(Frontend). Diagramas de Actividades M3 y M4.
+
+
+
+  #   Actividad                             Responsable(s)                  Equipo         Estado       % Cumpl.
+
+      Implementación completa del
+      módulo de Grupos: roles               Yael Sangrador Curiel, Ali
+  1                                                                        Backend       Pospuesta         0%
+      Admin/Viajero, invitación,            Yair Riaño Ortiz
+      expulsión y delegación
+
+      Implementación de endpoints de
+                                            Hector Said Ferreira
+  2   viaje: creación, unión, cierre y                                     Backend       Pospuesta         0%
+                                            Rodríguez
+      historial de viajes
+
+      Implementación del Modelo de
+  3   Datos de Itinerario: entidades Día,   Leonardo Olivares Valdez       Backend       Completado       100%
+      Propuesta, Actividad
+
+                                            Hector Said Ferreira
+  4   Integración de APIS externas                                         Backend       Completado       100%
+                                            Rodríguez
+
+  5   Bloqueo en tiempo real                Leonardo Olivares Valdez       Backend       Completado       100%
+
+                                            Ali Yair Riaño Ortiz,
+      Controlador de votaciones y           Hector Said Ferreira                             Se
+  6                                                                        Backend                         40%
+      comentarios                           Rodríguez, Yael                              continuará
+                                            Sangrador Curiel
+
+      [M3] Dashboard e Itinerario por
+  7                                         Bryan Ayala Baños              Frontend      Completado       100%
+      Día — P8, P9
+
+      [M3] Tarjeta de Propuesta y
+                                            Kevin Antonio López
+  8   Comparación de Opciones —                                            Frontend      Pendiente         50%
+                                            Toledo
+      P10, P12
+
+      [M2] Panel de Miembros y Modal
+  9                                         Carlos Daniel Juárez           Frontend      Completado       100%
+      de Invitación — P5, P6
+
+      [M1 y M2] Recuperar Contraseña,
+                                            Ximena Cárdenas
+ 10   Crear Grupo y Configuración —                                        Frontend      Completado       100%
+                                            Hernández
+      P3, P4, P7
+
+ 11   Trayectorias de casos de uso M1       Edgar Correa Cano            Análisis/Docs   Pendiente        100%
+
+ 12   Trayectorias de casos de uso M2       Emilio Díaz Maturano         Análisis/Docs   Pendiente        100%
+
+ 13   Trayectorias de casos de uso M3       Hernández Flores Gabriel     Análisis/Docs   Pendiente        100%
+
+                                                                                             Se
+ 14   Trayectorias de casos de uso M4       Edgar Correa Cano            Análisis/Docs                     70%
+                                                                                         continuará
+
+      Plan de pruebas funcionales e
+ 15                                         Demian Romero Bautista       Análisis/Docs   Pospuesto         0%
+      integración — módulos M1, M2
+
+      Estandarización de errores                                                             Se
+ 16                                         Demian Romero Bautista       Análisis/Docs                     50%
+      general                                                                            continuará
+
+      Actualización continua del
+ 17   documento principal con la            Hernández Flores Gabriel     Análisis/Docs   Pospuesto         0%
+      evolución del proyecto
+
+
+
+
+                                                  Página 58 de 68
+                                                                   ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+#    Actividad                            Responsable(s)            Equipo          Estado       % Cumpl.
+
+     Conducción de sesiones Daily                                   SCRUM
+18                                        Demian Romero Bautista                  Pendiente        100%
+     SCRUM (5 sesiones del sprint)                                  Master
+
+     Elaboración del Informe de Sprint                              SCRUM
+19                                        Demian Romero Bautista                  Pendiente        100%
+     No. 7                                                          Master
+
+     Gestión y priorización del Backlog                             SCRUM
+20                                        Demian Romero Bautista                  Pendiente        100%
+     del producto — Sprint 7                                        Master
+
+
+
+
+                                               Página 59 de 68
+                                                                           ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+ Sprint 8 | Planificado | 16 abr — 23 abr de 2026
+
+Foco: Módulo de Itinerario base (CRUD) y configuración inicial de Socket.io + Redis. Realización del Dashboard del
+Itinerario en Frontend.
+
+
+
+  #    Actividad                                  Responsable(s)           Equipo        Estado         % Cumpl.
+
+       Implementación CRUD del módulo de
+                                                  Yael Sangrador
+       Itinerario: días, propuestas y bloqueo
+  1                                               Curiel, Hector Said      Backend     Completado         100%
+       atómico (transacción ACID
+                                                  Ferreira
+       PostgreSQL)
+
+       Configuración base de Socket.io +          Ali Yair Riaño Ortiz,
+  2    Redis: salas de viaje (trip_id), eventos   Leonardo Olivares        Backend     Completado         100%
+       básicos de presencia                       Valdez
+
+       Implementación completa del módulo         Yael Sangrador
+  3    de Grupos: roles Admin/Viajero,            Curiel, Ali Yair Riaño   Backend     Completado         100%
+       invitación, expulsión y delegación         Ortiz
+
+       Implementación de endpoints de viaje:
+                                                  Hector Said Ferreira
+  4    creación, unión, cierre y historial de                              Backend     Completado         100%
+                                                  Rodríguez
+       viajes
+
+                                                  Ali Yair Riaño Ortiz,
+       Controlador de votaciones y                Hector Said Ferreira
+  5                                                                        Backend     Completado         100%
+       comentarios (60% restante)                 Rodríguez, Yael
+                                                  Sangrador Curiel
+
+                                                  Yael Sangrador
+  6    Documentación endpoints                                             Backend     Completado         100%
+                                                  Curiel
+
+       Implementación del Módulo de
+                                                  Yael Sangrador
+  7    Votaciones y                                                        Backend     Completado         100%
+                                                  Curiel
+       Comentarios en Propuestas
+
+       Integración apiClient + Integración Auth   Yael Sangrador
+  8                                                                        Backend     Completado         100%
+       completa                                   Curiel
+
+       [M3] Tarjeta de Propuesta y
+                                           Kevin Antonio López
+  9    Comparación de Opciones — P10, P12​                                 Frontend    Completado         100%
+                                           Toledo
+       (50% restante)
+
+       [M3] Tarjeta de Propuesta completa
+                                                  Kevin Antonio López
+ 10    (P10) + Comparación de Opciones                                     Frontend    Completado         100%
+                                                  Toledo
+       (P12) + fix Dashboard
+
+       Implementar apiClient.ts + Integración
+ 11                                               Bryan Ayala Baños        Frontend    Completado         100%
+       Auth completa (M1)
+
+       [M2] Integración API — Crear Grupo y       Carlos Daniel
+ 12                                                                        Frontend    Completado         100%
+       Panel del Grupo                            Juárez Gómez
+
+       [M2] Pulir InviteModal (P6) y completar    Ximena Cárdenas
+ 13                                                                        Frontend    Completado         100%
+       GroupSettings (P7)                         Hernández
+
+                                                  Hernández Flores
+                                                                           Análisis/
+ 14    Trayectorias de casos de uso M5            Gabriel y Demian                     Completado         100%
+                                                                            Docs
+                                                  Romero Bautista
+
+                                                  Emilio Díaz
+                                                                           Análisis/
+ 15    Trayectorias de casos de uso M6            Maturano y Demian                    Completado         100%
+                                                                            Docs
+                                                  Romero Bautista
+
+
+
+
+                                                  Página 60 de 68
+                                                                   ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+#    Actividad                                 Responsable(s)      Equipo        Estado       % Cumpl.
+
+                                               Edgar Correa Cano
+                                                                   Análisis/
+16   Trayectorias de casos de uso M7           y Demian Romero                 Completado       100%
+                                                                    Docs
+                                               Bautista
+
+                                               Demian Romero
+     Estandarización de errores general        Bautista,,          Análisis/
+17                                                                             Completado       100%
+     (50% restante)                            Hernández Flores     Docs
+                                               Gabriel
+
+     Actualización continua del documento      Hernández Flores    Análisis/
+18                                                                             Completado       100%
+     principal con la evolución del proyecto   Gabriel              Docs
+
+     Correcciones al diagrama de casos de      Hernández Flores    Análisis/
+19                                                                             Completado       100%
+     uso                                       Gabriel              Docs
+
+     Estandarización de documentos a                               Análisis/
+20                                             Edgar Cano Correa               Completado       100%
+     identidad de marca de Ithera                                   Docs
+
+     Revisión general de análisis de sistema   Emilio Díaz         Análisis/
+21                                                                             Completado       100%
+     de Ithera                                 Maturano             Docs
+
+     Aplicación de heurísticas y errores al    Demian Romero       Análisis/
+22                                                                             Completado       100%
+     rediseño del perfil grupal                Bautista             Docs
+
+     Conducción de sesiones Daily SCRUM        Demian Romero       SCRUM
+23                                                                             Completado       100%
+     (5 sesiones del sprint)                   Bautista            Master
+
+                                               Demian Romero       SCRUM
+24   Elaboración del Informe de Sprint No. 8                                   Completado       100%
+                                               Bautista            Master
+
+     Gestión y priorización del Backlog —      Demian Romero       SCRUM
+25                                                                             Completado       100%
+     Sprint 8                                  Bautista            Master
+
+
+
+
+                                               Página 61 de 68
+                                                                          ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+ Sprint 9 | Planificado | 23 abr — 30 abr de 2026
+Foco: Sincronización en tiempo real completa (heartbeat, offline, Last Write Wins) e integración del Service Gateway
+con Amadeus. Componentes React reactivos.
+
+
+
+   #     Actividad                         Responsable(s)              Equipo        Estado          % Cumpl.
+
+         Implementación completa de
+         sincronización en tiempo real:
+                                           Hector Said Ferreira,
+   1     heartbeat, modo offline, cola                                Backend       Pendiente           0%
+                                           Ali Yair Riaño Ortiz
+         diferida (IndexedDB) y política
+         Last Write Wins
+
+         Integración del Service
+                                           Yael Sangrador Curiel,
+         Gateway con Amadeus API:
+   2                                       Leonardo Olivares          Backend       Pendiente           0%
+         búsqueda de vuelos y
+                                           Valdez
+         hospedaje con Circuit Breaker
+
+         Implementación del módulo 4
+                                           Ali Yair Riaño Ortiz,
+         de Presupuesto: registro de
+   4                                       Leonardo Olivares          Backend       Pendiente           0%
+         gastos, divisiones ACID, saldos
+                                           Valdez
+         netos y liquidación mínima
+
+                                           Hector Said Ferreira y
+   6     Test del backend                                             Backend       Pendiente           0%
+                                           Gabriel Hernández
+
+         Conexión de Google Maps
+         Platform: autocompletado de       Yael Sangrador Curiel y    Backend
+   3     lugares, mapa interactivo,        Demian Romero                 y          Pendiente           0%
+         Google Routes para cálculo de     Bautista                   Frontend
+         rutas
+
+                                           Demian Romero              Backend
+         Integración del dashboard de
+   5                                       Bautista y Gabriel            y          Pendiente           0%
+         itinerario
+                                           Hernández                  Frontend
+
+         Despliegue de Frontend en
+                                           Demian Romero                            Completa
+   1     Vercel con workflows en github                               Backend                          100%
+                                           Bautisa                                    do
+         de confirmación
+
+         Componentes React en tiempo
+         real: tarjeta de propuesta
+                                           Bryan Ayala Baños,
+   3     reactiva, banner offline,                                    Frontend      Pendiente           0%
+                                           Carlos Daniel Juárez
+         indicador de presencia de
+         usuarios
+
+         Realización de pantalla de
+                                           Kevin López Toledo,
+         Búsqueda de Vuelos y
+   4                                       Ximena Cárdenas            Frontend      Pendiente           0%
+         Hospedaje con resultados
+                                           Hernández
+         paginados
+
+                                           Gabriel Hernández
+         Mantenimiento con vacíos de                                  Análisis/D
+   6                                       Flores, Emilio Díaz                      Pendiente           0%
+         análisis del sistema                                           ocs
+                                           Maturano
+
+         Actualización del documento       Gabriel Hernández          Análisis/D
+   7                                                                                Pendiente           0%
+         oficial                           Flores                       ocs
+
+         Revisión y cumplimiento del
+         M1 al M4 de pantallas,            Gabriel Hernández
+                                                                      Análisis/D
+   8     mensajes de error detalles de     Flores. Emilio Díaz                      Pendiente           0%
+                                                                        ocs
+         casos de uso e inconsistencias    Maturano
+         del sistema
+
+
+
+
+                                                  Página 62 de 68
+                                                              ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+#    Actividad                       Responsable(s)         Equipo      Estado        % Cumpl.
+
+     Conducción de sesiones Daily    Demian Romero          SCRUM
+9                                                                     Pendiente          0%
+     SCRUM (5 sesiones del sprint)   Bautista               Master
+
+     Elaboración del Informe de      Demian Romero          SCRUM
+10                                                                    Pendiente          0%
+     Sprint No. 9                    Bautista               Master
+
+     Gestión y priorización del      Demian Romero          SCRUM
+11                                                                    Pendiente          0%
+     Backlog — Sprint 9              Bautista               Master
+
+
+
+
+                                          Página 63 de 68
+                                                                          ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+
+ Sprint 10 | Planificado | 30 abr — 7 may de 2026
+Foco: Integración de Google Maps Platform y módulo de Presupuesto con divisiones ACID. Realización de M4 y
+Dashboard financiero.
+
+
+
+ #    Actividad                                  Responsable(s)             Equipo        Estado      % Cumpl.
+
+      Integración de Google Maps Platform:
+                                                 Yael Sangrador
+      autocompletado de lugares, mapa
+ 1                                               Curiel, Hector Said       Backend       Pendiente        0%
+      interactivo, Google Routes para cálculo
+                                                 Ferreira
+      de rutas
+
+      Implementación del módulo 4 de
+                                                 Ali Yair Riaño Ortiz,
+      Presupuesto: registro de gastos,
+ 2                                               Leonardo Olivares         Backend       Pendiente        0%
+      divisiones ACID, saldos netos y
+                                                 Valdez
+      liquidación mínima
+
+                                                                          Backend y
+      Integración del dashboard de itinerario
+                                                                          Frontend
+
+      Realización del módulo M4: buscador de     Bryan Ayala
+ 3    actividades con mapa, vista de             Baños, Kevin              Frontend      Pendiente        0%
+      resultados y detalle de lugar              López Toledo
+
+                                                 Carlos Daniel
+      Realización del Dashboard financiero
+                                                 Juárez, Ximena
+ 4    grupal y vista Mi Cartera (finanzas                                  Frontend      Pendiente        0%
+                                                 Cárdenas
+      personales)
+                                                 Hernández
+
+                                                 Gabriel Hernández
+      Mantenimiento con vacíos de análisis del
+ 5                                               Flores, Emilio Díaz     Análisis/Docs   Pendiente        0%
+      sistema
+                                                 Maturano
+
+                                                 Gabriel Hernández
+      Actualización del documento oficial                                Análisis/Docs   Pendiente
+                                                 Flores
+
+      Revisión y cumplimiento del M1 al M4
+                                                 Gabriel Hernández
+      de pantallas, mensajes de error detalles
+                                                 Flores, Emilio Díaz     Análisis/Docs   Pendiente
+      de casos de uso e inconsistencias del
+                                                 Maturano
+      sistema
+
+      Revisión y cumplimiento del M5 y M6 de
+                                                 Gabriel Hernández
+      pantallas, mensajes de error detalles de
+                                                 Flores, Emilio Díaz     Análisis/Docs   Pendiente
+      casos de uso e inconsistencias del
+                                                 Maturano
+      sistema
+
+      Conducción de sesiones Daily SCRUM         Demian Romero             SCRUM
+                                                                                         Pendiente        0%
+      (5 sesiones del sprint)                    Bautista                  Master
+
+                                                 Demian Romero             SCRUM
+      Elaboración del Informe de Sprint No. 10                                           Pendiente        0%
+                                                 Bautista                  Master
+
+      Gestión y priorización del Backlog —       Demian Romero             SCRUM
+                                                                                         Pendiente        0%
+      Sprint 10                                  Bautista                  Master
+
+
+
+
+                                                 Página 64 de 68
+                                                                         ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+
+ Sprint 11 | Planificado | 7 may — 14 may de 2026
+Foco: Módulo de Notificaciones reactivas, historial de búsquedas y exportación PDF. Refinamiento de UI/UX global y
+pruebas de integración end-to-end.
+
+
+
+ #    Actividad                                Responsable(s)             Equipo         Estado         % Cumpl.
+
+      Implementación del módulo de
+                                               Hector Said Ferreira,
+      Notificaciones reactivas (WebSocket)
+ 1                                             Yael Sangrador            Backend       Pendiente           0%
+      y centro de notificaciones con
+                                               Curiel
+      preferencias por usuario
+
+      Implementación del historial de
+                                               Ali Yair Riaño Ortiz,
+      búsquedas (caché PostgreSQL
+ 2                                             Leonardo Olivares         Backend       Pendiente           0%
+      JSONB) y exportación PDF del
+                                               Valdez
+      itinerario consolidado
+
+      Realización del centro de
+                                               Bryan Ayala Baños,
+ 3    notificaciones, historial de búsquedas                             Frontend      Pendiente           0%
+                                               Carlos Daniel Juárez
+      y pantalla de exportación (M7)
+
+      Refinamiento de UI/UX global:            Kevin López Toledo,
+ 4    consistencia visual, accesibilidad y     Ximena Cárdenas           Frontend      Pendiente           0%
+      diseño responsive en todas las vistas    Hernández
+
+      Ejecución de plan de pruebas de          Gabriel Hernández
+ 5    integración end-to-end (flujo completo   Flores, Edgar           Análisis/Docs   Pendiente           0%
+      de viaje grupal)                         Correa Cano
+
+      Conducción de sesiones Daily             Demian Romero             SCRUM
+ 6                                                                                     Pendiente           0%
+      SCRUM (5 sesiones del sprint)            Bautista                  Master
+
+      Elaboración del Informe de Sprint No.    Demian Romero             SCRUM
+ 7                                                                                     Pendiente           0%
+      11                                       Bautista                  Master
+
+      Gestión y priorización del Backlog —     Demian Romero             SCRUM
+ 8                                                                                     Pendiente           0%
+      Sprint 11                                Bautista                  Master
+
+
+
+
+                                                  Página 65 de 68
+                                                                            ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+
+ Sprint 12 | Planificado | 14 may — 21 may de 2026
+Foco: Corrección de bugs, hardening de seguridad, ajustes finales de UI, demostración funcional interna, elaboración
+del informe final y entrega del proyecto.
+
+
+
+ #    Actividad                                         Responsable(s)          Equipo         Estado        % Cumpl.
+
+      Corrección de bugs críticos detectados en
+                                                        Equipo Backend
+ 1    pruebas de integración y ajustes de                                      Backend        Pendiente          0%
+                                                        completo
+      rendimiento (índices BD, respuestas API)
+
+      Hardening de seguridad: revisión de               Hector Said
+ 2    exposición de tokens, validación de inputs y      Ferreira, Yael         Backend        Pendiente          0%
+      sanitización de respuestas                        Sangrador Curiel
+
+                                                        Bryan Ayala
+      Ajustes finales de UI: corrección de              Baños, Kevin
+ 3    inconsistencias visuales, pruebas en              López Toledo,          Frontend       Pendiente          0%
+      dispositivos móviles y desktop                    Carlos Daniel
+                                                        Juárez
+
+      Demostración funcional interna (dry-run de
+ 4    entrega): ejecución del flujo completo de         Equipo completo        Frontend       Pendiente          0%
+      viaje grupal de inicio a fin
+
+                                                        Gabriel
+      Elaboración del Informe Final de Proyecto:
+                                                        Hernández Flores,
+      documentación técnica completa,
+ 5                                                      Emilio Díaz          Análisis/Docs    Pendiente          0%
+      retrospectiva de sprints y lecciones
+                                                        Maturano, Edgar
+      aprendidas
+                                                        Correa Cano
+
+                                                        Demian Romero
+      Preparación de presentación ejecutiva del
+                                                        Bautista, Ximena
+ 6    producto (demo deck y guión de                                         Análisis/Docs    Pendiente          0%
+                                                        Cárdenas
+      presentación)
+                                                        Hernández
+
+      Conducción de sesiones Daily SCRUM (5             Demian Romero           SCRUM
+ 7                                                                                            Pendiente          0%
+      sesiones del sprint)                              Bautista                Master
+
+      Elaboración del Informe de Sprint No. 12 y        Demian Romero           SCRUM
+ 8                                                                                            Pendiente          0%
+      Cierre del Proyecto                               Bautista                Master
+
+      Entrega final del producto y documentación a      Demian Romero           SCRUM
+ 9                                                                                            Pendiente          0%
+      la Profesora Idalia Maldonado Castillo            Bautista                Master
+
+
+
+
+                                                     Página 66 de 68
+                                                             ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+14. Resultados de Asistencia — Daily SCRUM (Actualizado al
+Sprint 8)
+Se registraron las asistencias del equipo a las sesiones de Daily SCRUM durante los primeros
+nueve sprints del proyecto. El Daily SCRUM se realiza a las 09:00 hrs diariamente.
+
+* Durante el Sprint 8 (Semana 9), un día del sprint no fue posible realizar el Daily SCRUM, por
+lo que las sesiones efectivas fueron 4. El porcentaje global se calcula sobre el denominador de
+5 sesiones planificadas.
+
+
+Resumen Global de Asistencia por Semana
+
+     Semana               Sprint      % Asistencia Global       Estado            Sesiones
+                        Planteamie
+ Semana 1                                     91.7%             Bueno                  5
+                        nto Inicial
+ Semana 2               Sprint 1              91.7%             Bueno                  5
+ Semana 3               Sprint 2              96.7%            Excelente               5
+ Semana 4               Sprint 3              100%             Excelente               5
+ Semana 5               Sprint 4              96.7%            Excelente               5
+ Semana 6               Sprint 5              91.7%             Bueno                  5
+ Semana 7               Sprint 6              100%             Excelente               6
+ Semana 8               Sprint 7              93.3%             Bueno                  5
+ Semana 9               Sprint 8              56.7%               Bajo                4*
+
+
+Resumen de Asistencia Individual — Sprint 8 (5 sesiones; 1 día sin Daily)
+
+           Integrante                 Pres.        Aus.      % Asist.             Estado
+ Ayala Baños Bryan                     3              1       60.0%              Regular
+ Romero Bautista Demian                4              0       80.0%               Bueno
+ Juárez Gómez Carlos Daniel            4              0       80.0%               Bueno
+ Hernández Flores Gabriel              2              2       40.0%                Bajo
+ López Toledo Kevin Antonio            1              3       20.0%                Bajo
+ Riaño Ortiz Ali Yair                  4              0       80.0%               Bueno
+ Cárdenas Hernández Ximena             2              2       40.0%                Bajo
+ Sangrador Curiel Yael
+                                       3              1       60.0%              Regular
+ Sebastián
+
+
+
+                                           Página 67 de 68
+                                                             ITHERA — Informe Sprint 7 | Grupo 5CM3
+
+
+
+           Integrante               Pres.         Aus.       % Asist.             Estado
+ Díaz Maturano Emilio                 4             0         80.0%               Bueno
+ Correa Cano Edgar                    2             2         40.0%                Bajo
+ Ferreira Rodríguez Hector
+                                      2             2         40.0%                Bajo
+ Said
+ Olivares Valdez Leonardo
+                                      3             1         60.0%              Regular
+ Esaú
+                   % Asistencia Global — Sprint 8                                 56.7%
+
+El Sprint 8 cerró con un 56.7% de asistencia global, el porcentaje más bajo registrado en el
+proyecto. Se observa una distribución amplia de ausencias a lo largo del equipo, con varios
+integrantes acumulando dos o más inasistencias. Hernández Flores Gabriel, López Toledo
+Kevin Antonio, Cárdenas Hernández Ximena, Correa Cano Edgar y Ferreira Rodríguez Hector
+Said registraron el menor porcentaje de presencia del sprint. Riaño Ortiz Ali Yair, Díaz Maturano
+Emilio y Romero Bautista Demian mantuvieron el mayor nivel de asistencia con 4 sesiones. Se
+establece como prioridad para el Sprint 9 la recuperación de la asistencia a niveles superiores
+al 90%, alineada con el desempeño histórico del equipo.
+
+Nota: Olivares Valdez Leonardo Esaú continúa bajo el seguimiento formal establecido desde el
+Sprint 1.
+
+
+
+
+                                          Página 68 de 68
+

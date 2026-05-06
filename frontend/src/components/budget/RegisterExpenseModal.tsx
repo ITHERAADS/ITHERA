@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { FC } from 'react'
 import type { Expense } from './BudgetDashboard'
+import type { BudgetMember } from '../../services/budget'
 
 interface Props {
   open: boolean
-  members: string[]
+  members: BudgetMember[]
   editingExpense?: Expense | null
   onClose: () => void
   onSave: (expense: Expense) => void
@@ -21,35 +22,43 @@ const CATEGORIES: { value: Expense['categoria']; label: string }[] = [
 export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense, onClose, onSave }) => {
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [category, setCategory] = useState<Expense['categoria']>('transporte')
-  const [paidBy, setPaidBy] = useState(members[0] ?? '')
+  const [paidBy, setPaidBy] = useState(members[0]?.usuario_id ?? '')
   const [splitType, setSplitType] = useState<Expense['splitType']>('equitativa')
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({})
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([])
 
   useEffect(() => {
     if (!open) return
-    const reset = () => {
-      if (editingExpense) {
-        setAmount(String(editingExpense.monto))
-        setDescription(editingExpense.titulo)
-        setCategory(editingExpense.categoria)
-        setPaidBy(editingExpense.pagadoPor)
-        setSplitType(editingExpense.splitType ?? 'equitativa')
-        setSplitAmounts(
-          Object.fromEntries(
-            Object.entries(editingExpense.splitAmounts ?? {}).map(([k, v]) => [k, String(v)])
-          )
+    if (editingExpense) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAmount(String(editingExpense.monto))
+      setDescription(editingExpense.titulo)
+      setDate(editingExpense.fecha)
+      setCategory(editingExpense.categoria)
+      setPaidBy(editingExpense.pagadoPorId)
+      setSplitType(editingExpense.splitType ?? 'equitativa')
+      setSelectedMemberIds(
+        editingExpense.participantIds?.length
+          ? editingExpense.participantIds
+          : members.map((member) => member.usuario_id)
+      )
+      setSplitAmounts(
+        Object.fromEntries(
+          Object.entries(editingExpense.splitAmounts ?? {}).map(([k, v]) => [k, String(v)])
         )
-      } else {
-        setAmount('')
-        setDescription('')
-        setCategory('transporte')
-        setPaidBy(members[0] ?? '')
-        setSplitType('equitativa')
-        setSplitAmounts({})
-      }
+      )
+    } else {
+      setAmount('')
+      setDescription('')
+      setDate(new Date().toISOString().split('T')[0])
+      setCategory('transporte')
+      setPaidBy(members[0]?.usuario_id ?? '')
+      setSplitType('equitativa')
+      setSelectedMemberIds(members.map((member) => member.usuario_id))
+      setSplitAmounts({})
     }
-    reset()
   }, [open, editingExpense]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null
@@ -57,30 +66,50 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
   const totalAmount = parseFloat(amount) || 0
   const splitSum =
     splitType === 'personalizada'
-      ? members.reduce((sum, m) => sum + (parseFloat(splitAmounts[m] ?? '0') || 0), 0)
+      ? members
+        .filter((member) => selectedMemberIds.includes(member.usuario_id))
+        .reduce((sum, m) => sum + (parseFloat(splitAmounts[m.usuario_id] ?? '0') || 0), 0)
       : totalAmount
   const splitError =
     splitType === 'personalizada' && totalAmount > 0 && Math.abs(splitSum - totalAmount) > 0.01
       ? `La suma de los montos ($${Math.round(splitSum)}) no coincide con el total ($${Math.round(totalAmount)})`
       : null
-  const isValid = totalAmount > 0 && description.trim().length > 0 && splitError === null
+  const isValid = totalAmount > 0 && description.trim().length > 0 && selectedMemberIds.length > 0 && splitError === null
+
+  const toggleMember = (memberId: string) => {
+    setSelectedMemberIds((prev) => {
+      const next = prev.includes(memberId)
+        ? prev.filter((id) => id !== memberId)
+        : [...prev, memberId]
+      if (next.length === 0) return prev
+      if (!next.includes(paidBy)) setPaidBy(next[0] ?? '')
+      return next
+    })
+  }
 
   const handleSave = () => {
     if (!isValid) return
 
     const parsedSplitAmounts: Record<string, number> | undefined =
       splitType === 'personalizada'
-        ? Object.fromEntries(members.map((m) => [m, parseFloat(splitAmounts[m] ?? '0') || 0]))
+        ? Object.fromEntries(
+          members
+            .filter((member) => selectedMemberIds.includes(member.usuario_id))
+            .map((m) => [m.usuario_id, parseFloat(splitAmounts[m.usuario_id] ?? '0') || 0])
+        )
         : undefined
 
+    const paidByMember = members.find((member) => member.usuario_id === paidBy)
     const expense: Expense = {
       id: editingExpense ? editingExpense.id : crypto.randomUUID(),
       titulo: description.trim(),
       categoria: category,
       monto: totalAmount,
-      pagadoPor: paidBy,
+      pagadoPor: paidByMember?.nombre ?? paidBy,
+      pagadoPorId: paidBy,
       splitType,
-      fecha: editingExpense ? editingExpense.fecha : new Date().toISOString().split('T')[0],
+      fecha: date || new Date().toISOString().split('T')[0],
+      participantIds: selectedMemberIds,
       ...(parsedSplitAmounts !== undefined && { splitAmounts: parsedSplitAmounts }),
     }
 
@@ -108,9 +137,16 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
           <div className="mx-auto mb-5 h-1 w-12 rounded-full bg-[#E2E8F0]" />
 
           <div className="mb-6 flex items-center justify-between">
-            <h2 className="font-heading text-lg font-bold text-[#1E0A4E]">
-              {editingExpense ? 'Editar gasto' : 'Registrar gasto'}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="font-heading text-lg font-bold text-[#1E0A4E]">
+                {editingExpense ? 'Editar gasto' : 'Registrar gasto'}
+              </h2>
+              {editingExpense && (
+                <span className="rounded-full bg-[#7A4FD6]/10 px-2.5 py-0.5 font-body text-xs font-semibold text-[#7A4FD6]">
+                  Editando
+                </span>
+              )}
+            </div>
             <button onClick={onClose} className="text-[#7A8799] transition-colors hover:text-[#3D4A5C]">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -150,6 +186,16 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
             </div>
 
             <div>
+              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Fecha</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
+              />
+            </div>
+
+            <div>
               <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Categoría</label>
               <select
                 value={category}
@@ -169,10 +215,34 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
                 onChange={(e) => setPaidBy(e.target.value)}
                 className="w-full rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
               >
-                {members.map((m) => (
-                  <option key={m} value={m}>{m}</option>
+                {members.filter((member) => selectedMemberIds.includes(member.usuario_id)).map((m) => (
+                  <option key={m.usuario_id} value={m.usuario_id}>{m.nombre || m.email}</option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Personas del gasto</label>
+              <div className="flex flex-wrap gap-2 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-3">
+                {members.map((member) => {
+                  const selected = selectedMemberIds.includes(member.usuario_id)
+                  return (
+                    <button
+                      key={member.usuario_id}
+                      type="button"
+                      onClick={() => toggleMember(member.usuario_id)}
+                      className={[
+                        'rounded-full border px-3 py-1.5 font-body text-xs font-semibold transition-colors',
+                        selected
+                          ? 'border-[#1E6FD9] bg-[#1E6FD9] text-white'
+                          : 'border-[#E2E8F0] bg-white text-[#7A8799]',
+                      ].join(' ')}
+                    >
+                      {member.nombre || member.email}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             <div>
@@ -199,16 +269,16 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
             {splitType === 'personalizada' && (
               <div className="flex flex-col gap-2 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3">
                 <p className="font-body text-xs font-medium text-[#7A8799]">Monto por persona</p>
-                {members.map((member) => (
-                  <div key={member} className="flex items-center gap-3">
-                    <span className="w-20 shrink-0 font-body text-sm text-[#3D4A5C]">{member}</span>
+                {members.filter((member) => selectedMemberIds.includes(member.usuario_id)).map((member) => (
+                  <div key={member.usuario_id} className="flex items-center gap-3">
+                    <span className="w-20 shrink-0 font-body text-sm text-[#3D4A5C]">{member.nombre || member.email}</span>
                     <div className="relative flex-1">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 font-body text-sm text-[#7A8799]">$</span>
                       <input
                         type="number"
                         min="0"
-                        value={splitAmounts[member] ?? ''}
-                        onChange={(e) => setSplitAmounts((prev) => ({ ...prev, [member]: e.target.value }))}
+                        value={splitAmounts[member.usuario_id] ?? ''}
+                        onChange={(e) => setSplitAmounts((prev) => ({ ...prev, [member.usuario_id]: e.target.value }))}
                         placeholder="0"
                         className="w-full rounded-lg border border-[#E2E8F0] bg-white py-2 pl-6 pr-3 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
                       />
@@ -239,7 +309,7 @@ export const RegisterExpenseModal: FC<Props> = ({ open, members, editingExpense,
               disabled={!isValid}
               className="flex-1 rounded-xl bg-[#1E6FD9] py-3.5 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Guardar gasto
+              {editingExpense ? 'Guardar cambios' : 'Guardar gasto'}
             </button>
           </div>
         </div>

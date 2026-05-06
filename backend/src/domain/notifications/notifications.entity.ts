@@ -19,6 +19,9 @@ export interface NotificationPreferences {
   notificaciones_votos: boolean;
   notificaciones_comentarios: boolean;
   notificaciones_invitaciones: boolean;
+  notificaciones_finanzas: boolean;
+  notificaciones_vuelos: boolean;
+  notificaciones_hospedajes: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +43,9 @@ export interface UpdatePreferencesPayload {
   notificaciones_votos?: boolean;
   notificaciones_comentarios?: boolean;
   notificaciones_invitaciones?: boolean;
+  notificaciones_finanzas?: boolean;
+  notificaciones_vuelos?: boolean;
+  notificaciones_hospedajes?: boolean;
 }
 
 

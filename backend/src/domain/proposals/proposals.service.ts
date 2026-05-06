@@ -13,12 +13,66 @@ import {
 import * as NotificationsService from '../notifications/notifications.service';
 
 const isPresent = (value: unknown): boolean => value !== undefined;
+const dbText = (value: string | null | undefined, max = 190): string | null => {
+  if (!value) return null;
+  return value.length > max ? value.slice(0, max) : value;
+};
 
 
 const getVoteLabel = (voteType: ProposalVoteType): string => {
   if (voteType === 'a_favor') return 'a favor';
   if (voteType === 'en_contra') return 'en contra';
   return 'en abstención';
+};
+
+
+const notifyProposalVote = async (
+  groupId: string | number,
+  proposalId: string | number,
+  actorUsuarioId: number,
+  voteType: ProposalVoteType,
+): Promise<void> => {
+  const { data: proposal, error } = await supabase
+    .from('propuestas')
+    .select('id_propuesta, grupo_id, tipo_item, titulo, creado_por')
+    .eq('id_propuesta', proposalId)
+    .maybeSingle();
+
+  if (error || !proposal) {
+    console.error('[Proposals] No se pudo consultar la propuesta para notificar voto:', error?.message);
+    return;
+  }
+
+  const actorName = await NotificationsService.getUserDisplayName(actorUsuarioId);
+  const itemType = String(proposal.tipo_item ?? 'propuesta');
+  const itemTypeLabel = itemType === 'vuelo'
+    ? 'vuelo'
+    : itemType === 'hospedaje'
+      ? 'hospedaje'
+      : 'propuesta';
+  const voteLabel = getVoteLabel(voteType);
+  const itemTitle = String(proposal.titulo ?? 'Sin título');
+
+  await NotificationsService.createNotificationForGroupMembers(
+    Number(groupId),
+    Number(actorUsuarioId),
+    {
+      tipo: `voto_${itemTypeLabel}_nuevo`,
+      titulo: `Nuevo voto en ${itemTypeLabel}`,
+      mensaje: `${actorName} votó ${voteLabel} en la propuesta de ${itemTypeLabel} "${itemTitle}".`,
+      entidadTipo: 'propuesta',
+      entidadId: Number(proposalId),
+      metadata: {
+        actorName,
+        actorUsuarioId: Number(actorUsuarioId),
+        itemTitle,
+        itemType,
+        voteType,
+        voteLabel,
+        proposalCreatorId: Number(proposal.creado_por),
+      },
+    }
+  );
 };
 
 const buildProposalResponse = async (proposalId: number) => {
@@ -104,6 +158,19 @@ const assertProposalAccess = async (proposalId: number, authUserId: string) => {
   return { usuarioId, proposal, membership };
 };
 
+const assertCanManageProposal = async (proposalId: number, authUserId: string) => {
+  const access = await assertProposalAccess(proposalId, authUserId);
+  const isCreator = String(access.proposal.creado_por) === String(access.usuarioId);
+  const role = String(access.membership.rol ?? '').toLowerCase();
+  const isAdmin = role === 'admin' || role === 'organizador';
+
+  if (!isCreator && !isAdmin) {
+    throw Object.assign(new Error('Solo el creador o el organizador pueden modificar esta propuesta'), { statusCode: 403 });
+  }
+
+  return access;
+};
+
 export const createFlightProposal = async (authUserId: string, payload: SaveFlightProposalPayload) => {
   const { usuarioId } = await assertGroupMembership(payload.grupoId, authUserId);
 
@@ -112,9 +179,9 @@ export const createFlightProposal = async (authUserId: string, payload: SaveFlig
     .insert({
       grupo_id: payload.grupoId,
       tipo_item: 'vuelo',
-      titulo: payload.titulo,
+      titulo: dbText(payload.titulo) ?? payload.titulo,
       descripcion: payload.descripcion ?? null,
-      referencia_externa: payload.vuelo.numeroVuelo ?? null,
+      referencia_externa: dbText(payload.vuelo.numeroVuelo ?? null),
       fuente: payload.fuente,
       payload: payload.payload ?? null,
       estado: 'guardada',
@@ -133,11 +200,11 @@ export const createFlightProposal = async (authUserId: string, payload: SaveFlig
     .from('vuelos')
     .insert({
       propuesta_id: proposal.id_propuesta,
-      aerolinea: payload.vuelo.aerolinea,
-      numero_vuelo: payload.vuelo.numeroVuelo ?? null,
-      origen_codigo: payload.vuelo.origenCodigo,
+      aerolinea: dbText(payload.vuelo.aerolinea) ?? payload.vuelo.aerolinea,
+      numero_vuelo: dbText(payload.vuelo.numeroVuelo ?? null),
+      origen_codigo: dbText(payload.vuelo.origenCodigo, 20) ?? payload.vuelo.origenCodigo,
       origen_nombre: payload.vuelo.origenNombre ?? null,
-      destino_codigo: payload.vuelo.destinoCodigo,
+      destino_codigo: dbText(payload.vuelo.destinoCodigo, 20) ?? payload.vuelo.destinoCodigo,
       destino_nombre: payload.vuelo.destinoNombre ?? null,
       salida: payload.vuelo.salida,
       llegada: payload.vuelo.llegada,
@@ -158,7 +225,7 @@ export const createFlightProposal = async (authUserId: string, payload: SaveFlig
     Number(payload.grupoId),
     Number(usuarioId),
     {
-      tipo: 'propuesta_creada',
+      tipo: 'propuesta_vuelo_creada',
       titulo: 'Nueva propuesta de vuelo',
       mensaje: `${actorName} propuso el vuelo "${payload.titulo}".`,
       entidadTipo: 'propuesta',
@@ -187,9 +254,9 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
     .insert({
       grupo_id: payload.grupoId,
       tipo_item: 'hospedaje',
-      titulo: payload.titulo,
+      titulo: dbText(payload.titulo) ?? payload.titulo,
       descripcion: payload.descripcion ?? null,
-      referencia_externa: payload.hospedaje.referenciaExterna ?? null,
+      referencia_externa: dbText(payload.hospedaje.referenciaExterna ?? null),
       fuente: payload.fuente,
       payload: payload.payload ?? null,
       estado: 'guardada',
@@ -208,9 +275,9 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
     .from('hospedajes')
     .insert({
       propuesta_id: proposal.id_propuesta,
-      nombre: payload.hospedaje.nombre,
-      proveedor: payload.hospedaje.proveedor ?? null,
-      referencia_externa: payload.hospedaje.referenciaExterna ?? null,
+      nombre: dbText(payload.hospedaje.nombre) ?? payload.hospedaje.nombre,
+      proveedor: dbText(payload.hospedaje.proveedor ?? null),
+      referencia_externa: dbText(payload.hospedaje.referenciaExterna ?? null),
       direccion: payload.hospedaje.direccion ?? null,
       latitud: payload.hospedaje.latitud ?? null,
       longitud: payload.hospedaje.longitud ?? null,
@@ -219,6 +286,13 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
       precio_total: payload.hospedaje.precioTotal ?? null,
       moneda: payload.hospedaje.moneda ?? null,
       calificacion: payload.hospedaje.calificacion ?? null,
+      liteapi_hotel_id: dbText(payload.hospedaje.liteapiHotelId ?? null),
+      liteapi_offer_id: dbText(payload.hospedaje.liteapiOfferId ?? payload.hospedaje.referenciaExterna ?? null),
+      liteapi_prebook_id: dbText(payload.hospedaje.liteapiPrebookId ?? null),
+      google_place_id: dbText(payload.hospedaje.googlePlaceId ?? null),
+      foto_url: payload.hospedaje.fotoUrl ?? null,
+      reserva_estado: payload.hospedaje.reservaEstado ?? 'pendiente',
+      reserva_simulada_payload: payload.hospedaje.reservaSimuladaPayload ?? {},
       payload: payload.hospedaje.payload ?? null,
     });
 
@@ -232,7 +306,7 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
     Number(payload.grupoId),
     Number(usuarioId),
     {
-      tipo: 'propuesta_creada',
+      tipo: 'propuesta_hospedaje_creada',
       titulo: 'Nueva propuesta de hospedaje',
       mensaje: `${actorName} propuso el hospedaje "${payload.titulo}".`,
       entidadTipo: 'propuesta',
@@ -277,7 +351,7 @@ export const getProposalById = async (proposalId: number, authUserId: string) =>
 };
 
 export const updateProposal = async (proposalId: number, authUserId: string, payload: UpdateProposalPayload) => {
-  const { proposal } = await assertProposalAccess(proposalId, authUserId);
+  const { proposal } = await assertCanManageProposal(proposalId, authUserId);
 
   if (payload.updatedAt && proposal.ultima_actualizacion) {
     const dbDate = new Date(proposal.ultima_actualizacion).getTime();
@@ -372,6 +446,13 @@ export const updateProposal = async (proposalId: number, authUserId: string, pay
       if (isPresent(payload.detalle.precioTotal)) hotelPatch.precio_total = payload.detalle.precioTotal;
       if (isPresent(payload.detalle.moneda)) hotelPatch.moneda = payload.detalle.moneda;
       if (isPresent(payload.detalle.calificacion)) hotelPatch.calificacion = payload.detalle.calificacion;
+      if (isPresent(payload.detalle.liteapiHotelId)) hotelPatch.liteapi_hotel_id = payload.detalle.liteapiHotelId ?? null;
+      if (isPresent(payload.detalle.liteapiOfferId)) hotelPatch.liteapi_offer_id = payload.detalle.liteapiOfferId ?? null;
+      if (isPresent(payload.detalle.liteapiPrebookId)) hotelPatch.liteapi_prebook_id = payload.detalle.liteapiPrebookId ?? null;
+      if (isPresent(payload.detalle.googlePlaceId)) hotelPatch.google_place_id = payload.detalle.googlePlaceId ?? null;
+      if (isPresent(payload.detalle.fotoUrl)) hotelPatch.foto_url = payload.detalle.fotoUrl ?? null;
+      if (isPresent(payload.detalle.reservaEstado)) hotelPatch.reserva_estado = payload.detalle.reservaEstado ?? 'pendiente';
+      if (isPresent(payload.detalle.reservaSimuladaPayload)) hotelPatch.reserva_simulada_payload = payload.detalle.reservaSimuladaPayload ?? {};
       if (isPresent(payload.detalle.payload)) hotelPatch.payload = payload.detalle.payload ?? null;
 
       const { error } = await supabase
@@ -409,7 +490,7 @@ export const updateProposal = async (proposalId: number, authUserId: string, pay
 };
 
 export const deleteProposal = async (proposalId: number, authUserId: string) => {
-  const { proposal } = await assertProposalAccess(proposalId, authUserId);
+  const { proposal } = await assertCanManageProposal(proposalId, authUserId);
 
   const { error: voteError } = await supabase.from('voto').delete().eq('id_propuesta', proposalId);
   if (voteError) throw new Error(voteError.message);
@@ -640,7 +721,7 @@ const evaluateProposalOutcome = async (groupId: string, proposalId: string) => {
 const applyProposalResolution = async (
 	groupId: string,
 	proposalId: string,
-	resolution: 'aprobada' | 'rechazada',
+	resolution: 'aprobada' | 'descartada',
 	meta?: Record<string, unknown>,
 ) => {
 	const nowIso = new Date().toISOString();
@@ -778,7 +859,6 @@ export const castSingleVote = async (
 	payload: CreateVotePayload,
 ) => {
 	const localUserId = await getLocalUserId(authUserId);
-	const localUserIdStr = String(localUserId);
 	await ensureUserBelongsToGroup(groupId, localUserId);
 	await ensureProposalBelongsToGroup(groupId, proposalId);
 
@@ -818,34 +898,7 @@ export const castSingleVote = async (
 
 			if (fallbackInsert.error) throw createError(fallbackInsert.error.message, 500);
 
-      // Notificar al creador si es otro usuario
-      const { data: proposalAuthor } = await supabase.from('propuestas').select('creado_por, titulo').eq('id_propuesta', proposalId).single();
-      const actorName = await NotificationsService.getUserDisplayName(localUserId);
-      if (proposalAuthor && String(proposalAuthor.creado_por) !== localUserIdStr) {
-        await NotificationsService.createNotification({
-          usuarioId: Number(proposalAuthor.creado_por),
-          grupoId: Number(groupId),
-          tipo: 'voto_nuevo',
-          titulo: 'Nuevo voto',
-          mensaje: `${actorName} votó ${getVoteLabel(desiredVoteType)} en tu propuesta "${proposalAuthor.titulo}".`,
-          entidadTipo: 'propuesta',
-          entidadId: Number(proposalId),
-          metadata: {
-            actorName,
-            actorUsuarioId: Number(localUserId),
-            itemTitle: proposalAuthor.titulo,
-            itemType: 'propuesta',
-            voteType: desiredVoteType,
-          },
-        });
-      }
-      NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
-        tipo: 'voto_nuevo',
-        entidadTipo: 'propuesta',
-        entidadId: Number(proposalId),
-        actorUsuarioId: Number(localUserId),
-        metadata: { actorName, voteType: desiredVoteType },
-      });
+      await notifyProposalVote(groupId, proposalId, Number(localUserId), desiredVoteType);
 
 			const outcome = await evaluateProposalOutcome(groupId, proposalId);
 
@@ -854,7 +907,7 @@ export const castSingleVote = async (
 			}
 
 			if (outcome.rejected) {
-				await applyProposalResolution(groupId, proposalId, 'rechazada', { decisionType: 'B', resolution: 'majority_against' });
+				await applyProposalResolution(groupId, proposalId, 'descartada', { decisionType: 'B', resolution: 'majority_against' });
 			}
 
 			return {
@@ -862,7 +915,7 @@ export const castSingleVote = async (
 				message: outcome.approved
 					? 'Voto registrado y propuesta aprobada'
 					: outcome.rejected
-						? 'Voto registrado y propuesta rechazada'
+						? 'Voto registrado y propuesta descartada'
 						: outcome.tied
 							? 'Votacion empatada: requiere desempate del organizador'
 							: 'Voto registrado correctamente',
@@ -880,34 +933,7 @@ export const castSingleVote = async (
 		throw createError(insertError.message, 500);
 	}
 
-  // Notificar al creador si es otro usuario
-  const { data: proposalAuthor } = await supabase.from('propuestas').select('creado_por, titulo').eq('id_propuesta', proposalId).single();
-  const actorName = await NotificationsService.getUserDisplayName(localUserId);
-  if (proposalAuthor && String(proposalAuthor.creado_por) !== localUserIdStr) {
-    await NotificationsService.createNotification({
-      usuarioId: Number(proposalAuthor.creado_por),
-      grupoId: Number(groupId),
-      tipo: 'voto_nuevo',
-      titulo: 'Nuevo voto',
-      mensaje: `${actorName} votó ${getVoteLabel(desiredVoteType)} en tu propuesta "${proposalAuthor.titulo}".`,
-      entidadTipo: 'propuesta',
-      entidadId: Number(proposalId),
-      metadata: {
-        actorName,
-        actorUsuarioId: Number(localUserId),
-        itemTitle: proposalAuthor.titulo,
-        itemType: 'propuesta',
-        voteType: desiredVoteType,
-      },
-    });
-  }
-  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
-    tipo: 'voto_nuevo',
-    entidadTipo: 'propuesta',
-    entidadId: Number(proposalId),
-    actorUsuarioId: Number(localUserId),
-    metadata: { actorName, voteType: desiredVoteType },
-  });
+  await notifyProposalVote(groupId, proposalId, Number(localUserId), desiredVoteType);
 
 	const outcome = await evaluateProposalOutcome(groupId, proposalId);
 
@@ -916,7 +942,7 @@ export const castSingleVote = async (
 	}
 
 	if (outcome.rejected) {
-		await applyProposalResolution(groupId, proposalId, 'rechazada', { decisionType: 'B', resolution: 'majority_against' });
+		await applyProposalResolution(groupId, proposalId, 'descartada', { decisionType: 'B', resolution: 'majority_against' });
 	}
 
 	return {
@@ -924,7 +950,7 @@ export const castSingleVote = async (
 		message: outcome.approved
 			? 'Voto registrado y propuesta aprobada'
 			: outcome.rejected
-				? 'Voto registrado y propuesta rechazada'
+				? 'Voto registrado y propuesta descartada'
 				: outcome.tied
 					? 'Votacion empatada: requiere desempate del organizador'
 					: 'Voto registrado correctamente',
@@ -951,7 +977,7 @@ export const applyAdminDecisionToProposal = async (
 	await ensureUserIsAdmin(groupId, localUserId);
 	await ensureProposalBelongsToGroup(groupId, proposalId);
 
-	const decision = payload.decision === 'rechazar' ? 'rechazada' : 'aprobada';
+	const decision = payload.decision === 'rechazar' ? 'descartada' : 'aprobada';
 	await applyProposalResolution(groupId, proposalId, decision, {
 		decisionType: 'A',
 		adminDecisionBy: localUserId,
@@ -964,7 +990,7 @@ export const applyAdminDecisionToProposal = async (
 		resolution: decision,
 		message: decision === 'aprobada'
 			? 'Decision administrativa aplicada: propuesta aprobada'
-			: 'Decision administrativa aplicada: propuesta rechazada',
+			: 'Decision administrativa aplicada: propuesta descartada',
 	};
 };
 
@@ -1116,7 +1142,6 @@ export const listComments = async (
 	proposalId: string,
 ) => {
 	const localUserId = await getLocalUserId(authUserId);
-	const localUserIdStr = String(localUserId);
 	await ensureUserBelongsToGroup(groupId, localUserId);
 	await ensureProposalBelongsToGroup(groupId, proposalId);
 
@@ -1156,7 +1181,15 @@ export const updateComment = async (
 	if (!existing || String((existing as { id_propuesta: string | number }).id_propuesta) !== proposalId) {
 		throw createError('Comentario no encontrado', 404);
 	}
-	if (String((existing as { id_usuario: string | number }).id_usuario) !== localUserIdStr) {
+	const { data: membershipForComment } = await supabase
+		.from('grupo_miembros')
+		.select('rol')
+		.eq('grupo_id', groupId)
+		.eq('usuario_id', localUserId)
+		.maybeSingle();
+	const roleForComment = String((membershipForComment as { rol?: string } | null)?.rol ?? '').toLowerCase();
+	const canManageComment = String((existing as { id_usuario: string | number }).id_usuario) === localUserIdStr || roleForComment === 'admin' || roleForComment === 'organizador';
+	if (!canManageComment) {
 		throw createError('No puedes editar comentarios de otro usuario', 403);
 	}
 
@@ -1215,7 +1248,15 @@ export const deleteComment = async (
 	if (!existing || String((existing as { id_propuesta: string | number }).id_propuesta) !== proposalId) {
 		throw createError('Comentario no encontrado', 404);
 	}
-	if (String((existing as { id_usuario: string | number }).id_usuario) !== localUserIdStr) {
+	const { data: membershipForComment } = await supabase
+		.from('grupo_miembros')
+		.select('rol')
+		.eq('grupo_id', groupId)
+		.eq('usuario_id', localUserId)
+		.maybeSingle();
+	const roleForComment = String((membershipForComment as { rol?: string } | null)?.rol ?? '').toLowerCase();
+	const canManageComment = String((existing as { id_usuario: string | number }).id_usuario) === localUserIdStr || roleForComment === 'admin' || roleForComment === 'organizador';
+	if (!canManageComment) {
 		throw createError('No puedes eliminar comentarios de otro usuario', 403);
 	}
 

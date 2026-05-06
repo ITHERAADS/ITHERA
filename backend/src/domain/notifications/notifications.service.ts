@@ -14,6 +14,9 @@ const DEFAULT_PREFERENCES = {
   notificaciones_votos: true,
   notificaciones_comentarios: true,
   notificaciones_invitaciones: true,
+  notificaciones_finanzas: true,
+  notificaciones_vuelos: true,
+  notificaciones_hospedajes: true,
 };
 
 const getLocalUserId = async (authUserId: string): Promise<number> => {
@@ -90,6 +93,9 @@ export const updatePreferences = async (
   if (payload.notificaciones_votos !== undefined) updateData.notificaciones_votos = payload.notificaciones_votos;
   if (payload.notificaciones_comentarios !== undefined) updateData.notificaciones_comentarios = payload.notificaciones_comentarios;
   if (payload.notificaciones_invitaciones !== undefined) updateData.notificaciones_invitaciones = payload.notificaciones_invitaciones;
+  if (payload.notificaciones_finanzas !== undefined) updateData.notificaciones_finanzas = payload.notificaciones_finanzas;
+  if (payload.notificaciones_vuelos !== undefined) updateData.notificaciones_vuelos = payload.notificaciones_vuelos;
+  if (payload.notificaciones_hospedajes !== undefined) updateData.notificaciones_hospedajes = payload.notificaciones_hospedajes;
 
   const { data, error } = await supabase
     .from('usuario_preferencias_notificacion')
@@ -160,6 +166,9 @@ const shouldNotifyByPreferences = (
   if (tipo.includes('voto')) return preferences.notificaciones_votos;
   if (tipo.includes('comentario')) return preferences.notificaciones_comentarios;
   if (tipo.includes('invitacion')) return preferences.notificaciones_invitaciones;
+  if (tipo.includes('finanzas') || tipo.includes('gasto') || tipo.includes('presupuesto')) return preferences.notificaciones_finanzas ?? true;
+  if (tipo.includes('vuelo')) return preferences.notificaciones_vuelos ?? true;
+  if (tipo.includes('hospedaje') || tipo.includes('hotel')) return preferences.notificaciones_hospedajes ?? true;
   if (
     tipo.includes('grupo') ||
     tipo.includes('miembro') ||
@@ -238,44 +247,79 @@ export const createNotification = async (payload: CreateNotificationPayload): Pr
   }
 };
 
+const getGroupNotificationRecipientIds = async (grupoId: number): Promise<number[]> => {
+  const recipients = new Set<number>();
+
+  const { data: members, error: membersError } = await supabase
+    .from('grupo_miembros')
+    .select('usuario_id')
+    .eq('grupo_id', grupoId);
+
+  if (membersError) {
+    console.error('[Notifications] Error consultando miembros del grupo:', membersError.message);
+  }
+
+  for (const member of members ?? []) {
+    const usuarioId = Number(member.usuario_id);
+    if (Number.isFinite(usuarioId)) recipients.add(usuarioId);
+  }
+
+  // Respaldo para grupos antiguos o inconsistentes: el organizador puede estar en
+  // grupos_viaje.creado_por aunque no exista, por error histórico, en grupo_miembros.
+  const { data: group, error: groupError } = await supabase
+    .from('grupos_viaje')
+    .select('creado_por')
+    .eq('id', grupoId)
+    .maybeSingle();
+
+  if (groupError) {
+    console.error('[Notifications] Error consultando organizador del grupo:', groupError.message);
+  }
+
+  const creatorId = Number(group?.creado_por);
+  if (Number.isFinite(creatorId)) recipients.add(creatorId);
+
+  return Array.from(recipients);
+};
+
 export const createNotificationForGroupMembers = async (
   grupoId: number,
   excludeUsuarioId: number | null,
   payload: Omit<CreateNotificationPayload, 'usuarioId' | 'grupoId'>
 ): Promise<void> => {
   try {
-    const { data: members, error } = await supabase
-      .from('grupo_miembros')
-      .select('usuario_id')
-      .eq('grupo_id', grupoId);
+    const excludedId = excludeUsuarioId === null ? null : Number(excludeUsuarioId);
+    const recipientIds = (await getGroupNotificationRecipientIds(grupoId)).filter((usuarioId) => {
+      if (!Number.isFinite(usuarioId)) return false;
+      return excludedId === null || usuarioId !== excludedId;
+    });
 
-    if (error || !members) return;
+    if (recipientIds.length === 0) {
+      emitGroupDashboardUpdated(grupoId, {
+        tipo: payload.tipo,
+        entidadTipo: payload.entidadTipo ?? null,
+        entidadId: payload.entidadId ?? null,
+        actorUsuarioId: excludedId,
+        metadata: payload.metadata ?? {},
+      });
+      return;
+    }
 
-    const seen = new Set<number>();
-    const notificationsPromises = members
-      .map((member) => Number(member.usuario_id))
-      .filter((usuarioId) => {
-        if (!Number.isFinite(usuarioId)) return false;
-        if (excludeUsuarioId !== null && usuarioId === excludeUsuarioId) return false;
-        if (seen.has(usuarioId)) return false;
-        seen.add(usuarioId);
-        return true;
-      })
-      .map((usuarioId) =>
+    await Promise.allSettled(
+      recipientIds.map((usuarioId) =>
         createNotification({
           ...payload,
           usuarioId,
           grupoId,
         })
-      );
-
-    await Promise.allSettled(notificationsPromises);
+      )
+    );
 
     emitGroupDashboardUpdated(grupoId, {
       tipo: payload.tipo,
       entidadTipo: payload.entidadTipo ?? null,
       entidadId: payload.entidadId ?? null,
-      actorUsuarioId: excludeUsuarioId,
+      actorUsuarioId: excludedId,
       metadata: payload.metadata ?? {},
     });
   } catch (err) {

@@ -20,6 +20,7 @@ export interface Group {
   destino_formatted_address?: string | null
   destino_photo_name?: string | null
   destino_photo_url?: string | null
+  presupuesto_total?: number | string | null
 }
 
 export interface GroupHistoryItem {
@@ -43,6 +44,7 @@ export interface CreateGroupPayload {
   fecha_inicio?: string
   fecha_fin?: string
   maximo_miembros?: number
+  presupuesto_total: number
   destino_latitud?: number | null
   destino_longitud?: number | null
   destino_place_id?: string | null

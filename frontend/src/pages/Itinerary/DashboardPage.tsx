@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { getCurrentGroup, groupsService } from '../../services/groups'
 import type { ItineraryDay } from '../../services/groups'
@@ -6,6 +6,7 @@ import { mapsService } from '../../services/maps'
 import { proposalsService, type ProposalComment, type VoteResult } from '../../services/proposals'
 import { useAuth } from '../../context/useAuth'
 import { AppLayout, RightPanelDashboard, SidebarDashboard } from '../../components/layout/AppLayout'
+import { ChatDrawer } from '../../components/chat/ChatDrawer'
 import { DayView } from '../../components/ui/DayView'
 import type { Activity as DayActivity, DayViewHandle } from '../../components/ui/DayView'
 import { ProposalCard } from '../../components/ProposalCard/ProposalCard'
@@ -14,6 +15,9 @@ import { ProposalDetailModal } from '../../components/ProposalDetailModal/Propos
 import { ConfirmProposalModal } from '../../components/ConfirmProposalModal/ConfirmProposalModal'
 import { ActivityProposalModal } from '../../components/ActivityProposalModal/ActivityProposalModal'
 import { BudgetDashboard } from '../../components/budget/BudgetDashboard'
+import type { BudgetSummary } from '../../services/budget'
+import { DocumentVaultPanel } from '../../components/documents/DocumentVaultPanel'
+import { SubgroupSchedulePanel } from '../../components/subgroups/SubgroupSchedulePanel'
 import { useSocket } from '../../hooks/useSocket'
 import type { Group } from '../../types/groups'
 
@@ -158,6 +162,8 @@ function HeroCard({
   group,
   onAdd,
   onExportPdf,
+  canManageSubgroups,
+  onOpenSubgroups,
 }: {
   activeDay: number | null
   totalDays: number
@@ -165,6 +171,8 @@ function HeroCard({
   group: ReturnType<typeof getCurrentGroup> | null
   onAdd: () => void
   onExportPdf: () => void
+  canManageSubgroups?: boolean
+  onOpenSubgroups?: () => void
 }) {
   const activities = selectedDay?.activities ?? []
   const pending = activities.filter((activity) => activity.status === 'pendiente').length
@@ -212,6 +220,14 @@ function HeroCard({
             <IconPlus size={13} />
             Proponer actividad
           </button>
+          {canManageSubgroups && onOpenSubgroups && (
+            <button
+              onClick={onOpenSubgroups}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 bg-white/10 px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-white/20"
+            >
+              Horario subgrupos
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -338,6 +354,16 @@ function BottomNavbar({
 }) {
   const tabs = [
     {
+      id: 'inicio',
+      label: 'Inicio',
+      icon: (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    {
       id: 'buscar',
       label: 'Buscar',
       icon: (
@@ -367,17 +393,26 @@ function BottomNavbar({
         </svg>
       ),
     },
-    {
-      id: 'pagar',
-      label: 'Pagar',
-      icon: (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      ),
-    },
-  ]
+      {
+        id: 'pagar',
+        label: 'Pagar',
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        ),
+      },
+      {
+        id: 'boveda',
+        label: 'Bóveda',
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M21 8a2 2 0 00-2-2h-3l-2-2H10L8 6H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V8z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          </svg>
+        ),
+      },
+    ]
 
   return (
     <div className="flex h-14 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4">
@@ -560,11 +595,13 @@ export function DashboardPage() {
 
   const [activeDay,   setActiveDay]   = useState<number | null>(null)
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
-  const [activeTab,   setActiveTab]   = useState('pagar')
+  const [activeTab,   setActiveTab]   = useState('inicio')
+  const [dashboardView, setDashboardView] = useState<'general' | 'subgrupos'>('general')
   const [isLoading,   setIsLoading]   = useState(false)
   const [days,        setDays]        = useState<ItineraryDay[]>([])
   const [group, setGroup] = useState<typeof currentGroup>(currentGroup)
   const [members, setMembers] = useState<Parameters<typeof RightPanelDashboard>[0]['members']>([])
+  const [budgetSummary, setBudgetSummary] = useState<BudgetSummary | null>(null)
   const dayRefs = useRef<Record<number, DayViewHandle | null>>({})
   const collaborativeRefreshTimerRef = useRef<number | null>(null)
   const [showActivityModal, setShowActivityModal] = useState(false)
@@ -586,6 +623,22 @@ export function DashboardPage() {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentText, setEditingCommentText] = useState('')
   const [visibleCommentsCountByProposal, setVisibleCommentsCountByProposal] = useState<Record<string, number>>({})
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatUnread, setChatUnread] = useState(0)
+  const chatOpenRef = useRef(chatOpen)
+
+  // Keep ref in sync so the unread socket listener never captures stale chatOpen
+  useEffect(() => { chatOpenRef.current = chatOpen }, [chatOpen])
+
+  // Increment unread badge when a chat message arrives while the drawer is closed
+  useEffect(() => {
+    if (!socket) return
+    const handleNewMessage = () => {
+      if (!chatOpenRef.current) setChatUnread((c) => c + 1)
+    }
+    socket.on('chat_message', handleNewMessage)
+    return () => { socket.off('chat_message', handleNewMessage) }
+  }, [socket])
 
   const handleDayChange = useCallback((dayNumber: number) => {
     const next = activeDay === dayNumber ? null : dayNumber
@@ -616,6 +669,30 @@ export function DashboardPage() {
   )
   const currentUserRole = currentMember?.rol ?? group?.myRole ?? currentGroup?.myRole ?? 'viajero'
   const isCurrentUserAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
+  const budgetFromSummary = Number(budgetSummary?.totalBudget ?? NaN)
+  const hasSummaryBudget = Number.isFinite(budgetFromSummary)
+  const groupBudgetRaw = group?.presupuesto_total ?? currentGroup?.presupuesto_total ?? 0
+  const groupBudgetValue = Number(groupBudgetRaw ?? 0)
+  const effectiveBudgetValue = hasSummaryBudget ? budgetFromSummary : groupBudgetValue
+  const requiresInitialBudget = !Number.isFinite(effectiveBudgetValue) || effectiveBudgetValue <= 0
+
+  const chatParticipants = useMemo(() => {
+    const colors = ['#1E6FD9', '#35C56A', '#7A4FD6', '#F59E0B']
+    const seen = new Set<string>()
+    return safeMembers
+      .filter((m) => {
+        const key = String(m.usuario_id ?? m.id)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map((m, i) => ({
+        id: String(m.usuario_id ?? m.id),
+        name: m.nombre || m.email || 'Usuario',
+        color: colors[i % colors.length],
+        avatarUrl: m.avatar_url ?? null,
+      }))
+  }, [safeMembers])
 
   useEffect(() => {
   const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
@@ -629,37 +706,45 @@ export function DashboardPage() {
 
   let isMounted = true
 
-  const loadDashboard = async () => {
-    try {
-      setIsLoading(true)
+    const loadDashboard = async () => {
+      try {
+        setIsLoading(true)
 
-      const groupRes = await groupsService.getGroupDetails(resolvedGroupId, accessToken)
-      const membersRes = await groupsService.getMembers(resolvedGroupId, accessToken)
-      const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-      const votesRes = await proposalsService.getVoteResults(String(resolvedGroupId), accessToken)
-      const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupRes.group, accessToken)
-      const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
-        acc[String(item.id_propuesta)] = item
-        return acc
-      }, {})
+        const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
+        const [groupResult, membersResult, votesResult] = await Promise.allSettled([
+          groupsService.getGroupDetails(resolvedGroupId, accessToken),
+          groupsService.getMembers(resolvedGroupId, accessToken),
+          proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
+        ])
 
-      if (isMounted) {
-        setGroup(groupRes.group)
-        setMembers(membersRes.members ?? [])
-        setDays(daysWithRoutes)
-        setVoteResultByProposal(nextVotesMap)
-        setVotedActivityIds({})
-      }
-    } catch (error) {
-      console.error('Error cargando dashboard:', error)
+        const groupData =
+          groupResult.status === 'fulfilled'
+            ? groupResult.value.group
+            : null
 
-      if (isMounted) {
-        setDays([])
-      }
-    } finally {
-      if (isMounted) {
-        setIsLoading(false)
-      }
+        const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupData, accessToken)
+        const nextVotesMap = (votesResult.status === 'fulfilled' ? votesResult.value.results : []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
+          acc[String(item.id_propuesta)] = item
+          return acc
+        }, {})
+
+        if (isMounted) {
+          if (groupResult.status === 'fulfilled') {
+            setGroup(groupResult.value.group)
+          }
+          if (membersResult.status === 'fulfilled') {
+            setMembers(membersResult.value.members ?? [])
+          }
+          setDays(daysWithRoutes)
+          setVoteResultByProposal(nextVotesMap)
+          setVotedActivityIds({})
+        }
+      } catch (error) {
+        console.error('Error cargando dashboard:', error)
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
     }
   }
 
@@ -675,21 +760,30 @@ export function DashboardPage() {
 
     if (!resolvedGroupId || !accessToken) return
 
-    const [groupRes, membersRes, itineraryRes, votesRes] = await Promise.all([
+    const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
+    const [groupResult, membersResult, votesResult] = await Promise.allSettled([
       groupsService.getGroupDetails(resolvedGroupId, accessToken),
       groupsService.getMembers(resolvedGroupId, accessToken),
-      groupsService.getItinerary(resolvedGroupId, accessToken),
       proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
     ])
 
-    const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupRes.group, accessToken)
-    const nextVotesMap = (votesRes.results ?? []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
+    const groupData =
+      groupResult.status === 'fulfilled'
+        ? groupResult.value.group
+        : null
+
+    const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupData, accessToken)
+    const nextVotesMap = (votesResult.status === 'fulfilled' ? votesResult.value.results : []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
       acc[String(item.id_propuesta)] = item
       return acc
     }, {})
 
-    setGroup(groupRes.group)
-    setMembers(membersRes.members ?? [])
+    if (groupResult.status === 'fulfilled') {
+      setGroup(groupResult.value.group)
+    }
+    if (membersResult.status === 'fulfilled') {
+      setMembers(membersResult.value.members ?? [])
+    }
     setDays(daysWithRoutes)
     setVotedActivityIds({})
     setVoteResultByProposal(nextVotesMap)
@@ -1169,17 +1263,38 @@ export function DashboardPage() {
           group={group}
           isLoading={isLoading}
           socket={socket}
-          isSocketConnected={isSocketConnected}
-          accessToken={accessToken}
-          currentUserId={localUser?.id_usuario}
-          currentUserName={userName}
-          currentUserAvatarUrl={localUser?.avatar_url ?? null}
+          onOpenChat={() => { setChatOpen(true); setChatUnread(0) }}
+          unreadCount={chatUnread}
+          totalBudget={budgetSummary?.totalBudget}
+          committedBudget={budgetSummary?.committed}
         />
       }
     >
       {isLoading ? (
         <DashboardSwitchLoading group={switchingGroupFromState ?? group ?? currentGroup} />
-      ) : isEmpty ? (
+      ) : requiresInitialBudget && activeTab !== 'pagar' ? (
+        <div className="flex flex-1 items-center justify-center bg-surface px-6 py-8">
+          <div className="w-full max-w-2xl rounded-2xl border border-[#E2E8F0] bg-white p-6 text-center">
+            <h2 className="font-heading text-xl font-bold text-[#1E0A4E]">Presupuesto requerido</h2>
+            <p className="mt-2 font-body text-sm text-[#7A8799]">
+              Este viaje necesita un presupuesto inicial para continuar.
+            </p>
+            {isCurrentUserAdmin ? (
+              <button
+                type="button"
+                onClick={() => setActiveTab('pagar')}
+                className="mt-4 rounded-xl bg-[#1E6FD9] px-5 py-3 font-body text-sm font-semibold text-white hover:bg-[#2C8BE6]"
+              >
+                Definir presupuesto ahora
+              </button>
+            ) : (
+              <p className="mt-4 font-body text-sm text-[#7A8799]">
+                Solo un administrador puede definir el presupuesto inicial.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : isEmpty && !(activeTab === 'inicio' && dashboardView === 'subgrupos') ? (
         <EmptyState onAdd={() => setShowActivityModal(true)} />
       ) : activeTab === 'comparar' ? (
         <div className="flex-1 overflow-y-auto px-4 py-6">
@@ -1191,10 +1306,132 @@ export function DashboardPage() {
         </div>
       ) : activeTab === 'pagar' ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
-          <BudgetDashboard groupId={resolvedGroupId ?? null} />
+          <BudgetDashboard
+            groupId={resolvedGroupId ?? null}
+            onSummaryChange={setBudgetSummary}
+            onOpenVault={() => setActiveTab('boveda')}
+          />
+        </div>
+      ) : activeTab === 'boveda' ? (
+        <DocumentVaultPanel
+          groupId={resolvedGroupId ?? null}
+          members={members}
+          currentUser={localUser ?? null}
+        />
+      ) : activeTab === 'inicio' && dashboardView === 'subgrupos' ? (
+        <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
+          <div className="mb-4 inline-flex rounded-lg border border-[#D7DEEA] bg-white p-1">
+            <button
+              type="button"
+              onClick={() => setDashboardView('general')}
+              className="rounded-md px-3 py-1.5 text-sm text-[#475569]"
+            >
+              Vista general
+            </button>
+            <button
+              type="button"
+              onClick={() => setDashboardView('subgrupos')}
+              className="rounded-md bg-[#1E6FD9] px-3 py-1.5 text-sm text-white"
+            >
+              Vista subgrupos
+            </button>
+          </div>
+          <SubgroupSchedulePanel
+            groupId={resolvedGroupId ?? null}
+            group={group}
+            isAdmin={isCurrentUserAdmin}
+            tripStartDate={group?.fecha_inicio ?? null}
+            tripEndDate={group?.fecha_fin ?? null}
+            onOpenBudget={() => setActiveTab('pagar')}
+            onOpenVault={() => setActiveTab('boveda')}
+          />
+        </div>
+      ) : activeTab === 'buscar' ? (
+        <div className="flex-1 overflow-y-auto bg-surface px-6 py-8">
+          <h2 className="font-heading font-bold text-[#1E0A4E] text-xl mb-1">Buscar</h2>
+          <p className="font-body text-sm text-gray-500 mb-6">
+            {group?.destino ? `Opciones para ${group.destino}` : 'Encuentra opciones para tu viaje'}
+          </p>
+          <div className="flex flex-col gap-4">
+            <button
+              type="button"
+              onClick={() => navigate('/search/flights-hotels', { state: { destino: group?.destino } })}
+              className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#1E6FD9]/40 hover:bg-[#F0EEF8] transition-colors group"
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #1E6FD9, #2C8BE6)' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M3 11l18-8-8 18-2-8-8-2z" stroke="white" strokeWidth="2" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">Vuelos y Hoteles</p>
+                <p className="font-body text-xs text-gray-500 mt-1">Busca y propone opciones al grupo</p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-gray-400 group-hover:text-[#1E6FD9] transition-colors shrink-0" aria-hidden="true">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/search/map-places', { state: { destino: group?.destino } })}
+              className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#7A4FD6]/40 hover:bg-[#F0EEF8] transition-colors group"
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #7A4FD6, #9B72F0)' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z" fill="white" />
+                  <circle cx="12" cy="10" r="2.5" fill="#7A4FD6" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">Lugares de interés</p>
+                <p className="font-body text-xs text-gray-500 mt-1">Explora atracciones y actividades</p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-gray-400 group-hover:text-[#7A4FD6] transition-colors shrink-0" aria-hidden="true">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate('/search/routes-weather', { state: { destino: group?.destino } })}
+              className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#35C56A]/40 hover:bg-[#F0EEF8] transition-colors group"
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #35C56A, #22A85A)' }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <line x1="8" y1="2" x2="8" y2="18" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="16" y1="6" x2="16" y2="22" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">Rutas y Clima</p>
+                <p className="font-body text-xs text-gray-500 mt-1">Cómo llegar y pronóstico del tiempo</p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-gray-400 group-hover:text-[#35C56A] transition-colors shrink-0" aria-hidden="true">
+                <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
+          <div className="mb-4 inline-flex rounded-lg border border-[#D7DEEA] bg-white p-1">
+            <button
+              type="button"
+              onClick={() => setDashboardView('general')}
+              className={`rounded-md px-3 py-1.5 text-sm ${dashboardView === 'general' ? 'bg-[#1E6FD9] text-white' : 'text-[#475569]'}`}
+            >
+              Vista general
+            </button>
+            <button
+              type="button"
+              onClick={() => setDashboardView('subgrupos')}
+              className={`rounded-md px-3 py-1.5 text-sm ${dashboardView === 'subgrupos' ? 'bg-[#1E6FD9] text-white' : 'text-[#475569]'}`}
+            >
+              Vista subgrupos
+            </button>
+          </div>
           <HeroCard
             activeDay={activeDay}
             totalDays={days.length}
@@ -1202,6 +1439,8 @@ export function DashboardPage() {
             group={group}
             onAdd={() => openActivityModalForDay(activeDay ?? days[0]?.dayNumber ?? 1)}
             onExportPdf={handleExportConfirmedItineraryPdf}
+            canManageSubgroups={isCurrentUserAdmin}
+            onOpenSubgroups={() => setDashboardView('subgrupos')}
           />
           <InfoBanner memberCount={uniqueMemberCount} />
           <TimelineStrip activeDay={activeDay} date={selectedDay?.date} activities={selectedDay?.activities} />
@@ -1563,6 +1802,19 @@ export function DashboardPage() {
           }}
         />
       )}
+
+      <ChatDrawer
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        groupId={resolvedGroupId}
+        groupName={group?.nombre || 'Grupo'}
+        socket={socket}
+        isSocketConnected={isSocketConnected}
+        accessToken={accessToken}
+        currentUserId={localUser?.id_usuario != null ? String(localUser.id_usuario) : null}
+        currentUserName={userName}
+        participants={chatParticipants}
+      />
     </AppLayout>
   )
 }

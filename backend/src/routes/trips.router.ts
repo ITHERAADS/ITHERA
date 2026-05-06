@@ -5,6 +5,7 @@ import * as GroupsService from '../domain/groups/groups.service';
 import { MemberRole } from '../domain/groups/groups.entity';
 import itineraryRouter from './itinerary.router';
 import chatRouter from './chat.router';
+import budgetRouter from './budget.router';
 
 const router = Router();
 
@@ -21,6 +22,7 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       fecha_inicio,
       fecha_fin,
       maximo_miembros,
+      presupuesto_total,
     } = req.body as {
       nombre?: string;
       descripcion?: string;
@@ -32,10 +34,16 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       fecha_inicio?: string;
       fecha_fin?: string;
       maximo_miembros?: number;
+      presupuesto_total?: number;
     };
 
     if (!nombre) {
       res.status(400).json({ ok: false, error: 'El nombre del grupo es requerido' });
+      return;
+    }
+
+    if (!Number.isFinite(Number(presupuesto_total)) || Number(presupuesto_total) <= 0) {
+      res.status(400).json({ ok: false, error: 'El presupuesto total es obligatorio y debe ser mayor a cero' });
       return;
     }
 
@@ -50,6 +58,7 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       fecha_inicio,
       fecha_fin,
       maximo_miembros,
+      presupuesto_total: Number(presupuesto_total),
     });
 
     res.status(201).json({ ok: true, message: 'Grupo creado correctamente', group: grupo });
@@ -277,5 +286,7 @@ router.delete('/:groupId', requireAuth, async (req: Request, res: Response): Pro
     res.status(status).json({ ok: false, error: msg });
   }
 });
+
+router.use('/:groupId', budgetRouter);
 
 export default router;

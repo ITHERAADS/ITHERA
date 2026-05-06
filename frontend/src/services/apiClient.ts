@@ -1,6 +1,39 @@
-const API_URL = import.meta.env.VITE_API_URL as string;
+const API_URL = import.meta.env.VITE_API_URL as string
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+
+type ParsedBody = {
+  isJson: boolean
+  data: unknown
+  raw: string
+}
+
+async function parseResponseBody(response: Response): Promise<ParsedBody> {
+  const contentType = response.headers.get('content-type') ?? ''
+  const isJson = contentType.toLowerCase().includes('application/json')
+  const raw = await response.text()
+
+  if (!isJson || !raw) {
+    return { isJson, data: null, raw }
+  }
+
+  try {
+    return { isJson, data: JSON.parse(raw), raw }
+  } catch {
+    return { isJson, data: null, raw }
+  }
+}
+
+function buildHttpError(response: Response, parsed: ParsedBody, fallback: string): Error {
+  const payload = (parsed.data ?? null) as { error?: string; details?: string } | null
+  const message =
+    payload?.error ||
+    payload?.details ||
+    (parsed.raw && !parsed.isJson ? parsed.raw : null) ||
+    `${fallback} (HTTP ${response.status})`
+
+  return new Error(message)
+}
 
 async function request<T>(
   path: string,
@@ -10,25 +43,31 @@ async function request<T>(
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-  };
+  }
 
   if (token) {
-    headers.Authorization = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`
   }
 
   const response = await fetch(`${API_URL}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
-  });
+  })
 
-  const data = await response.json();
+  const parsed = await parseResponseBody(response)
 
   if (!response.ok) {
-    throw new Error(data?.error || data?.details || 'Error en la petición');
+    throw buildHttpError(response, parsed, 'Error en la peticion')
   }
 
-  return data as T;
+  if (!parsed.isJson) {
+    throw new Error(
+      `Respuesta no JSON en ${path} (HTTP ${response.status}). Verifica VITE_API_URL y rutas del backend.`
+    )
+  }
+
+  return (parsed.data ?? {}) as T
 }
 
 async function upload<T>(
@@ -36,25 +75,31 @@ async function upload<T>(
   formData: FormData,
   token?: string
 ): Promise<T> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {}
 
   if (token) {
-    headers.Authorization = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`
   }
 
   const response = await fetch(`${API_URL}${path}`, {
     method: 'PATCH',
     headers,
     body: formData,
-  });
+  })
 
-  const data = await response.json();
+  const parsed = await parseResponseBody(response)
 
   if (!response.ok) {
-    throw new Error(data?.error || data?.details || 'Error al subir archivo');
+    throw buildHttpError(response, parsed, 'Error al subir archivo')
   }
 
-  return data as T;
+  if (!parsed.isJson) {
+    throw new Error(
+      `Respuesta no JSON en ${path} (HTTP ${response.status}). Verifica VITE_API_URL y rutas del backend.`
+    )
+  }
+
+  return (parsed.data ?? {}) as T
 }
 
 export const apiClient = {
@@ -75,4 +120,4 @@ export const apiClient = {
 
   upload: <T>(path: string, formData: FormData, token?: string) =>
     upload<T>(path, formData, token),
-};
+}

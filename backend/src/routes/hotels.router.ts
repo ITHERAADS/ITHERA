@@ -1,65 +1,44 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as HotelsService from '../domain/hotels/hotels.service';
-import { HotelSearchParams } from '../domain/hotels/hotels.entity';
 
 const router = Router();
 
-function toNumber(value: unknown): number | undefined {
-  if (value === undefined || value === null || value === '') return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function toChildrenAges(value: unknown): number[] | undefined {
-  if (Array.isArray(value)) {
-    return value.map(Number).filter(Number.isFinite);
-  }
-  if (typeof value === 'string' && value.trim()) {
-    return value.split(',').map((item) => Number(item.trim())).filter(Number.isFinite);
-  }
-  return undefined;
-}
-
-router.post('/search', requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get('/search', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const body = req.body as Partial<HotelSearchParams>;
+    const { cityCode } = req.query;
+    if (!cityCode) {
+      res.status(400).json({ ok: false, error: 'cityCode es requerido' });
+      return;
+    }
 
-    const hotels = await HotelsService.searchHotels({
-      destination: body.destination,
-      latitude: toNumber(body.latitude),
-      longitude: toNumber(body.longitude),
-      placeId: body.placeId,
-      checkIn: String(body.checkIn ?? ''),
-      checkOut: String(body.checkOut ?? ''),
-      adults: toNumber(body.adults) ?? 1,
-      childrenAges: toChildrenAges(body.childrenAges),
-      rooms: toNumber(body.rooms) ?? 1,
-      currency: body.currency ?? 'MXN',
-      guestNationality: body.guestNationality ?? 'MX',
-      countryCode: body.countryCode,
-      radius: toNumber(body.radius),
-      limit: toNumber(body.limit) ?? 12,
-      minRating: toNumber(body.minRating),
-    });
-
+    const hotels = await HotelsService.searchHotelsByCity({ cityCode: String(cityCode).toUpperCase() });
     res.status(200).json({ ok: true, data: hotels });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as { statusCode?: number }).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: 'Error al buscar hospedajes', details: msg });
+    res.status(500).json({ ok: false, error: 'Error al buscar hoteles', details: msg });
   }
 });
 
-router.post('/prebook', requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get('/offers', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { offerId } = req.body as { offerId?: string };
-    const prebook = await HotelsService.prebookHotel(String(offerId ?? ''));
-    res.status(200).json({ ok: true, data: prebook.data ?? prebook });
+    const { hotelIds, checkIn, checkOut, adults } = req.query;
+    if (!hotelIds) {
+      res.status(400).json({ ok: false, error: 'hotelIds es requerido' });
+      return;
+    }
+
+    const offers = await HotelsService.getHotelOffers({
+      hotelIds: String(hotelIds),
+      checkIn: checkIn ? String(checkIn) : undefined,
+      checkOut: checkOut ? String(checkOut) : undefined,
+      adults: adults ? Number(adults) : 1,
+    });
+
+    res.status(200).json({ ok: true, data: offers });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as { statusCode?: number }).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: 'Error al crear prebook', details: msg });
+    res.status(500).json({ ok: false, error: 'Error al consultar ofertas de hotel', details: msg });
   }
 });
 

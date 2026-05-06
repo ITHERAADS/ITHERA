@@ -1,6 +1,14 @@
 import type { ItineraryDay } from '../../../services/groups'
 import type { Group } from '../../../types/groups'
 
+// ── Mock budget data ──────────────────────────────────────────────────────────
+
+const BUDGET_ITEMS = [
+  { label: 'Vuelos',      amount: '$5,600' },
+  { label: 'Hospedaje',   amount: '$6,300' },
+  { label: 'Actividades', amount: '$2,300' },
+]
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 export interface SidebarDashboardProps {
@@ -112,6 +120,35 @@ export function SidebarDashboard({
 
       {/* Divider */}
       <div className="border-t border-white/10 mb-4 mt-3" />
+
+      {/* Budget */}
+      <p className="font-body text-[10px] text-white/40 uppercase tracking-widest mb-2">
+        Presupuesto Grupal
+      </p>
+      <p className="font-heading font-bold text-white text-2xl leading-none">$14,200</p>
+      <p className="font-body text-xs text-white/40 mt-0.5 mb-3">de $24,000 MXN</p>
+
+      {/* Progress bar */}
+      <div className="h-2 bg-white/10 rounded-full overflow-hidden mb-1">
+        <div
+          className="h-full rounded-full"
+          style={{ width: '59%', background: 'linear-gradient(90deg, #1E6FD9, #7A4FD6)' }}
+        />
+      </div>
+      <p className="font-body text-[11px] text-white/40 text-right mb-3">59%</p>
+
+      {/* Breakdown */}
+      <div className="flex flex-col gap-2">
+        {BUDGET_ITEMS.map((item) => (
+          <div key={item.label} className="flex items-center justify-between">
+            <span className="font-body text-[11px] text-white/60">{item.label}</span>
+            <span className="font-body text-[11px] font-semibold text-white/80">{item.amount}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Divider */}
+      <div className="border-t border-white/10 mb-4 mt-4" />
 
       {/* Group panel */}
       <p className="font-body text-[10px] text-white/40 uppercase tracking-widest mb-2">

@@ -13,7 +13,7 @@ const assertProposalAccess = async (proposalId: number, authUserId: string) => {
 
   const { data: proposal, error: proposalError } = await supabase
     .from('propuestas')
-    .select('id_propuesta, grupo_id, titulo, tipo_item, creado_por')
+    .select('id_propuesta, grupo_id, titulo')
     .eq('id_propuesta', proposalId)
     .single();
 
@@ -136,35 +136,6 @@ export const voteProposal = async (proposalId: number, authUserId: string) => {
   }
 
   const summary = await getVoteSummary(proposalId, authUserId);
-
-  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
-  const itemType = String((proposal as any).tipo_item ?? 'propuesta');
-  const itemTypeLabel = itemType === 'vuelo'
-    ? 'vuelo'
-    : itemType === 'hospedaje'
-      ? 'hospedaje'
-      : 'propuesta';
-
-  await NotificationsService.createNotificationForGroupMembers(
-    Number(proposal.grupo_id),
-    Number(usuarioId),
-    {
-      tipo: `voto_${itemTypeLabel}_nuevo`,
-      titulo: `Nuevo voto en ${itemTypeLabel}`,
-      mensaje: `${actorName} votó a favor en la propuesta de ${itemTypeLabel} "${proposal.titulo}".`,
-      entidadTipo: 'propuesta',
-      entidadId: Number(proposalId),
-      metadata: {
-        actorName,
-        actorUsuarioId: Number(usuarioId),
-        itemTitle: proposal.titulo,
-        itemType,
-        voteType: 'a_favor',
-        voteLabel: 'a favor',
-        proposalCreatorId: Number((proposal as any).creado_por),
-      },
-    }
-  );
 
   emitProposalVoteUpdated({
     groupId: summary.groupId,

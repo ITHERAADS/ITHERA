@@ -13,9 +13,6 @@ import { NotFoundPage } from './pages/NotFound';
 import { MyTripsPage } from './pages/MyTrips/MyTripsPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { JoinGroupPage } from './pages/JoinGroup'
-import FlightHotelSearchPage from './pages/Search/FlightHotelSearchPage'
-import MapPlacesPage from './pages/Search/MapPlacesPage'
-import RoutesTransportWeatherPage from './pages/Search/RoutesTransportWeatherPage'
 
 function App() {
   return (
@@ -68,38 +65,11 @@ function App() {
             </ProtectedRoute>
           }
         />
-                <Route
+        <Route
           path="/profile"
           element={
             <ProtectedRoute>
               <ProfilePage />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/search/flights-hotels"
-          element={
-            <ProtectedRoute>
-              <FlightHotelSearchPage />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/search/map-places"
-          element={
-            <ProtectedRoute>
-              <MapPlacesPage />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/search/routes-weather"
-          element={
-            <ProtectedRoute>
-              <RoutesTransportWeatherPage />
             </ProtectedRoute>
           }
         />

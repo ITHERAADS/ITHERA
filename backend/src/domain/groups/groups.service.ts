@@ -297,7 +297,6 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
       fecha_inicio: payload.fecha_inicio ?? null,
       fecha_fin: payload.fecha_fin ?? null,
       maximo_miembros: payload.maximo_miembros ?? null,
-      presupuesto_total: payload.presupuesto_total,
       codigo_invitacion: codigo,
       creado_por: Number(usuarioId),
       estado: 'activo',
@@ -415,39 +414,31 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
 export const getGroupMembers = async (authUserId: string, groupId: string) => {
   await ensureGroupMember(authUserId, groupId);
 
-  const { data: memberships, error } = await supabase
+  const { data, error } = await supabase
     .from('grupo_miembros')
-    .select('id, usuario_id, rol')
+    .select(`
+      id,
+      usuario_id,
+      rol,
+      usuarios (
+        id_usuario,
+        nombre,
+        email,
+        avatar_url
+      )
+    `)
     .eq('grupo_id', groupId);
 
   if (error) throw new Error(error.message);
 
-  const userIds = Array.from(new Set((memberships ?? [])
-    .map((item: any) => Number(item.usuario_id))
-    .filter((id) => Number.isFinite(id))));
-
-  const { data: users, error: usersError } = userIds.length > 0
-    ? await supabase
-      .from('usuarios')
-      .select('id_usuario, nombre, email, avatar_url')
-      .in('id_usuario', userIds)
-    : { data: [], error: null };
-
-  if (usersError) throw new Error(usersError.message);
-
-  const usersById = new Map((users ?? []).map((user: any) => [String(user.id_usuario), user]));
-
-  return (memberships ?? []).map((item: any) => {
-    const user = usersById.get(String(item.usuario_id));
-    return ({
+  return (data ?? []).map((item: any) => ({
     id: String(item.id),
     usuario_id: String(item.usuario_id),
     rol: item.rol,
-    nombre: user?.nombre ?? user?.email ?? `Usuario ${item.usuario_id}`,
-    email: user?.email ?? '',
-    avatar_url: user?.avatar_url ?? null,
-  });
-  });
+    nombre: item.usuarios?.nombre ?? '',
+    email: item.usuarios?.email ?? '',
+    avatar_url: item.usuarios?.avatar_url ?? null,
+  }));
 };
 
 export const updateMemberRole = async (
@@ -630,27 +621,19 @@ export const createGroupInvitations = async (
 
   const { data: miembros, error: membersError } = await supabase
     .from('grupo_miembros')
-    .select('usuario_id')
+    .select(`
+      usuario_id,
+      usuarios (
+        email
+      )
+    `)
     .eq('grupo_id', groupId);
 
   if (membersError) throw new Error(membersError.message);
 
-  const memberUserIds = Array.from(new Set((miembros ?? [])
-    .map((item: any) => Number(item.usuario_id))
-    .filter((id) => Number.isFinite(id))));
-
-  const { data: memberUsers, error: memberUsersError } = memberUserIds.length > 0
-    ? await supabase
-      .from('usuarios')
-      .select('id_usuario, email')
-      .in('id_usuario', memberUserIds)
-    : { data: [], error: null };
-
-  if (memberUsersError) throw new Error(memberUsersError.message);
-
   const memberEmails = new Set(
-    (memberUsers ?? [])
-      .map((item: any) => item.email?.toLowerCase?.())
+    (miembros ?? [])
+      .map((item: any) => item.usuarios?.email?.toLowerCase?.())
       .filter(Boolean)
   );
 

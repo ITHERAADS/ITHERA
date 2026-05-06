@@ -115,39 +115,9 @@ const removeSocketFromAllPresenceRooms = (socket: Socket, userId: string): strin
 export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void => {
   const user = getUserData(socket);
 
-  // Unir al usuario a su cuarto personal para recibir notificaciones.
-  // Además, lo unimos de forma silenciosa a todos sus grupos para que
-  // dashboard_updated / vote_updated lleguen aunque el chat no esté abierto.
+  // Unir al usuario a su cuarto personal para recibir notificaciones
   socket.join(`user:${user.localUserId}`);
   console.log(`[socket.io] ${user.userName} unido a cuarto personal user:${user.localUserId}`);
-
-  void (async () => {
-    try {
-      const { data, error } = await supabase
-        .from('grupo_miembros')
-        .select('grupo_id')
-        .eq('usuario_id', user.localUserId);
-
-      if (error) {
-        console.warn('[socket.io] No se pudieron cargar grupos del usuario:', error.message);
-        return;
-      }
-
-      const groupIds = Array.from(
-        new Set((data ?? []).map((row) => String(row.grupo_id)).filter(Boolean))
-      );
-
-      for (const groupId of groupIds) {
-        socket.join(groupId);
-      }
-
-      if (groupIds.length > 0) {
-        console.log(`[socket.io] ${user.userName} unido a rooms de grupo: ${groupIds.join(', ')}`);
-      }
-    } catch (err) {
-      console.warn('[socket.io] Error al unir usuario a sus rooms de grupo:', err);
-    }
-  })();
 
   // ── join_room ────────────────────────────────────────────────────────
   socket.on('join_room', async (payload: JoinRoomPayload) => {

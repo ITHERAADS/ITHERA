@@ -13,7 +13,6 @@ import proposalsRouter from './routes/proposals.router';
 import votesCommentsRouter from './routes/votesComments.router';
 import budgetRouter from './routes/budget.router';
 import notificationsRouter from './routes/notifications.router';
-import documentsRouter from './routes/documents.router';
 import { initSocketServer } from './infrastructure/sockets/socket.server';
 import { startLockScheduler } from './infrastructure/sockets/lock.scheduler';
 
@@ -63,9 +62,6 @@ app.use('/api/proposals', proposalsRouter);
 app.use('/api/proposals', votesCommentsRouter);
 app.use('/api/budget', budgetRouter);
 app.use('/api/notifications', notificationsRouter);
-app.use('/api/documents', documentsRouter);
-app.use('/api/groups/:groupId/documents', documentsRouter);
-app.use('/api/groups/:groupId/vault', documentsRouter);
 app.use(errorHandler);
 
 // ── Socket.IO + Scheduler ─────────────────────────────────────────

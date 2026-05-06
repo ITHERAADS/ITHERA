@@ -46,16 +46,13 @@ export interface NotificationPreferences {
   notificaciones_votos: boolean;
   notificaciones_comentarios: boolean;
   notificaciones_invitaciones: boolean;
-  notificaciones_finanzas: boolean;
-  notificaciones_vuelos: boolean;
-  notificaciones_hospedajes: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export const notificationsService = {
   getNotifications: async (token: string): Promise<{ ok: boolean; notifications: NotificationItem[] }> => {
-    const response = await apiClient.get<{ ok: boolean; notifications: RawNotificationItem[] }>('/notifications', token);
+    const response = await apiClient.get<{ ok: boolean; notifications: RawNotificationItem[] }>('/api/notifications', token);
     return {
       ok: response.ok,
       notifications: (response.notifications ?? []).map(normalizeNotification),
@@ -63,25 +60,25 @@ export const notificationsService = {
   },
 
   getUnreadCount: async (token: string): Promise<{ ok: boolean; count: number }> => {
-    return apiClient.get('/notifications/unread-count', token);
+    return apiClient.get('/api/notifications/unread-count', token);
   },
 
   markAsRead: async (notificationId: number, token: string): Promise<{ ok: boolean }> => {
-    return apiClient.patch(`/notifications/${notificationId}/read`, undefined, token);
+    return apiClient.patch(`/api/notifications/${notificationId}/read`, undefined, token);
   },
 
   markAllAsRead: async (token: string): Promise<{ ok: boolean }> => {
-    return apiClient.patch('/notifications/read-all', undefined, token);
+    return apiClient.patch('/api/notifications/read-all', undefined, token);
   },
 
   getPreferences: async (token: string): Promise<{ ok: boolean; preferences: NotificationPreferences }> => {
-    return apiClient.get('/notifications/preferences', token);
+    return apiClient.get('/api/notifications/preferences', token);
   },
 
   updatePreferences: async (
     payload: Partial<Omit<NotificationPreferences, 'usuario_id' | 'created_at' | 'updated_at'>>,
     token: string
   ): Promise<{ ok: boolean; preferences: NotificationPreferences }> => {
-    return apiClient.patch('/notifications/preferences', payload, token);
+    return apiClient.patch('/api/notifications/preferences', payload, token);
   },
 };

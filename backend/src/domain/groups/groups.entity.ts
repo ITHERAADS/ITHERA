@@ -36,7 +36,6 @@ export interface CreateGroupPayload {
   fecha_inicio?: string;
   fecha_fin?: string;
   maximo_miembros?: number;
-  presupuesto_total: number;
   destino_latitud?: number | null;
   destino_longitud?: number | null;
   destino_place_id?: string | null;

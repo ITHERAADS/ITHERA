@@ -97,9 +97,6 @@
 | POST | `/trips/:tripId/budget/receipt` | ✅ | Generar recibo de cobro |
 | PATCH | `/trips/:tripId/expenses/:expenseId/paid` | ✅ | Marcar pago como recibido |
 
-> Implementación actual: el backend expone este módulo bajo `/groups/:groupId/budget`
-> y `/groups/:groupId/expenses`, con aliases compatibles en `/budget/:groupId`.
-
 ---
 
 ## M7 — Notificaciones

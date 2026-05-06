@@ -1,107 +1,16 @@
 import { apiClient } from './apiClient'
 
-export interface ProposalDetailFlight {
-  id_vuelo?: string | number
-  propuesta_id?: string | number
-  aerolinea?: string | null
-  numero_vuelo?: string | null
-  origen_codigo?: string | null
-  origen_nombre?: string | null
-  destino_codigo?: string | null
-  destino_nombre?: string | null
-  salida?: string | null
-  llegada?: string | null
-  duracion?: string | null
-  precio?: number | string | null
-  moneda?: string | null
-  escalas?: number | null
-  payload?: Record<string, unknown> | null
-}
-
-export interface ProposalDetailHotel {
-  id_hospedaje?: string | number
-  propuesta_id?: string | number
-  nombre?: string | null
-  proveedor?: string | null
-  referencia_externa?: string | null
-  direccion?: string | null
-  check_in?: string | null
-  check_out?: string | null
-  precio_total?: number | string | null
-  moneda?: string | null
-  calificacion?: number | string | null
-  payload?: Record<string, unknown> | null
-}
-
 export interface Proposal {
   id: string
-  id_propuesta?: string | number
   groupId: string
-  grupo_id?: string | number
-  tipo: 'vuelo' | 'hospedaje' | 'actividad' | string
-  tipo_item?: string
+  tipo: string
   titulo: string
   descripcion?: string | null
   estado: string
   creadoPor: string
-  creado_por?: string | number
   payload?: Record<string, unknown> | null
-  detalle?: ProposalDetailFlight | ProposalDetailHotel | null
   createdAt: string
   updatedAt: string
-}
-
-export interface SaveFlightProposalRequest {
-  grupoId: string
-  fuente: string
-  titulo: string
-  descripcion?: string | null
-  payload?: Record<string, unknown> | null
-  vuelo: {
-    aerolinea: string
-    numeroVuelo?: string | null
-    origenCodigo: string
-    origenNombre?: string | null
-    destinoCodigo: string
-    destinoNombre?: string | null
-    salida: string
-    llegada: string
-    duracion?: string | null
-    precio: number
-    moneda: string
-    escalas?: number
-    payload?: Record<string, unknown> | null
-  }
-}
-
-
-export interface SaveHotelProposalRequest {
-  grupoId: string
-  fuente: string
-  titulo: string
-  descripcion?: string | null
-  payload?: Record<string, unknown> | null
-  hospedaje: {
-    nombre: string
-    proveedor?: string | null
-    referenciaExterna?: string | null
-    direccion?: string | null
-    latitud?: number | null
-    longitud?: number | null
-    checkIn?: string | null
-    checkOut?: string | null
-    precioTotal?: number | null
-    moneda?: string | null
-    calificacion?: number | null
-    liteapiHotelId?: string | null
-    liteapiOfferId?: string | null
-    liteapiPrebookId?: string | null
-    googlePlaceId?: string | null
-    fotoUrl?: string | null
-    reservaEstado?: string | null
-    reservaSimuladaPayload?: Record<string, unknown> | null
-    payload?: Record<string, unknown> | null
-  }
 }
 
 export interface VoteResult {
@@ -128,8 +37,6 @@ export interface ProposalComment {
   updatedAt: string
 }
 
-type RawProposal = Record<string, unknown>
-
 type RawProposalComment = {
   id?: string | number
   id_comentario?: string | number
@@ -146,34 +53,6 @@ type RawProposalComment = {
   updated_at?: string
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null
-}
-
-function normalizeProposal(raw: RawProposal): Proposal {
-  const id = String(raw.id ?? raw.id_propuesta ?? '')
-  return {
-    ...raw,
-    id,
-    id_propuesta: raw.id_propuesta as string | number | undefined,
-    groupId: String(raw.groupId ?? raw.grupo_id ?? ''),
-    grupo_id: raw.grupo_id as string | number | undefined,
-    tipo: String(raw.tipo ?? raw.tipo_item ?? '') as Proposal['tipo'],
-    tipo_item: String(raw.tipo_item ?? raw.tipo ?? ''),
-    titulo: String(raw.titulo ?? 'Propuesta sin título'),
-    descripcion: raw.descripcion as string | null | undefined,
-    estado: String(raw.estado ?? 'guardada'),
-    creadoPor: String(raw.creadoPor ?? raw.creado_por ?? ''),
-    creado_por: raw.creado_por as string | number | undefined,
-    payload: asRecord(raw.payload),
-    detalle: asRecord(raw.detalle) as Proposal['detalle'],
-    createdAt: String(raw.createdAt ?? raw.fecha_creacion ?? raw.created_at ?? new Date().toISOString()),
-    updatedAt: String(raw.updatedAt ?? raw.ultima_actualizacion ?? raw.updated_at ?? new Date().toISOString()),
-  }
-}
-
 function normalizeComment(raw: RawProposalComment): ProposalComment {
   return {
     id: String(raw.id ?? raw.id_comentario ?? ''),
@@ -187,59 +66,18 @@ function normalizeComment(raw: RawProposalComment): ProposalComment {
 }
 
 export const proposalsService = {
-  saveFlightProposal: async (body: SaveFlightProposalRequest, token: string) => {
-    const response = await apiClient.post<{ ok: boolean; message: string; data?: RawProposal; proposal?: RawProposal }>(
-      '/proposals/flights',
-      body,
-      token
-    )
-
-    return {
-      ok: response.ok,
-      message: response.message,
-      proposal: normalizeProposal(response.proposal ?? response.data ?? {}),
-    }
-  },
-
-
-
-  saveHotelProposal: async (body: SaveHotelProposalRequest, token: string) => {
-    const response = await apiClient.post<{ ok: boolean; message: string; data?: RawProposal; proposal?: RawProposal }>(
-      '/proposals/hotels',
-      body,
-      token
-    )
-
-    return {
-      ok: response.ok,
-      message: response.message,
-      proposal: normalizeProposal(response.proposal ?? response.data ?? {}),
-    }
-  },
-
   getGroupProposals: async (groupId: string, token: string) => {
-    const response = await apiClient.get<{ ok: boolean; proposals?: RawProposal[]; data?: RawProposal[] }>(
+    return apiClient.get<{ ok: boolean; proposals: Proposal[] }>(
       `/proposals/groups/${groupId}`,
       token
     )
-
-    const raw = response.proposals ?? response.data ?? []
-    return {
-      ok: response.ok,
-      proposals: raw.map(normalizeProposal),
-    }
   },
 
   getProposal: async (proposalId: string, token: string) => {
-    const response = await apiClient.get<{ ok: boolean; proposal?: RawProposal; data?: RawProposal }>(
+    return apiClient.get<{ ok: boolean; proposal: Proposal }>(
       `/proposals/${proposalId}`,
       token
     )
-
-    return {
-      ok: response.ok,
-      proposal: normalizeProposal(response.proposal ?? response.data ?? {}),
-    }
   },
 
   updateProposal: async (
@@ -247,17 +85,11 @@ export const proposalsService = {
     body: Partial<Pick<Proposal, 'titulo' | 'descripcion' | 'estado' | 'payload'>>,
     token: string
   ) => {
-    const response = await apiClient.put<{ ok: boolean; message: string; proposal?: RawProposal; data?: RawProposal }>(
+    return apiClient.put<{ ok: boolean; message: string; proposal: Proposal }>(
       `/proposals/${proposalId}`,
       body,
       token
     )
-
-    return {
-      ok: response.ok,
-      message: response.message,
-      proposal: normalizeProposal(response.proposal ?? response.data ?? {}),
-    }
   },
 
   deleteProposal: async (proposalId: string, token: string) => {

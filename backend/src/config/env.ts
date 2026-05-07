@@ -24,6 +24,8 @@ interface EnvConfig {
   GOOGLE_PLACES_BASE_URL?: string;
   LITEAPI_BASE_URL?: string;
   LITEAPI_API_KEY?: string;
+  WEATHER_API_KEY?: string;
+  WEATHER_API_BASE_URL?: string;
 }
 
 function requireEnv(key: string): string {
@@ -55,4 +57,6 @@ export const env: EnvConfig = {
   GOOGLE_PLACES_BASE_URL: process.env.GOOGLE_PLACES_BASE_URL,
   LITEAPI_BASE_URL: process.env.LITEAPI_BASE_URL,
   LITEAPI_API_KEY: process.env.LITEAPI_API_KEY,
+  WEATHER_API_KEY: process.env.WEATHER_API_KEY,
+  WEATHER_API_BASE_URL: process.env.WEATHER_API_BASE_URL,
 };

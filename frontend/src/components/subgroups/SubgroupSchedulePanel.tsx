@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { Socket } from 'socket.io-client'
 import { useAuth } from '../../context/useAuth'
 import { mapsService, type PlaceResult } from '../../services/maps'
 import { subgroupScheduleService, type SubgroupMembership, type SubgroupSlot } from '../../services/subgroups'
 import type { Group } from '../../types/groups'
+import { SubgroupChatDrawer } from '../chat/SubgroupChatDrawer'
 
 interface Props {
   groupId: string | null
@@ -12,6 +14,10 @@ interface Props {
   tripEndDate?: string | null
   onOpenBudget?: () => void
   onOpenVault?: () => void
+  socket?: Socket | null
+  isSocketConnected?: boolean
+  currentUserId?: string | null
+  currentUserName?: string
 }
 
 type ActivityDraft = {
@@ -91,6 +97,10 @@ export function SubgroupSchedulePanel({
   tripEndDate,
   onOpenBudget,
   onOpenVault,
+  socket = null,
+  isSocketConnected = false,
+  currentUserId = null,
+  currentUserName = 'Usuario',
 }: Props) {
   const { accessToken } = useAuth()
   const [slots, setSlots] = useState<SubgroupSlot[]>([])
@@ -107,6 +117,9 @@ export function SubgroupSchedulePanel({
   const [editingSlotTitle, setEditingSlotTitle] = useState('')
   const [editingSubgroupId, setEditingSubgroupId] = useState<number | null>(null)
   const [editingSubgroupName, setEditingSubgroupName] = useState('')
+
+  // Chat drawer state
+  const [chatSubgroup, setChatSubgroup] = useState<{ slotId: number; subgroupId: number; name: string } | null>(null)
 
   const load = useCallback(async () => {
     if (!groupId || !accessToken) return
@@ -336,6 +349,7 @@ export function SubgroupSchedulePanel({
   }
 
   return (
+    <>
     <div className="rounded-2xl border border-[#E2E8F0] bg-white p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
@@ -391,10 +405,13 @@ export function SubgroupSchedulePanel({
         )}
 
         {slots.map((slot) => {
-          const myMembership = slot.memberships.find((membership) =>
-            Number(membership.user_id) === Number(myUserId) || Number(membership.usuarios?.id_usuario) === Number(myUserId),
-          )
-          const mySubgroup = slot.subgroups.find((subgroup) => Number(subgroup.id) === Number(myMembership?.subgroup_id))
+          const myMembership = slot.memberships.find((membership) => {
+            const mUid = membership.user_id != null ? String(membership.user_id) : String(membership.usuarios?.id_usuario)
+            return String(mUid) === String(myUserId)
+          })
+          const mySubgroupId = myMembership?.subgroup_id != null ? String(myMembership.subgroup_id) : null
+          const mySubgroup = slot.subgroups.find((sg) => mySubgroupId != null && String(sg.id) === mySubgroupId)
+
           const draft = activityDraftBySlot[slot.id] ?? {
             query: '',
             description: '',
@@ -546,7 +563,7 @@ export function SubgroupSchedulePanel({
               <div className="grid gap-3 lg:grid-cols-2">
                 {slot.subgroups.map((subgroup) => {
                   const canManageSubgroup = isAdmin || Number(subgroup.created_by) === Number(myUserId)
-                  const isMine = Number(myMembership?.subgroup_id) === Number(subgroup.id)
+                  const isMine = mySubgroupId != null && String(mySubgroupId) === String(subgroup.id)
                   const details = primaryActivity(subgroup)
 
                   return (
@@ -624,6 +641,13 @@ export function SubgroupSchedulePanel({
                             Subir documento
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => setChatSubgroup({ slotId: slot.id, subgroupId: subgroup.id, name: subgroup.name })}
+                          className="rounded-md border border-[#35C56A]/30 bg-[#ECFDF5] px-2 py-1 text-xs font-semibold text-[#0A8A3E]"
+                        >
+                          Chat
+                        </button>
                       </div>
 
                       {subgroup.activities.slice(1).map((activity) => (
@@ -657,5 +681,34 @@ export function SubgroupSchedulePanel({
         })}
       </div>
     </div>
+
+    {chatSubgroup && (
+      <SubgroupChatDrawer
+        open={chatSubgroup !== null}
+        onClose={() => setChatSubgroup(null)}
+        groupId={groupId}
+        slotId={chatSubgroup.slotId}
+        subgroupId={chatSubgroup.subgroupId}
+        subgroupName={chatSubgroup.name}
+        socket={socket}
+        isSocketConnected={isSocketConnected}
+        accessToken={accessToken}
+        currentUserId={currentUserId}
+        currentUserName={currentUserName}
+        participants={
+          (slots
+            .find((s) => s.id === chatSubgroup.slotId)
+            ?.subgroups.find((sg) => sg.id === chatSubgroup.subgroupId)
+            ?.members ?? []
+          ).map((m, i) => ({
+            id: String(m.user_id),
+            name: m.usuarios?.nombre ?? `Usuario ${m.user_id}`,
+            color: ['#7A4FD6', '#1E6FD9', '#35C56A', '#F59E0B', '#EF4444', '#06B6D4'][i % 6],
+            avatarUrl: m.usuarios?.avatar_url ?? null,
+          }))
+        }
+      />
+    )}
+    </>
   )
 }

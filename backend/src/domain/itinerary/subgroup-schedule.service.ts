@@ -151,7 +151,7 @@ export const getSubgroupSchedule = async (authUserId: string, groupId: string) =
   const [{ data: subgroups, error: subgroupsError }, { data: activities, error: activitiesError }, { data: memberships, error: membershipsError }, userProfiles] = await Promise.all([
     supabase.from('subgroups').select('*').in('slot_id', slotIds).order('created_at', { ascending: true }),
     supabase.from('subgroup_activities').select('*').in('slot_id', slotIds).order('created_at', { ascending: true }),
-    supabase.from('subgroup_memberships').select('*').in('slot_id', slotIds),
+    supabase.from('subgroup_memberships').select('*, usuarios!user_id(id_usuario, nombre, avatar_url)').in('slot_id', slotIds),
     getGroupUserProfiles(groupId),
   ]);
 
@@ -179,7 +179,7 @@ export const getSubgroupSchedule = async (authUserId: string, groupId: string) =
   for (const row of memberships ?? []) {
     const slotId = Number((row as any).slot_id);
     const list = membershipsBySlot.get(slotId) ?? [];
-    const user = userProfiles.get(Number((row as any).user_id)) ?? null;
+    const user = userProfiles.get(Number((row as any).user_id)) ?? (row as any).usuarios ?? null;
     list.push({
       ...row,
       usuarios: user,

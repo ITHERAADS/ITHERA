@@ -3,6 +3,7 @@ import { supabase } from '../db/supabase.client';
 import { SocketUserData } from './socket.server';
 import * as LockService from '../../domain/proposals/lock.service';
 import * as ChatService from '../../domain/groups/chat.service';
+import * as SubgroupChatService from '../../domain/groups/subgroup-chat.service';
 
 // ── Tipos de eventos ─────────────────────────────────────────────────────
 
@@ -29,6 +30,12 @@ interface ChatSendMessagePayload {
   tripId?: string;
   contenido?: string;
   text?: string;
+  clientId?: string;
+}
+
+interface SubgroupChatSendMessagePayload {
+  subgroupId?: string;
+  contenido?: string;
   clientId?: string;
 }
 
@@ -372,6 +379,83 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error en disconnect handler';
       console.error(`[socket.io] Error en disconnect:`, message);
+    }
+  });
+
+  // ── subgroup_chat_send_message ──────────────────────────────────────────
+  socket.on('subgroup_chat_send_message', async (payload: SubgroupChatSendMessagePayload, ack?: (response: unknown) => void) => {
+    try {
+      const subgroupId = payload?.subgroupId;
+      const contenido = payload?.contenido;
+
+      if (!subgroupId || typeof contenido !== 'string') {
+        const response = { ok: false, error: 'subgroupId y contenido son requeridos' };
+        socket.emit('error_event', { message: response.error });
+        ack?.(response);
+        return;
+      }
+
+      const message = await SubgroupChatService.createSubgroupMessageByLocalUser(
+        user.localUserId,
+        subgroupId,
+        contenido,
+        {
+          nombre: user.userName,
+          email: null,
+          avatar_url: user.avatarUrl ?? null,
+        }
+      );
+
+      io.to(`subgroup:${subgroupId}`).emit('subgroup_chat_message', {
+        ...message,
+        clientId: payload.clientId ?? null,
+      });
+
+      ack?.({ ok: true, message });
+      console.log(`[socket.io] Mensaje de subgrupo enviado por ${user.userName} en subgroup:${subgroupId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al enviar mensaje';
+      console.error('[socket.io] Error en subgroup_chat_send_message:', message);
+      socket.emit('error_event', { message });
+      ack?.({ ok: false, error: message });
+    }
+  });
+
+  // ── join_subgroup_room ──────────────────────────────────────────────────
+  socket.on('join_subgroup_room', async (payload: { subgroupId: string }) => {
+    try {
+      const { subgroupId } = payload;
+      if (!subgroupId) {
+        socket.emit('error_event', { message: 'subgroupId es requerido' });
+        return;
+      }
+
+      await SubgroupChatService.ensureSubgroupMember(user.localUserId, subgroupId);
+
+      const roomName = `subgroup:${subgroupId}`;
+      socket.join(roomName);
+      console.log(`[socket.io] ${user.userName} se unió a room: ${roomName}`);
+
+      socket.emit('subgroup_room_joined', { subgroupId });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al unirse a la room del subgrupo';
+      console.error('[socket.io] Error en join_subgroup_room:', message);
+      socket.emit('error_event', { message });
+    }
+  });
+
+  // ── leave_subgroup_room ─────────────────────────────────────────────────
+  socket.on('leave_subgroup_room', async (payload: { subgroupId: string }) => {
+    try {
+      const { subgroupId } = payload;
+      if (!subgroupId) return;
+
+      const roomName = `subgroup:${subgroupId}`;
+      socket.leave(roomName);
+      console.log(`[socket.io] ${user.userName} salió de room: ${roomName}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al salir de la room del subgrupo';
+      console.error('[socket.io] Error en leave_subgroup_room:', message);
     }
   });
 };

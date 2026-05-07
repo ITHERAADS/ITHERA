@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as ItineraryService from '../domain/itinerary/itinerary.service';
 import * as SubgroupScheduleService from '../domain/itinerary/subgroup-schedule.service';
+import subgroupChatRouter from './subgroup-chat.router';
 
 const router = Router({ mergeParams: true });
 
@@ -373,4 +374,8 @@ router.delete('/subgroups/slots/:slotId/activities/:activityId', requireAuth, as
     res.status(status).json({ ok: false, error: msg });
   }
 });
+
+// ── Chat de Subgrupos ─────────────────────────────────────────────────────
+router.use('/subgroups/slots/:slotId/groups/:subgroupId/chat', subgroupChatRouter);
+
 export default router;

@@ -1355,7 +1355,7 @@ export function DashboardPage() {
           <div className="flex flex-col gap-4">
             <button
               type="button"
-              onClick={() => navigate('/search/flights-hotels', { state: { destino: group?.destino } })}
+              onClick={() => navigate('/search/flights-hotels', { state: { destino: group?.destino, group } })}
               className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#1E6FD9]/40 hover:bg-[#F0EEF8] transition-colors group"
             >
               <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #1E6FD9, #2C8BE6)' }}>
@@ -1374,7 +1374,7 @@ export function DashboardPage() {
 
             <button
               type="button"
-              onClick={() => navigate('/search/map-places', { state: { destino: group?.destino } })}
+              onClick={() => navigate('/search/map-places', { state: { group } })}
               className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#7A4FD6]/40 hover:bg-[#F0EEF8] transition-colors group"
             >
               <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #7A4FD6, #9B72F0)' }}>
@@ -1394,7 +1394,7 @@ export function DashboardPage() {
 
             <button
               type="button"
-              onClick={() => navigate('/search/routes-weather', { state: { destino: group?.destino } })}
+              onClick={() => navigate('/search/routes-weather', { state: { destino: group?.destino, group } })}
               className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#35C56A]/40 hover:bg-[#F0EEF8] transition-colors group"
             >
               <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #35C56A, #22A85A)' }}>

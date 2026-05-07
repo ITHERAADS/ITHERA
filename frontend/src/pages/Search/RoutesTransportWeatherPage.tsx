@@ -1,115 +1,258 @@
-import { useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
+import { useAuth } from '../../context/useAuth'
+import { getCurrentGroup } from '../../services/groups'
+import {
+  loadGoogleMaps,
+  mapsService,
+  type ComputeRouteResult,
+  type GoogleDirectionsRendererInstance,
+  type GoogleDirectionsResult,
+  type GoogleLatLngLiteral,
+  type GoogleMapInstance,
+  type PlaceAutocompleteResult,
+  type WeatherResult,
+} from '../../services/maps'
+import type { Group } from '../../types/groups'
 
 type TransportMode = 'auto' | 'walk' | 'public'
 type RouteState = 'empty' | 'loading' | 'result' | 'error'
 
-interface TransportOption {
-  id: TransportMode
-  label: string
+const GOOGLE_MAPS_BROWSER_KEY = import.meta.env.VITE_GOOGLE_MAPS_BROWSER_KEY as string | undefined
+
+const transportOptions: Array<{ id: TransportMode; label: string; googleMode: 'DRIVE' | 'WALK' | 'TRANSIT' }> = [
+  { id: 'auto', label: 'Auto', googleMode: 'DRIVE' },
+  { id: 'walk', label: 'Caminar', googleMode: 'WALK' },
+  { id: 'public', label: 'Transporte', googleMode: 'TRANSIT' },
+]
+
+function IconCar() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 11l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 11" stroke="currentColor" strokeWidth="2" /><rect x="3" y="11" width="18" height="7" rx="2" stroke="currentColor" strokeWidth="2" /><circle cx="7" cy="18" r="1.5" fill="currentColor" /><circle cx="17" cy="18" r="1.5" fill="currentColor" /></svg> }
+function IconWalk() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="4" r="2" stroke="currentColor" strokeWidth="2" /><path d="M10 22l2-7M14 22l-1-7M9 9l3-2 3 3M12 7v8M7 14l3-5M16 13l-3-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg> }
+function IconBus() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="3" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="2" /><path d="M5 9h14M8 19v2M16 19v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><circle cx="9" cy="15" r="1" fill="currentColor" /><circle cx="15" cy="15" r="1" fill="currentColor" /></svg> }
+
+function initials(name?: string | null) {
+  const source = (name ?? 'Usuario').trim()
+  return source.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'U'
 }
 
-interface ForecastDay {
-  day: string
-  icon: string
-  min: number
-  max: number
+function formatDateRange(group: Group | null) {
+  if (!group?.fecha_inicio || !group?.fecha_fin) return 'Fechas sin definir'
+  const start = new Date(`${group.fecha_inicio}T12:00:00`)
+  const end = new Date(`${group.fecha_fin}T12:00:00`)
+  const fmt = new Intl.DateTimeFormat('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' })
+  return `${fmt.format(start)} – ${fmt.format(end)}`
 }
 
-function IconSun() {
-  return (
-    <svg width="42" height="42" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="5" fill="#F5C518" />
-      <path
-        d="M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"
-        stroke="#F5C518"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
+
+function googleTravelMode(mode: 'DRIVE' | 'WALK' | 'TRANSIT'): 'DRIVING' | 'WALKING' | 'TRANSIT' {
+  if (mode === 'DRIVE') return 'DRIVING'
+  if (mode === 'WALK') return 'WALKING'
+  return 'TRANSIT'
 }
 
-function IconPin({ color = '#EF4444' }: { color?: string }) {
-  return (
-    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z" fill={color} />
-      <circle cx="12" cy="10" r="2.5" fill="white" />
-    </svg>
-  )
+function toCoords(value: { latitude: number | null; longitude: number | null } | null | undefined): GoogleLatLngLiteral | null {
+  if (!value?.latitude || !value.longitude) return null
+  return { lat: Number(value.latitude), lng: Number(value.longitude) }
 }
 
-function IconCar() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M5 11l1.5-4.5A2 2 0 018.4 5h7.2a2 2 0 011.9 1.5L19 11" stroke="currentColor" strokeWidth="2" />
-      <rect x="3" y="11" width="18" height="7" rx="2" stroke="currentColor" strokeWidth="2" />
-      <circle cx="7" cy="18" r="1.5" fill="currentColor" />
-      <circle cx="17" cy="18" r="1.5" fill="currentColor" />
-    </svg>
-  )
+function decodePolyline(encoded: string): GoogleLatLngLiteral[] {
+  const points: GoogleLatLngLiteral[] = []
+  let index = 0
+  let lat = 0
+  let lng = 0
+
+  while (index < encoded.length) {
+    let b = 0
+    let shift = 0
+    let result = 0
+    do {
+      b = encoded.charCodeAt(index++) - 63
+      result |= (b & 0x1f) << shift
+      shift += 5
+    } while (b >= 0x20)
+    lat += result & 1 ? ~(result >> 1) : result >> 1
+
+    shift = 0
+    result = 0
+    do {
+      b = encoded.charCodeAt(index++) - 63
+      result |= (b & 0x1f) << shift
+      shift += 5
+    } while (b >= 0x20)
+    lng += result & 1 ? ~(result >> 1) : result >> 1
+
+    points.push({ lat: lat / 1e5, lng: lng / 1e5 })
+  }
+
+  return points
 }
 
-function IconWalk() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="4" r="2" stroke="currentColor" strokeWidth="2" />
-      <path d="M10 22l2-7M14 22l-1-7M9 9l3-2 3 3M12 7v8M7 14l3-5M16 13l-3-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function IconBus() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="5" y="3" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="2" />
-      <path d="M5 9h14M8 19v2M16 19v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="9" cy="15" r="1" fill="currentColor" />
-      <circle cx="15" cy="15" r="1" fill="currentColor" />
-    </svg>
-  )
-}
-
-function IconAlert() {
-  return (
-    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" fill="#FEE2E2" />
-      <path d="M12 7v6" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" />
-      <path d="M12 17h.01" stroke="#EF4444" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  )
+function clearDrawnRoute(polylineRef: { current: { setMap(map: GoogleMapInstance | null): void } | null }, markersRef: { current: Array<{ setMap(map: GoogleMapInstance | null): void }> }) {
+  polylineRef.current?.setMap(null)
+  polylineRef.current = null
+  markersRef.current.forEach((marker) => marker.setMap(null))
+  markersRef.current = []
 }
 
 const RoutesTransportWeatherPage = () => {
   const location = useLocation()
-  const destino = (location.state as { destino?: string } | null)?.destino
+  const navigate = useNavigate()
+  const { accessToken, localUser } = useAuth()
+  const storedGroup = getCurrentGroup()
+  const state = location.state as { destino?: string; group?: Group } | null
+  const group = state?.group ?? storedGroup
+  const destino = state?.destino ?? group?.destino_formatted_address ?? group?.destino ?? ''
   const [routeState, setRouteState] = useState<RouteState>('empty')
   const [transportMode, setTransportMode] = useState<TransportMode>('auto')
+  const [origin, setOrigin] = useState('')
+  const [destination, setDestination] = useState(destino)
+  const [originSuggestions, setOriginSuggestions] = useState<PlaceAutocompleteResult[]>([])
+  const [destinationSuggestions, setDestinationSuggestions] = useState<PlaceAutocompleteResult[]>([])
+  const [originCoords, setOriginCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [destinationCoords, setDestinationCoords] = useState<{ lat: number; lng: number } | null>(
+    group?.destino_latitud && group.destino_longitud ? { lat: Number(group.destino_latitud), lng: Number(group.destino_longitud) } : null
+  )
+  const [route, setRoute] = useState<ComputeRouteResult | null>(null)
+  const [weather, setWeather] = useState<WeatherResult | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const mapRef = useRef<HTMLDivElement | null>(null)
+  const mapInstance = useRef<GoogleMapInstance | null>(null)
+  const directionsRenderer = useRef<GoogleDirectionsRendererInstance | null>(null)
+  const routePolyline = useRef<{ setMap(map: GoogleMapInstance | null): void } | null>(null)
+  const routeMarkers = useRef<Array<{ setMap(map: GoogleMapInstance | null): void }>>([])
 
-  const city = destino || 'Cancún, Quintana Roo'
+  const tripMeta = group ? { name: group.nombre, subtitle: group.destino_formatted_address ?? group.destino ?? 'Destino sin definir', dates: formatDateRange(group), people: `${group.memberCount ?? group.maximo_miembros ?? 0} personas` } : undefined
+  const user = { name: localUser?.nombre || localUser?.email || 'Usuario', role: group?.myRole === 'admin' ? 'Organizador' : 'Viajero', initials: initials(localUser?.nombre || localUser?.email), color: '#7A4FD6' }
+  const selectedTransport = useMemo(() => transportOptions.find((item) => item.id === transportMode) ?? transportOptions[0], [transportMode])
 
-  const transportOptions: TransportOption[] = [
-    { id: 'auto', label: 'Auto' },
-    { id: 'walk', label: 'Caminar' },
-    { id: 'public', label: 'Transporte' },
-  ]
+  const initMap = useCallback(async () => {
+    if (!mapRef.current || !GOOGLE_MAPS_BROWSER_KEY) return
+    await loadGoogleMaps(GOOGLE_MAPS_BROWSER_KEY)
+    const center = destinationCoords ?? { lat: 15.832, lng: -96.321 }
+    if (!mapInstance.current) {
+      mapInstance.current = new window.google.maps.Map(mapRef.current, { center, zoom: 13, mapTypeControl: false, streetViewControl: false, fullscreenControl: false })
+      const renderer = new window.google.maps.DirectionsRenderer({ suppressMarkers: false })
+      renderer.setMap(mapInstance.current)
+      directionsRenderer.current = renderer
+      return
+    }
+    mapInstance.current.setCenter(center)
+  }, [destinationCoords])
 
-  const forecast: ForecastDay[] = [
-    { day: 'Hoy', icon: '☀️', min: 24, max: 32 },
-    { day: 'Mañana', icon: '☀️', min: 25, max: 33 },
-    { day: 'Miércoles', icon: '☁️', min: 23, max: 30 },
-    { day: 'Jueves', icon: '🌧️', min: 22, max: 28 },
-    { day: 'Viernes', icon: '☁️', min: 23, max: 29 },
-    { day: 'Sábado', icon: '☀️', min: 25, max: 31 },
-  ]
+  useEffect(() => { initMap().catch(() => setMessage('No se pudo cargar Google Maps. Revisa VITE_GOOGLE_MAPS_BROWSER_KEY.')) }, [initMap])
 
-  const handleCalculateRoute = () => {
+  useEffect(() => {
+    const run = async () => {
+      if (!accessToken || destinationCoords || !destino) return
+      try {
+        const response = await mapsService.searchDestination(destino, accessToken)
+        setDestinationCoords(toCoords(response.data))
+      } catch { setMessage('No se pudo geocodificar el destino del grupo.') }
+    }
+    void run()
+  }, [accessToken, destino, destinationCoords])
+
+  useEffect(() => {
+    const loadWeather = async () => {
+      if (!accessToken || !destinationCoords) return
+      try {
+        const response = await mapsService.getWeather(destinationCoords.lat, destinationCoords.lng, accessToken)
+        setWeather(response.data)
+      } catch { setMessage('No se pudo cargar el clima real.') }
+    }
+    void loadWeather()
+  }, [accessToken, destinationCoords])
+
+  const loadSuggestions = useCallback((value: string, setter: (items: PlaceAutocompleteResult[]) => void) => {
+    if (!accessToken || value.trim().length < 2) { setter([]); return undefined }
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await mapsService.autocompletePlaces(value, accessToken)
+        setter(response.data ?? [])
+      } catch { setter([]) }
+    }, 350)
+    return () => window.clearTimeout(timeout)
+  }, [accessToken])
+
+  useEffect(() => loadSuggestions(origin, setOriginSuggestions), [origin, loadSuggestions])
+  useEffect(() => loadSuggestions(destination, setDestinationSuggestions), [destination, loadSuggestions])
+
+  const selectSuggestion = async (suggestion: PlaceAutocompleteResult, target: 'origin' | 'destination') => {
+    if (!accessToken) return
+    try {
+      const response = await mapsService.getPlaceDetails(suggestion.placeId, accessToken)
+      const coords = toCoords(response.data)
+      if (!coords) throw new Error('El lugar no tiene coordenadas')
+      if (target === 'origin') {
+        setOrigin(suggestion.description)
+        setOriginCoords(coords)
+        setOriginSuggestions([])
+      } else {
+        setDestination(suggestion.description)
+        setDestinationCoords(coords)
+        setDestinationSuggestions([])
+      }
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'No se pudo seleccionar el lugar') }
+  }
+
+  const geocodeManual = async (value: string) => {
+    if (!accessToken) return null
+    const response = await mapsService.searchDestination(value, accessToken)
+    return toCoords(response.data)
+  }
+
+  const handleCalculateRoute = async () => {
+    if (!accessToken) return
     setRouteState('loading')
+    setMessage(null)
+    try {
+      const nextOrigin = originCoords ?? await geocodeManual(origin)
+      const nextDestination = destinationCoords ?? await geocodeManual(destination)
+      if (!nextOrigin || !nextDestination) throw new Error('Selecciona un origen y destino válidos')
+      setOriginCoords(nextOrigin)
+      setDestinationCoords(nextDestination)
 
-    window.setTimeout(() => {
+      const response = await mapsService.computeRoute({ originLat: nextOrigin.lat, originLng: nextOrigin.lng, destinationLat: nextDestination.lat, destinationLng: nextDestination.lng, travelMode: selectedTransport.googleMode }, accessToken)
+      if (!response.data) throw new Error('Google Routes no devolvió ruta')
+      setRoute(response.data)
       setRouteState('result')
-    }, 700)
+
+      if (mapInstance.current && window.google?.maps) {
+        clearDrawnRoute(routePolyline, routeMarkers)
+        const path = response.data.encodedPolyline ? decodePolyline(response.data.encodedPolyline) : []
+        if (path.length > 0) {
+          const googleMaps = window.google.maps as unknown as {
+            Polyline: new (options: Record<string, unknown>) => { setMap(map: GoogleMapInstance | null): void }
+            Marker: new (options: Record<string, unknown>) => { setMap(map: GoogleMapInstance | null): void }
+            LatLngBounds: new () => { extend(position: GoogleLatLngLiteral): void }
+          }
+          routePolyline.current = new googleMaps.Polyline({
+            path,
+            geodesic: true,
+            strokeColor: '#1E6FD9',
+            strokeOpacity: 0.95,
+            strokeWeight: 6,
+            map: mapInstance.current,
+          })
+          routeMarkers.current = [
+            new googleMaps.Marker({ map: mapInstance.current, position: nextOrigin, title: 'Origen' }),
+            new googleMaps.Marker({ map: mapInstance.current, position: nextDestination, title: 'Destino' }),
+          ]
+          const bounds = new googleMaps.LatLngBounds()
+          path.forEach((point) => bounds.extend(point))
+          mapInstance.current.fitBounds(bounds, 70)
+        } else if (directionsRenderer.current) {
+          const service = new window.google.maps.DirectionsService()
+          service.route({ origin: nextOrigin, destination: nextDestination, travelMode: window.google.maps.TravelMode[googleTravelMode(selectedTransport.googleMode)] }, (result: GoogleDirectionsResult | null, status: string) => {
+            if (status === 'OK' && result) directionsRenderer.current?.setDirections(result)
+          })
+        }
+      }
+    } catch (error) {
+      setRouteState('error')
+      setMessage(error instanceof Error ? error.message : 'No se pudo calcular la ruta')
+    }
   }
 
   const renderTransportIcon = (id: TransportMode) => {
@@ -119,204 +262,48 @@ const RoutesTransportWeatherPage = () => {
   }
 
   return (
-    <AppLayout
-      showTripSelector={false}
-      showRightPanel={false}
-      user={{
-        name: 'Usuario',
-        role: 'Viajero',
-        initials: 'U',
-        color: '#7A4FD6',
-      }}
-    >
+    <AppLayout showTripSelector={Boolean(group)} showRightPanel={false} trip={tripMeta} user={user}>
       <div className="flex-1 overflow-y-auto bg-[#F4F8FC]">
         <div className="flex min-h-[calc(100vh-80px)] flex-col">
           <header className="border-b border-gray-100 bg-white px-6 py-5">
-            <h1 className="font-heading text-2xl font-bold text-[#1E0A4E]">
-              Rutas y Transporte
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              Planifica tu ruta y consulta el clima
-            </p>
+            <button onClick={() => navigate(-1)} className="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-[#1E0A4E] hover:bg-gray-50">Volver</button>
+            <h1 className="font-heading text-2xl font-bold text-[#1E0A4E]">Rutas y Transporte</h1>
+            <p className="mt-1 text-sm text-gray-500">Planifica tu ruta y consulta clima real para {destino || 'tu destino'}.</p>
           </header>
 
           <main className="relative flex-1 overflow-hidden">
-            <div className="absolute inset-0 bg-[#EAF3FB]">
-              <div className="absolute left-[18%] top-[18%] h-px w-[65%] rotate-12 bg-[#D4E3F3]" />
-              <div className="absolute left-[22%] top-[45%] h-px w-[55%] -rotate-12 bg-[#D4E3F3]" />
-              <div className="absolute left-[45%] top-[12%] h-[65%] w-px -rotate-28 bg-[#D4E3F3]" />
-              <div className="absolute left-[55%] top-[30%] h-40 w-40 rounded-full bg-white/30" />
-            </div>
+            <div ref={mapRef} className="absolute inset-0 bg-[#EAF3FB]" />
 
             <section className="absolute left-6 top-6 z-10 w-80 rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
-              <h2 className="mb-4 font-heading text-lg font-bold text-[#1E0A4E]">
-                Calcular ruta
-              </h2>
-
-              <label className="text-xs font-bold uppercase text-gray-500">
-                Desde
-                <input
-                  className="mt-2 w-full rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
-                  placeholder="Aeropuerto Internacional de Cancún"
-                  defaultValue={routeState === 'empty' ? '' : 'Aeropuerto Internacional de Cancún'}
-                />
-              </label>
-
+              <h2 className="mb-4 font-heading text-lg font-bold text-[#1E0A4E]">Calcular ruta</h2>
+              <AutoInput label="Desde" value={origin} onChange={(value) => { setOrigin(value); setOriginCoords(null) }} placeholder="Aeropuerto, hotel, playa..." suggestions={originSuggestions} onSelect={(suggestion) => void selectSuggestion(suggestion, 'origin')} />
               <div className="my-3 text-center text-gray-400">↕</div>
-
-              <label className="text-xs font-bold uppercase text-gray-500">
-                Hasta
-                <input
-                  className="mt-2 w-full rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
-                  placeholder="Hotel Playa Cancún"
-                  defaultValue={routeState === 'empty' ? '' : 'Hotel Playa Cancún'}
-                />
-              </label>
+              <AutoInput label="Hasta" value={destination} onChange={(value) => { setDestination(value); setDestinationCoords(null) }} placeholder="Destino final" suggestions={destinationSuggestions} onSelect={(suggestion) => void selectSuggestion(suggestion, 'destination')} />
 
               <div className="mt-4">
-                <p className="mb-2 text-xs font-bold uppercase text-gray-500">
-                  Modo de transporte
-                </p>
-
+                <p className="mb-2 text-xs font-bold uppercase text-gray-500">Modo de transporte</p>
                 <div className="grid grid-cols-3 rounded-xl bg-[#F4F6F8] p-1">
-                  {transportOptions.map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setTransportMode(option.id)}
-                      className={`flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-3 text-xs transition-colors ${
-                        transportMode === option.id
-                          ? 'bg-white text-[#1E6FD9] shadow-sm'
-                          : 'text-gray-500'
-                      }`}
-                    >
-                      {renderTransportIcon(option.id)}
-                      {option.label}
-                    </button>
-                  ))}
+                  {transportOptions.map((option) => <button key={option.id} onClick={() => setTransportMode(option.id)} className={`flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-3 text-xs transition-colors ${transportMode === option.id ? 'bg-white text-[#1E6FD9] shadow-sm' : 'text-gray-500'}`}>{renderTransportIcon(option.id)}{option.label}</button>)}
                 </div>
               </div>
 
-              <button
-                onClick={handleCalculateRoute}
-                disabled={routeState === 'loading'}
-                className="mt-5 w-full rounded-xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#1557B0] disabled:bg-[#8DB8EF]"
-              >
-                {routeState === 'loading' ? 'Calculando ruta...' : 'Calcular ruta'}
-              </button>
-
-              <p className="mt-3 text-xs text-gray-500">
-                Selecciona un origen y destino para calcular la mejor ruta
-              </p>
+              <button onClick={() => void handleCalculateRoute()} disabled={routeState === 'loading'} className="mt-5 w-full rounded-xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#1557B0] disabled:bg-[#8DB8EF]">{routeState === 'loading' ? 'Calculando ruta...' : 'Calcular ruta'}</button>
+              {message && <p className="mt-3 text-xs text-gray-500">{message}</p>}
             </section>
 
-            <section className="absolute right-6 top-6 z-10 w-72 rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
-              <h2 className="mb-4 font-heading text-base font-bold text-[#1E0A4E]">
-                Pronóstico del clima
-              </h2>
+            <WeatherPanel weather={weather} destination={destino} />
 
-              <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFF7D6]">
-                  <IconSun />
-                </div>
-                <div>
-                  <p className="text-4xl font-bold text-[#1E0A4E]">30°</p>
-                  <p className="mt-1 text-sm font-semibold text-[#1E0A4E]">Soleado</p>
-                  <p className="text-xs text-gray-500">{city}</p>
-                </div>
-              </div>
-
-              <div className="mt-5 border-t border-gray-100 pt-4">
-                <p className="mb-3 text-xs font-bold uppercase text-gray-500">
-                  Próximos días
-                </p>
-
-                <div className="space-y-2">
-                  {forecast.map((day) => (
-                    <div key={day.day} className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-[#1E0A4E]">{day.day}</span>
-                      <span>{day.icon}</span>
-                      <span className="text-gray-500">
-                        {day.min}° / <strong className="text-[#1E0A4E]">{day.max}°</strong>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                <WeatherMiniCard label="km/h" value="12" />
-                <WeatherMiniCard label="Humedad" value="65%" />
-                <WeatherMiniCard label="Lluvia" value="10%" />
-              </div>
-            </section>
-
-            {routeState === 'result' && (
-              <>
-                <div className="absolute left-[45%] top-[26%] z-10">
-                  <IconPin />
-                </div>
-                <div className="absolute left-[62%] top-[55%] z-10">
-                  <IconPin color="#10B981" />
-                </div>
-
-                <div className="absolute left-1/2 top-[58%] z-10 -translate-x-1/2 rounded-2xl border border-gray-100 bg-white px-6 py-4 text-center shadow-lg">
-                  <p className="text-sm text-gray-500">{transportMode === 'auto' ? '🚙' : transportMode === 'walk' ? '🚶' : '🚌'}</p>
-                  <h3 className="mt-1 font-heading text-xl font-bold text-[#1E0A4E]">
-                    {transportMode === 'auto'
-                      ? '50 min en auto'
-                      : transportMode === 'walk'
-                        ? '2 h 20 min caminando'
-                        : '1 h 15 min en transporte'}
-                  </h3>
-                  <p className="text-xs text-gray-500">
-                    19 km · Ruta más rápida · Sin tráfico
-                  </p>
-                </div>
-              </>
-            )}
-
-            {routeState === 'loading' && (
-              <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-gray-100 bg-white px-8 py-5 shadow-lg">
-                <div className="flex items-center gap-3">
-                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#1E6FD9]/30 border-t-[#1E6FD9]" />
-                  <span className="text-sm font-semibold text-[#1E0A4E]">
-                    Calculando ruta óptima...
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {routeState === 'error' && (
-              <div className="absolute left-1/2 top-1/2 z-10 w-80 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-xl">
-                <div className="mb-4 flex justify-center">
-                  <IconAlert />
-                </div>
-                <h2 className="font-heading text-xl font-bold text-[#1E0A4E]">
-                  No pudimos calcular la ruta
-                </h2>
-                <p className="mt-2 text-sm text-gray-500">
-                  Ocurrió un problema al obtener la mejor ruta. Verifica los puntos seleccionados.
-                </p>
-                <button
-                  onClick={handleCalculateRoute}
-                  className="mt-5 w-full rounded-xl bg-[#1E6FD9] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1557B0]"
-                >
-                  Reintentar
-                </button>
-                <button
-                  onClick={() => setRouteState('empty')}
-                  className="mt-3 w-full rounded-xl bg-[#F4F6F8] px-4 py-3 text-sm font-semibold text-[#1E0A4E]"
-                >
-                  Editar ruta
-                </button>
+            {routeState === 'result' && route && (
+              <div className="absolute bottom-32 left-1/2 z-10 w-72 -translate-x-1/2 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-lg">
+                <p className="text-2xl">{transportMode === 'auto' ? '🚙' : transportMode === 'walk' ? '🚶' : '🚌'}</p>
+                <p className="mt-1 font-heading text-xl font-bold text-[#1E0A4E]">{route.durationText ?? route.staticDurationText ?? 'Ruta calculada'}</p>
+                <p className="text-sm text-gray-500">{route.distanceText ?? 'Distancia no disponible'} · Ruta más rápida</p>
               </div>
             )}
 
             <div className="absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full bg-white px-5 py-3 text-sm text-[#1E0A4E] shadow-lg">
-              <span>Centrar mapa</span>
-              <button className="rounded-lg bg-[#F4F6F8] px-3 py-1">-</button>
-              <span className="text-gray-500">Zoom 12</span>
-              <button className="rounded-lg bg-[#F4F6F8] px-3 py-1">+</button>
+              <button onClick={() => { if (mapInstance.current && destinationCoords) mapInstance.current.panTo(destinationCoords) }} className="font-semibold">Centrar mapa</button>
+              <span className="text-gray-400">Google Maps + Open-Meteo</span>
             </div>
           </main>
         </div>
@@ -325,13 +312,32 @@ const RoutesTransportWeatherPage = () => {
   )
 }
 
-function WeatherMiniCard({ label, value }: { label: string; value: string }) {
+function AutoInput({ label, value, onChange, placeholder, suggestions, onSelect }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; suggestions: PlaceAutocompleteResult[]; onSelect: (suggestion: PlaceAutocompleteResult) => void }) {
   return (
-    <div className="rounded-xl bg-[#F8FAFC] p-3 text-center">
-      <p className="font-bold text-[#1E6FD9]">{value}</p>
-      <p className="text-[10px] text-gray-500">{label}</p>
-    </div>
+    <label className="relative block text-xs font-bold uppercase text-gray-500">
+      {label}
+      <input value={value} onChange={(event) => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-3 text-sm normal-case text-[#1E0A4E] outline-none focus:border-[#1E6FD9]" placeholder={placeholder} />
+      {suggestions.length > 0 && <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">{suggestions.map((suggestion) => <button key={suggestion.placeId} type="button" onClick={() => onSelect(suggestion)} className="w-full border-b border-gray-100 px-4 py-3 text-left normal-case hover:bg-[#F4F8FC]"><p className="text-sm font-semibold text-[#1E0A4E]">{suggestion.mainText}</p><p className="text-xs text-gray-500">{suggestion.secondaryText}</p></button>)}</div>}
+    </label>
   )
 }
+
+function WeatherPanel({ weather, destination }: { weather: WeatherResult | null; destination: string }) {
+  return (
+    <section className="absolute right-6 top-6 z-10 w-72 rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
+      <h2 className="mb-4 font-heading text-base font-bold text-[#1E0A4E]">Pronóstico del clima</h2>
+      {!weather ? <div className="space-y-3"><div className="h-16 animate-pulse rounded-xl bg-gray-100" /><div className="h-32 animate-pulse rounded-xl bg-gray-100" /></div> : <>
+        <div className="flex items-center gap-4">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFF7D6] text-4xl">{weather.current.icon}</div>
+          <div><p className="font-heading text-4xl font-bold text-[#1E0A4E]">{Math.round(weather.current.temperature ?? 0)}°</p><p className="text-sm font-semibold text-[#1E0A4E]">{weather.current.description}</p><p className="text-xs text-gray-500">{destination}</p></div>
+        </div>
+        <div className="mt-5 border-t border-gray-100 pt-4"><p className="mb-3 text-xs font-bold uppercase text-gray-500">Próximos días</p><div className="space-y-2">{weather.forecast.map((day) => <div key={day.date} className="flex items-center justify-between text-sm"><span className="font-semibold text-[#1E0A4E]">{day.day}</span><span>{day.icon}</span><span className="text-gray-500">{Math.round(day.min ?? 0)}° / <b className="text-[#1E0A4E]">{Math.round(day.max ?? 0)}°</b></span></div>)}</div></div>
+        <div className="mt-5 grid grid-cols-3 gap-2"><Metric value={`${Math.round(weather.current.windSpeed ?? 0)}`} label="km/h" /><Metric value={`${weather.current.relativeHumidity ?? 0}%`} label="Humedad" /><Metric value={`${weather.current.precipitationProbability ?? 0}%`} label="Lluvia" /></div>
+      </>}
+    </section>
+  )
+}
+
+function Metric({ value, label }: { value: string; label: string }) { return <div className="rounded-xl bg-[#F8FAFC] p-3 text-center"><p className="font-heading text-base font-bold text-[#1E6FD9]">{value}</p><p className="text-[10px] text-gray-500">{label}</p></div> }
 
 export default RoutesTransportWeatherPage

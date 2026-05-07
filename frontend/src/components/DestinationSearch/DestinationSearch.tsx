@@ -78,8 +78,18 @@ export function DestinationSearch({
       setLocalError('')
 
       const response = await mapsService.getPlaceDetails(suggestion.placeId, token)
-      const geo = response.data ?? undefined
-      const finalValue = geo?.formattedAddress || suggestion.description
+      const place = response.data ?? undefined
+      const finalValue = place?.formattedAddress || suggestion.description
+      const geo: GeocodingResult | undefined = place
+        ? {
+            formattedAddress: place.formattedAddress,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            placeId: place.id,
+            photoName: place.photoName,
+            photoUrl: place.photoUrl,
+          }
+        : undefined
 
       setSearch(finalValue)
       setSelected(true)

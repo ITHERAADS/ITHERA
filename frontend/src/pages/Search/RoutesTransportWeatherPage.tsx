@@ -303,7 +303,7 @@ const RoutesTransportWeatherPage = () => {
 
             <div className="absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full bg-white px-5 py-3 text-sm text-[#1E0A4E] shadow-lg">
               <button onClick={() => { if (mapInstance.current && destinationCoords) mapInstance.current.panTo(destinationCoords) }} className="font-semibold">Centrar mapa</button>
-              <span className="text-gray-400">Google Maps + Open-Meteo</span>
+              <span className="text-gray-400">Google Maps + WeatherAPI</span>
             </div>
           </main>
         </div>
@@ -322,22 +322,85 @@ function AutoInput({ label, value, onChange, placeholder, suggestions, onSelect 
   )
 }
 
+function WeatherIcon({ iconUrl, icon, description, size = 'md' }: { iconUrl?: string | null; icon?: string | null; description?: string | null; size?: 'sm' | 'md' }) {
+  const imageClassName = size === 'sm' ? 'h-6 w-6 object-contain' : 'h-11 w-11 object-contain'
+  const textClassName = size === 'sm' ? 'text-lg leading-none' : 'text-3xl leading-none'
+
+  return iconUrl ? (
+    <img src={iconUrl} alt={description || 'Clima'} className={imageClassName} />
+  ) : (
+    <span className={textClassName}>{icon || '☀️'}</span>
+  )
+}
+
 function WeatherPanel({ weather, destination }: { weather: WeatherResult | null; destination: string }) {
   return (
-    <section className="absolute right-6 top-6 z-10 w-72 rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
-      <h2 className="mb-4 font-heading text-base font-bold text-[#1E0A4E]">Pronóstico del clima</h2>
-      {!weather ? <div className="space-y-3"><div className="h-16 animate-pulse rounded-xl bg-gray-100" /><div className="h-32 animate-pulse rounded-xl bg-gray-100" /></div> : <>
-        <div className="flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#FFF7D6] text-4xl">{weather.current.icon}</div>
-          <div><p className="font-heading text-4xl font-bold text-[#1E0A4E]">{Math.round(weather.current.temperature ?? 0)}°</p><p className="text-sm font-semibold text-[#1E0A4E]">{weather.current.description}</p><p className="text-xs text-gray-500">{destination}</p></div>
+    <section className="absolute right-5 top-5 z-10 w-[260px] rounded-3xl border border-gray-100 bg-white p-4 shadow-xl">
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <div>
+          <h2 className="font-heading text-sm font-bold text-[#1E0A4E]">Pronóstico del clima</h2>
+          <p className="mt-0.5 line-clamp-1 text-[11px] font-medium text-gray-500">{destination}</p>
         </div>
-        <div className="mt-5 border-t border-gray-100 pt-4"><p className="mb-3 text-xs font-bold uppercase text-gray-500">Próximos días</p><div className="space-y-2">{weather.forecast.map((day) => <div key={day.date} className="flex items-center justify-between text-sm"><span className="font-semibold text-[#1E0A4E]">{day.day}</span><span>{day.icon}</span><span className="text-gray-500">{Math.round(day.min ?? 0)}° / <b className="text-[#1E0A4E]">{Math.round(day.max ?? 0)}°</b></span></div>)}</div></div>
-        <div className="mt-5 grid grid-cols-3 gap-2"><Metric value={`${Math.round(weather.current.windSpeed ?? 0)}`} label="km/h" /><Metric value={`${weather.current.relativeHumidity ?? 0}%`} label="Humedad" /><Metric value={`${weather.current.precipitationProbability ?? 0}%`} label="Lluvia" /></div>
-      </>}
+        <span className="shrink-0 rounded-full bg-[#F4F8FC] px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-[#1E6FD9]">Actual</span>
+      </div>
+
+      {!weather ? (
+        <div className="space-y-1">
+          <div className="h-20 animate-pulse rounded-2xl bg-gray-100" />
+          <div className="h-32 animate-pulse rounded-2xl bg-gray-100" />
+        </div>
+      ) : (
+        <>
+          <div className="rounded-2xl bg-[#F8FAFC] p-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#FFF7D6]">
+                <WeatherIcon iconUrl={weather.current.iconUrl} icon={weather.current.icon} description={weather.current.description} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-1">
+                  <p className="font-heading text-4xl font-bold leading-none text-[#1E0A4E]">{Math.round(weather.current.temperature ?? 0)}</p>
+                  <span className="pt-0.5 font-heading text-xl font-bold text-[#1E0A4E]">°</span>
+                </div>
+                <p className="mt-1.5 line-clamp-1 text-xs font-semibold leading-tight text-[#1E0A4E]">{weather.current.description}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 border-t border-gray-100 pt-3">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-gray-500">Próximos días</p>
+            <div className="space-y-1">
+              {weather.forecast.map((day) => (
+                <div key={day.date} className="grid grid-cols-[1fr_28px_auto] items-center gap-2 rounded-xl px-1.5 py-1 text-xs transition-colors hover:bg-[#F8FAFC]">
+                  <span className="min-w-0 truncate font-semibold text-[#1E0A4E]">{day.day}</span>
+                  <span className="flex justify-center">
+                    <WeatherIcon iconUrl={day.iconUrl} icon={day.icon} description={day.description} size="sm" />
+                  </span>
+                  <span className="whitespace-nowrap text-right text-gray-500">
+                    {Math.round(day.min ?? 0)}° / <b className="text-[#1E0A4E]">{Math.round(day.max ?? 0)}°</b>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-1.5">
+            <Metric value={`${Math.round(weather.current.windSpeed ?? 0)}`} label="km/h" />
+            <Metric value={`${weather.current.relativeHumidity ?? 0}%`} label="Humedad" />
+            <Metric value={`${weather.current.precipitationProbability ?? 0}%`} label="Lluvia" />
+          </div>
+        </>
+      )}
     </section>
   )
 }
 
-function Metric({ value, label }: { value: string; label: string }) { return <div className="rounded-xl bg-[#F8FAFC] p-3 text-center"><p className="font-heading text-base font-bold text-[#1E6FD9]">{value}</p><p className="text-[10px] text-gray-500">{label}</p></div> }
+function Metric({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="rounded-xl bg-[#F8FAFC] px-1.5 py-2 text-center">
+      <p className="font-heading text-base font-bold leading-none text-[#1E6FD9]">{value}</p>
+      <p className="mt-0.5 text-[9px] font-semibold text-gray-500">{label}</p>
+    </div>
+  )
+}
 
 export default RoutesTransportWeatherPage

@@ -178,7 +178,7 @@ const buildDestinationFields = async (payload: DestinationPayload) => {
     return {
       destino_latitud: details?.latitude ?? payload.destino_latitud ?? null,
       destino_longitud: details?.longitude ?? payload.destino_longitud ?? null,
-      destino_place_id: details?.placeId ?? placeId,
+      destino_place_id: details?.id ?? placeId,
       destino_formatted_address:
         details?.formattedAddress ?? payload.destino_formatted_address ?? null,
       destino_photo_name: details?.photoName ?? payload.destino_photo_name ?? null,

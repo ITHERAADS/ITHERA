@@ -1,3 +1,19 @@
+export interface PlaceOpeningHours {
+  weekdayDescriptions?: string[];
+}
+
+export interface PlaceDetailsFields {
+  rating?: number | null;
+  userRatingCount?: number | null;
+  priceLevel?: string | null;
+  websiteUri?: string | null;
+  nationalPhoneNumber?: string | null;
+  internationalPhoneNumber?: string | null;
+  regularOpeningHours?: PlaceOpeningHours | null;
+  editorialSummary?: string | null;
+  googleMapsUri?: string | null;
+}
+
 export interface GeocodingResult {
   formattedAddress: string | null;
   latitude: number | null;
@@ -48,7 +64,7 @@ export interface NearbyPlacesParams {
   maxResultCount?: number;
 }
 
-export interface PlaceResult {
+export interface PlaceResult extends PlaceDetailsFields {
   id: string | null;
   name: string | null;
   formattedAddress: string | null;
@@ -72,4 +88,28 @@ export interface TextSearchPlacesParams {
   longitude?: number;
   radius?: number;
   maxResultCount?: number;
+}
+
+export interface WeatherForecastDay {
+  date: string;
+  day: string;
+  weatherCode: number;
+  icon: string;
+  description: string;
+  min: number | null;
+  max: number | null;
+  precipitationProbability: number | null;
+}
+
+export interface WeatherResult {
+  current: {
+    temperature: number | null;
+    weatherCode: number | null;
+    windSpeed: number | null;
+    relativeHumidity: number | null;
+    precipitationProbability: number | null;
+    icon: string;
+    description: string;
+  };
+  forecast: WeatherForecastDay[];
 }

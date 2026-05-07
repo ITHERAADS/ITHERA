@@ -128,4 +128,30 @@ router.post('/places/nearby', requireAuth, async (req: Request, res: Response): 
   }
 });
 
+
+router.get('/weather', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { latitude, longitude } = req.query;
+
+    if (latitude === undefined || longitude === undefined) {
+      res.status(400).json({ ok: false, error: 'latitude y longitude son requeridos' });
+      return;
+    }
+
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      res.status(400).json({ ok: false, error: 'latitude y longitude deben ser números válidos' });
+      return;
+    }
+
+    const weather = await MapsService.getWeather(lat, lng);
+    res.status(200).json({ ok: true, data: weather });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(500).json({ ok: false, error: 'Error al obtener clima', details: msg });
+  }
+});
+
 export default router;

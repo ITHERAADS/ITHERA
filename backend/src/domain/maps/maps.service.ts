@@ -7,7 +7,8 @@ import {
   googlePlacePhotoMedia,
   googleTextSearchPlaces,
 } from '../../infrastructure/external-apis/googlemaps.service';
-import { ComputeRouteParams, GeocodingResult, NearbyPlacesParams, PlaceResult, RouteResult, RouteStep } from './maps.entity';
+import { openMeteoForecast } from '../../infrastructure/external-apis/weather.service';
+import { ComputeRouteParams, GeocodingResult, NearbyPlacesParams, PlaceResult, RouteResult, RouteStep, WeatherResult } from './maps.entity';
 
 interface GooglePhoto {
   name?: string;
@@ -61,6 +62,15 @@ interface GooglePlacesResponse {
     location?: { latitude?: number; longitude?: number };
     types?: string[];
     photos?: GooglePhoto[];
+    rating?: number;
+    userRatingCount?: number;
+    priceLevel?: string;
+    websiteUri?: string;
+    nationalPhoneNumber?: string;
+    internationalPhoneNumber?: string;
+    regularOpeningHours?: { weekdayDescriptions?: string[] };
+    editorialSummary?: { text?: string };
+    googleMapsUri?: string;
   }>;
 }
 
@@ -87,6 +97,15 @@ interface GooglePlaceDetailsResponse {
   };
   types?: string[];
   photos?: GooglePhoto[];
+  rating?: number;
+  userRatingCount?: number;
+  priceLevel?: string;
+  websiteUri?: string;
+  nationalPhoneNumber?: string;
+  internationalPhoneNumber?: string;
+  regularOpeningHours?: { weekdayDescriptions?: string[] };
+  editorialSummary?: { text?: string };
+  googleMapsUri?: string;
 }
 
 interface GoogleTextSearchResponse {
@@ -97,6 +116,15 @@ interface GoogleTextSearchResponse {
     location?: { latitude?: number; longitude?: number };
     types?: string[];
     photos?: GooglePhoto[];
+    rating?: number;
+    userRatingCount?: number;
+    priceLevel?: string;
+    websiteUri?: string;
+    nationalPhoneNumber?: string;
+    internationalPhoneNumber?: string;
+    regularOpeningHours?: { weekdayDescriptions?: string[] };
+    editorialSummary?: { text?: string };
+    googleMapsUri?: string;
   }>;
 }
 
@@ -190,6 +218,15 @@ export async function searchNearbyPlaces(params: NearbyPlacesParams): Promise<Pl
         primaryCategory: place.types?.[0] ?? null,
         photoName,
         photoUrl: await resolvePhotoUrl(photoName),
+        rating: place.rating ?? null,
+        userRatingCount: place.userRatingCount ?? null,
+        priceLevel: place.priceLevel ?? null,
+        websiteUri: place.websiteUri ?? null,
+        nationalPhoneNumber: place.nationalPhoneNumber ?? null,
+        internationalPhoneNumber: place.internationalPhoneNumber ?? null,
+        regularOpeningHours: place.regularOpeningHours ?? null,
+        editorialSummary: place.editorialSummary?.text ?? null,
+        googleMapsUri: place.googleMapsUri ?? null,
       };
     })
   );
@@ -210,7 +247,7 @@ export async function autocompletePlaces(input: string) {
     .filter((item) => item.placeId && item.description);
 }
 
-export async function getPlaceDetails(placeId: string): Promise<GeocodingResult | null> {
+export async function getPlaceDetails(placeId: string): Promise<PlaceResult | null> {
   const place = await googlePlaceDetails<GooglePlaceDetailsResponse>(placeId);
 
   if (!place) return null;
@@ -218,12 +255,23 @@ export async function getPlaceDetails(placeId: string): Promise<GeocodingResult 
   const photoName = place.photos?.[0]?.name ?? null;
 
   return {
+    id: place.id ?? placeId,
+    name: place.displayName?.text ?? null,
     formattedAddress: place.formattedAddress ?? place.displayName?.text ?? null,
     latitude: place.location?.latitude ?? null,
     longitude: place.location?.longitude ?? null,
-    placeId: place.id ?? placeId,
+    primaryCategory: place.types?.[0] ?? null,
     photoName,
     photoUrl: await resolvePhotoUrl(photoName),
+    rating: place.rating ?? null,
+    userRatingCount: place.userRatingCount ?? null,
+    priceLevel: place.priceLevel ?? null,
+    websiteUri: place.websiteUri ?? null,
+    nationalPhoneNumber: place.nationalPhoneNumber ?? null,
+    internationalPhoneNumber: place.internationalPhoneNumber ?? null,
+    regularOpeningHours: place.regularOpeningHours ?? null,
+    editorialSummary: place.editorialSummary?.text ?? null,
+    googleMapsUri: place.googleMapsUri ?? null,
   };
 }
 
@@ -241,7 +289,7 @@ export async function searchPlacesByText(params: {
   };
 
   if (params.latitude !== undefined && params.longitude !== undefined) {
-    body.locationBias = {
+    body.locationRestriction = {
       circle: {
         center: {
           latitude: params.latitude,
@@ -267,7 +315,98 @@ export async function searchPlacesByText(params: {
         primaryCategory: place.types?.[0] ?? null,
         photoName,
         photoUrl: await resolvePhotoUrl(photoName),
+        rating: place.rating ?? null,
+        userRatingCount: place.userRatingCount ?? null,
+        priceLevel: place.priceLevel ?? null,
+        websiteUri: place.websiteUri ?? null,
+        nationalPhoneNumber: place.nationalPhoneNumber ?? null,
+        internationalPhoneNumber: place.internationalPhoneNumber ?? null,
+        regularOpeningHours: place.regularOpeningHours ?? null,
+        editorialSummary: place.editorialSummary?.text ?? null,
+        googleMapsUri: place.googleMapsUri ?? null,
       };
     })
   );
+}
+
+
+interface OpenMeteoResponse {
+  current?: {
+    temperature_2m?: number;
+    relative_humidity_2m?: number;
+    weather_code?: number;
+    wind_speed_10m?: number;
+    precipitation?: number;
+  };
+  daily?: {
+    time?: string[];
+    weather_code?: number[];
+    temperature_2m_max?: number[];
+    temperature_2m_min?: number[];
+    precipitation_probability_max?: number[];
+  };
+}
+
+const WEATHER_CODES: Record<number, { icon: string; description: string }> = {
+  0: { icon: '☀️', description: 'Despejado' },
+  1: { icon: '🌤️', description: 'Mayormente despejado' },
+  2: { icon: '⛅', description: 'Parcialmente nublado' },
+  3: { icon: '☁️', description: 'Nublado' },
+  45: { icon: '🌫️', description: 'Niebla' },
+  48: { icon: '🌫️', description: 'Niebla con escarcha' },
+  51: { icon: '🌦️', description: 'Llovizna ligera' },
+  53: { icon: '🌦️', description: 'Llovizna' },
+  55: { icon: '🌧️', description: 'Llovizna intensa' },
+  61: { icon: '🌧️', description: 'Lluvia ligera' },
+  63: { icon: '🌧️', description: 'Lluvia' },
+  65: { icon: '⛈️', description: 'Lluvia intensa' },
+  80: { icon: '🌦️', description: 'Chubascos ligeros' },
+  81: { icon: '🌧️', description: 'Chubascos' },
+  82: { icon: '⛈️', description: 'Chubascos intensos' },
+  95: { icon: '⛈️', description: 'Tormenta' },
+};
+
+function describeWeather(code?: number | null) {
+  if (code === undefined || code === null) return { icon: '🌤️', description: 'Sin dato' };
+  return WEATHER_CODES[code] ?? { icon: '🌤️', description: 'Clima variable' };
+}
+
+function dayLabel(dateString: string, index: number): string {
+  if (index === 0) return 'Hoy';
+  if (index === 1) return 'Mañana';
+  const date = new Date(`${dateString}T12:00:00`);
+  return new Intl.DateTimeFormat('es-MX', { weekday: 'long' }).format(date).replace(/^./, (c) => c.toUpperCase());
+}
+
+export async function getWeather(latitude: number, longitude: number): Promise<WeatherResult> {
+  const response = await openMeteoForecast<OpenMeteoResponse>(latitude, longitude);
+  const currentCode = response.current?.weather_code ?? null;
+  const currentMeta = describeWeather(currentCode);
+  const times = response.daily?.time ?? [];
+
+  return {
+    current: {
+      temperature: response.current?.temperature_2m ?? null,
+      weatherCode: currentCode,
+      windSpeed: response.current?.wind_speed_10m ?? null,
+      relativeHumidity: response.current?.relative_humidity_2m ?? null,
+      precipitationProbability: response.daily?.precipitation_probability_max?.[0] ?? null,
+      icon: currentMeta.icon,
+      description: currentMeta.description,
+    },
+    forecast: times.map((date, index) => {
+      const code = response.daily?.weather_code?.[index] ?? 0;
+      const meta = describeWeather(code);
+      return {
+        date,
+        day: dayLabel(date, index),
+        weatherCode: code,
+        icon: meta.icon,
+        description: meta.description,
+        min: response.daily?.temperature_2m_min?.[index] ?? null,
+        max: response.daily?.temperature_2m_max?.[index] ?? null,
+        precipitationProbability: response.daily?.precipitation_probability_max?.[index] ?? null,
+      };
+    }),
+  };
 }

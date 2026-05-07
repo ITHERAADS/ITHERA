@@ -367,26 +367,35 @@ export function ActivityProposalModal({
                       isSelected ? 'bg-bluePrimary/10' : 'bg-white hover:bg-[#F8FAFC]'
                     }`}
                   >
-                    <p className="font-body text-sm font-bold text-purpleNavbar">
-                      {place.name || 'Lugar sin nombre'}
-                    </p>
-                    <p className="mt-0.5 font-body text-xs text-gray500">
-                      {place.formattedAddress || 'Direccion no disponible'}
-                    </p>
-                    {place.routeDistanceText && place.routeDurationText && (
-                      <p className="mt-1 flex items-center gap-1 font-body text-[11px] text-gray700">
-                        <span className="text-bluePrimary">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" />
-                            <circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2" />
-                          </svg>
-                        </span>
-                        {place.routeDistanceText} · {place.routeDurationText}
-                      </p>
-                    )}
-                    {place.primaryCategory && (
-                      <p className="mt-1 font-body text-[11px] text-bluePrimary">{place.primaryCategory}</p>
-                    )}
+                    <div className="flex gap-3">
+                      <img
+                        src={place.photoUrl || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=200&h=200&fit=crop'}
+                        alt={place.name || 'Lugar'}
+                        className="h-14 w-14 flex-none rounded-xl object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-body text-sm font-bold text-purpleNavbar">
+                          {place.name || 'Lugar sin nombre'}
+                        </p>
+                        <p className="mt-0.5 line-clamp-2 font-body text-xs text-gray500">
+                          {place.formattedAddress || 'Direccion no disponible'}
+                        </p>
+                        {place.routeDistanceText && place.routeDurationText && (
+                          <p className="mt-1 flex items-center gap-1 font-body text-[11px] text-gray700">
+                            <span className="text-bluePrimary">
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" />
+                                <circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2" />
+                              </svg>
+                            </span>
+                            {place.routeDistanceText} · {place.routeDurationText}
+                          </p>
+                        )}
+                        {place.primaryCategory && (
+                          <p className="mt-1 font-body text-[11px] text-bluePrimary">{place.primaryCategory}</p>
+                        )}
+                      </div>
+                    </div>
                   </button>
                 )
               })}

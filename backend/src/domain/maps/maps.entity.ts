@@ -95,6 +95,7 @@ export interface WeatherForecastDay {
   day: string;
   weatherCode: number;
   icon: string;
+  iconUrl?: string | null;
   description: string;
   min: number | null;
   max: number | null;
@@ -109,6 +110,7 @@ export interface WeatherResult {
     relativeHumidity: number | null;
     precipitationProbability: number | null;
     icon: string;
+    iconUrl?: string | null;
     description: string;
   };
   forecast: WeatherForecastDay[];

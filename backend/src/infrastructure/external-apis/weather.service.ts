@@ -1,27 +1,36 @@
-const OPEN_METEO_BASE_URL = process.env['OPEN_METEO_BASE_URL'] ?? 'https://api.open-meteo.com';
+import { env } from '../../config/env';
+
+const WEATHER_API_BASE_URL = process.env['WEATHER_API_BASE_URL'] ?? 'https://api.weatherapi.com';
 
 async function safeJson<T>(response: Response): Promise<T> {
   const text = await response.text();
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new Error(`Respuesta no válida de Open-Meteo: ${text}`);
+    throw new Error(`Respuesta no válida de WeatherAPI: ${text}`);
   }
 }
 
-export async function openMeteoForecast<T>(latitude: number, longitude: number): Promise<T> {
-  const url = new URL('/v1/forecast', OPEN_METEO_BASE_URL);
-  url.searchParams.set('latitude', String(latitude));
-  url.searchParams.set('longitude', String(longitude));
-  url.searchParams.set('timezone', 'auto');
-  url.searchParams.set('forecast_days', '6');
-  url.searchParams.set('current', 'temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,precipitation');
-  url.searchParams.set('daily', 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max');
+export async function weatherApiForecast<T>(latitude: number, longitude: number, days = 6): Promise<T> {
+  if (!env.WEATHER_API_KEY) {
+    throw new Error('Falta configurar WEATHER_API_KEY en el backend');
+  }
 
-  const response = await fetch(url.toString(), { method: 'GET', headers: { Accept: 'application/json' } });
+  const url = new URL('/v1/forecast.json', WEATHER_API_BASE_URL);
+  url.searchParams.set('key', env.WEATHER_API_KEY);
+  url.searchParams.set('q', `${latitude},${longitude}`);
+  url.searchParams.set('days', String(Math.min(Math.max(days, 1), 10)));
+  url.searchParams.set('aqi', 'no');
+  url.searchParams.set('alerts', 'no');
+  url.searchParams.set('lang', 'es');
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
 
   if (!response.ok) {
-    throw new Error(`Error de Open-Meteo (${response.status}): ${await response.text()}`);
+    throw new Error(`Error de WeatherAPI (${response.status}): ${await response.text()}`);
   }
 
   return safeJson<T>(response);

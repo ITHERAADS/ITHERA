@@ -7,7 +7,7 @@ import {
   googlePlacePhotoMedia,
   googleTextSearchPlaces,
 } from '../../infrastructure/external-apis/googlemaps.service';
-import { openMeteoForecast } from '../../infrastructure/external-apis/weather.service';
+import { weatherApiForecast } from '../../infrastructure/external-apis/weather.service';
 import { ComputeRouteParams, GeocodingResult, NearbyPlacesParams, PlaceResult, RouteResult, RouteStep, WeatherResult } from './maps.entity';
 
 interface GooglePhoto {
@@ -330,45 +330,101 @@ export async function searchPlacesByText(params: {
 }
 
 
-interface OpenMeteoResponse {
-  current?: {
-    temperature_2m?: number;
-    relative_humidity_2m?: number;
-    weather_code?: number;
-    wind_speed_10m?: number;
-    precipitation?: number;
+type WeatherApiForecastDay = {
+  date?: string;
+  day?: {
+    maxtemp_c?: number;
+    mintemp_c?: number;
+    daily_chance_of_rain?: number;
+    condition?: {
+      text?: string;
+      icon?: string;
+      code?: number;
+    };
   };
-  daily?: {
-    time?: string[];
-    weather_code?: number[];
-    temperature_2m_max?: number[];
-    temperature_2m_min?: number[];
-    precipitation_probability_max?: number[];
+};
+
+interface WeatherApiResponse {
+  current?: {
+    temp_c?: number;
+    humidity?: number;
+    wind_kph?: number;
+    precip_mm?: number;
+    condition?: {
+      text?: string;
+      icon?: string;
+      code?: number;
+    };
+  };
+  forecast?: {
+    forecastday?: WeatherApiForecastDay[];
   };
 }
 
-const WEATHER_CODES: Record<number, { icon: string; description: string }> = {
-  0: { icon: '☀️', description: 'Despejado' },
-  1: { icon: '🌤️', description: 'Mayormente despejado' },
-  2: { icon: '⛅', description: 'Parcialmente nublado' },
-  3: { icon: '☁️', description: 'Nublado' },
-  45: { icon: '🌫️', description: 'Niebla' },
-  48: { icon: '🌫️', description: 'Niebla con escarcha' },
-  51: { icon: '🌦️', description: 'Llovizna ligera' },
-  53: { icon: '🌦️', description: 'Llovizna' },
-  55: { icon: '🌧️', description: 'Llovizna intensa' },
-  61: { icon: '🌧️', description: 'Lluvia ligera' },
-  63: { icon: '🌧️', description: 'Lluvia' },
-  65: { icon: '⛈️', description: 'Lluvia intensa' },
-  80: { icon: '🌦️', description: 'Chubascos ligeros' },
-  81: { icon: '🌧️', description: 'Chubascos' },
-  82: { icon: '⛈️', description: 'Chubascos intensos' },
-  95: { icon: '⛈️', description: 'Tormenta' },
+const weatherCache = new Map<string, { expiresAt: number; value: WeatherResult }>();
+const WEATHER_CACHE_TTL_MS = Number(process.env['WEATHER_CACHE_TTL_MS'] ?? 15 * 60 * 1000);
+
+const WEATHER_CODE_ICONS: Record<number, string> = {
+  1000: '☀️',
+  1003: '🌤️',
+  1006: '⛅',
+  1009: '☁️',
+  1030: '🌫️',
+  1063: '🌦️',
+  1066: '🌨️',
+  1069: '🌨️',
+  1072: '🌧️',
+  1087: '⛈️',
+  1135: '🌫️',
+  1147: '🌫️',
+  1150: '🌦️',
+  1153: '🌦️',
+  1168: '🌧️',
+  1171: '🌧️',
+  1180: '🌦️',
+  1183: '🌧️',
+  1186: '🌧️',
+  1189: '🌧️',
+  1192: '⛈️',
+  1195: '⛈️',
+  1198: '🌧️',
+  1201: '🌧️',
+  1204: '🌨️',
+  1207: '🌨️',
+  1210: '🌨️',
+  1213: '🌨️',
+  1216: '🌨️',
+  1219: '🌨️',
+  1222: '🌨️',
+  1225: '🌨️',
+  1237: '🌨️',
+  1240: '🌦️',
+  1243: '🌧️',
+  1246: '⛈️',
+  1249: '🌨️',
+  1252: '🌨️',
+  1255: '🌨️',
+  1258: '🌨️',
+  1261: '🌨️',
+  1264: '🌨️',
+  1273: '⛈️',
+  1276: '⛈️',
+  1279: '⛈️',
+  1282: '⛈️',
 };
 
-function describeWeather(code?: number | null) {
-  if (code === undefined || code === null) return { icon: '🌤️', description: 'Sin dato' };
-  return WEATHER_CODES[code] ?? { icon: '🌤️', description: 'Clima variable' };
+function normalizeWeatherIconUrl(icon?: string | null): string | null {
+  if (!icon) return null;
+  return icon.startsWith('//') ? `https:${icon}` : icon;
+}
+
+function describeWeatherApiCondition(condition?: { text?: string; code?: number } | null) {
+  const code = condition?.code ?? null;
+  const description = condition?.text?.trim() || 'Sin dato';
+  return {
+    icon: code !== null ? WEATHER_CODE_ICONS[code] ?? '🌤️' : '🌤️',
+    description,
+  };
 }
 
 function dayLabel(dateString: string, index: number): string {
@@ -378,35 +434,55 @@ function dayLabel(dateString: string, index: number): string {
   return new Intl.DateTimeFormat('es-MX', { weekday: 'long' }).format(date).replace(/^./, (c) => c.toUpperCase());
 }
 
-export async function getWeather(latitude: number, longitude: number): Promise<WeatherResult> {
-  const response = await openMeteoForecast<OpenMeteoResponse>(latitude, longitude);
-  const currentCode = response.current?.weather_code ?? null;
-  const currentMeta = describeWeather(currentCode);
-  const times = response.daily?.time ?? [];
+function cacheKey(latitude: number, longitude: number): string {
+  return `${latitude.toFixed(3)},${longitude.toFixed(3)}`;
+}
 
-  return {
+function hasForecastDate(item: WeatherApiForecastDay): item is WeatherApiForecastDay & { date: string } {
+  return typeof item.date === 'string' && item.date.trim().length > 0;
+}
+
+export async function getWeather(latitude: number, longitude: number): Promise<WeatherResult> {
+  const key = cacheKey(latitude, longitude);
+  const cached = weatherCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const response = await weatherApiForecast<WeatherApiResponse>(latitude, longitude, 6);
+  const currentCondition = response.current?.condition ?? null;
+  const currentMeta = describeWeatherApiCondition(currentCondition);
+  const forecastDays = response.forecast?.forecastday ?? [];
+
+  const value: WeatherResult = {
     current: {
-      temperature: response.current?.temperature_2m ?? null,
-      weatherCode: currentCode,
-      windSpeed: response.current?.wind_speed_10m ?? null,
-      relativeHumidity: response.current?.relative_humidity_2m ?? null,
-      precipitationProbability: response.daily?.precipitation_probability_max?.[0] ?? null,
+      temperature: response.current?.temp_c ?? null,
+      weatherCode: currentCondition?.code ?? null,
+      windSpeed: response.current?.wind_kph ?? null,
+      relativeHumidity: response.current?.humidity ?? null,
+      precipitationProbability: forecastDays[0]?.day?.daily_chance_of_rain ?? null,
       icon: currentMeta.icon,
+      iconUrl: normalizeWeatherIconUrl(currentCondition?.icon),
       description: currentMeta.description,
     },
-    forecast: times.map((date, index) => {
-      const code = response.daily?.weather_code?.[index] ?? 0;
-      const meta = describeWeather(code);
-      return {
-        date,
-        day: dayLabel(date, index),
-        weatherCode: code,
-        icon: meta.icon,
-        description: meta.description,
-        min: response.daily?.temperature_2m_min?.[index] ?? null,
-        max: response.daily?.temperature_2m_max?.[index] ?? null,
-        precipitationProbability: response.daily?.precipitation_probability_max?.[index] ?? null,
-      };
-    }),
+    forecast: forecastDays
+      .filter(hasForecastDate)
+      .map((item, index) => {
+        const condition = item.day?.condition ?? null;
+        const meta = describeWeatherApiCondition(condition);
+        const date = item.date ?? '';
+        return {
+          date,
+          day: dayLabel(date, index),
+          weatherCode: condition?.code ?? 0,
+          icon: meta.icon,
+          iconUrl: normalizeWeatherIconUrl(condition?.icon),
+          description: meta.description,
+          min: item.day?.mintemp_c ?? null,
+          max: item.day?.maxtemp_c ?? null,
+          precipitationProbability: item.day?.daily_chance_of_rain ?? null,
+        };
+      }),
   };
+
+  weatherCache.set(key, { expiresAt: Date.now() + WEATHER_CACHE_TTL_MS, value });
+  return value;
 }

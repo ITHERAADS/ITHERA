@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { AppLayout } from '../../components/layout/AppLayout'
+import { SearchIntegratedShell } from './SearchIntegratedShell'
 import { useAuth } from '../../context/useAuth'
 import { getCurrentGroup } from '../../services/groups'
 import {
@@ -34,14 +34,6 @@ function IconBus() { return <svg width="18" height="18" viewBox="0 0 24 24" fill
 function initials(name?: string | null) {
   const source = (name ?? 'Usuario').trim()
   return source.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'U'
-}
-
-function formatDateRange(group: Group | null) {
-  if (!group?.fecha_inicio || !group?.fecha_fin) return 'Fechas sin definir'
-  const start = new Date(`${group.fecha_inicio}T12:00:00`)
-  const end = new Date(`${group.fecha_fin}T12:00:00`)
-  const fmt = new Intl.DateTimeFormat('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' })
-  return `${fmt.format(start)} – ${fmt.format(end)}`
 }
 
 
@@ -122,7 +114,6 @@ const RoutesTransportWeatherPage = () => {
   const routePolyline = useRef<{ setMap(map: GoogleMapInstance | null): void } | null>(null)
   const routeMarkers = useRef<Array<{ setMap(map: GoogleMapInstance | null): void }>>([])
 
-  const tripMeta = group ? { name: group.nombre, subtitle: group.destino_formatted_address ?? group.destino ?? 'Destino sin definir', dates: formatDateRange(group), people: `${group.memberCount ?? group.maximo_miembros ?? 0} personas` } : undefined
   const user = { name: localUser?.nombre || localUser?.email || 'Usuario', role: group?.myRole === 'admin' ? 'Organizador' : 'Viajero', initials: initials(localUser?.nombre || localUser?.email), color: '#7A4FD6' }
   const selectedTransport = useMemo(() => transportOptions.find((item) => item.id === transportMode) ?? transportOptions[0], [transportMode])
 
@@ -262,19 +253,28 @@ const RoutesTransportWeatherPage = () => {
   }
 
   return (
-    <AppLayout showTripSelector={Boolean(group)} showRightPanel={false} trip={tripMeta} user={user}>
-      <div className="flex-1 overflow-y-auto bg-[#F4F8FC]">
-        <div className="flex min-h-[calc(100vh-80px)] flex-col">
-          <header className="border-b border-gray-100 bg-white px-6 py-5">
-            <button onClick={() => navigate(-1)} className="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-[#1E0A4E] hover:bg-gray-50">Volver</button>
-            <h1 className="font-heading text-2xl font-bold text-[#1E0A4E]">Rutas y Transporte</h1>
-            <p className="mt-1 text-sm text-gray-500">Planifica tu ruta y consulta clima real para {destino || 'tu destino'}.</p>
-          </header>
-
-          <main className="relative flex-1 overflow-hidden">
+    <SearchIntegratedShell group={group} user={user}>
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[#F4F8FC]">
+        <div className="relative min-h-[760px] pb-6">
+          <main className="relative min-h-[760px] overflow-hidden rounded-none bg-[#EAF3FB]">
             <div ref={mapRef} className="absolute inset-0 bg-[#EAF3FB]" />
 
-            <section className="absolute left-6 top-6 z-10 w-80 rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
+            <header className="absolute left-0 right-0 top-0 z-20 border-b border-gray-100 bg-white/95 px-6 py-4 shadow-sm backdrop-blur">
+              <div className="flex flex-wrap items-center gap-4">
+                <button
+                  onClick={() => navigate(group?.id ? `/dashboard?groupId=${encodeURIComponent(String(group.id))}` : '/dashboard', { state: group ? { groupId: group.id, group, activeTab: 'buscar' } : { activeTab: 'buscar' } })}
+                  className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-[#1E0A4E] transition-colors hover:bg-gray-50"
+                >
+                  ← Volver
+                </button>
+                <div className="min-w-0">
+                  <h1 className="font-heading text-2xl font-bold leading-tight text-[#1E0A4E]">Rutas y Transporte</h1>
+                  <p className="mt-0.5 truncate text-sm text-gray-500">Planifica tu ruta y consulta clima real para {destino || 'tu destino'}.</p>
+                </div>
+              </div>
+            </header>
+
+            <section className="absolute left-6 top-28 z-10 max-h-[calc(100%-170px)] w-80 overflow-y-auto rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
               <h2 className="mb-4 font-heading text-lg font-bold text-[#1E0A4E]">Calcular ruta</h2>
               <AutoInput label="Desde" value={origin} onChange={(value) => { setOrigin(value); setOriginCoords(null) }} placeholder="Aeropuerto, hotel, playa..." suggestions={originSuggestions} onSelect={(suggestion) => void selectSuggestion(suggestion, 'origin')} />
               <div className="my-3 text-center text-gray-400">↕</div>
@@ -294,21 +294,21 @@ const RoutesTransportWeatherPage = () => {
             <WeatherPanel weather={weather} destination={destino} />
 
             {routeState === 'result' && route && (
-              <div className="absolute bottom-32 left-1/2 z-10 w-72 -translate-x-1/2 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-lg">
+              <div className="absolute bottom-40 left-1/2 z-10 w-72 -translate-x-1/2 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-lg">
                 <p className="text-2xl">{transportMode === 'auto' ? '🚙' : transportMode === 'walk' ? '🚶' : '🚌'}</p>
                 <p className="mt-1 font-heading text-xl font-bold text-[#1E0A4E]">{route.durationText ?? route.staticDurationText ?? 'Ruta calculada'}</p>
                 <p className="text-sm text-gray-500">{route.distanceText ?? 'Distancia no disponible'} · Ruta más rápida</p>
               </div>
             )}
 
-            <div className="absolute bottom-8 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full bg-white px-5 py-3 text-sm text-[#1E0A4E] shadow-lg">
+            <div className="absolute bottom-24 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full bg-white px-5 py-3 text-sm text-[#1E0A4E] shadow-lg">
               <button onClick={() => { if (mapInstance.current && destinationCoords) mapInstance.current.panTo(destinationCoords) }} className="font-semibold">Centrar mapa</button>
               <span className="text-gray-400">Google Maps + WeatherAPI</span>
             </div>
           </main>
         </div>
       </div>
-    </AppLayout>
+    </SearchIntegratedShell>
   )
 }
 
@@ -335,7 +335,7 @@ function WeatherIcon({ iconUrl, icon, description, size = 'md' }: { iconUrl?: st
 
 function WeatherPanel({ weather, destination }: { weather: WeatherResult | null; destination: string }) {
   return (
-    <section className="absolute right-5 top-5 z-10 w-[260px] rounded-3xl border border-gray-100 bg-white p-4 shadow-xl">
+    <section className="absolute right-6 top-28 z-10 w-[260px] rounded-3xl border border-gray-100 bg-white p-4 shadow-xl">
       <div className="mb-3 flex items-start justify-between gap-2">
         <div>
           <h2 className="font-heading text-sm font-bold text-[#1E0A4E]">Pronóstico del clima</h2>

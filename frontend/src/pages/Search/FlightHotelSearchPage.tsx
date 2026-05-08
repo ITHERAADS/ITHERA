@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AppLayout } from '../../components/layout/AppLayout'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { SearchIntegratedShell } from './SearchIntegratedShell'
 import { useAuth } from '../../context/useAuth'
 import { flightsService, type CabinClass, type FlightAirportOption, type FlightOffer } from '../../services/flights'
 import { hotelsService, type HotelOffer } from '../../services/hotels'
 import { getCurrentGroup } from '../../services/groups'
+import type { Group } from '../../types/groups'
 import { proposalsService } from '../../services/proposals'
 
 type SearchTab = 'flights' | 'hotels'
@@ -349,6 +351,9 @@ function getReturnRoute(flight: FlightOffer) {
 
 const FlightHotelSearchPage = () => {
   const { accessToken, localUser } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const state = location.state as { group?: Group } | null
   const [activeTab, setActiveTab] = useState<SearchTab>('flights')
   const [viewState, setViewState] = useState<ViewState>('initial')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -361,7 +366,7 @@ const FlightHotelSearchPage = () => {
   const [hotels, setHotels] = useState<Hotel[]>([])
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null)
 
-  const currentGroup = useMemo(() => getCurrentGroup(), [])
+  const currentGroup = useMemo(() => state?.group ?? getCurrentGroup(), [state?.group])
   const passengerTotal = flightForm.adults + flightForm.children + flightForm.infantsWithoutSeat
   const [airportOptions, setAirportOptions] = useState<Record<'origin' | 'destination', FlightAirportOption[]>>({
     origin: [],
@@ -846,18 +851,25 @@ const FlightHotelSearchPage = () => {
     : ''
 
   return (
-    <AppLayout
-      showTripSelector={false}
-      showRightPanel={false}
+    <SearchIntegratedShell
+      group={currentGroup}
       user={{
-        name: localUser?.nombre ?? 'Usuario',
-        role: 'Viajero',
-        initials: (localUser?.nombre ?? 'U').slice(0, 1).toUpperCase(),
+        name: localUser?.nombre ?? localUser?.email ?? 'Usuario',
+        role: currentGroup?.myRole === 'admin' ? 'Organizador' : 'Viajero',
+        initials: (localUser?.nombre ?? localUser?.email ?? 'U').slice(0, 1).toUpperCase(),
         color: '#7A4FD6',
       }}
     >
       <div className="flex-1 overflow-y-auto bg-[#F4F6F8]">
         <section className="relative overflow-hidden bg-[#1E0A4E] px-8 py-8 text-white">
+          <button
+            type="button"
+            onClick={() => navigate(currentGroup?.id ? `/dashboard?groupId=${encodeURIComponent(String(currentGroup.id))}` : '/dashboard', { state: currentGroup ? { groupId: currentGroup.id, group: currentGroup, activeTab: 'buscar' } : { activeTab: 'buscar' } })}
+            className="relative z-10 mb-5 inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/20"
+          >
+            <span aria-hidden="true">←</span>
+            Regresar a Buscar
+          </button>
           <div className="absolute inset-0 bg-gradient-to-r from-[#1E0A4E] via-[#2D1266]/90 to-[#7A4FD6]/50" />
           <div className="relative mx-auto max-w-6xl">
             <h1 className="font-heading text-3xl font-bold">
@@ -905,7 +917,7 @@ const FlightHotelSearchPage = () => {
           </div>
         </section>
 
-        <main className="mx-auto max-w-6xl px-6 py-8">
+        <main className="mx-auto max-w-6xl px-6 py-8 pb-24">
           <section className="mx-auto max-w-4xl rounded-2xl border border-gray-100 bg-white p-7 shadow-lg">
             <h2 className="font-heading text-2xl font-bold text-[#1E0A4E]">
               {activeTab === 'flights'
@@ -1368,7 +1380,7 @@ const FlightHotelSearchPage = () => {
 
         </main>
       </div>
-    </AppLayout>
+    </SearchIntegratedShell>
   )
 }
 

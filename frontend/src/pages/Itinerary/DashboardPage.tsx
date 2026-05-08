@@ -576,7 +576,7 @@ export function DashboardPage() {
   const { socket, isConnected: isSocketConnected } = useSocket(accessToken)
 
   const location = useLocation()
-  const routeState = location.state as { groupId?: string | number; switchingGroup?: SwitchingGroupState } | null
+  const routeState = location.state as { groupId?: string | number; switchingGroup?: SwitchingGroupState; activeTab?: string } | null
   const groupIdFromState = routeState?.groupId !== undefined && routeState?.groupId !== null
     ? String(routeState.groupId)
     : null
@@ -595,7 +595,7 @@ export function DashboardPage() {
 
   const [activeDay,   setActiveDay]   = useState<number | null>(null)
   const [expandedDay, setExpandedDay] = useState<number | null>(null)
-  const [activeTab,   setActiveTab]   = useState('inicio')
+  const [activeTab,   setActiveTab]   = useState(routeState?.activeTab ?? 'inicio')
   const [dashboardView, setDashboardView] = useState<'general' | 'subgrupos'>('general')
   const [isLoading,   setIsLoading]   = useState(false)
   const [days,        setDays]        = useState<ItineraryDay[]>([])

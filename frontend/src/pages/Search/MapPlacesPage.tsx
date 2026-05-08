@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { AppLayout } from '../../components/layout/AppLayout'
+import { SearchIntegratedShell } from './SearchIntegratedShell'
 import { useAuth } from '../../context/useAuth'
 import { getCurrentGroup, groupsService } from '../../services/groups'
 import {
@@ -53,14 +53,6 @@ function IconAlert() {
 function initials(name?: string | null) {
   const source = (name ?? 'Usuario').trim()
   return source.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'U'
-}
-
-function formatDateRange(group: Group | null) {
-  if (!group?.fecha_inicio || !group?.fecha_fin) return 'Fechas sin definir'
-  const start = new Date(`${group.fecha_inicio}T12:00:00`)
-  const end = new Date(`${group.fecha_fin}T12:00:00`)
-  const fmt = new Intl.DateTimeFormat('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' })
-  return `${fmt.format(start)} – ${fmt.format(end)}`
 }
 
 function buildTripDays(group: Group | null) {
@@ -152,15 +144,6 @@ const MapPlacesPage = () => {
     () => places.find((place) => place.id === selectedPlaceId) ?? places[0] ?? null,
     [places, selectedPlaceId]
   )
-
-  const tripMeta = group
-    ? {
-        name: group.nombre,
-        subtitle: group.destino_formatted_address ?? group.destino ?? 'Destino sin definir',
-        dates: formatDateRange(group),
-        people: `${group.memberCount ?? group.maximo_miembros ?? 0} personas`,
-      }
-    : undefined
 
   const user = {
     name: localUser?.nombre || localUser?.email || 'Usuario',
@@ -383,11 +366,11 @@ const MapPlacesPage = () => {
   }
 
   return (
-    <AppLayout showTripSelector={Boolean(group)} showRightPanel={false} trip={tripMeta} user={user}>
+    <SearchIntegratedShell group={group} user={user}>
       <div className="flex-1 overflow-y-auto bg-[#F4F8FC]">
-        <div className="flex min-h-[calc(100vh-80px)] flex-col">
+        <div className="flex min-h-[760px] flex-col pb-6">
           <header className="flex items-center gap-4 border-b border-gray-100 bg-white px-6 py-4">
-            <button onClick={() => navigate(-1)} className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-[#1E0A4E] hover:bg-gray-50">Volver</button>
+            <button onClick={() => navigate(group?.id ? `/dashboard?groupId=${encodeURIComponent(String(group.id))}` : '/dashboard', { state: group ? { groupId: group.id, group, activeTab: 'buscar' } : { activeTab: 'buscar' } })} className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-[#1E0A4E] hover:bg-gray-50">Volver</button>
             <div className="relative flex flex-1 items-center gap-3 rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-3 text-gray-500 shadow-sm">
               <IconSearch />
               <input
@@ -412,7 +395,7 @@ const MapPlacesPage = () => {
             <button onClick={() => void handleSearch()} className="rounded-xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1557B0]">Buscar</button>
           </header>
 
-          <main className="relative flex-1 overflow-hidden">
+          <main className="relative min-h-[620px] flex-1 overflow-hidden">
             <div ref={mapRef} className="absolute inset-0 bg-[#EAF3FB]" />
 
             {viewMode === 'empty' && (
@@ -434,12 +417,12 @@ const MapPlacesPage = () => {
             {viewMode === 'loading' && <LoadingPanel />}
 
             {viewMode === 'results' && (
-              <aside className="absolute left-6 top-6 z-10 max-h-[calc(100vh-180px)] w-80 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg">
+              <aside className="absolute left-6 top-6 z-10 max-h-[520px] w-80 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg">
                 <div className="p-5">
                   <h2 className="font-heading text-xl font-bold text-[#1E0A4E]">Lugares de interés</h2>
                   <p className="mt-1 text-sm text-gray-500">{places.length} resultados</p>
                 </div>
-                <div className="max-h-[calc(100vh-290px)] overflow-y-auto">
+                <div className="max-h-[395px] overflow-y-auto">
                   {places.map((place) => (
                     <button key={place.id ?? place.name} onClick={() => setSelectedPlaceId(place.id)} className={`flex w-full gap-3 border-t border-gray-100 p-4 text-left transition-colors ${selectedPlaceId === place.id ? 'border-l-4 border-l-[#1E6FD9] bg-[#EAF2FF]' : 'hover:bg-gray-50'}`}>
                       <img src={place.photoUrl ?? FALLBACK_IMAGE} alt={place.name ?? 'Lugar'} className="h-14 w-14 rounded-xl object-cover" />
@@ -487,7 +470,7 @@ const MapPlacesPage = () => {
           </main>
         </div>
       </div>
-    </AppLayout>
+    </SearchIntegratedShell>
   )
 }
 
@@ -517,7 +500,7 @@ function ErrorPanel({ message, onRetry, onReset }: { message: string | null; onR
 
 function PlaceDetailCard({ place, routeInfo, onDetail, onPropose }: { place: PlaceResult; routeInfo: { distanceText?: string | null; durationText?: string | null } | null; onDetail: () => void; onPropose: () => void }) {
   return (
-    <aside className="absolute right-6 top-6 z-10 max-h-[calc(100vh-180px)] w-80 overflow-y-auto rounded-2xl border border-gray-100 bg-white shadow-lg">
+    <aside className="absolute right-6 top-6 z-10 max-h-[520px] w-80 overflow-y-auto rounded-2xl border border-gray-100 bg-white shadow-lg">
       <img src={place.photoUrl ?? FALLBACK_IMAGE} alt={place.name ?? 'Lugar'} className="h-36 w-full object-cover" />
       <div className="p-5">
         <span className="rounded-full bg-[#E8F0FF] px-3 py-1 text-xs font-semibold text-[#1E6FD9]">{normalizeCategory(place.primaryCategory)}</span>

@@ -316,7 +316,11 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
 
   if (memberError) throw new Error(memberError.message);
 
-  return grupo;
+  return {
+    ...grupo,
+    memberCount: 1,
+    myRole: 'admin',
+  };
 };
 
 export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayload) => {
@@ -409,7 +413,13 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
     });
   }
 
-  return grupo;
+  const memberCount = await countMembers(String(grupo.id));
+
+  return {
+    ...grupo,
+    memberCount,
+    myRole: 'viajero',
+  };
 };
 
 export const getGroupMembers = async (authUserId: string, groupId: string) => {

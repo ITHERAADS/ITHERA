@@ -10,6 +10,7 @@ export interface Group {
   fecha_fin?: string | null
   maximo_miembros?: number | null
   codigo_invitacion: string
+  creado_por?: string | number | null
   estado: GroupStatus
   created_at?: string
   memberCount?: number

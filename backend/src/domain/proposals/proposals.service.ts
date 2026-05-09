@@ -11,6 +11,7 @@ import {
 	UpdateCommentPayload,
 } from './proposals.entity';
 import * as NotificationsService from '../notifications/notifications.service';
+import { emitDashboardUpdated } from '../../infrastructure/sockets/socket.gateway';
 
 const isPresent = (value: unknown): boolean => value !== undefined;
 const dbText = (value: string | null | undefined, max = 190): string | null => {
@@ -730,7 +731,7 @@ const applyProposalResolution = async (
 
 	const { data: currentProposal, error: currentProposalError } = await supabase
 		.from('propuestas')
-		.select('payload, titulo, creado_por')
+		.select('payload, titulo, creado_por, tipo_item')
 		.eq('id_propuesta', proposalId)
 		.eq('grupo_id', groupId)
 		.maybeSingle();
@@ -743,6 +744,23 @@ const applyProposalResolution = async (
 			: {}),
 		...(meta ?? {}),
 	};
+
+	const currentType = String((currentProposal as any)?.tipo_item ?? '');
+	if (resolution === 'aprobada' && (currentType === 'vuelo' || currentType === 'hospedaje')) {
+		const { error: discardSameTypeError } = await supabase
+			.from('propuestas')
+			.update({
+				estado: 'descartada',
+				fecha_cierre: nowIso,
+				ultima_actualizacion: nowIso,
+			})
+			.eq('grupo_id', groupId)
+			.eq('tipo_item', currentType)
+			.neq('id_propuesta', proposalId)
+			.neq('estado', 'descartada');
+
+		if (discardSameTypeError) throw createError(discardSameTypeError.message, 500);
+	}
 
 	const { error: proposalUpdateError } = await supabase
 		.from('propuestas')
@@ -799,6 +817,18 @@ const applyProposalResolution = async (
       },
     }
   );
+
+  emitDashboardUpdated({
+    groupId: Number(groupId),
+    tipo: resolution === 'aprobada' ? 'propuesta_aprobada' : 'propuesta_descartada',
+    entidadTipo: 'propuesta',
+    entidadId: Number(proposalId),
+    metadata: {
+      itemTitle: currentProposal?.titulo ?? 'Propuesta',
+      itemType: String((currentProposal as any)?.tipo_item ?? 'propuesta'),
+      status: resolution,
+    },
+  });
 
 	if (resolution !== 'aprobada' || !resolvedActivityDateStart || !resolvedItineraryId) {
 		return;

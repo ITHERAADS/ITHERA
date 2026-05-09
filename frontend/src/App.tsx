@@ -16,6 +16,7 @@ import { JoinGroupPage } from './pages/JoinGroup'
 import FlightHotelSearchPage from './pages/Search/FlightHotelSearchPage'
 import MapPlacesPage from './pages/Search/MapPlacesPage'
 import RoutesTransportWeatherPage from './pages/Search/RoutesTransportWeatherPage'
+import { CheckoutPage } from './pages/Checkout'
 
 function App() {
   return (
@@ -100,6 +101,15 @@ function App() {
           element={
             <ProtectedRoute>
               <RoutesTransportWeatherPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/checkout/:type/:proposalId"
+          element={
+            <ProtectedRoute>
+              <CheckoutPage />
             </ProtectedRoute>
           }
         />

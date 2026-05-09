@@ -14,6 +14,7 @@ import votesCommentsRouter from './routes/votesComments.router';
 import budgetRouter from './routes/budget.router';
 import notificationsRouter from './routes/notifications.router';
 import documentsRouter from './routes/documents.router';
+import checkoutRouter from './routes/checkout.router';
 import { initSocketServer } from './infrastructure/sockets/socket.server';
 import { startLockScheduler } from './infrastructure/sockets/lock.scheduler';
 
@@ -64,6 +65,7 @@ app.use('/api/proposals', votesCommentsRouter);
 app.use('/api/budget', budgetRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/documents', documentsRouter);
+app.use('/api/checkout', checkoutRouter);
 app.use('/api/groups/:groupId/documents', documentsRouter);
 app.use('/api/groups/:groupId/vault', documentsRouter);
 app.use(errorHandler);

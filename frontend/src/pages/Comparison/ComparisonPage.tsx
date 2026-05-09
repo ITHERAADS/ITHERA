@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { getCurrentGroup } from "../../services/groups";
 import {
@@ -758,6 +759,7 @@ function TableRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function ComparisonPage({ onBack }: ComparisonPageProps) {
+  const navigate = useNavigate();
   const { accessToken, localUser } = useAuth();
   const currentGroup = useMemo(() => getCurrentGroup(), []);
   const [filter, setFilter] = useState<ProposalFilter>("todas");
@@ -1574,7 +1576,32 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                         </div>
                       )}
 
-                      {isAdmin && (
+                      {proposal.estado === "aprobada" && (proposal.tipo === "vuelo" || proposal.tipo === "hospedaje") && (() => {
+                        const detail = proposal.detalle as (ProposalDetailFlight & ProposalDetailHotel) | null
+                        const isConfirmed = proposal.tipo === "vuelo"
+                          ? detail?.compra_estado === "confirmada_simulada"
+                          : detail?.reserva_estado === "confirmada_simulada"
+
+                        if (isConfirmed) {
+                          return (
+                            <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-center font-body text-xs font-bold text-[#15803D]">
+                              {proposal.tipo === "vuelo" ? "Vuelo comprado" : "Hospedaje reservado"}
+                            </div>
+                          )
+                        }
+
+                        return (
+                          <button
+                            onClick={() => navigate(`/checkout/${proposal.tipo === "vuelo" ? "flight" : "hotel"}/${proposal.id}`)}
+                            disabled={actionLoading !== null}
+                            className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-3 py-2.5 font-body text-xs font-bold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            {proposal.tipo === "vuelo" ? "Comprar vuelo" : "Reservar hospedaje"}
+                          </button>
+                        )
+                      })()}
+
+                      {isAdmin && proposal.estado !== "aprobada" && proposal.estado !== "descartada" && (
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             onClick={() =>

@@ -16,6 +16,8 @@ export interface ProposalDetailFlight {
   moneda?: string | null
   escalas?: number | null
   payload?: Record<string, unknown> | null
+  compra_estado?: string | null
+  folio_compra?: string | null
 }
 
 export interface ProposalDetailHotel {
@@ -31,6 +33,8 @@ export interface ProposalDetailHotel {
   moneda?: string | null
   calificacion?: number | string | null
   payload?: Record<string, unknown> | null
+  reserva_estado?: string | null
+  folio_reserva?: string | null
 }
 
 export interface Proposal {

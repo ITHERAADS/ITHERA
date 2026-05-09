@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FC } from 'react'
 import { useAuth } from '../../context/useAuth'
 import {
@@ -115,6 +115,12 @@ export const DocumentVaultPanel: FC<Props> = ({ groupId, members = [], currentUs
       setIsLoading(false)
     }
   }
+
+
+  useEffect(() => {
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId, accessToken])
 
   const handleUpload = async (file: File | null) => {
     if (!file || !groupId || !accessToken) return

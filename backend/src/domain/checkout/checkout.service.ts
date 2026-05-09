@@ -2,6 +2,8 @@ import { supabaseAdmin } from '../../infrastructure/db/supabase.client';
 import { emitCheckoutUpdated, emitDashboardUpdated } from '../../infrastructure/sockets/socket.gateway';
 import { getLocalUserId } from '../groups/groups.service';
 import * as NotificationsService from '../notifications/notifications.service';
+import { sendEmail } from '../../services/email.service';
+import { baseTemplate } from '../../infrastructure/email/templates/baseTemplate';
 import { SimulatedCheckoutPayload } from './checkout.entity';
 import { validateFakeCard } from './payment-simulator.service';
 import { generateFlightTicketPdf, generateHotelVoucherPdf } from './pdf.service';
@@ -47,6 +49,96 @@ const formatMoney = (amount: unknown, currency: unknown): string => {
 const parseAmount = (amount: unknown): number => {
   const value = Number(amount ?? 0);
   return Number.isFinite(value) && value > 0 ? Math.round(value * 100) / 100 : 0;
+};
+
+const escapeHtml = (value: unknown): string =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+const normalizeEmail = (email: unknown): string | null => {
+  const value = String(email ?? '').trim();
+  const emailRegex = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+  return emailRegex.test(value) ? value : null;
+};
+
+const sendCheckoutConfirmationEmail = async (data: {
+  to: unknown;
+  type: ProposalType;
+  folio: string;
+  title: string;
+  holderName: string;
+  amount: number;
+  currency: string;
+  documentUrl: string;
+  authCode?: string | null;
+  details: Array<{ label: string; value: unknown }>;
+}): Promise<boolean> => {
+  const to = normalizeEmail(data.to);
+
+  if (!to) {
+    console.warn('[checkout-email] No se envió correo: email de confirmación vacío o inválido.', data.to);
+    return false;
+  }
+
+  const itemLabel = data.type === 'vuelo' ? 'boleto de vuelo' : 'voucher de hospedaje';
+  const actionLabel = data.type === 'vuelo' ? 'compra' : 'reserva';
+  const subject = `ITHERA - ${actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1)} confirmada ${data.folio}`;
+  const safeDetails = data.details
+    .filter((item) => item.value !== undefined && item.value !== null && String(item.value).trim() !== '')
+    .map(
+      (item) => `
+        <tr>
+          <td style="padding:8px 0; color:#64748b; font-weight:700; width:38%;">${escapeHtml(item.label)}</td>
+          <td style="padding:8px 0; color:#21094e; font-weight:700;">${escapeHtml(item.value)}</td>
+        </tr>`,
+    )
+    .join('');
+
+  const html = baseTemplate({
+    title: `${actionLabel.charAt(0).toUpperCase() + actionLabel.slice(1)} confirmada`,
+    content: `
+      <p style="margin:0 0 18px 0;">Hola ${escapeHtml(data.holderName)}, tu ${itemLabel} fue generado correctamente.</p>
+
+      <div style="background:#f1f5ff; border-radius:14px; padding:18px; margin:18px 0; text-align:left;">
+        <p style="margin:0 0 6px 0; color:#64748b; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;">Folio</p>
+        <p style="margin:0; color:#21094e; font-size:22px; font-weight:800;">${escapeHtml(data.folio)}</p>
+        <p style="margin:12px 0 0 0; color:#64748b; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;">Total</p>
+        <p style="margin:0; color:#21094e; font-size:22px; font-weight:800;">${escapeHtml(formatMoney(data.amount, data.currency))}</p>
+      </div>
+
+      <table style="width:100%; border-collapse:collapse; margin:16px 0; text-align:left; font-size:14px;">
+        <tbody>
+          <tr>
+            <td style="padding:8px 0; color:#64748b; font-weight:700; width:38%;">Concepto</td>
+            <td style="padding:8px 0; color:#21094e; font-weight:700;">${escapeHtml(data.title)}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0; color:#64748b; font-weight:700; width:38%;">Autorización</td>
+            <td style="padding:8px 0; color:#21094e; font-weight:700;">${escapeHtml(data.authCode ?? 'N/A')}</td>
+          </tr>
+          ${safeDetails}
+        </tbody>
+      </table>
+
+      <a href="${escapeHtml(data.documentUrl)}" style="display:inline-block; margin-top:14px; padding:13px 22px; border-radius:999px; background:#2674da; color:#ffffff; text-decoration:none; font-weight:800;">
+        Ver PDF
+      </a>
+
+      <p style="margin:18px 0 0 0; color:#64748b; font-size:13px;">También puedes consultar este documento desde la bóveda del viaje en ITHERA.</p>
+    `,
+  });
+
+  try {
+    await sendEmail({ to, subject, html });
+    return true;
+  } catch (error) {
+    console.error('[checkout-email] No se pudo enviar el correo de confirmación:', error);
+    return false;
+  }
 };
 
 const normalizePeople = (
@@ -347,7 +439,7 @@ export const simulateFlightPurchase = async (
       notes: payload.notes ?? null,
     };
 
-    const pdf = generateFlightTicketPdf({
+    const pdf = await generateFlightTicketPdf({
       folio,
       title: proposal.titulo,
       passengerNames: passengers.map((item) => item.fullName),
@@ -387,12 +479,33 @@ export const simulateFlightPurchase = async (
       metadata: checkoutPayload,
     });
 
+    const emailSent = await sendCheckoutConfirmationEmail({
+      to: payload.email,
+      type: 'vuelo',
+      folio,
+      title: proposal.titulo,
+      holderName: passengers[0]?.fullName ?? payload.cardHolder,
+      amount,
+      currency: (flight as any).moneda ?? 'MXN',
+      documentUrl: String(document.file_url),
+      authCode: payment.authorizationCode,
+      details: [
+        { label: 'Pasajero principal', value: passengers[0]?.fullName },
+        { label: 'Aerolínea', value: (flight as any).aerolinea },
+        { label: 'Vuelo', value: (flight as any).numero_vuelo },
+        { label: 'Origen', value: `${(flight as any).origen_nombre ?? ''} ${(flight as any).origen_codigo ? `(${(flight as any).origen_codigo})` : ''}`.trim() },
+        { label: 'Destino', value: `${(flight as any).destino_nombre ?? ''} ${(flight as any).destino_codigo ? `(${(flight as any).destino_codigo})` : ''}`.trim() },
+        { label: 'Salida', value: (flight as any).salida },
+        { label: 'Llegada', value: (flight as any).llegada },
+      ],
+    });
+
     const expense = await createCheckoutExpense({
       groupId: Number(proposal.grupo_id),
       localUserId,
       amount,
       category: 'transporte',
-      description: `Compra simulada de vuelo: ${proposal.titulo} (${folio})`,
+      description: `Compra de vuelo: ${proposal.titulo} (${folio})`,
       documentId: String(document.id),
     });
 
@@ -405,16 +518,16 @@ export const simulateFlightPurchase = async (
         mensaje: `Se generó el boleto simulado para "${proposal.titulo}".`,
         entidadTipo: 'propuesta',
         entidadId: proposalId,
-        metadata: { folio, documentId: document.id, expenseId: expense?.id ?? null },
+        metadata: { folio, documentId: document.id, expenseId: expense?.id ?? null, emailSent },
       },
     );
 
     emitCheckoutUpdated({ groupId: Number(proposal.grupo_id), proposalId, type: 'vuelo', status: 'confirmada_simulada', folio });
-    emitDashboardUpdated({ groupId: Number(proposal.grupo_id), tipo: 'checkout_vuelo', entidadTipo: 'propuesta', entidadId: proposalId, metadata: { folio, documentId: document.id, expenseId: expense?.id ?? null } });
+    emitDashboardUpdated({ groupId: Number(proposal.grupo_id), tipo: 'checkout_vuelo', entidadTipo: 'propuesta', entidadId: proposalId, metadata: { folio, documentId: document.id, expenseId: expense?.id ?? null, emailSent } });
 
     await releaseProposalCheckoutLock(proposalId, localUserId);
 
-    return { folio, status: 'confirmada_simulada', document, payment, expense };
+    return { folio, status: 'confirmada_simulada', document, payment, expense, emailSent };
   } catch (error) {
     await releaseProposalCheckoutLock(proposalId, localUserId);
     throw error;
@@ -472,7 +585,7 @@ export const simulateHotelReservation = async (
       notes: payload.notes ?? null,
     };
 
-    const pdf = generateHotelVoucherPdf({
+    const pdf = await generateHotelVoucherPdf({
       folio,
       title: proposal.titulo,
       guestNames: guests.map((item) => item.fullName),
@@ -513,12 +626,32 @@ export const simulateHotelReservation = async (
       metadata: checkoutPayload,
     });
 
+    const emailSent = await sendCheckoutConfirmationEmail({
+      to: payload.email,
+      type: 'hospedaje',
+      folio,
+      title: proposal.titulo,
+      holderName: guests[0]?.fullName ?? payload.cardHolder,
+      amount,
+      currency: (hotel as any).moneda ?? 'MXN',
+      documentUrl: String(document.file_url),
+      authCode: payment.authorizationCode,
+      details: [
+        { label: 'Huésped principal', value: guests[0]?.fullName },
+        { label: 'Hotel', value: (hotel as any).nombre },
+        { label: 'Dirección', value: (hotel as any).direccion },
+        { label: 'Check-in', value: (hotel as any).check_in },
+        { label: 'Check-out', value: (hotel as any).check_out },
+        { label: 'Proveedor', value: (hotel as any).proveedor },
+      ],
+    });
+
     const expense = await createCheckoutExpense({
       groupId: Number(proposal.grupo_id),
       localUserId,
       amount,
       category: 'hospedaje',
-      description: `Reserva simulada de hospedaje: ${proposal.titulo} (${folio})`,
+      description: `Reserva de hospedaje: ${proposal.titulo} (${folio})`,
       documentId: String(document.id),
     });
 
@@ -531,16 +664,16 @@ export const simulateHotelReservation = async (
         mensaje: `Se generó el voucher simulado para "${proposal.titulo}".`,
         entidadTipo: 'propuesta',
         entidadId: proposalId,
-        metadata: { folio, documentId: document.id, expenseId: expense?.id ?? null },
+        metadata: { folio, documentId: document.id, expenseId: expense?.id ?? null, emailSent },
       },
     );
 
     emitCheckoutUpdated({ groupId: Number(proposal.grupo_id), proposalId, type: 'hospedaje', status: 'confirmada_simulada', folio });
-    emitDashboardUpdated({ groupId: Number(proposal.grupo_id), tipo: 'checkout_hospedaje', entidadTipo: 'propuesta', entidadId: proposalId, metadata: { folio, documentId: document.id, expenseId: expense?.id ?? null } });
+    emitDashboardUpdated({ groupId: Number(proposal.grupo_id), tipo: 'checkout_hospedaje', entidadTipo: 'propuesta', entidadId: proposalId, metadata: { folio, documentId: document.id, expenseId: expense?.id ?? null, emailSent } });
 
     await releaseProposalCheckoutLock(proposalId, localUserId);
 
-    return { folio, status: 'confirmada_simulada', document, payment, expense };
+    return { folio, status: 'confirmada_simulada', document, payment, expense, emailSent };
   } catch (error) {
     await releaseProposalCheckoutLock(proposalId, localUserId);
     throw error;

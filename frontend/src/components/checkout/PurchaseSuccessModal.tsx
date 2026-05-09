@@ -18,7 +18,7 @@ export function PurchaseSuccessModal({
           </svg>
         </div>
         <h2 className="mt-4 text-center font-heading text-2xl font-bold text-[#1E0A4E]">
-          {mode === 'vuelo' ? 'Compra simulada lista' : 'Reserva simulada lista'}
+          {mode === 'vuelo' ? 'Compra lista' : 'Reserva lista'}
         </h2>
         <p className="mt-2 text-center font-body text-sm text-[#64748B]">
           Se generó el PDF y se guardó automáticamente en la bóveda del viaje.

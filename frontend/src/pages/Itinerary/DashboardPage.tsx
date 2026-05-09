@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { getCurrentGroup, groupsService } from '../../services/groups'
+import { getCurrentGroup, groupsService, saveCurrentGroup } from '../../services/groups'
 import type { ItineraryDay } from '../../services/groups'
 import { mapsService } from '../../services/maps'
 import { proposalsService, type ProposalComment, type VoteResult } from '../../services/proposals'
@@ -732,6 +732,7 @@ export function DashboardPage() {
         if (isMounted) {
           if (groupResult.status === 'fulfilled') {
             setGroup(groupResult.value.group)
+            saveCurrentGroup(groupResult.value.group)
           }
           if (membersResult.status === 'fulfilled') {
             setMembers(membersResult.value.members ?? [])
@@ -785,6 +786,7 @@ export function DashboardPage() {
 
     if (groupResult.status === 'fulfilled') {
       setGroup(groupResult.value.group)
+      saveCurrentGroup(groupResult.value.group)
     }
     if (membersResult.status === 'fulfilled') {
       setMembers(membersResult.value.members ?? [])
@@ -1248,7 +1250,7 @@ export function DashboardPage() {
       }}
       user={{
         name: userName,
-        role: currentGroup?.myRole === 'admin' ? 'Organizador' : 'Viajero',
+        role: isCurrentUserAdmin ? 'Organizador' : 'Viajero',
         initials,
         color: '#1E6FD9',
       }}

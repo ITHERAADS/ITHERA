@@ -49,7 +49,7 @@ export function CheckoutPage() {
 
       setSuccessResult(response.data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo completar la simulación')
+      setError(err instanceof Error ? err.message : 'No se pudo completar la operación')
     } finally {
       setProcessing(false)
     }
@@ -59,7 +59,7 @@ export function CheckoutPage() {
     return (
       <main className="min-h-screen bg-[#F3F6FB] px-4 py-8">
         <div className="mx-auto max-w-5xl rounded-3xl bg-white p-8 text-center font-body text-sm text-[#64748B] shadow-sm">
-          Cargando checkout simulado...
+          Cargando checkout...
         </div>
       </main>
     )
@@ -95,10 +95,10 @@ export function CheckoutPage() {
             ITHERA Checkout
           </p>
           <h1 className="mt-2 font-heading text-3xl font-bold">
-            {mode === 'vuelo' ? 'Compra simulada de vuelo' : 'Reserva simulada de hospedaje'}
+            {mode === 'vuelo' ? 'Compra de vuelo' : 'Reserva de hospedaje'}
           </h1>
           <p className="mt-2 max-w-2xl font-body text-sm text-white/75">
-            Este flujo simula el pago, genera un comprobante PDF y lo guarda en la bóveda documental del grupo. No se procesa dinero real.
+            Confirma la operación, genera el comprobante PDF y lo guarda en la bóveda documental del grupo.
           </p>
         </div>
 

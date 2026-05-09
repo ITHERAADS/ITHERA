@@ -88,19 +88,19 @@ export function CheckoutSummaryCard({ proposal }: { proposal: Proposal }) {
             <Info label="Dirección" value={textValue(hotelDetail.direccion, 'No especificada')} />
             <Info label="Check-in" value={textValue(hotelDetail.check_in, 'No especificado')} />
             <Info label="Check-out" value={textValue(hotelDetail.check_out, 'No especificado')} />
-            <Info label="Proveedor" value={textValue(hotelDetail.proveedor, 'Simulación interna')} />
+            <Info label="Proveedor" value={textValue(hotelDetail.proveedor, 'ITHERA')} />
             <Info label="Calificación" value={textValue(hotelDetail.calificacion, 'No especificada')} />
           </>
         )}
       </div>
 
       <div className="mt-5 rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] p-4 text-white">
-        <p className="font-body text-xs uppercase tracking-[0.18em] text-white/75">Total simulado</p>
+        <p className="font-body text-xs uppercase tracking-[0.18em] text-white/75">Total</p>
         <p className="mt-1 font-heading text-2xl font-bold">
           {formatMoney(getAmount(proposal), getCurrency(proposal))}
         </p>
         <p className="mt-1 font-body text-xs text-white/75">
-          No se realiza ningún cargo real. El ticket PDF se guardará en la bóveda.
+          El comprobante PDF se guardará automáticamente en la bóveda.
         </p>
       </div>
     </div>

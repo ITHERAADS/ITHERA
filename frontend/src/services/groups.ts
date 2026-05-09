@@ -197,7 +197,12 @@ export const groupsService = {
 }
 
 export function saveCurrentGroup(group: Group) {
-  localStorage.setItem(CURRENT_GROUP_STORAGE_KEY, JSON.stringify(group))
+  const previous = getCurrentGroup()
+  const nextGroup: Group = {
+    ...group,
+    myRole: group.myRole ?? (previous && String(previous.id) === String(group.id) ? previous.myRole : undefined),
+  }
+  localStorage.setItem(CURRENT_GROUP_STORAGE_KEY, JSON.stringify(nextGroup))
 }
 
 export function getCurrentGroup(): Group | null {

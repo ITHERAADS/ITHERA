@@ -15,7 +15,7 @@ import { ProposalDetailModal } from '../../components/ProposalDetailModal/Propos
 import { ConfirmProposalModal } from '../../components/ConfirmProposalModal/ConfirmProposalModal'
 import { ActivityProposalModal } from '../../components/ActivityProposalModal/ActivityProposalModal'
 import { BudgetDashboard } from '../../components/budget/BudgetDashboard'
-import type { BudgetSummary } from '../../services/budget'
+import { budgetService, type BudgetSummary } from '../../services/budget'
 import { DocumentVaultPanel } from '../../components/documents/DocumentVaultPanel'
 import { SubgroupSchedulePanel } from '../../components/subgroups/SubgroupSchedulePanel'
 import { useSocket } from '../../hooks/useSocket'
@@ -711,10 +711,11 @@ export function DashboardPage() {
         setIsLoading(true)
 
         const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-        const [groupResult, membersResult, votesResult] = await Promise.allSettled([
+        const [groupResult, membersResult, votesResult, budgetResult] = await Promise.allSettled([
           groupsService.getGroupDetails(resolvedGroupId, accessToken),
           groupsService.getMembers(resolvedGroupId, accessToken),
           proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
+          budgetService.getDashboard(String(resolvedGroupId), accessToken),
         ])
 
         const groupData =
@@ -737,6 +738,9 @@ export function DashboardPage() {
           }
           setDays(daysWithRoutes)
           setVoteResultByProposal(nextVotesMap)
+          if (budgetResult.status === 'fulfilled') {
+            setBudgetSummary(budgetResult.value.summary)
+          }
           setVotedActivityIds({})
         }
       } catch (error) {
@@ -761,10 +765,11 @@ export function DashboardPage() {
     if (!resolvedGroupId || !accessToken) return
 
     const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-    const [groupResult, membersResult, votesResult] = await Promise.allSettled([
+    const [groupResult, membersResult, votesResult, budgetResult] = await Promise.allSettled([
       groupsService.getGroupDetails(resolvedGroupId, accessToken),
       groupsService.getMembers(resolvedGroupId, accessToken),
       proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
+      budgetService.getDashboard(String(resolvedGroupId), accessToken),
     ])
 
     const groupData =
@@ -785,6 +790,9 @@ export function DashboardPage() {
       setMembers(membersResult.value.members ?? [])
     }
     setDays(daysWithRoutes)
+    if (budgetResult.status === 'fulfilled') {
+      setBudgetSummary(budgetResult.value.summary)
+    }
     setVotedActivityIds({})
     setVoteResultByProposal(nextVotesMap)
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken])

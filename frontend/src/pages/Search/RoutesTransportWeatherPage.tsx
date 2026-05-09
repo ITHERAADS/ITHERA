@@ -156,15 +156,19 @@ const RoutesTransportWeatherPage = () => {
   }, [accessToken, destinationCoords])
 
   const loadSuggestions = useCallback((value: string, setter: (items: PlaceAutocompleteResult[]) => void) => {
-    if (!accessToken || value.trim().length < 2) { setter([]); return undefined }
+    if (!accessToken || value.trim().length < 3) { setter([]); return undefined }
     const timeout = window.setTimeout(async () => {
       try {
-        const response = await mapsService.autocompletePlaces(value, accessToken)
-        setter(response.data ?? [])
+        const response = await mapsService.autocompletePlaces(value, accessToken, {
+          latitude: destinationCoords?.lat,
+          longitude: destinationCoords?.lng,
+          radius: 12000,
+        })
+        setter((response.data ?? []).slice(0, 5))
       } catch { setter([]) }
     }, 350)
     return () => window.clearTimeout(timeout)
-  }, [accessToken])
+  }, [accessToken, destinationCoords])
 
   useEffect(() => loadSuggestions(origin, setOriginSuggestions), [origin, loadSuggestions])
   useEffect(() => loadSuggestions(destination, setDestinationSuggestions), [destination, loadSuggestions])
@@ -274,7 +278,7 @@ const RoutesTransportWeatherPage = () => {
               </div>
             </header>
 
-            <section className="absolute left-6 top-28 z-10 max-h-[calc(100%-170px)] w-80 overflow-y-auto rounded-2xl border border-gray-100 bg-white p-5 shadow-lg">
+            <section className="absolute left-4 right-4 top-28 z-10 max-h-[calc(100%-170px)] overflow-visible rounded-2xl border border-gray-100 bg-white p-5 shadow-lg sm:left-6 sm:right-auto sm:w-80">
               <h2 className="mb-4 font-heading text-lg font-bold text-[#1E0A4E]">Calcular ruta</h2>
               <AutoInput label="Desde" value={origin} onChange={(value) => { setOrigin(value); setOriginCoords(null) }} placeholder="Aeropuerto, hotel, playa..." suggestions={originSuggestions} onSelect={(suggestion) => void selectSuggestion(suggestion, 'origin')} />
               <div className="my-3 text-center text-gray-400">↕</div>
@@ -313,11 +317,36 @@ const RoutesTransportWeatherPage = () => {
 }
 
 function AutoInput({ label, value, onChange, placeholder, suggestions, onSelect }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; suggestions: PlaceAutocompleteResult[]; onSelect: (suggestion: PlaceAutocompleteResult) => void }) {
+  const [focused, setFocused] = useState(false)
+  const showSuggestions = focused && value.trim().length >= 3 && suggestions.length > 0
+
   return (
     <label className="relative block text-xs font-bold uppercase text-gray-500">
       {label}
-      <input value={value} onChange={(event) => onChange(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-3 text-sm normal-case text-[#1E0A4E] outline-none focus:border-[#1E6FD9]" placeholder={placeholder} />
-      {suggestions.length > 0 && <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">{suggestions.map((suggestion) => <button key={suggestion.placeId} type="button" onClick={() => onSelect(suggestion)} className="w-full border-b border-gray-100 px-4 py-3 text-left normal-case hover:bg-[#F4F8FC]"><p className="text-sm font-semibold text-[#1E0A4E]">{suggestion.mainText}</p><p className="text-xs text-gray-500">{suggestion.secondaryText}</p></button>)}</div>}
+      <input
+        value={value}
+        onChange={(event) => { onChange(event.target.value); setFocused(event.target.value.trim().length >= 3) }}
+        onFocus={() => setFocused(value.trim().length >= 3)}
+        onBlur={() => window.setTimeout(() => setFocused(false), 120)}
+        className="mt-2 w-full rounded-2xl border border-gray-200 bg-[#F8FAFC] px-4 py-3 text-sm normal-case text-[#1E0A4E] outline-none transition-colors focus:border-[#1E6FD9] focus:bg-white"
+        placeholder={placeholder}
+      />
+      {showSuggestions && (
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 max-h-64 overflow-y-auto rounded-2xl border border-gray-100 bg-white p-1 normal-case shadow-2xl">
+          {suggestions.map((suggestion) => (
+            <button
+              key={suggestion.placeId}
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => { setFocused(false); onSelect(suggestion) }}
+              className="w-full rounded-xl px-4 py-3 text-left transition-colors hover:bg-[#F4F8FC]"
+            >
+              <p className="text-sm font-semibold text-[#1E0A4E]">{suggestion.mainText}</p>
+              <p className="line-clamp-1 text-xs text-gray-500">{suggestion.secondaryText}</p>
+            </button>
+          ))}
+        </div>
+      )}
     </label>
   )
 }

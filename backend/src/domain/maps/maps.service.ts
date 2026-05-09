@@ -232,8 +232,8 @@ export async function searchNearbyPlaces(params: NearbyPlacesParams): Promise<Pl
   );
 }
 
-export async function autocompletePlaces(input: string) {
-  const response = await googlePlaceAutocomplete<GoogleAutocompleteResponse>(input);
+export async function autocompletePlaces(input: string, options?: { latitude?: number; longitude?: number; radius?: number }) {
+  const response = await googlePlaceAutocomplete<GoogleAutocompleteResponse>(input, options);
 
   return (response.suggestions ?? [])
     .map((suggestion) => suggestion.placePrediction)
@@ -275,33 +275,7 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceResult | nu
   };
 }
 
-export async function searchPlacesByText(params: {
-  textQuery: string;
-  latitude?: number;
-  longitude?: number;
-  radius?: number;
-  maxResultCount?: number;
-}): Promise<PlaceResult[]> {
-  const body: Record<string, unknown> = {
-    textQuery: params.textQuery,
-    languageCode: 'es-MX',
-    maxResultCount: params.maxResultCount ?? 8,
-  };
-
-  if (params.latitude !== undefined && params.longitude !== undefined) {
-    body.locationRestriction = {
-      circle: {
-        center: {
-          latitude: params.latitude,
-          longitude: params.longitude,
-        },
-        radius: params.radius ?? 5000,
-      },
-    };
-  }
-
-  const response = await googleTextSearchPlaces<GoogleTextSearchResponse>(body);
-
+function mapGooglePlacesResponse(response: GoogleTextSearchResponse): Promise<PlaceResult[]> {
   return Promise.all(
     (response.places ?? []).map(async (place) => {
       const photoName = place.photos?.[0]?.name ?? null;
@@ -327,6 +301,64 @@ export async function searchPlacesByText(params: {
       };
     })
   );
+}
+
+function buildTextSearchBody(params: {
+  textQuery: string;
+  latitude?: number;
+  longitude?: number;
+  radius?: number;
+  maxResultCount?: number;
+}, useLocationBias: boolean): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    textQuery: params.textQuery,
+    languageCode: 'es-MX',
+    regionCode: 'MX',
+    maxResultCount: params.maxResultCount ?? 10,
+  };
+
+  if (useLocationBias && params.latitude !== undefined && params.longitude !== undefined) {
+    body.locationBias = {
+      circle: {
+        center: {
+          latitude: params.latitude,
+          longitude: params.longitude,
+        },
+        radius: Math.min(Math.max(params.radius ?? 50000, 1000), 50000),
+      },
+    };
+  }
+
+  return body;
+}
+
+export async function searchPlacesByText(params: {
+  textQuery: string;
+  latitude?: number;
+  longitude?: number;
+  radius?: number;
+  maxResultCount?: number;
+}): Promise<PlaceResult[]> {
+  const normalizedQuery = params.textQuery.trim();
+  const localizedQuery = params.latitude !== undefined && params.longitude !== undefined
+    ? `${normalizedQuery} cerca del destino`
+    : normalizedQuery;
+
+  try {
+    const response = await googleTextSearchPlaces<GoogleTextSearchResponse>(
+      buildTextSearchBody({ ...params, textQuery: localizedQuery }, true)
+    );
+    const places = await mapGooglePlacesResponse(response);
+    if (places.length > 0) return places;
+  } catch {
+    // Si Google rechaza el sesgo por ubicación o la consulta genérica falla, hacemos un segundo intento sin filtro.
+  }
+
+  const fallbackResponse = await googleTextSearchPlaces<GoogleTextSearchResponse>(
+    buildTextSearchBody({ ...params, textQuery: normalizedQuery }, false)
+  );
+
+  return mapGooglePlacesResponse(fallbackResponse);
 }
 
 

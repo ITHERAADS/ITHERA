@@ -15,6 +15,7 @@ import {
   type ProposalDetailHotel,
   type VoteResult,
 } from "../../services/proposals";
+import { budgetService, type BudgetSummary } from "../../services/budget";
 
 export interface ComparisonPageProps {
   onBack: () => void;
@@ -22,7 +23,6 @@ export interface ComparisonPageProps {
 
 type ProposalFilter = "todas" | "vuelo" | "hospedaje";
 
-const BUDGET_LIMIT = 5000;
 const MAX_COMPARISON_COLUMNS = 4;
 
 const FALLBACK_FLIGHT_IMAGES = [
@@ -779,6 +779,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
   const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [budgetSummary, setBudgetSummary] = useState<BudgetSummary | null>(null);
+  const [budgetLoading, setBudgetLoading] = useState(false);
 
   const groupId = currentGroup?.id ? String(currentGroup.id) : "";
   const localUserId = localUser?.id_usuario ? String(localUser.id_usuario) : "";
@@ -799,6 +801,13 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
       .filter((value) => Number.isFinite(value)),
   );
 
+  const comparisonMode: 'mixed' | 'flight' | 'hotel' =
+    filteredProposals.length > 0 && filteredProposals.every((proposal) => proposal.tipo === 'vuelo')
+      ? 'flight'
+      : filteredProposals.length > 0 && filteredProposals.every((proposal) => proposal.tipo === 'hospedaje')
+        ? 'hotel'
+        : 'mixed';
+
   const selectedProposal = selected
     ? (filteredProposals.find((proposal) => proposal.id === selected) ?? null)
     : null;
@@ -808,10 +817,18 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
   const selectedCurrency = selectedProposal
     ? getCurrency(selectedProposal)
     : "MXN";
+  const budgetAvailable = budgetSummary?.available ?? null;
+  const hasRealBudget =
+    !!budgetSummary &&
+    Number.isFinite(budgetSummary.totalBudget) &&
+    budgetSummary.totalBudget > 0 &&
+    typeof budgetAvailable === "number" &&
+    Number.isFinite(budgetAvailable);
   const exceedsBudget =
+    hasRealBudget &&
     Number.isFinite(selectedPrice) &&
     selectedCurrency === "MXN" &&
-    selectedPrice > BUDGET_LIMIT;
+    selectedPrice > budgetAvailable!;
 
   const resultsByProposalId = useMemo(() => {
     const map = new Map<string, VoteResult>();
@@ -831,14 +848,19 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
     try {
       setLoading(true);
       setError(null);
-      const [proposalsResponse, votesResponse] = await Promise.all([
+      setBudgetLoading(true);
+      const [proposalsResponse, votesResponse, budgetResponse] = await Promise.all([
         proposalsService.getGroupProposals(groupId, accessToken),
         proposalsService
           .getVoteResults(groupId, accessToken)
           .catch(() => ({ results: [] as VoteResult[] })),
+        budgetService
+          .getDashboard(groupId, accessToken)
+          .catch(() => null),
       ]);
       setProposals(proposalsResponse.proposals);
       setVoteResults(votesResponse.results ?? []);
+      setBudgetSummary(budgetResponse?.summary ?? null);
       setSelected(
         (prev) =>
           prev ??
@@ -856,6 +878,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
       );
     } finally {
       setLoading(false);
+      setBudgetLoading(false);
     }
   }, [accessToken, groupId]);
 
@@ -1144,13 +1167,19 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
         </div>
 
         {exceedsBudget ? (
-          <span className="inline-flex shrink-0 items-center gap-1 font-body text-sm text-[#EF4444]">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#FEF2F2] px-3 py-1.5 font-body text-sm font-semibold text-[#EF4444]">
             <IconWarning size={14} />
-            ¡Excede el presupuesto!
+            Esta opción supera el disponible
           </span>
         ) : (
-          <span className="shrink-0 font-body text-sm text-[#6B7280]">
-            Presupuesto disponible: $5,000 MXN
+          <span className="shrink-0 rounded-full bg-white px-3 py-1.5 font-body text-sm text-[#6B7280] shadow-sm ring-1 ring-[#E2E8F0]">
+            {budgetLoading
+              ? "Consultando presupuesto..."
+              : hasRealBudget
+                ? `Disponible real: ${formatMoney(budgetSummary.available, "MXN")}`
+                : budgetSummary
+                  ? "Sin presupuesto definido"
+                  : "Presupuesto real no disponible"}
           </span>
         )}
       </div>
@@ -1338,7 +1367,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 ))}
               </TableRow>
 
-              <TableRow label="Viajeros / huéspedes">
+              <TableRow label={comparisonMode === 'flight' ? "Pasajeros" : comparisonMode === 'hotel' ? "Huéspedes" : "Viajeros / huéspedes"}>
                 {filteredProposals.map((proposal) => (
                   <div
                     key={proposal.id}
@@ -1351,7 +1380,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 ))}
               </TableRow>
 
-              <TableRow label="Ruta / ubicación">
+              <TableRow label={comparisonMode === 'flight' ? "Ruta" : comparisonMode === 'hotel' ? "Ubicación" : "Ruta / ubicación"}>
                 {filteredProposals.map((proposal) => (
                   <div
                     key={proposal.id}
@@ -1364,7 +1393,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 ))}
               </TableRow>
 
-              <TableRow label="Fechas">
+              <TableRow label={comparisonMode === 'flight' ? "Salida" : comparisonMode === 'hotel' ? "Check-in / Check-out" : "Fechas"}>
                 {filteredProposals.map((proposal) => (
                   <div
                     key={proposal.id}
@@ -1377,7 +1406,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 ))}
               </TableRow>
 
-              <TableRow label="Regreso / estancia">
+              <TableRow label={comparisonMode === 'flight' ? "Regreso" : comparisonMode === 'hotel' ? "Estancia" : "Regreso / estancia"}>
                 {filteredProposals.map((proposal) => (
                   <div
                     key={proposal.id}
@@ -1390,7 +1419,9 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 ))}
               </TableRow>
 
-              <TableRow label="Habitación / tarifa">
+              {comparisonMode !== 'mixed' && (
+                <>
+                  <TableRow label={comparisonMode === 'flight' ? "Duración" : comparisonMode === 'hotel' ? "Habitación / tarifa" : "Habitación / duración"}>
                 {filteredProposals.map((proposal) => (
                   <div
                     key={proposal.id}
@@ -1403,9 +1434,9 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     </span>
                   </div>
                 ))}
-              </TableRow>
+                  </TableRow>
 
-              <TableRow label="Régimen / política">
+                  <TableRow label={comparisonMode === 'flight' ? "Escalas / conexión" : comparisonMode === 'hotel' ? "Régimen / política" : "Régimen / conexión"}>
                 {filteredProposals.map((proposal) => (
                   <div
                     key={proposal.id}
@@ -1418,9 +1449,9 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     </span>
                   </div>
                 ))}
-              </TableRow>
+                  </TableRow>
 
-              <TableRow label="Calificación">
+                  <TableRow label={comparisonMode === 'flight' ? "Aerolínea" : "Calificación"}>
                 {filteredProposals.map((proposal) => (
                   <div
                     key={proposal.id}
@@ -1433,7 +1464,10 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     </span>
                   </div>
                 ))}
-              </TableRow>
+                  </TableRow>
+
+                </>
+              )}
 
               <TableRow label="Proveedor">
                 {filteredProposals.map((proposal) => (
@@ -1679,8 +1713,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
             <IconWarning size={14} />
           </span>
           <p className="font-body text-xs text-[#EF4444]">
-            Esta opción excede el presupuesto disponible del grupo ($5,000 MXN).
-            El voto se registra, pero conviene revisarla antes de aprobarla.
+            Esta opción cuesta {formatMoney(selectedPrice, selectedCurrency)} y supera el presupuesto disponible real del grupo
+            ({formatMoney(budgetAvailable ?? 0, "MXN")}). El voto se registra, pero conviene revisarla antes de aprobarla.
           </p>
         </div>
       )}

@@ -145,12 +145,13 @@ export function RightPanelDashboard({
   }, [participants, search])
 
   // Budget derived values
-  const budgetData = totalBudget != null
+  const budgetData = totalBudget != null && totalBudget > 0
     ? (() => {
         const committed = committedBudget ?? 0
         const available = totalBudget - committed
         const pct = totalBudget > 0 ? Math.min((committed / totalBudget) * 100, 100) : 0
-        return { committed, available, pct }
+        const isOverBudget = totalBudget > 0 && committed > totalBudget
+        return { committed, available, pct, isOverBudget }
       })()
     : null
 
@@ -365,13 +366,13 @@ export function RightPanelDashboard({
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-body text-[11px] text-gray500">Comprometido</span>
-                <span className="font-body text-[11px] font-semibold text-[#EF4444]">
+                <span className={`font-body text-[11px] font-semibold ${budgetData.isOverBudget ? 'text-[#B91C1C]' : 'text-[#EF4444]'}`}>
                   {formatMXN(budgetData.committed)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="font-body text-[11px] text-gray500">Disponible</span>
-                <span className="font-body text-[11px] font-semibold text-[#35C56A]">
+                <span className={`font-body text-[11px] font-semibold ${budgetData.available < 0 ? 'text-[#B91C1C]' : 'text-[#35C56A]'}`}>
                   {formatMXN(budgetData.available)}
                 </span>
               </div>
@@ -387,7 +388,7 @@ export function RightPanelDashboard({
               />
             </div>
             <p className="font-body text-[10px] text-gray500 text-right">
-              {budgetData.pct.toFixed(0)}% comprometido
+              {budgetData.isOverBudget ? 'Presupuesto excedido' : `${budgetData.pct.toFixed(0)}% comprometido`}
             </p>
           </>
         )}

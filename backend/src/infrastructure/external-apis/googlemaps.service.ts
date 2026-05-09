@@ -108,7 +108,7 @@ export async function googleNearbyPlaces<T>(body: Record<string, unknown>): Prom
   return safeJson<T>(response);
 }
 
-export async function googlePlaceAutocomplete<T>(input: string): Promise<T> {
+export async function googlePlaceAutocomplete<T>(input: string, options?: { latitude?: number; longitude?: number; radius?: number }): Promise<T> {
   ensureGoogleEnv();
 
   const response = await fetch(`${GOOGLE_PLACES_BASE_URL}/v1/places:autocomplete`, {
@@ -128,6 +128,16 @@ export async function googlePlaceAutocomplete<T>(input: string): Promise<T> {
       input,
       languageCode: 'es-MX',
       includedRegionCodes: ['mx'],
+      ...(options?.latitude !== undefined && options?.longitude !== undefined
+        ? {
+            locationBias: {
+              circle: {
+                center: { latitude: options.latitude, longitude: options.longitude },
+                radius: options.radius ?? 7000,
+              },
+            },
+          }
+        : {}),
     }),
   });
 

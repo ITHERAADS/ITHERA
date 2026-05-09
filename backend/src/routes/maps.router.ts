@@ -46,14 +46,23 @@ router.post('/routes/compute', requireAuth, async (req: Request, res: Response):
 
 router.get('/places/autocomplete', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { input } = req.query;
+    const { input, latitude, longitude, radius } = req.query;
 
     if (!input) {
       res.status(400).json({ ok: false, error: 'input es requerido' });
       return;
     }
 
-    const results = await MapsService.autocompletePlaces(String(input));
+    const lat = latitude !== undefined ? Number(latitude) : undefined;
+    const lng = longitude !== undefined ? Number(longitude) : undefined;
+    const parsedRadius = radius !== undefined ? Number(radius) : undefined;
+
+    const results = await MapsService.autocompletePlaces(
+      String(input),
+      Number.isFinite(lat) && Number.isFinite(lng)
+        ? { latitude: lat as number, longitude: lng as number, radius: Number.isFinite(parsedRadius) ? parsedRadius : 7000 }
+        : undefined
+    );
 
     res.status(200).json({ ok: true, data: results });
   } catch (err: unknown) {

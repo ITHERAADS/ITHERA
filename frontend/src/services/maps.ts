@@ -186,9 +186,20 @@ export const mapsService = {
     )
   },
 
-  autocompletePlaces: async (input: string, token: string) => {
+  autocompletePlaces: async (
+    input: string,
+    token: string,
+    options?: { latitude?: number | null; longitude?: number | null; radius?: number | null }
+  ) => {
+    const params = new URLSearchParams({ input })
+    if (options?.latitude != null && options?.longitude != null) {
+      params.set('latitude', String(options.latitude))
+      params.set('longitude', String(options.longitude))
+      if (options.radius != null) params.set('radius', String(options.radius))
+    }
+
     return apiClient.get<{ ok: boolean; data: PlaceAutocompleteResult[] }>(
-      `/maps/places/autocomplete?input=${encodeURIComponent(input)}`,
+      `/maps/places/autocomplete?${params.toString()}`,
       token
     )
   },

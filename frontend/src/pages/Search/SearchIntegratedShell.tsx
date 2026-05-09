@@ -1,6 +1,9 @@
-import type { ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
+import { SidebarDashboard } from '../../components/layout/AppLayout/SidebarDashboard'
+import { useAuth } from '../../context/useAuth'
+import { groupsService, type ItineraryDay } from '../../services/groups'
 import type { NavUserInfo } from '../../components/layout/Navbar'
 import type { Group } from '../../types/groups'
 
@@ -77,17 +80,89 @@ function SearchBottomNavbar({ group }: { group?: Group | null }) {
 }
 
 export function SearchIntegratedShell({ children, group, user }: { children: ReactNode; group?: Group | null; user: NavUserInfo }) {
+  const navigate = useNavigate()
+  const { accessToken } = useAuth()
+  const [days, setDays] = useState<ItineraryDay[]>([])
+  const [activeDay, setActiveDay] = useState<number | null>(null)
+
   const tripMeta = group
     ? {
         name: group.nombre,
         subtitle: group.destino_formatted_address ?? group.destino ?? 'Destino sin definir',
         dates: formatTripDates(group),
-        people: `${group.memberCount ?? group.maximo_miembros ?? 0} personas`,
+        people: group.maximo_miembros
+          ? `${group.maximo_miembros} personas máx.`
+          : group.memberCount
+            ? `${group.memberCount} participante${group.memberCount === 1 ? '' : 's'}`
+            : 'Miembros por definir',
       }
     : undefined
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSidebarItinerary() {
+      if (!group?.id || !accessToken) {
+        setDays([])
+        setActiveDay(null)
+        return
+      }
+
+      try {
+        const response = await groupsService.getItinerary(String(group.id), accessToken)
+        if (cancelled) return
+
+        const nextDays = Array.isArray(response.days) ? response.days : []
+        setDays(nextDays)
+        setActiveDay((currentDay) => {
+          if (currentDay && nextDays.some((day) => day.dayNumber === currentDay)) return currentDay
+          return nextDays[0]?.dayNumber ?? null
+        })
+      } catch (error) {
+        if (!cancelled) {
+          console.error('No se pudo cargar el itinerario del panel lateral de búsqueda:', error)
+          setDays([])
+          setActiveDay(null)
+        }
+      }
+    }
+
+    loadSidebarItinerary()
+
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken, group?.id])
+
+  const sidebarContent = useMemo(() => {
+    if (!group) return undefined
+
+    return (
+      <SidebarDashboard
+        activeDay={activeDay}
+        days={days}
+        group={group}
+        onDayChange={(dayNumber) => {
+          setActiveDay(dayNumber)
+          navigate(buildDashboardPath(group), {
+            state: { ...buildSearchState(group), activeTab: 'inicio', activeDay: dayNumber },
+          })
+        }}
+        onOpenGroupPanel={() =>
+          navigate(`/grouppanel?groupId=${encodeURIComponent(String(group.id))}`)
+        }
+      />
+    )
+  }, [activeDay, days, group, navigate])
+
   return (
-    <AppLayout showTripSelector={Boolean(group)} showRightPanel={false} trip={tripMeta} user={user}>
+    <AppLayout
+      showTripSelector={Boolean(group)}
+      showRightPanel={false}
+      trip={tripMeta}
+      user={user}
+      sidebarContent={sidebarContent}
+    >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
         <SearchBottomNavbar group={group} />

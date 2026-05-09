@@ -139,6 +139,7 @@ const MapPlacesPage = () => {
   const mapRef = useRef<HTMLDivElement | null>(null)
   const mapInstance = useRef<GoogleMapInstance | null>(null)
   const markers = useRef<MapMarker[]>([])
+  const searchBoxRef = useRef<HTMLDivElement | null>(null)
 
   const selectedPlace = useMemo(
     () => places.find((place) => place.id === selectedPlaceId) ?? places[0] ?? null,
@@ -234,23 +235,28 @@ const MapPlacesPage = () => {
   }, [places, destinationCoords, destino, clearMarkers])
 
   useEffect(() => {
-    if (!accessToken || query.trim().length < 2) {
+    if (!accessToken || query.trim().length < 3) {
       setSuggestions([])
+      setShowSuggestions(false)
       return
     }
 
     const timeout = window.setTimeout(async () => {
       try {
-        const response = await mapsService.autocompletePlaces(query.trim(), accessToken)
-        setSuggestions(response.data ?? [])
-        setShowSuggestions(true)
+        const response = await mapsService.autocompletePlaces(query.trim(), accessToken, {
+          latitude: destinationCoords?.lat,
+          longitude: destinationCoords?.lng,
+          radius: 12000,
+        })
+        setSuggestions((response.data ?? []).slice(0, 5))
+        setShowSuggestions(document.activeElement instanceof HTMLInputElement)
       } catch {
         setSuggestions([])
       }
     }, 350)
 
     return () => window.clearTimeout(timeout)
-  }, [accessToken, query])
+  }, [accessToken, query, destinationCoords])
 
   const calculateDistanceToSelected = useCallback(async (place: PlaceResult | null) => {
     if (!place?.latitude || !place.longitude || !destinationCoords || !accessToken) {
@@ -289,17 +295,17 @@ const MapPlacesPage = () => {
         textQuery: clean,
         latitude: destinationCoords?.lat,
         longitude: destinationCoords?.lng,
-        radius: 7000,
-        maxResultCount: 10,
+        radius: 50000,
+        maxResultCount: 12,
       }, accessToken)
 
-      const nextPlaces = [...(response.data ?? [])].sort(
-        (a, b) => distanceMetersFromDestination(a, destinationCoords) - distanceMetersFromDestination(b, destinationCoords)
-      )
+      const nextPlaces = [...(response.data ?? [])]
+        .filter((place) => distanceMetersFromDestination(place, destinationCoords) <= 80000)
+        .sort((a, b) => distanceMetersFromDestination(a, destinationCoords) - distanceMetersFromDestination(b, destinationCoords))
       setPlaces(nextPlaces)
       setSelectedPlaceId(nextPlaces[0]?.id ?? null)
       setViewMode(nextPlaces.length ? 'results' : 'empty')
-      if (!nextPlaces.length) setMessage('No encontramos resultados para esa búsqueda.')
+      if (!nextPlaces.length) setMessage('No encontramos resultados cercanos al destino. Prueba con una búsqueda más general, por ejemplo: restaurantes, playas, museos o parques.')
     } catch (error) {
       setViewMode('error')
       setMessage(error instanceof Error ? error.message : 'Error al buscar lugares')
@@ -309,6 +315,7 @@ const MapPlacesPage = () => {
   const handleSuggestion = async (suggestion: PlaceAutocompleteResult) => {
     if (!accessToken) return
     setQuery(suggestion.mainText || suggestion.description)
+    setSuggestions([])
     setShowSuggestions(false)
     setViewMode('loading')
     try {
@@ -369,22 +376,23 @@ const MapPlacesPage = () => {
     <SearchIntegratedShell group={group} user={user}>
       <div className="flex-1 overflow-y-auto bg-[#F4F8FC]">
         <div className="flex min-h-[760px] flex-col pb-6">
-          <header className="flex items-center gap-4 border-b border-gray-100 bg-white px-6 py-4">
+          <header className="flex flex-col gap-3 border-b border-gray-100 bg-white px-4 py-4 sm:flex-row sm:items-center sm:px-6">
             <button onClick={() => navigate(group?.id ? `/dashboard?groupId=${encodeURIComponent(String(group.id))}` : '/dashboard', { state: group ? { groupId: group.id, group, activeTab: 'buscar' } : { activeTab: 'buscar' } })} className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-[#1E0A4E] hover:bg-gray-50">Volver</button>
-            <div className="relative flex flex-1 items-center gap-3 rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-3 text-gray-500 shadow-sm">
+            <div ref={searchBoxRef} className="relative flex w-full flex-1 items-center gap-3 rounded-2xl border border-gray-200 bg-[#F8FAFC] px-4 py-3 text-gray-500 shadow-sm focus-within:border-[#1E6FD9] focus-within:bg-white">
               <IconSearch />
               <input
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onFocus={() => setShowSuggestions(Boolean(suggestions.length))}
+                onChange={(event) => { setQuery(event.target.value); setShowSuggestions(event.target.value.trim().length >= 3) }}
+                onFocus={() => setShowSuggestions(query.trim().length >= 3 && Boolean(suggestions.length))}
+                onBlur={(event) => { if (!searchBoxRef.current?.contains(event.relatedTarget as Node | null)) setShowSuggestions(false) }}
                 onKeyDown={(event) => { if (event.key === 'Enter') void handleSearch() }}
                 className="w-full bg-transparent text-sm text-[#1E0A4E] outline-none placeholder:text-gray-400"
                 placeholder="Buscar lugares, restaurantes, actividades..."
               />
               {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">
+                <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-72 overflow-y-auto rounded-2xl border border-gray-100 bg-white p-1 shadow-2xl">
                   {suggestions.map((suggestion) => (
-                    <button key={suggestion.placeId} onClick={() => void handleSuggestion(suggestion)} className="w-full border-b border-gray-100 px-4 py-3 text-left hover:bg-[#F4F8FC]">
+                    <button key={suggestion.placeId} onMouseDown={(event) => event.preventDefault()} onClick={() => void handleSuggestion(suggestion)} className="w-full rounded-xl px-4 py-3 text-left transition-colors hover:bg-[#F4F8FC]">
                       <p className="text-sm font-semibold text-[#1E0A4E]">{suggestion.mainText}</p>
                       <p className="text-xs text-gray-500">{suggestion.secondaryText}</p>
                     </button>
@@ -392,7 +400,7 @@ const MapPlacesPage = () => {
                 </div>
               )}
             </div>
-            <button onClick={() => void handleSearch()} className="rounded-xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1557B0]">Buscar</button>
+            <button onClick={() => void handleSearch()} className="w-full rounded-2xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1557B0] sm:w-auto">Buscar</button>
           </header>
 
           <main className="relative min-h-[620px] flex-1 overflow-hidden">
@@ -521,25 +529,58 @@ function PlaceDetailCard({ place, routeInfo, onDetail, onPropose }: { place: Pla
 }
 
 function PlaceModal({ place, onClose, onPropose }: { place: PlaceResult; onClose: () => void; onPropose: () => void }) {
+  const hours = place.regularOpeningHours?.weekdayDescriptions ?? []
+
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 p-6">
-      <div className="max-h-[84vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="relative h-44"><img src={place.photoUrl ?? FALLBACK_IMAGE} alt={place.name ?? 'Lugar'} className="h-full w-full rounded-t-2xl object-cover" /><button onClick={onClose} className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white text-[#1E0A4E] shadow"><IconClose /></button></div>
-        <div className="p-6">
-          <span className="rounded-full bg-[#E8F0FF] px-3 py-1 text-xs font-semibold text-[#1E6FD9]">{normalizeCategory(place.primaryCategory)}</span>
-          <h2 className="mt-4 font-heading text-2xl font-bold text-[#1E0A4E]">{place.name}</h2>
-          <p className="mt-1 text-sm text-gray-500">{place.formattedAddress}</p>
-          <p className="mt-4 text-sm text-[#F59E0B]">★★★★★ <span className="font-semibold text-[#1E0A4E]">{place.rating ?? 'N/D'}</span> <span className="text-gray-500">({place.userRatingCount ?? 0} reseñas)</span></p>
-          <div className="mt-5 border-t border-gray-100 pt-5"><h3 className="font-semibold text-[#1E0A4E]">Descripción</h3><p className="mt-2 text-sm leading-relaxed text-gray-500">{buildDescription(place)}</p></div>
-          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <InfoBox label="Horario" value={place.regularOpeningHours?.weekdayDescriptions?.join(' · ') ?? 'No disponible'} />
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#0F172A]/45 p-3 sm:p-6">
+      <div className="relative flex max-h-[78vh] w-full max-w-[620px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5">
+        <button
+          onClick={onClose}
+          className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-[#1E0A4E] shadow-lg transition hover:bg-[#F4F8FC]"
+          aria-label="Cerrar detalles del lugar"
+        >
+          <IconClose />
+        </button>
+
+        <div className="h-32 shrink-0 sm:h-36">
+          <img src={place.photoUrl ?? FALLBACK_IMAGE} alt={place.name ?? 'Lugar'} className="h-full w-full object-cover" />
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-[#E8F0FF] px-3 py-1 text-[11px] font-bold text-[#1E6FD9]">
+              {normalizeCategory(place.primaryCategory)}
+            </span>
+            <span className="text-xs font-semibold text-[#F59E0B]">
+              ★ {place.rating ?? 'N/D'} <span className="text-gray-500">({place.userRatingCount ?? 0} reseñas)</span>
+            </span>
+          </div>
+
+          <h2 className="mt-3 font-heading text-xl font-bold leading-tight text-[#1E0A4E] sm:text-2xl">{place.name}</h2>
+          <p className="mt-1 line-clamp-2 text-sm text-gray-500">{place.formattedAddress}</p>
+
+          <div className="mt-4 rounded-2xl border border-gray-100 bg-[#F8FAFC] p-4">
+            <h3 className="text-sm font-bold text-[#1E0A4E]">Descripción</h3>
+            <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-gray-600">{buildDescription(place)}</p>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <InfoBox label="Horario" value={hours.length ? hours.join('\n') : 'No disponible'} multiline />
             <InfoBox label="Teléfono" value={place.nationalPhoneNumber ?? place.internationalPhoneNumber ?? 'No disponible'} />
-            <InfoBox label="Sitio web" value={place.websiteUri ?? 'No disponible'} />
+            <InfoBox label="Sitio web" value={place.websiteUri ? 'Abrir sitio web' : 'No disponible'} href={place.websiteUri ?? undefined} />
             <InfoBox label="Google Maps" value="Abrir ubicación" href={buildMapsUrl(place)} />
             <InfoBox label="Categoría" value={normalizeCategory(place.primaryCategory)} />
             <InfoBox label="Precio" value={place.priceLevel ?? 'No disponible'} />
           </div>
-          <div className="mt-6 flex gap-3"><button onClick={onPropose} className="flex-1 rounded-xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1557B0]">+ Proponer al itinerario</button><button onClick={onClose} className="rounded-xl border border-gray-200 px-5 py-3 text-sm font-semibold text-[#1E0A4E]">Cerrar</button></div>
+        </div>
+
+        <div className="flex shrink-0 flex-col gap-3 border-t border-gray-100 bg-white p-4 sm:flex-row sm:px-6">
+          <button onClick={onPropose} className="flex-1 rounded-xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1557B0]">
+            + Proponer al itinerario
+          </button>
+          <button onClick={onClose} className="rounded-xl border border-gray-200 px-5 py-3 text-sm font-semibold text-[#1E0A4E] transition hover:bg-gray-50 sm:w-28">
+            Cerrar
+          </button>
         </div>
       </div>
     </div>
@@ -571,8 +612,17 @@ function ProposalModal({ place, tripDays, selectedDay, selectedTime, saving, onD
   )
 }
 
-function InfoBox({ label, value, href }: { label: string; value: string; href?: string }) {
-  return <div className="rounded-xl bg-[#F8FAFC] p-4"><p className="text-xs font-bold uppercase text-gray-400">{label}</p>{href ? <a href={href} target="_blank" rel="noreferrer" className="mt-1 block text-sm font-semibold text-[#1E6FD9]">{value}</a> : <p className="mt-1 text-sm font-semibold text-[#1E0A4E]">{value}</p>}</div>
+function InfoBox({ label, value, href, multiline = false }: { label: string; value: string; href?: string; multiline?: boolean }) {
+  return (
+    <div className="rounded-2xl bg-[#F8FAFC] p-4">
+      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+      {href ? (
+        <a href={href} target="_blank" rel="noreferrer" className="mt-1 block truncate text-sm font-semibold text-[#1E6FD9]">{value}</a>
+      ) : (
+        <p className={`mt-1 text-sm font-semibold leading-relaxed text-[#1E0A4E] ${multiline ? 'max-h-24 overflow-y-auto whitespace-pre-line pr-1' : 'line-clamp-2'}`}>{value}</p>
+      )}
+    </div>
+  )
 }
 
 export default MapPlacesPage

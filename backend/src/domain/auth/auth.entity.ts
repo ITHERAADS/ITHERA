@@ -17,9 +17,9 @@ export interface UsuarioLocal {
 export interface SignupPayload {
   email: string;
   password: string;
-  name: string;
-  lastNamePaterno: string;
-  lastNameMaterno: string;
+  name?: string;
+  lastNamePaterno?: string;
+  lastNameMaterno?: string;
 }
 
 export interface LoginPayload {

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as AuthService from '../domain/auth/auth.service';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PASSWORD_REGEX = /^(?=.*[a-záéíóúñ])(?=.*[A-ZÁÉÍÓÚÑ])(?=.*\d).{8,}$/;
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
 
@@ -78,33 +79,40 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     if (!email || !password || !name || !lastNamePaterno || !lastNameMaterno) {
       res.status(400).json({
         ok: false,
-        error: 'Todos los campos son obligatorios',
+        code: 'ERR-23-001',
+        error: 'Completa todos los campos requeridos para continuar.',
       });
       return;
     }
 
-    if (!EMAIL_REGEX.test(email.trim())) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
       res.status(400).json({
         ok: false,
-        error: 'El correo no tiene un formato válido',
+        code: 'ERR-14-004',
+        error: 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).',
       });
       return;
     }
 
-    if (password.length < 6) {
+    if (!PASSWORD_REGEX.test(password)) {
       res.status(400).json({
         ok: false,
-        error: 'La contraseña debe tener al menos 6 caracteres',
+        code: 'ERR-12-006',
+        error: 'La contraseña debe tener al menos 8 caracteres, 1 mayúscula, 1 minúscula y 1 número.',
       });
       return;
     }
+
+    const fallbackName = normalizedEmail.split('@')[0] || 'Usuario';
 
     const { data, error } = await AuthService.signUpUser({
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       password,
-      name: name.trim(),
-      lastNamePaterno: lastNamePaterno.trim(),
-      lastNameMaterno: lastNameMaterno.trim(),
+      name: name?.trim() || fallbackName,
+      lastNamePaterno: lastNamePaterno?.trim() || '',
+      lastNameMaterno: lastNameMaterno?.trim() || '',
     });
 
     if (error) {
@@ -183,14 +191,8 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     if (error) {
       const rawMessage = error.message?.toLowerCase?.() ?? '';
       const rawCode = (error as any)?.code ?? '';
-      const { data: existingLocalUser } =
-        await AuthService.findLocalUserByEmail(normalizedEmail);
 
-      if (
-        !existingLocalUser ||
-        rawCode === 'email_not_confirmed' ||
-        rawMessage.includes('email not confirmed')
-      ) {
+      if (rawCode === 'email_not_confirmed' || rawMessage.includes('email not confirmed')) {
         res.status(401).json({
           ok: false,
           code: 'ERR-11-002',
@@ -263,12 +265,24 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
     if (!email) {
       res.status(400).json({
         ok: false,
-        error: 'El correo es obligatorio',
+        code: 'ERR-14-004',
+        error: 'Ingresa tu correo electrónico.',
       });
       return;
     }
 
-    const { error } = await AuthService.forgotPassword({ email });
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      res.status(400).json({
+        ok: false,
+        code: 'ERR-14-004',
+        error: 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).',
+      });
+      return;
+    }
+
+    const { error } = await AuthService.forgotPassword({ email: normalizedEmail });
 
     if (error) {
       res.status(400).json({

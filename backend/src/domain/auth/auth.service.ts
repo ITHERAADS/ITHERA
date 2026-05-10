@@ -14,13 +14,15 @@ export interface UploadedAvatarFile {
 }
 
 function buildFullName(payload: SignupPayload): string {
-  return [
+  const fullName = [
     payload.name?.trim(),
     payload.lastNamePaterno?.trim(),
     payload.lastNameMaterno?.trim(),
   ]
     .filter(Boolean)
     .join(' ');
+
+  return fullName || payload.email.trim().split('@')[0] || 'Usuario';
 }
 
 export const signUpUser = async (payload: SignupPayload) => {
@@ -32,9 +34,9 @@ export const signUpUser = async (payload: SignupPayload) => {
     options: {
       emailRedirectTo: `${env.FRONTEND_URL}/login`,
       data: {
-        name: payload.name.trim(),
-        last_name_paterno: payload.lastNamePaterno.trim(),
-        last_name_materno: payload.lastNameMaterno.trim(),
+        name: payload.name?.trim() || fullName,
+        last_name_paterno: payload.lastNamePaterno?.trim() || '',
+        last_name_materno: payload.lastNameMaterno?.trim() || '',
         full_name: fullName,
       },
     },
@@ -46,14 +48,6 @@ export const signInUser = async (payload: LoginPayload) => {
     email: payload.email.trim().toLowerCase(),
     password: payload.password,
   });
-};
-
-export const findLocalUserByEmail = async (email: string) => {
-  return supabaseAdmin
-    .from('usuarios')
-    .select('id_usuario, auth_user_id, email')
-    .eq('email', email.trim().toLowerCase())
-    .maybeSingle();
 };
 
 export const forgotPassword = async (payload: ForgotPasswordPayload) => {

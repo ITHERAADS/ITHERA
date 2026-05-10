@@ -1,12 +1,65 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import logoWhite from "../../assets/logo-white.png";
 import googleIcon from "../../assets/google.png";
 import facebookIcon from "../../assets/facebook.png";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from '../../context/useAuth';
+import { useAuth } from "../../context/useAuth";
+
+type RegisterForm = {
+  name: string;
+  lastNamePaterno: string;
+  lastNameMaterno: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+};
+
+type RegisterErrors = Record<keyof RegisterForm, string>;
+
+type PasswordStrength = {
+  label: string;
+  score: number;
+};
+
+const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)*\.[A-Za-z]{2,24}$/;
+const PASSWORD_RULES = {
+  minLength: /^.{8,}$/,
+  uppercase: /[A-ZÁÉÍÓÚÑ]/,
+  lowercase: /[a-záéíóúñ]/,
+  number: /\d/,
+};
+
+function getPasswordChecks(password: string) {
+  return {
+    minLength: PASSWORD_RULES.minLength.test(password),
+    uppercase: PASSWORD_RULES.uppercase.test(password),
+    lowercase: PASSWORD_RULES.lowercase.test(password),
+    number: PASSWORD_RULES.number.test(password),
+  };
+}
+
+function getPasswordStrength(password: string): PasswordStrength {
+  const checks = getPasswordChecks(password);
+  const score = Object.values(checks).filter(Boolean).length;
+
+  if (!password) return { label: "Sin contraseña", score: 0 };
+  if (score <= 1) return { label: "Muy débil", score: 1 };
+  if (score === 2) return { label: "Débil", score: 2 };
+  if (score === 3) return { label: "Fuerte", score: 3 };
+  return { label: "Muy fuerte", score: 4 };
+}
+
+function isPasswordValid(password: string) {
+  const checks = getPasswordChecks(password);
+  return Object.values(checks).every(Boolean);
+}
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
 
 export function RegisterPage() {
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<RegisterForm>({
     name: "",
     lastNamePaterno: "",
     lastNameMaterno: "",
@@ -15,7 +68,7 @@ export function RegisterPage() {
     confirmPassword: "",
   });
 
-  const [errors, setErrors] = useState({
+  const [errors, setErrors] = useState<RegisterErrors>({
     name: "",
     lastNamePaterno: "",
     lastNameMaterno: "",
@@ -27,17 +80,55 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [serverMessage, setServerMessage] = useState("");
+  const [isSuccessMessage, setIsSuccessMessage] = useState(false);
   const navigate = useNavigate();
   const { register, loginWithGoogle, loginWithFacebook } = useAuth();
-  const [serverMessage, setServerMessage] = useState("");
 
-  const handleChange = (field: string, value: string) => {
+  const passwordChecks = useMemo(() => getPasswordChecks(form.password), [form.password]);
+  const passwordStrength = useMemo(() => getPasswordStrength(form.password), [form.password]);
+  const passwordsMatch = form.confirmPassword.length > 0 && form.password === form.confirmPassword;
+  const showPasswordHelp = isPasswordFocused || form.password.length > 0;
+  const normalizedEmail = normalizeEmail(form.email);
+  const isEmailFormatValid = EMAIL_REGEX.test(normalizedEmail);
+  const isRegisterFormReady =
+    form.name.trim().length > 0 &&
+    form.lastNamePaterno.trim().length > 0 &&
+    form.lastNameMaterno.trim().length > 0 &&
+    isEmailFormatValid &&
+    isPasswordValid(form.password) &&
+    passwordsMatch;
+
+  const handleChange = (field: keyof RegisterForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: "" }));
+    setServerMessage("");
+    setIsSuccessMessage(false);
+  };
+
+  const validateEmail = (value = form.email) => {
+    const normalizedEmail = normalizeEmail(value);
+
+    if (!normalizedEmail) {
+      setErrors((prev) => ({ ...prev, email: "Ingresa tu correo electrónico." }));
+      return false;
+    }
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setErrors((prev) => ({
+        ...prev,
+        email: "Ingresa un correo electrónico válido (ej. usuario@dominio.com).",
+      }));
+      return false;
+    }
+
+    setErrors((prev) => ({ ...prev, email: "" }));
+    return true;
   };
 
   const validate = () => {
-    const newErrors = {
+    const newErrors: RegisterErrors = {
       name: "",
       lastNamePaterno: "",
       lastNameMaterno: "",
@@ -47,44 +138,43 @@ export function RegisterPage() {
     };
 
     let isValid = true;
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!form.name.trim()) {
-      newErrors.name = "Nombre requerido";
+      newErrors.name = "Ingresa tu nombre.";
       isValid = false;
     }
 
     if (!form.lastNamePaterno.trim()) {
-      newErrors.lastNamePaterno = "Apellido paterno requerido";
+      newErrors.lastNamePaterno = "Ingresa tu apellido paterno.";
       isValid = false;
     }
 
     if (!form.lastNameMaterno.trim()) {
-      newErrors.lastNameMaterno = "Apellido materno requerido";
+      newErrors.lastNameMaterno = "Ingresa tu apellido materno.";
       isValid = false;
     }
 
     if (!form.email.trim()) {
-      newErrors.email = "Correo requerido";
+      newErrors.email = "Ingresa tu correo electrónico.";
       isValid = false;
-    } else if (!emailRegex.test(form.email)) {
-      newErrors.email = "Correo inválido";
+    } else if (!EMAIL_REGEX.test(normalizeEmail(form.email))) {
+      newErrors.email = "Ingresa un correo electrónico válido (ej. usuario@dominio.com).";
       isValid = false;
     }
 
     if (!form.password.trim()) {
-      newErrors.password = "Contraseña requerida";
+      newErrors.password = "Ingresa una contraseña.";
       isValid = false;
-    } else if (form.password.length < 6) {
-      newErrors.password = "Mínimo 6 caracteres";
+    } else if (!isPasswordValid(form.password)) {
+      newErrors.password = "La contraseña debe tener al menos 8 caracteres, 1 mayúscula, 1 minúscula y 1 número.";
       isValid = false;
     }
 
     if (!form.confirmPassword.trim()) {
-      newErrors.confirmPassword = "Confirma tu contraseña";
+      newErrors.confirmPassword = "Confirma tu contraseña.";
       isValid = false;
     } else if (form.password !== form.confirmPassword) {
-      newErrors.confirmPassword = "Las contraseñas no coinciden";
+      newErrors.confirmPassword = "Las contraseñas no coinciden. Verifica e inténtalo de nuevo.";
       isValid = false;
     }
 
@@ -94,8 +184,8 @@ export function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     setServerMessage("");
+    setIsSuccessMessage(false);
 
     if (!validate()) return;
 
@@ -103,14 +193,15 @@ export function RegisterPage() {
       setLoading(true);
 
       const result = await register({
-        name: form.name,
-        lastNamePaterno: form.lastNamePaterno,
-        lastNameMaterno: form.lastNameMaterno,
-        email: form.email,
+        name: form.name.trim(),
+        lastNamePaterno: form.lastNamePaterno.trim(),
+        lastNameMaterno: form.lastNameMaterno.trim(),
+        email: normalizeEmail(form.email),
         password: form.password,
       });
 
       if (result.requiresEmailConfirmation) {
+        setIsSuccessMessage(true);
         setServerMessage(
           "Tu cuenta fue creada correctamente. Te enviamos un enlace de verificación a tu correo. Debes abrir ese enlace antes de iniciar sesión."
         );
@@ -119,8 +210,8 @@ export function RegisterPage() {
 
       navigate("/my-trips");
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "No se pudo registrar la cuenta";
+      const message = err instanceof Error ? err.message : "No se pudo registrar la cuenta";
+      setIsSuccessMessage(false);
       setServerMessage(message);
     } finally {
       setLoading(false);
@@ -130,14 +221,19 @@ export function RegisterPage() {
   const inputBase =
     "w-full rounded-[14px] border border-[#D9DEE7] bg-white px-4 py-3 text-[15px] text-[#3D4A5C] outline-none transition placeholder:text-[#7A8799] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/15";
 
+  const passwordRuleClass = (valid: boolean) =>
+    `flex items-center gap-2 text-[12px] ${valid ? "text-[#16A34A]" : "text-[#7A8799]"}`;
+
+  const strengthWidths = ["w-0", "w-1/4", "w-2/4", "w-3/4", "w-full"];
+  const strengthColors = ["bg-[#E4E7EC]", "bg-[#EF4444]", "bg-[#F97316]", "bg-[#22C55E]", "bg-[#16A34A]"];
+
   return (
     <div className="min-h-screen bg-[#F4F6F8] font-body">
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[45%_55%]">
         <section
-          className="relative hidden lg:flex overflow-hidden"
+          className="relative hidden overflow-hidden lg:flex"
           style={{
-            background:
-              "linear-gradient(135deg, #0D0820 0%, #1E0A4E 55%, #0D0820 100%)",
+            background: "linear-gradient(135deg, #0D0820 0%, #1E0A4E 55%, #0D0820 100%)",
           }}
         >
           <div className="absolute inset-0 opacity-[0.15]">
@@ -147,11 +243,7 @@ export function RegisterPage() {
           <div className="relative z-10 flex h-full w-full flex-col px-16 py-12">
             <div>
               <Link to="/">
-                <img
-                  src={logoWhite}
-                  alt="Ithera"
-                  className="h-16 w-auto cursor-pointer object-contain"
-                />
+                <img src={logoWhite} alt="Ithera" className="h-16 w-auto cursor-pointer object-contain" />
               </Link>
             </div>
 
@@ -162,9 +254,7 @@ export function RegisterPage() {
                 </h1>
 
                 <p className="mt-10 max-w-[520px] text-[20px] leading-[1.6] text-white/80">
-                  Organiza itinerarios, controla los gastos compartidos y
-                  reserva tu próxima aventura con amigos de forma sencilla en un
-                  solo lugar.
+                  Organiza itinerarios, controla los gastos compartidos y reserva tu próxima aventura con amigos de forma sencilla en un solo lugar.
                 </p>
               </div>
             </div>
@@ -173,10 +263,7 @@ export function RegisterPage() {
 
         <section className="flex items-center justify-center bg-[#F4F6F8] px-6 py-10 sm:px-10 lg:px-16">
           <div className="w-full max-w-[470px]">
-            <Link
-              to="/"
-              className="mb-8 inline-flex items-center gap-1.5 text-[13px] text-[#98A2B3] transition hover:text-[#667085]"
-            >
+            <Link to="/" className="mb-8 inline-flex items-center gap-1.5 text-[13px] text-[#98A2B3] transition hover:text-[#667085]">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -184,17 +271,11 @@ export function RegisterPage() {
             </Link>
 
             <div className="mb-7 flex items-center justify-center gap-8 text-[15px]">
-              <Link
-                to="/login"
-                className="text-[#98A2B3] transition hover:text-[#667085]"
-              >
+              <Link to="/login" className="text-[#98A2B3] transition hover:text-[#667085]">
                 Iniciar sesión
               </Link>
 
-              <button
-                type="button"
-                className="border-b-2 border-[#111827] pb-1 font-semibold text-[#111827]"
-              >
+              <button type="button" className="border-b-2 border-[#111827] pb-1 font-semibold text-[#111827]">
                 Registrarse
               </button>
             </div>
@@ -206,338 +287,229 @@ export function RegisterPage() {
             <div className="mb-8 grid grid-cols-2 gap-4">
               <button
                 type="button"
-                  onClick={async () => {
+                onClick={async () => {
                   try {
                     setServerMessage("");
                     await loginWithGoogle();
                   } catch (err) {
-                    const message =
-                      err instanceof Error
-                        ? err.message
-                        : "No se pudo iniciar sesión con Facebook";
+                    const message = err instanceof Error ? err.message : "No se pudo iniciar sesión con Google";
+                    setIsSuccessMessage(false);
                     setServerMessage(message);
                   }
                 }}
                 className="flex h-[54px] items-center justify-center gap-3 rounded-[14px] border border-[#D9DEE7] bg-white text-[16px] font-medium text-[#344054] transition hover:border-[#2C8BE6]"
               >
-                <img
-                  src={googleIcon}
-                  alt="Google"
-                  className="h-5 w-5 object-contain"
-                />
+                <img src={googleIcon} alt="Google" className="h-5 w-5 object-contain" />
                 <span>Google</span>
               </button>
 
               <button
                 type="button"
-                  onClick={async () => {
+                onClick={async () => {
                   try {
                     setServerMessage("");
                     await loginWithFacebook();
                   } catch (err) {
-                    const message =
-                      err instanceof Error
-                        ? err.message
-                        : "No se pudo iniciar sesión con Facebook";
+                    const message = err instanceof Error ? err.message : "No se pudo iniciar sesión con Facebook";
+                    setIsSuccessMessage(false);
                     setServerMessage(message);
                   }
                 }}
                 className="flex h-[54px] items-center justify-center gap-3 rounded-[14px] border border-[#D9DEE7] bg-white text-[16px] font-medium text-[#344054] transition hover:border-[#2C8BE6]"
               >
-                <img
-                  src={facebookIcon}
-                  alt="Facebook"
-                  className="h-5 w-5 object-contain"
-                />
+                <img src={facebookIcon} alt="Facebook" className="h-5 w-5 object-contain" />
                 <span>Facebook</span>
               </button>
             </div>
 
             <div className="mb-8 flex items-center gap-4">
               <div className="h-px flex-1 bg-[#E4E7EC]" />
-              <span className="text-[14px] text-[#98A2B3]">
-                o continúa con tu correo
-              </span>
+              <span className="text-[14px] text-[#98A2B3]">o continúa con tu correo</span>
               <div className="h-px flex-1 bg-[#E4E7EC]" />
             </div>
 
+            {serverMessage && (
+              <div
+                className={`mb-5 rounded-xl border px-4 py-3 ${
+                  isSuccessMessage
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : "border-[#FECACA] bg-[#FEF2F2] text-[#B42318]"
+                }`}
+              >
+                <p className="text-sm font-semibold">
+                  {isSuccessMessage ? "Revisa tu correo" : "No se pudo completar el registro"}
+                </p>
+                <p className="text-sm">{serverMessage}</p>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
-                <label className="mb-2 block text-[15px] font-semibold text-[#344054]">
-                  Nombre(s)
-                </label>
+                <label className="mb-2 block text-[15px] font-semibold text-[#344054]">Nombre(s)</label>
                 <input
                   type="text"
                   value={form.name}
                   onChange={(e) => handleChange("name", e.target.value)}
                   placeholder="Ej. María"
-                  className={`${inputBase} ${
-                    errors.name ? "border-[#EF4444]" : ""
-                  }`}
+                  className={`${inputBase} ${errors.name ? "border-[#EF4444]" : ""}`}
                 />
-                {errors.name && (
-                  <p className="mt-1 text-[12px] text-[#EF4444]">
-                    {errors.name}
-                  </p>
-                )}
+                {errors.name && <p className="mt-1 text-[12px] text-[#EF4444]">{errors.name}</p>}
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-[15px] font-semibold text-[#344054]">
-                    Apellido paterno
-                  </label>
+                  <label className="mb-2 block text-[15px] font-semibold text-[#344054]">Apellido paterno</label>
                   <input
                     type="text"
                     value={form.lastNamePaterno}
                     onChange={(e) => handleChange("lastNamePaterno", e.target.value)}
                     placeholder="Ej. García"
-                    className={`${inputBase} ${
-                      errors.lastNamePaterno ? "border-[#EF4444]" : ""
-                    }`}
+                    className={`${inputBase} ${errors.lastNamePaterno ? "border-[#EF4444]" : ""}`}
                   />
-                  {errors.lastNamePaterno && (
-                    <p className="mt-1 text-[12px] text-[#EF4444]">
-                      {errors.lastNamePaterno}
-                    </p>
-                  )}
+                  {errors.lastNamePaterno && <p className="mt-1 text-[12px] text-[#EF4444]">{errors.lastNamePaterno}</p>}
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-[15px] font-semibold text-[#344054]">
-                    Apellido materno
-                  </label>
+                  <label className="mb-2 block text-[15px] font-semibold text-[#344054]">Apellido materno</label>
                   <input
                     type="text"
                     value={form.lastNameMaterno}
                     onChange={(e) => handleChange("lastNameMaterno", e.target.value)}
                     placeholder="Ej. López"
-                    className={`${inputBase} ${
-                      errors.lastNameMaterno ? "border-[#EF4444]" : ""
-                    }`}
+                    className={`${inputBase} ${errors.lastNameMaterno ? "border-[#EF4444]" : ""}`}
                   />
-                  {errors.lastNameMaterno && (
-                    <p className="mt-1 text-[12px] text-[#EF4444]">
-                      {errors.lastNameMaterno}
-                    </p>
-                  )}
+                  {errors.lastNameMaterno && <p className="mt-1 text-[12px] text-[#EF4444]">{errors.lastNameMaterno}</p>}
                 </div>
               </div>
 
               <div>
-                <label className="mb-2 block text-[15px] font-semibold text-[#344054]">
-                  Correo electrónico
-                </label>
+                <label className="mb-2 block text-[15px] font-semibold text-[#344054]">Correo electrónico</label>
                 <input
-                  type="email"
+                  type="text"
+                  inputMode="email"
+                  autoComplete="email"
                   value={form.email}
                   onChange={(e) => handleChange("email", e.target.value)}
+                  onBlur={(e) => validateEmail(e.target.value)}
                   placeholder="nombre@correo.com"
-                  className={`${inputBase} ${
-                    errors.email ? "border-[#EF4444]" : ""
-                  }`}
+                  aria-invalid={Boolean(errors.email)}
+                  className={`${inputBase} ${errors.email ? "border-[#EF4444]" : ""}`}
                 />
-                {errors.email && (
-                  <p className="mt-1 text-[12px] text-[#EF4444]">
-                    {errors.email}
-                  </p>
-                )}
+                {errors.email && <p className="mt-1 text-[12px] text-[#EF4444]">{errors.email}</p>}
               </div>
 
               <div>
-                <label className="mb-2 block text-[15px] font-semibold text-[#344054]">
-                  Contraseña
-                </label>
+                <label className="mb-2 block text-[15px] font-semibold text-[#344054]">Contraseña</label>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     value={form.password}
                     onChange={(e) => handleChange("password", e.target.value)}
+                    onFocus={() => setIsPasswordFocused(true)}
+                    onBlur={() => setIsPasswordFocused(false)}
                     placeholder="••••••••"
-                    className={`${inputBase} pr-12 ${
-                      errors.password ? "border-[#EF4444]" : ""
-                    }`}
+                    className={`${inputBase} pr-12 ${errors.password ? "border-[#EF4444]" : ""}`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#98A2B3] hover:text-[#667085] transition"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#98A2B3] transition hover:text-[#667085]"
+                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                   >
                     {showPassword ? (
-                      <svg
-                        width="22"
-                        height="22"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <path
-                          d="M3 3l18 18"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                        />
-                        <path
-                          d="M10.58 10.58a3 3 0 004.24 4.24"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                        <path
-                          d="M9.88 5.08A10.94 10.94 0 0112 5c6 0 10 7 10 7a21.84 21.84 0 01-4.35 5.27"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                        <path
-                          d="M6.61 6.61A21.82 21.82 0 002 12s4 7 10 7a10.94 10.94 0 005.27-1.35"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 3l18 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        <path d="M10.58 10.58a3 3 0 004.24 4.24" stroke="currentColor" strokeWidth="1.5" />
+                        <path d="M9.88 5.08A10.94 10.94 0 0112 5c6 0 10 7 10 7a21.84 21.84 0 01-4.35 5.27" stroke="currentColor" strokeWidth="1.5" />
+                        <path d="M6.61 6.61A21.82 21.82 0 002 12s4 7 10 7a10.94 10.94 0 005.27-1.35" stroke="currentColor" strokeWidth="1.5" />
                       </svg>
                     ) : (
-                      <svg
-                        width="22"
-                        height="22"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <path
-                          d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                        <circle
-                          cx="12"
-                          cy="12"
-                          r="3"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z" stroke="currentColor" strokeWidth="1.5" />
+                        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
                       </svg>
                     )}
                   </button>
                 </div>
-                {errors.password && (
-                  <p className="mt-1 text-[12px] text-[#EF4444]">
-                    {errors.password}
-                  </p>
+
+                {showPasswordHelp && (
+                  <div className="mt-3 rounded-[14px] border border-[#D9DEE7] bg-white px-3 py-3 shadow-sm">
+                    <div className="mb-2 flex items-center justify-between text-[12px] font-semibold text-[#344054]">
+                      <span>Fortaleza</span>
+                      <span>{passwordStrength.label}</span>
+                    </div>
+                    <div className="mb-3 h-2 overflow-hidden rounded-full bg-[#E4E7EC]">
+                      <div
+                        className={`h-full rounded-full transition-all ${strengthWidths[passwordStrength.score]} ${strengthColors[passwordStrength.score]}`}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <p className={passwordRuleClass(passwordChecks.minLength)}>✓ Mínimo 8 caracteres</p>
+                      <p className={passwordRuleClass(passwordChecks.uppercase)}>✓ 1 mayúscula</p>
+                      <p className={passwordRuleClass(passwordChecks.lowercase)}>✓ 1 minúscula</p>
+                      <p className={passwordRuleClass(passwordChecks.number)}>✓ 1 número</p>
+                    </div>
+                  </div>
                 )}
+
+                {errors.password && <p className="mt-1 text-[12px] text-[#EF4444]">{errors.password}</p>}
               </div>
 
               <div>
-                <label className="mb-2 block text-[15px] font-semibold text-[#344054]">
-                  Confirmar contraseña
-                </label>
+                <label className="mb-2 block text-[15px] font-semibold text-[#344054]">Confirmar contraseña</label>
                 <div className="relative">
                   <input
                     type={showConfirmPassword ? "text" : "password"}
                     value={form.confirmPassword}
-                    onChange={(e) =>
-                      handleChange("confirmPassword", e.target.value)
-                    }
+                    onChange={(e) => handleChange("confirmPassword", e.target.value)}
                     placeholder="••••••••"
-                    className={`${inputBase} pr-12 ${
-                      errors.confirmPassword ? "border-[#EF4444]" : ""
-                    }`}
+                    className={`${inputBase} pr-12 ${errors.confirmPassword ? "border-[#EF4444]" : ""}`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#98A2B3] hover:text-[#667085] transition"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#98A2B3] transition hover:text-[#667085]"
+                    aria-label={showConfirmPassword ? "Ocultar confirmación" : "Mostrar confirmación"}
                   >
                     {showConfirmPassword ? (
-                      <svg
-                        width="22"
-                        height="22"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <path
-                          d="M3 3l18 18"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                        />
-                        <path
-                          d="M10.58 10.58a3 3 0 004.24 4.24"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                        <path
-                          d="M9.88 5.08A10.94 10.94 0 0112 5c6 0 10 7 10 7a21.84 21.84 0 01-4.35 5.27"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                        <path
-                          d="M6.61 6.61A21.82 21.82 0 002 12s4 7 10 7a10.94 10.94 0 005.27-1.35"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 3l18 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        <path d="M10.58 10.58a3 3 0 004.24 4.24" stroke="currentColor" strokeWidth="1.5" />
+                        <path d="M9.88 5.08A10.94 10.94 0 0112 5c6 0 10 7 10 7a21.84 21.84 0 01-4.35 5.27" stroke="currentColor" strokeWidth="1.5" />
+                        <path d="M6.61 6.61A21.82 21.82 0 002 12s4 7 10 7a10.94 10.94 0 005.27-1.35" stroke="currentColor" strokeWidth="1.5" />
                       </svg>
                     ) : (
-                      <svg
-                        width="22"
-                        height="22"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                      >
-                        <path
-                          d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
-                        <circle
-                          cx="12"
-                          cy="12"
-                          r="3"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                        />
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                        <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z" stroke="currentColor" strokeWidth="1.5" />
+                        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
                       </svg>
                     )}
                   </button>
                 </div>
-                {errors.confirmPassword && (
-                  <p className="mt-1 text-[12px] text-[#EF4444]">
-                    {errors.confirmPassword}
+
+                {passwordsMatch && (
+                  <p className="mt-1 flex items-center gap-1 text-[12px] font-medium text-[#16A34A]">
+                    ✓ Las contraseñas coinciden.
                   </p>
                 )}
+                {errors.confirmPassword && <p className="mt-1 text-[12px] text-[#EF4444]">{errors.confirmPassword}</p>}
               </div>
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !isRegisterFormReady}
                 className="mt-2 h-[54px] w-full rounded-full bg-[linear-gradient(90deg,#7A4FD6_0%,#6D46D4_35%,#6E45E6_65%,#5B35D5_100%)] text-[18px] font-bold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {loading ? "Creando cuenta..." : "Crear cuenta"}
+                {loading ? "Creando cuenta..." : "Continuar"}
               </button>
 
-              <p className="pt-2 text-center text-[12px] leading-6 text-[#98A2B3]">
-                Al registrarte, aceptas nuestros{" "}
-                <span className="font-medium text-[#7A4FD6]">
-                  Términos de servicio
-                </span>{" "}
-                y{" "}
-                <span className="font-medium text-[#7A4FD6]">
-                  Política de privacidad.
-                </span>
+              <p className="pt-2 text-center text-[14px] text-[#98A2B3]">
+                ¿Ya tienes cuenta?{" "}
+                <Link to="/login" className="font-medium text-[#7A4FD6] transition hover:opacity-80">
+                  Inicia sesión
+                </Link>
               </p>
             </form>
-            {serverMessage && (
-              <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 text-green-600">
-                    ✓
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-green-800">
-                      Revisa tu correo
-                    </p>
-                    <p className="text-sm text-green-700">
-                      {serverMessage}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </section>
       </div>

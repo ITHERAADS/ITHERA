@@ -1,34 +1,127 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import logoWhite from "../../assets/logo-white.png";
 import { useAuth } from '../../context/useAuth';
 
+const COMMON_EMAIL_DOMAINS = [
+  'gmail.com',
+  'hotmail.com',
+  'outlook.com',
+  'yahoo.com',
+  'icloud.com',
+  'live.com',
+];
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function getEmailValidationError(value: string): string {
+  const email = normalizeEmail(value);
+
+  if (!email) {
+    return 'Ingresa tu correo electrónico.';
+  }
+
+  if (email.length > 254) {
+    return 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).';
+  }
+
+  const parts = email.split('@');
+
+  if (parts.length !== 2) {
+    return 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).';
+  }
+
+  const [localPart, domain] = parts;
+
+  if (!localPart || !domain) {
+    return 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).';
+  }
+
+  if (
+    localPart.length > 64 ||
+    localPart.startsWith('.') ||
+    localPart.endsWith('.') ||
+    localPart.includes('..') ||
+    !/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(localPart)
+  ) {
+    return 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).';
+  }
+
+  if (
+    domain.length > 253 ||
+    domain.includes('..') ||
+    !domain.includes('.') ||
+    !/^[a-z0-9.-]+$/i.test(domain)
+  ) {
+    return 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).';
+  }
+
+  const labels = domain.split('.');
+  const topLevelDomain = labels[labels.length - 1] ?? '';
+  const rootDomain = labels.slice(-2).join('.');
+
+  const hasInvalidLabel = labels.some(
+    (label) =>
+      !label ||
+      label.length > 63 ||
+      label.startsWith('-') ||
+      label.endsWith('-') ||
+      !/^[a-z0-9-]+$/i.test(label)
+  );
+
+  if (hasInvalidLabel || !/^[a-z]{2,24}$/i.test(topLevelDomain)) {
+    return 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).';
+  }
+
+  const possibleCommonDomainTypo = COMMON_EMAIL_DOMAINS.find((validDomain) => {
+    const validLabel = validDomain.split('.')[0];
+    const currentLabel = rootDomain.split('.')[0];
+
+    return (
+      rootDomain !== validDomain &&
+      rootDomain.endsWith(`.${validDomain.split('.')[validDomain.split('.').length - 1]}`) &&
+      currentLabel.includes(validLabel)
+    );
+  });
+
+  if (possibleCommonDomainTypo) {
+    return `Revisa el dominio del correo. ¿Quisiste escribir ${possibleCommonDomainTypo}?`;
+  }
+
+  return '';
+}
+
 export function ForgotPasswordPage() {
   const { forgotPassword } = useAuth();
   const [email, setEmail] = useState("");
+  const [touched, setTouched] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const emailValidationError = useMemo(() => getEmailValidationError(email), [email]);
+  const showInlineError = touched && Boolean(emailValidationError || error);
+  const canSubmit = !loading && !emailValidationError;
+
   const handleSubmit = async () => {
+    setTouched(true);
     setError("");
     setMessage("");
 
-    if (!email.trim()) {
-      setError("Ingresa tu correo electrónico.");
-      return;
-    }
+    const validationError = getEmailValidationError(email);
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError("El correo no es válido.");
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
     try {
       setLoading(true);
-      await forgotPassword(email);
+      await forgotPassword(normalizeEmail(email));
       setMessage(
-        "Si el correo existe, te enviaremos un enlace para restablecer tu contraseña."
+        "Si existe una cuenta con ese correo, recibirás un enlace en breve. Revisa tu bandeja de entrada y carpeta de spam."
       );
     } catch (err) {
       const msg =
@@ -162,16 +255,18 @@ export function ForgotPasswordPage() {
                       setError("");
                       setMessage("");
                     }}
+                    onBlur={() => setTouched(true)}
                     placeholder="correo@ejemplo.com"
-                    className={`${inputBase} ${error ? "border-[#EF4444]" : ""}`}
+                    aria-invalid={showInlineError}
+                    aria-describedby={showInlineError ? 'forgot-email-error' : undefined}
+                    className={`${inputBase} ${showInlineError ? "border-[#EF4444] focus:border-[#EF4444] focus:ring-[#EF4444]/15" : ""}`}
                   />
+                  {showInlineError && (
+                    <p id="forgot-email-error" className="mt-2 text-sm font-medium text-[#B42318]">
+                      {error || emailValidationError}
+                    </p>
+                  )}
                 </div>
-
-                {error && (
-                  <div className="rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm text-[#B42318]">
-                    {error}
-                  </div>
-                )}
 
                 {message && (
                   <div className="rounded-2xl border border-[#ABEFC6] bg-[#ECFDF3] px-4 py-3 text-sm text-[#067647]">
@@ -182,8 +277,8 @@ export function ForgotPasswordPage() {
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={loading}
-                  className="w-full rounded-[16px] bg-[#1E6FD9] py-3.5 text-[15px] font-semibold text-white transition hover:bg-[#175FC0] disabled:cursor-not-allowed disabled:opacity-70"
+                  disabled={!canSubmit}
+                  className="w-full rounded-[16px] bg-[#1E6FD9] py-3.5 text-[15px] font-semibold text-white transition hover:bg-[#175FC0] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading ? "Enviando enlace..." : "Enviar enlace de recuperación"}
                 </button>

@@ -48,6 +48,14 @@ export const signInUser = async (payload: LoginPayload) => {
   });
 };
 
+export const findLocalUserByEmail = async (email: string) => {
+  return supabaseAdmin
+    .from('usuarios')
+    .select('id_usuario, auth_user_id, email')
+    .eq('email', email.trim().toLowerCase())
+    .maybeSingle();
+};
+
 export const forgotPassword = async (payload: ForgotPasswordPayload) => {
   return supabaseAuth.auth.resetPasswordForEmail(payload.email.trim().toLowerCase(), {
     redirectTo: `${env.FRONTEND_URL}/reset-password`,

@@ -183,8 +183,14 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     if (error) {
       const rawMessage = error.message?.toLowerCase?.() ?? '';
       const rawCode = (error as any)?.code ?? '';
+      const { data: existingLocalUser } =
+        await AuthService.findLocalUserByEmail(normalizedEmail);
 
-      if (rawCode === 'email_not_confirmed' || rawMessage.includes('email not confirmed')) {
+      if (
+        !existingLocalUser ||
+        rawCode === 'email_not_confirmed' ||
+        rawMessage.includes('email not confirmed')
+      ) {
         res.status(401).json({
           ok: false,
           code: 'ERR-11-002',

@@ -3,7 +3,7 @@ import logoWhite from "../../assets/logo-white.png";
 import googleIcon from "../../assets/google.png";
 import facebookIcon from "../../assets/facebook.png";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
-import { useAuth } from '../../context/useAuth';
+import { useAuth } from "../../context/useAuth";
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -12,20 +12,22 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isCapsLockOn, setIsCapsLockOn] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const REDIRECT_STORAGE_KEY = 'ithera_post_login_redirect';
+  const REDIRECT_STORAGE_KEY = "ithera_post_login_redirect";
 
   const { login, loginWithGoogle, loginWithFacebook } = useAuth();
 
   function getSafeRedirect(value: string | null): string {
-    if (!value) return '/my-trips';
-    if (!value.startsWith('/') || value.startsWith('//')) return '/my-trips';
+    if (!value) return "/my-trips";
+    if (!value.startsWith("/") || value.startsWith("//")) return "/my-trips";
     return value;
   }
 
   const redirect = getSafeRedirect(
-      searchParams.get('redirect') || sessionStorage.getItem(REDIRECT_STORAGE_KEY)
+    searchParams.get("redirect") ||
+      sessionStorage.getItem(REDIRECT_STORAGE_KEY),
   );
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -54,6 +56,16 @@ export function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const updateCapsLockState = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    setIsCapsLockOn(event.getModifierState("CapsLock"));
+  };
+
+  const clearCapsLockState = () => {
+    setIsCapsLockOn(false);
   };
 
   const inputBase =
@@ -108,8 +120,20 @@ export function LoginPage() {
               to="/"
               className="mb-8 inline-flex items-center gap-1.5 text-[13px] text-[#98A2B3] transition hover:text-[#667085]"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M19 12H5M5 12l7-7M5 12l7 7"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
               Volver al inicio
             </Link>
@@ -146,7 +170,9 @@ export function LoginPage() {
                     await loginWithGoogle(redirect);
                   } catch (err) {
                     const message =
-                      err instanceof Error ? err.message : "No se pudo iniciar con Google";
+                      err instanceof Error
+                        ? err.message
+                        : "No se pudo iniciar con Google";
                     setError(message);
                     setLoading(false);
                   }
@@ -169,7 +195,9 @@ export function LoginPage() {
                     await loginWithFacebook(redirect);
                   } catch (err) {
                     const message =
-                      err instanceof Error ? err.message : "No se pudo iniciar con Facebook";
+                      err instanceof Error
+                        ? err.message
+                        : "No se pudo iniciar con Facebook";
                     setError(message);
                     setLoading(false);
                   }
@@ -226,7 +254,14 @@ export function LoginPage() {
                       setPassword(e.target.value);
                       setError("");
                     }}
+                    onKeyDown={updateCapsLockState}
+                    onKeyUp={updateCapsLockState}
+                    onFocus={() => setIsCapsLockOn(false)}
+                    onBlur={clearCapsLockState}
                     placeholder="••••••••"
+                    aria-describedby={
+                      isCapsLockOn ? "caps-lock-warning" : undefined
+                    }
                     className={`${inputBase} pr-12 ${error ? "border-[#EF4444]" : ""}`}
                   />
                   <button
@@ -235,7 +270,12 @@ export function LoginPage() {
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-[#98A2B3] hover:text-[#667085] transition"
                   >
                     {showPassword ? (
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                      <svg
+                        width="22"
+                        height="22"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
                         <path
                           d="M3 3l18 18"
                           stroke="currentColor"
@@ -259,7 +299,12 @@ export function LoginPage() {
                         />
                       </svg>
                     ) : (
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                      <svg
+                        width="22"
+                        height="22"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
                         <path
                           d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z"
                           stroke="currentColor"
@@ -276,12 +321,46 @@ export function LoginPage() {
                     )}
                   </button>
                 </div>
+
+                {isCapsLockOn && (
+                  <div
+                    id="caps-lock-warning"
+                    role="status"
+                    aria-live="polite"
+                    className="mt-2 flex items-start gap-2 rounded-[12px] border border-[#F59E0B]/30 bg-[#FFFBEB] px-3 py-2 text-[12px] font-medium text-[#92400E]"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      aria-hidden="true"
+                      className="mt-[1px] shrink-0"
+                    >
+                      <path
+                        d="M12 3l9 9h-5v6H8v-6H3l9-9Z"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      <path
+                        d="M8 21h8"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <span>
+                      Bloq Mayús está activado. Verifica tu contraseña antes de
+                      iniciar sesión.
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Error */}
-              {error && (
-                <p className="text-[12px] text-[#EF4444]">{error}</p>
-              )}
+              {error && <p className="text-[12px] text-[#EF4444]">{error}</p>}
 
               {/* Remember me + Forgot password */}
               <div className="flex items-center justify-between pt-1">

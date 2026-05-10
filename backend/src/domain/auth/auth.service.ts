@@ -25,6 +25,15 @@ function buildFullName(payload: SignupPayload): string {
   return fullName || payload.email.trim().split('@')[0] || 'Usuario';
 }
 
+
+export const findUserByEmail = async (email: string) => {
+  return supabaseAdmin
+    .from('usuarios')
+    .select('id_usuario, email')
+    .eq('email', email.trim().toLowerCase())
+    .maybeSingle();
+};
+
 export const signUpUser = async (payload: SignupPayload) => {
   const fullName = buildFullName(payload);
 

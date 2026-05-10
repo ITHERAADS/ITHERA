@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import logoWhite from "../../assets/logo-white.png";
 import googleIcon from "../../assets/google.png";
 import facebookIcon from "../../assets/facebook.png";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
+import { ApiError, apiClient } from "../../services/apiClient";
 
 type RegisterForm = {
   name: string;
@@ -21,7 +22,7 @@ type PasswordStrength = {
   score: number;
 };
 
-const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)*\.[A-Za-z]{2,24}$/;
+const EMAIL_REGEX = /^(?!.*\.\.)(?!.*@.*\.\.)(?!.*@-)(?!.*-\.)[A-Za-z0-9](?:[A-Za-z0-9._%+-]{0,62}[A-Za-z0-9])?@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 const PASSWORD_RULES = {
   minLength: /^.{8,}$/,
   uppercase: /[A-ZÁÉÍÓÚÑ]/,
@@ -83,6 +84,8 @@ export function RegisterPage() {
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [serverMessage, setServerMessage] = useState("");
   const [isSuccessMessage, setIsSuccessMessage] = useState(false);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [isEmailAvailable, setIsEmailAvailable] = useState<boolean | null>(null);
   const navigate = useNavigate();
   const { register, loginWithGoogle, loginWithFacebook } = useAuth();
 
@@ -97,6 +100,8 @@ export function RegisterPage() {
     form.lastNamePaterno.trim().length > 0 &&
     form.lastNameMaterno.trim().length > 0 &&
     isEmailFormatValid &&
+    isEmailAvailable === true &&
+    !isCheckingEmail &&
     isPasswordValid(form.password) &&
     passwordsMatch;
 
@@ -105,13 +110,18 @@ export function RegisterPage() {
     setErrors((prev) => ({ ...prev, [field]: "" }));
     setServerMessage("");
     setIsSuccessMessage(false);
+
+    if (field === "email") {
+      setIsEmailAvailable(null);
+    }
   };
 
-  const validateEmail = (value = form.email) => {
+  const validateEmailFormat = useCallback((value = form.email) => {
     const normalizedEmail = normalizeEmail(value);
 
     if (!normalizedEmail) {
       setErrors((prev) => ({ ...prev, email: "Ingresa tu correo electrónico." }));
+      setIsEmailAvailable(null);
       return false;
     }
 
@@ -120,12 +130,67 @@ export function RegisterPage() {
         ...prev,
         email: "Ingresa un correo electrónico válido (ej. usuario@dominio.com).",
       }));
+      setIsEmailAvailable(null);
       return false;
     }
 
     setErrors((prev) => ({ ...prev, email: "" }));
     return true;
-  };
+  }, [form.email]);
+
+  const checkEmailAvailability = useCallback(async (value = form.email) => {
+    const normalizedEmail = normalizeEmail(value);
+
+    if (!validateEmailFormat(value)) return false;
+
+    setIsCheckingEmail(true);
+
+    try {
+      const result = await apiClient.get<{ ok: boolean; available: boolean; code?: string; message?: string }>(
+        `/auth/email-availability?email=${encodeURIComponent(normalizedEmail)}`
+      );
+
+      if (normalizeEmail(form.email) !== normalizedEmail) return false;
+
+      if (!result.available) {
+        setIsEmailAvailable(false);
+        setErrors((prev) => ({
+          ...prev,
+          email: "Ese correo ya está asociado a una cuenta activa. ¿Deseas iniciar sesión?",
+        }));
+        return false;
+      }
+
+      setIsEmailAvailable(true);
+      setErrors((prev) => ({ ...prev, email: "" }));
+      return true;
+    } catch (err) {
+      const message =
+        err instanceof ApiError && err.payload?.code === "ERR-12-004"
+          ? "Ese correo ya está asociado a una cuenta activa. ¿Deseas iniciar sesión?"
+          : err instanceof Error
+            ? err.message
+            : "No se pudo verificar el correo. Inténtalo de nuevo.";
+
+      if (normalizeEmail(form.email) !== normalizedEmail) return false;
+
+      setIsEmailAvailable(false);
+      setErrors((prev) => ({ ...prev, email: message }));
+      return false;
+    } finally {
+      setIsCheckingEmail(false);
+    }
+  }, [form.email, validateEmailFormat]);
+
+  useEffect(() => {
+    if (!normalizedEmail || !EMAIL_REGEX.test(normalizedEmail)) return;
+
+    const timer = window.setTimeout(() => {
+      void checkEmailAvailability(normalizedEmail);
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+  }, [normalizedEmail, checkEmailAvailability]);
 
   const validate = () => {
     const newErrors: RegisterErrors = {
@@ -160,6 +225,12 @@ export function RegisterPage() {
     } else if (!EMAIL_REGEX.test(normalizeEmail(form.email))) {
       newErrors.email = "Ingresa un correo electrónico válido (ej. usuario@dominio.com).";
       isValid = false;
+    } else if (isEmailAvailable === false) {
+      newErrors.email = "Ese correo ya está asociado a una cuenta activa. ¿Deseas iniciar sesión?";
+      isValid = false;
+    } else if (isEmailAvailable !== true) {
+      newErrors.email = "Verifica que el correo esté disponible antes de continuar.";
+      isValid = false;
     }
 
     if (!form.password.trim()) {
@@ -188,6 +259,9 @@ export function RegisterPage() {
     setIsSuccessMessage(false);
 
     if (!validate()) return;
+
+    const emailAvailable = await checkEmailAvailability(form.email);
+    if (!emailAvailable) return;
 
     try {
       setLoading(true);
@@ -390,12 +464,27 @@ export function RegisterPage() {
                   autoComplete="email"
                   value={form.email}
                   onChange={(e) => handleChange("email", e.target.value)}
-                  onBlur={(e) => validateEmail(e.target.value)}
+                  onBlur={(e) => void checkEmailAvailability(e.target.value)}
                   placeholder="nombre@correo.com"
                   aria-invalid={Boolean(errors.email)}
                   className={`${inputBase} ${errors.email ? "border-[#EF4444]" : ""}`}
                 />
-                {errors.email && <p className="mt-1 text-[12px] text-[#EF4444]">{errors.email}</p>}
+                {isCheckingEmail && (
+                  <p className="mt-1 text-[12px] text-[#667085]">Verificando disponibilidad del correo...</p>
+                )}
+                {!isCheckingEmail && isEmailAvailable && !errors.email && (
+                  <p className="mt-1 text-[12px] font-medium text-[#16A34A]">✓ Correo disponible.</p>
+                )}
+                {errors.email && (
+                  <p className="mt-1 text-[12px] text-[#EF4444]">
+                    {errors.email}{" "}
+                    {isEmailAvailable === false && (
+                      <Link to="/login" className="font-semibold underline">
+                        Ir al login
+                      </Link>
+                    )}
+                  </p>
+                )}
               </div>
 
               <div>

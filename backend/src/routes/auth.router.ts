@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as AuthService from '../domain/auth/auth.service';
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_REGEX = /^(?!.*\.\.)(?!.*@.*\.\.)(?!.*@-)(?!.*-\.)[A-Za-z0-9](?:[A-Za-z0-9._%+-]{0,62}[A-Za-z0-9])?@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 const PASSWORD_REGEX = /^(?=.*[a-záéíóúñ])(?=.*[A-ZÁÉÍÓÚÑ])(?=.*\d).{8,}$/;
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
@@ -60,6 +60,64 @@ const upload = multer({
   },
 });
 
+router.get('/email-availability', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const email = String(req.query.email ?? '').trim().toLowerCase();
+
+    if (!email) {
+      res.status(400).json({
+        ok: false,
+        code: 'ERR-14-004',
+        error: 'Ingresa tu correo electrónico.',
+      });
+      return;
+    }
+
+    if (!EMAIL_REGEX.test(email)) {
+      res.status(400).json({
+        ok: false,
+        code: 'ERR-14-004',
+        error: 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).',
+      });
+      return;
+    }
+
+    const { data, error } = await AuthService.findUserByEmail(email);
+
+    if (error) {
+      res.status(500).json({
+        ok: false,
+        error: 'No se pudo verificar la disponibilidad del correo',
+        details: error.message,
+      });
+      return;
+    }
+
+    if (data) {
+      res.status(409).json({
+        ok: false,
+        available: false,
+        code: 'ERR-12-004',
+        error: 'Ese correo ya está asociado a una cuenta activa. ¿Deseas iniciar sesión?',
+      });
+      return;
+    }
+
+    res.status(200).json({
+      ok: true,
+      available: true,
+      message: 'Correo disponible.',
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    res.status(500).json({
+      ok: false,
+      error: 'Error interno del servidor',
+      details: msg,
+    });
+  }
+});
+
 router.post('/register', async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -105,6 +163,26 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const { data: existingUser, error: emailLookupError } = await AuthService.findUserByEmail(normalizedEmail);
+
+    if (emailLookupError) {
+      res.status(500).json({
+        ok: false,
+        error: 'No se pudo verificar la disponibilidad del correo',
+        details: emailLookupError.message,
+      });
+      return;
+    }
+
+    if (existingUser) {
+      res.status(409).json({
+        ok: false,
+        code: 'ERR-12-004',
+        error: 'Ese correo ya está asociado a una cuenta activa. ¿Deseas iniciar sesión?',
+      });
+      return;
+    }
+
     const fallbackName = normalizedEmail.split('@')[0] || 'Usuario';
 
     const { data, error } = await AuthService.signUpUser({
@@ -116,6 +194,17 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     });
 
     if (error) {
+      const rawMessage = error.message?.toLowerCase?.() ?? '';
+
+      if (rawMessage.includes('already registered') || rawMessage.includes('already exists') || rawMessage.includes('user already')) {
+        res.status(409).json({
+          ok: false,
+          code: 'ERR-12-004',
+          error: 'Ese correo ya está asociado a una cuenta activa. ¿Deseas iniciar sesión?',
+        });
+        return;
+      }
+
       res.status(400).json({ ok: false, error: error.message });
       return;
     }

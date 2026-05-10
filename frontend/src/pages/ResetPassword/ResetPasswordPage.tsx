@@ -3,6 +3,43 @@ import { Link, useNavigate } from "react-router-dom";
 import logoWhite from "../../assets/logo-white.png";
 import { supabase } from "../../lib/supabase";
 
+type PasswordStrength = {
+  label: string;
+  score: number;
+};
+
+const PASSWORD_RULES = {
+  minLength: /^.{8,}$/,
+  uppercase: /[A-ZÁÉÍÓÚÑ]/,
+  lowercase: /[a-záéíóúñ]/,
+  number: /\d/,
+};
+
+function getPasswordChecks(password: string) {
+  return {
+    minLength: PASSWORD_RULES.minLength.test(password),
+    uppercase: PASSWORD_RULES.uppercase.test(password),
+    lowercase: PASSWORD_RULES.lowercase.test(password),
+    number: PASSWORD_RULES.number.test(password),
+  };
+}
+
+function getPasswordStrength(password: string): PasswordStrength {
+  const checks = getPasswordChecks(password);
+  const score = Object.values(checks).filter(Boolean).length;
+
+  if (!password) return { label: "Sin contraseña", score: 0 };
+  if (score <= 1) return { label: "Muy débil", score: 1 };
+  if (score === 2) return { label: "Débil", score: 2 };
+  if (score === 3) return { label: "Fuerte", score: 3 };
+  return { label: "Muy fuerte", score: 4 };
+}
+
+function isPasswordValid(password: string) {
+  const checks = getPasswordChecks(password);
+  return Object.values(checks).every(Boolean);
+}
+
 export function ResetPasswordPage() {
   const navigate = useNavigate();
 
@@ -15,6 +52,22 @@ export function ResetPasswordPage() {
   const [validating, setValidating] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [isConfirmPasswordFocused, setIsConfirmPasswordFocused] =
+    useState(false);
+
+  const passwordChecks = getPasswordChecks(password);
+  const passwordStrength = getPasswordStrength(password);
+  const passwordMeetsSecurityFormat = isPasswordValid(password);
+  const passwordsMatch =
+    confirmPassword.length > 0 && password === confirmPassword;
+  const showPasswordHelp = isPasswordFocused || password.length > 0;
+  const canUpdatePassword =
+    ready &&
+    !validating &&
+    passwordMeetsSecurityFormat &&
+    passwordsMatch &&
+    !loading;
 
   useEffect(() => {
     let isMounted = true;
@@ -91,7 +144,7 @@ export function ResetPasswordPage() {
           window.history.replaceState(
             {},
             document.title,
-            window.location.pathname + window.location.search
+            window.location.pathname + window.location.search,
           );
 
           const {
@@ -117,7 +170,7 @@ export function ResetPasswordPage() {
             setReady(true);
           } else {
             setError(
-              "No se pudo validar el enlace de recuperación. Solicita uno nuevo."
+              "No se pudo validar el enlace de recuperación. Solicita uno nuevo.",
             );
           }
 
@@ -163,13 +216,15 @@ export function ResetPasswordPage() {
       return;
     }
 
-    if (password.length < 6) {
-      setError("La contraseña debe tener al menos 6 caracteres.");
+    if (!passwordMeetsSecurityFormat) {
+      setError(
+        "La contraseña debe tener al menos 8 caracteres, 1 mayúscula, 1 minúscula y 1 número.",
+      );
       return;
     }
 
-    if (password !== confirmPassword) {
-      setError("Las contraseñas no coinciden.");
+    if (!passwordsMatch) {
+      setError("Las contraseñas no coinciden. Verifica e inténtalo de nuevo.");
       return;
     }
 
@@ -199,6 +254,20 @@ export function ResetPasswordPage() {
 
   const inputBase =
     "w-full rounded-[14px] border border-[#D9DEE7] bg-white px-4 py-3 text-[15px] text-[#3D4A5C] outline-none transition placeholder:text-[#98A2B3] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/15";
+
+  const passwordRuleClass = (valid: boolean) =>
+    `flex items-center gap-2 text-[12px] ${
+      valid ? "text-[#16A34A]" : "text-[#7A8799]"
+    }`;
+
+  const strengthWidths = ["w-0", "w-1/4", "w-2/4", "w-3/4", "w-full"];
+  const strengthColors = [
+    "bg-[#E4E7EC]",
+    "bg-[#EF4444]",
+    "bg-[#F97316]",
+    "bg-[#22C55E]",
+    "bg-[#16A34A]",
+  ];
 
   return (
     <div className="min-h-screen bg-[#F4F6F8] font-body">
@@ -313,6 +382,8 @@ export function ResetPasswordPage() {
                         setPassword(e.target.value);
                         setError("");
                       }}
+                      onFocus={() => setIsPasswordFocused(true)}
+                      onBlur={() => setIsPasswordFocused(false)}
                       placeholder="••••••••"
                       className={`${inputBase} pr-12 ${
                         error ? "border-[#EF4444]" : ""
@@ -326,6 +397,52 @@ export function ResetPasswordPage() {
                       {showPassword ? "Ocultar" : "Ver"}
                     </button>
                   </div>
+
+                  {showPasswordHelp && (
+                    <div className="mt-3 rounded-[14px] border border-[#E4E7EC] bg-white px-3 py-3 shadow-sm">
+                      <div className="mb-2 flex items-center justify-between text-[12px] font-semibold text-[#667085]">
+                        <span>Fortaleza</span>
+                        <span>{passwordStrength.label}</span>
+                      </div>
+                      <div className="mb-3 h-2 rounded-full bg-[#E4E7EC]">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            strengthWidths[passwordStrength.score]
+                          } ${strengthColors[passwordStrength.score]}`}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <p
+                          className={passwordRuleClass(
+                            passwordChecks.minLength,
+                          )}
+                        >
+                          <span>{passwordChecks.minLength ? "✓" : "○"}</span>
+                          Mínimo 8 caracteres
+                        </p>
+                        <p
+                          className={passwordRuleClass(
+                            passwordChecks.uppercase,
+                          )}
+                        >
+                          <span>{passwordChecks.uppercase ? "✓" : "○"}</span>1
+                          mayúscula
+                        </p>
+                        <p
+                          className={passwordRuleClass(
+                            passwordChecks.lowercase,
+                          )}
+                        >
+                          <span>{passwordChecks.lowercase ? "✓" : "○"}</span>1
+                          minúscula
+                        </p>
+                        <p className={passwordRuleClass(passwordChecks.number)}>
+                          <span>{passwordChecks.number ? "✓" : "○"}</span>1
+                          número
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -340,6 +457,8 @@ export function ResetPasswordPage() {
                         setConfirmPassword(e.target.value);
                         setError("");
                       }}
+                      onFocus={() => setIsConfirmPasswordFocused(true)}
+                      onBlur={() => setIsConfirmPasswordFocused(false)}
                       placeholder="••••••••"
                       className={`${inputBase} pr-12 ${
                         error ? "border-[#EF4444]" : ""
@@ -347,14 +466,25 @@ export function ResetPasswordPage() {
                     />
                     <button
                       type="button"
-                      onClick={() =>
-                        setShowConfirmPassword((prev) => !prev)
-                      }
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
                       className="absolute inset-y-0 right-3 flex items-center text-[#98A2B3] transition hover:text-[#667085]"
                     >
                       {showConfirmPassword ? "Ocultar" : "Ver"}
                     </button>
                   </div>
+
+                  {(isConfirmPasswordFocused || confirmPassword.length > 0) &&
+                    confirmPassword.length > 0 && (
+                      <p
+                        className={`mt-2 text-[13px] font-semibold ${
+                          passwordsMatch ? "text-[#16A34A]" : "text-[#EF4444]"
+                        }`}
+                      >
+                        {passwordsMatch
+                          ? "✓ Las contraseñas coinciden."
+                          : "✕ Las contraseñas no coinciden."}
+                      </p>
+                    )}
                 </div>
 
                 {validating && !error && (
@@ -385,8 +515,8 @@ export function ResetPasswordPage() {
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={loading || !ready || validating}
-                  className="w-full rounded-[16px] bg-[#1E6FD9] py-3.5 text-[15px] font-semibold text-white transition hover:bg-[#175FC0] disabled:cursor-not-allowed disabled:opacity-70"
+                  disabled={!canUpdatePassword}
+                  className="w-full rounded-[16px] bg-[#1E6FD9] py-3.5 text-[15px] font-semibold text-white transition hover:bg-[#175FC0] disabled:cursor-not-allowed disabled:bg-[#A8B3C7] disabled:opacity-70"
                 >
                   {loading ? "Actualizando..." : "Actualizar contraseña"}
                 </button>

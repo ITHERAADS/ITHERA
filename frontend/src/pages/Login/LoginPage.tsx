@@ -68,6 +68,7 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -151,25 +152,30 @@ export function LoginPage() {
     }
 
     setError("");
+    setErrorCode(null);
 
     if (!email || !password) {
       setError("Todos los campos son obligatorios");
+      setErrorCode(null);
       return;
     }
 
     if (!/\S+@\S+\.\S+/.test(email)) {
       setError("Ingresa un correo electrónico válido (ej. usuario@dominio.com).");
+      setErrorCode("ERR-14-004");
       return;
     }
 
     try {
       setLoading(true);
       await login(email, password);
+      setErrorCode(null);
       clearStoredLoginLock();
       sessionStorage.removeItem(REDIRECT_STORAGE_KEY);
       navigate(redirect, { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
+        setErrorCode(err.payload?.code ?? null);
         const retryAfterSeconds =
           typeof err.payload?.retryAfterSeconds === "number"
             ? err.payload.retryAfterSeconds
@@ -194,6 +200,7 @@ export function LoginPage() {
       const message =
         err instanceof Error ? err.message : "No se pudo iniciar sesión";
       setError(message);
+      setErrorCode(null);
     } finally {
       setLoading(false);
     }
@@ -207,6 +214,13 @@ export function LoginPage() {
 
   const clearCapsLockState = () => {
     setIsCapsLockOn(false);
+  };
+
+  const clearLoginError = () => {
+    if (!isLoginLocked) {
+      setError("");
+      setErrorCode(null);
+    }
   };
 
   const inputBase =
@@ -375,7 +389,7 @@ export function LoginPage() {
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
-                    if (!isLoginLocked) setError("");
+                    clearLoginError();
                   }}
                   placeholder="correo@ejemplo.com"
                   className={`${inputBase} ${error ? "border-[#EF4444]" : ""}`}
@@ -393,7 +407,7 @@ export function LoginPage() {
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
-                      if (!isLoginLocked) setError("");
+                      clearLoginError();
                     }}
                     onKeyDown={updateCapsLockState}
                     onKeyUp={updateCapsLockState}
@@ -516,6 +530,15 @@ export function LoginPage() {
                       Tiempo restante: {lockMinutes}:{lockSeconds}. El botón se
                       habilitará automáticamente.
                     </p>
+                  )}
+
+                  {errorCode === "ERR-11-002" && (
+                    <Link
+                      to="/register"
+                      className="mt-3 inline-flex rounded-full bg-[#7A4FD6] px-4 py-2 text-[12px] font-bold text-white transition hover:opacity-90"
+                    >
+                      Crear cuenta
+                    </Link>
                   )}
                 </div>
               )}

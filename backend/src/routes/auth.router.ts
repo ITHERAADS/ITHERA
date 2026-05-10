@@ -2,6 +2,48 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as AuthService from '../domain/auth/auth.service';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const STRICT_EMAIL_REGEX = /^(?!.*\.\.)(?!\.)[A-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@(?!-)(?=.{1,253}$)(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,24}$/i;
+const COMMON_EMAIL_DOMAINS = [
+  'gmail.com',
+  'hotmail.com',
+  'outlook.com',
+  'yahoo.com',
+  'icloud.com',
+  'live.com',
+];
+
+function getForgotPasswordEmailError(email?: string): string | null {
+  const normalizedEmail = email?.trim().toLowerCase() ?? '';
+
+  if (!normalizedEmail) {
+    return 'El correo es obligatorio';
+  }
+
+  if (!STRICT_EMAIL_REGEX.test(normalizedEmail)) {
+    return 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).';
+  }
+
+  const domain = normalizedEmail.split('@')[1] ?? '';
+  const labels = domain.split('.');
+  const rootDomain = labels.slice(-2).join('.');
+
+  const possibleCommonDomainTypo = COMMON_EMAIL_DOMAINS.find((validDomain) => {
+    const validLabel = validDomain.split('.')[0];
+    const currentLabel = rootDomain.split('.')[0];
+
+    return (
+      rootDomain !== validDomain &&
+      rootDomain.endsWith(`.${validDomain.split('.')[validDomain.split('.').length - 1]}`) &&
+      currentLabel.includes(validLabel)
+    );
+  });
+
+  if (possibleCommonDomainTypo) {
+    return `Revisa el dominio del correo. ¿Quisiste escribir ${possibleCommonDomainTypo}?`;
+  }
+
+  return null;
+}
 const multer = require('multer');
 
 type MulterFile = AuthService.UploadedAvatarFile;
@@ -162,16 +204,19 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 router.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
   try {
     const { email } = req.body as { email?: string };
+    const normalizedEmail = email?.trim().toLowerCase() ?? '';
+    const emailValidationError = getForgotPasswordEmailError(email);
 
-    if (!email) {
+    if (emailValidationError) {
       res.status(400).json({
         ok: false,
-        error: 'El correo es obligatorio',
+        code: 'ERR-14-004',
+        error: emailValidationError,
       });
       return;
     }
 
-    const { error } = await AuthService.forgotPassword({ email });
+    const { error } = await AuthService.forgotPassword({ email: normalizedEmail });
 
     if (error) {
       res.status(400).json({
@@ -183,8 +228,9 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
 
     res.status(200).json({
       ok: true,
+      code: 'ERR-14-001',
       message:
-        'Si el correo existe, se enviará un enlace para restablecer la contraseña.',
+        'Si existe una cuenta con ese correo, recibirás un enlace en breve. Revisa tu bandeja de entrada y carpeta de spam.',
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';

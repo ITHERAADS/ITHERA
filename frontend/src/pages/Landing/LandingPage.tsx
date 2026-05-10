@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Logo } from '../../components/ui/Logo'
 import { Navbar } from '../../components/layout/Navbar'
+import { useNavigate } from 'react-router-dom'
 
 // ── Hooks ─────────────────────────────────────────────────────────────────────
 
@@ -89,9 +90,9 @@ function LandingNavbar() {
 function HeroSection() {
   const [tripName, setTripName] = useState('')
   const [dates, setDates] = useState('')
-  const [origin, setOrigin] = useState('')
   const [people, setPeople] = useState('2')
   const groupCount = useCountUp(1200)
+  const navigate = useNavigate()
 
   const handlePeopleChange = (value: string) => {
     if (value === '') {
@@ -103,6 +104,14 @@ function HeroSection() {
     if (!Number.isFinite(parsed)) return
     const safeValue = Math.min(30, Math.max(1, Math.trunc(parsed)))
     setPeople(String(safeValue))
+  }
+
+  const handleCreateItinerary = () => {
+    const params = new URLSearchParams()
+    if (tripName) params.append('name', tripName)
+    if (dates) params.append('destination', dates)
+    if (people) params.append('members', people)
+    navigate(`/create-group?${params.toString()}`)
   }
 
   return (
@@ -150,10 +159,10 @@ function HeroSection() {
 
       {/* CTAs */}
       <div className="relative flex flex-col sm:flex-row items-center gap-3 mb-4">
-        <button className="font-body font-medium text-sm bg-green text-white rounded-lg px-6 py-3 hover:opacity-90 transition-opacity">
+        <button onClick={() => navigate('/create-group')} className="font-body font-medium text-sm bg-green text-white rounded-lg px-6 py-3 hover:opacity-90 transition-opacity">
           Crear mi primer viaje
         </button>
-        <button className="font-body font-medium text-sm border border-[rgba(255,255,255,0.35)] text-white rounded-lg px-6 py-3 hover:bg-white/10 transition-colors">
+        <button onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })} className="font-body font-medium text-sm border border-[rgba(255,255,255,0.35)] text-white rounded-lg px-6 py-3 hover:bg-white/10 transition-colors">
           Ver cómo funciona
         </button>
       </div>
@@ -163,40 +172,39 @@ function HeroSection() {
       </p>
 
       {/* Search form */}
-      <div className="relative w-full max-w-5xl rounded-2xl border border-white/20 bg-white/95 p-2 shadow-2xl backdrop-blur-md">
-        <div className="grid gap-2 sm:grid-cols-[1.35fr_1fr_.85fr_.55fr_auto]">
-        <div className="flex min-w-0 flex-col rounded-xl px-3 py-2 transition-colors hover:bg-[#F7FAFF]">
-          <label className="font-body text-[10px] text-gray-400 uppercase tracking-wider mb-1">Nombre del viaje</label>
+      <div className="relative w-full max-w-4xl rounded-2xl border border-white/20 bg-white/95 p-2 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)] backdrop-blur-md">
+        <div className="grid gap-2 sm:grid-cols-[1.5fr_1.5fr_0.8fr_auto]">
+        <div className="flex min-w-0 flex-col rounded-xl px-4 py-3 transition-all duration-300 hover:bg-[#F0F5FF] focus-within:bg-[#F0F5FF] focus-within:ring-2 focus-within:ring-[#1E6FD9]/20">
+          <label className="flex items-center gap-1.5 font-body text-[10px] font-bold text-[#1E6FD9] uppercase tracking-wider mb-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1v12z" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><line x1="4" y1="22" x2="4" y2="15" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Nombre del viaje
+          </label>
           <input
             type="text"
-            placeholder="Aventura verano 2026"
+            placeholder="Ej: Aventura verano 2026"
             value={tripName}
             onChange={e => setTripName(e.target.value)}
-            className="font-body text-sm text-primary-dark placeholder-gray-300 outline-none"
+            className="font-body text-base text-primary-dark placeholder-gray-400 outline-none bg-transparent font-medium"
           />
         </div>
-        <div className="flex min-w-0 flex-col rounded-xl px-3 py-2 transition-colors hover:bg-[#F7FAFF] sm:border-l sm:border-gray-100">
-          <label className="font-body text-[10px] text-gray-400 uppercase tracking-wider mb-1">Fechas</label>
+        <div className="flex min-w-0 flex-col rounded-xl px-4 py-3 transition-all duration-300 hover:bg-[#F0F5FF] focus-within:bg-[#F0F5FF] focus-within:ring-2 focus-within:ring-[#1E6FD9]/20 sm:border-l sm:border-gray-100 sm:rounded-l-none">
+          <label className="flex items-center gap-1.5 font-body text-[10px] font-bold text-[#1E6FD9] uppercase tracking-wider mb-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Destino
+          </label>
           <input
             type="text"
             placeholder="¿A dónde vamos?"
             value={dates}
             onChange={e => setDates(e.target.value)}
-            className="font-body text-sm text-primary-dark placeholder-gray-300 outline-none"
+            className="font-body text-base text-primary-dark placeholder-gray-400 outline-none bg-transparent font-medium"
           />
         </div>
-        <div className="flex min-w-0 flex-col rounded-xl px-3 py-2 transition-colors hover:bg-[#F7FAFF] sm:border-l sm:border-gray-100">
-          <label className="font-body text-[10px] text-gray-400 uppercase tracking-wider mb-1">Desde</label>
-          <input
-            type="text"
-            placeholder="Ciudad origen"
-            value={origin}
-            onChange={e => setOrigin(e.target.value)}
-            className="font-body text-sm text-primary-dark placeholder-gray-300 outline-none"
-          />
-        </div>
-        <div className="flex min-w-0 flex-col rounded-xl px-3 py-2 transition-colors hover:bg-[#F7FAFF] sm:border-l sm:border-gray-100">
-          <label className="font-body text-[10px] text-gray-400 uppercase tracking-wider mb-1">Personas</label>
+        <div className="flex min-w-0 flex-col rounded-xl px-4 py-3 transition-all duration-300 hover:bg-[#F0F5FF] focus-within:bg-[#F0F5FF] focus-within:ring-2 focus-within:ring-[#1E6FD9]/20 sm:border-l sm:border-gray-100 sm:rounded-l-none">
+          <label className="flex items-center gap-1.5 font-body text-[10px] font-bold text-[#1E6FD9] uppercase tracking-wider mb-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/><path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
+            Personas
+          </label>
           <input
             type="number"
             min={1}
@@ -209,11 +217,12 @@ function HeroSection() {
             onBlur={() => {
               if (!people) setPeople('2')
             }}
-            className="font-body text-sm text-primary-dark placeholder-gray-300 outline-none w-full"
+            className="font-body text-base text-primary-dark placeholder-gray-400 outline-none w-full bg-transparent font-medium"
           />
         </div>
-        <button className="font-body font-semibold text-sm bg-blue text-white rounded-xl px-6 py-3 hover:bg-blue/90 hover:shadow-lg transition-all whitespace-nowrap">
+        <button onClick={handleCreateItinerary} className="font-body font-bold text-base bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] text-white rounded-xl px-8 py-3 hover:opacity-90 hover:shadow-[0_8px_20px_-6px_rgba(30,111,217,0.5)] transition-all duration-300 whitespace-nowrap flex items-center justify-center gap-2">
           Crear Itinerario
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 5l7 7-7 7" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
       </div>
       </div>
@@ -339,9 +348,9 @@ function DemoSection() {
   const ref = useFadeIn()
   return (
     <section ref={ref} className="bg-primary-dark py-24 px-4">
-      <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-12">
+      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row items-center gap-12">
         {/* Left */}
-        <div className="flex-1">
+        <div className="flex-1 lg:max-w-md w-full">
           <h2 className="font-heading font-bold text-white text-3xl md:text-4xl mb-8">
             Así se ve Ithera en acción
           </h2>
@@ -355,15 +364,115 @@ function DemoSection() {
           </ul>
         </div>
 
-        {/* Right — app mockup placeholder */}
-        <div className="flex-1 w-full max-w-sm">
-          <div className="bg-primary/40 rounded-2xl border border-white/10 aspect-[4/3] flex items-center justify-center">
-            <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-white/50">
-                <rect x="3" y="3" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
-                <line x1="9" y1="9" x2="15" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                <line x1="9" y1="13" x2="13" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
+        {/* Right — App Mockup */}
+        <div className="flex-[1.5] w-full flex justify-center">
+          <div className="relative w-full max-w-2xl bg-[#F4F6F8] rounded-2xl border border-white/20 shadow-2xl overflow-hidden flex h-[420px] font-body text-left transform md:-rotate-2 transition-transform duration-500 hover:rotate-0 hover:scale-105">
+            
+            {/* Mock Sidebar */}
+            <div className="w-16 sm:w-56 bg-white border-r border-[#E2E8F0] flex flex-col shrink-0">
+              <div className="h-16 flex items-center px-4 border-b border-[#E2E8F0] gap-3">
+                <div className="w-8 h-8 bg-blue rounded-xl flex items-center justify-center text-white font-heading font-bold text-sm shrink-0">A</div>
+                <div className="hidden sm:block min-w-0">
+                  <p className="text-sm font-bold text-[#1E0A4E] truncate">Aventura Verano</p>
+                  <p className="text-[10px] text-gray-500 truncate">12 Ago - 18 Ago</p>
+                </div>
+              </div>
+              <div className="flex-1 py-4 space-y-1.5 px-3">
+                <div className="px-3 py-2.5 bg-[#1E6FD9]/10 rounded-xl flex items-center gap-3 text-[#1E6FD9] cursor-pointer">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/><path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" strokeWidth="2"/></svg>
+                  <span className="hidden sm:block text-xs font-bold">Itinerario</span>
+                </div>
+                <div className="px-3 py-2.5 text-gray-500 flex items-center gap-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                  <span className="hidden sm:block text-xs font-semibold">Presupuesto</span>
+                </div>
+                <div className="px-3 py-2.5 text-gray-500 flex items-center gap-3 hover:bg-gray-50 rounded-xl cursor-pointer transition-colors">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <span className="hidden sm:block text-xs font-semibold">Documentos</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Mock Main Content */}
+            <div className="flex-1 flex flex-col min-w-0 bg-[#F4F6F8]">
+              {/* Top bar */}
+              <div className="h-16 bg-white border-b border-[#E2E8F0] flex items-center justify-between px-6 shrink-0">
+                <div className="text-base font-bold text-[#1E0A4E]">Día 1 <span className="text-gray-400 font-medium text-xs ml-2">Jueves, 12 Ago</span></div>
+                <div className="flex -space-x-2">
+                  <div className="w-7 h-7 rounded-full bg-[#1E6FD9] text-white flex items-center justify-center text-[10px] font-bold border-2 border-white z-20">S</div>
+                  <div className="w-7 h-7 rounded-full bg-[#35C56A] text-white flex items-center justify-center text-[10px] font-bold border-2 border-white z-10">M</div>
+                  <div className="w-7 h-7 rounded-full bg-[#7A4FD6] text-white flex items-center justify-center text-[10px] font-bold border-2 border-white z-0">+4</div>
+                </div>
+              </div>
+
+              {/* Itinerary Area */}
+              <div className="flex-1 p-6 overflow-hidden relative">
+                {/* Timeline line */}
+                <div className="absolute left-11 top-0 bottom-0 w-0.5 bg-[#E2E8F0]" />
+
+                <div className="space-y-6 relative">
+                  {/* Activity 1 */}
+                  <div className="relative pl-12">
+                    <div className="absolute left-0 w-8 text-right text-[11px] font-bold text-gray-500 mt-1">10:00</div>
+                    <div className="absolute left-[38px] top-1.5 w-3 h-3 rounded-full bg-green border-2 border-white ring-2 ring-green/20" />
+                    <div className="bg-white border border-[#E2E8F0] rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                      <div className="flex justify-between items-start mb-2.5">
+                        <span className="text-[10px] font-bold text-green uppercase tracking-wider bg-green/10 px-2 py-1 rounded-md">Confirmado</span>
+                        <span className="text-xs font-bold text-[#1E0A4E] bg-gray-100 px-2 py-1 rounded-md">$4,500 MXN</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-[#1E0A4E]">Vuelo a Cancún</h4>
+                      <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        Aeroméxico - AM 500
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Activity 2 */}
+                  <div className="relative pl-12 opacity-90 hover:opacity-100 transition-opacity">
+                    <div className="absolute left-0 w-8 text-right text-[11px] font-bold text-gray-500 mt-1">14:30</div>
+                    <div className="absolute left-[38px] top-1.5 w-3 h-3 rounded-full bg-[#F59E0B] border-2 border-white ring-2 ring-[#F59E0B]/20" />
+                    <div className="bg-white border border-[#F59E0B]/30 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-12 h-12 bg-gradient-to-bl from-[#F59E0B]/10 to-transparent rounded-bl-full" />
+                      <div className="flex justify-between items-start mb-2.5">
+                        <span className="text-[10px] font-bold text-[#F59E0B] uppercase tracking-wider bg-[#F59E0B]/10 px-2 py-1 rounded-md flex items-center gap-1">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          En votación
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-bold text-[#1E0A4E]">Cena en Rosa Negra</h4>
+                      <div className="flex items-center justify-between mt-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-5 h-5 bg-[#1E6FD9] rounded-full text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-white">✓</span>
+                          <span className="w-5 h-5 bg-[#35C56A] rounded-full text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-white">✓</span>
+                          <span className="w-5 h-5 bg-gray-200 rounded-full text-gray-500 text-[9px] font-bold flex items-center justify-center ring-2 ring-white">?</span>
+                        </div>
+                        <button className="text-[10px] font-bold text-white bg-[#1E6FD9] px-3 py-1.5 rounded-lg">Votar</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Floating chat mock */}
+                <div className="absolute bottom-6 right-6 bg-white border border-[#E2E8F0] shadow-[0_15px_30px_-5px_rgba(0,0,0,0.15)] rounded-2xl w-56 overflow-hidden hidden sm:flex flex-col animate-[bounce_3s_ease-in-out_infinite] z-30">
+                  <div className="bg-[#1E0A4E] px-3 py-2.5 text-white text-[11px] font-bold flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="2"/></svg>
+                      Chat de grupo
+                    </div>
+                    <span className="w-2 h-2 bg-green rounded-full shadow-[0_0_8px_rgba(53,197,106,0.8)]" />
+                  </div>
+                  <div className="p-3 bg-[#F8FAFC] text-[11px] space-y-3">
+                    <div className="flex gap-2 items-end">
+                      <div className="w-5 h-5 rounded-full bg-[#35C56A] shrink-0 flex items-center justify-center text-white text-[9px] font-bold mb-0.5">M</div>
+                      <div className="bg-white border border-[#E2E8F0] px-2.5 py-1.5 rounded-xl rounded-bl-sm shadow-sm text-gray-600">
+                        ¿Alguien más falta de votar el tour de snorkel? 🐠
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
             </div>
           </div>
         </div>
@@ -603,6 +712,7 @@ function HowItWorksSection() {
 
 function CTASection() {
   const ref = useFadeIn()
+  const navigate = useNavigate()
   return (
     <section ref={ref} className="bg-primary-dark py-24 px-4 text-center">
       <div className="max-w-2xl mx-auto">
@@ -612,7 +722,7 @@ function CTASection() {
         <p className="font-body text-white/60 text-sm mb-10">
           Crea tu grupo gratis en menos de 2 minutos.
         </p>
-        <button className="font-body font-medium text-sm border border-white/40 text-white rounded-full px-8 py-3 hover:bg-white/10 transition-colors inline-flex items-center gap-2">
+        <button onClick={() => navigate('/create-group')} className="font-body font-medium text-sm border border-white/40 text-white rounded-full px-8 py-3 hover:bg-white/10 transition-colors inline-flex items-center gap-2">
           Empezar ahora — es gratis
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="9 18 15 12 9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         </button>
@@ -676,7 +786,7 @@ function Footer() {
 
         <div className="border-t border-white/10 pt-6">
           <p className="font-body text-white/25 text-xs text-center">
-            © 2025 Ithera. Todos los derechos reservados.
+            © 2026 Ithera. Todos los derechos reservados.
           </p>
         </div>
       </div>

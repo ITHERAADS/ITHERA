@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { groupsService, saveCurrentGroup } from '../../services/groups'
@@ -195,12 +195,13 @@ export function CreateGroupPage() {
   const [createdGroupId, setCreatedGroupId] = useState('')
   const [destinationData, setDestinationData] = useState<GeocodingResult | null>(null)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [form, setForm] = useState<FormData>({
-    name: '',
-    destination: '',
+    name: searchParams.get('name') || '',
+    destination: searchParams.get('destination') || '',
     startDate: '',
     endDate: '',
-    maxMembers: '10',
+    maxMembers: searchParams.get('members') || '10',
     totalBudget: '',
     description: '',
     isPublic: false,

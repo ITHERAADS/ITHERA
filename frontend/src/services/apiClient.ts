@@ -8,6 +8,28 @@ type ParsedBody = {
   raw: string
 }
 
+export type ApiErrorPayload = {
+  ok?: false
+  error?: string
+  details?: string
+  code?: string
+  retryAfterSeconds?: number
+  lockedUntil?: string
+  remainingAttempts?: number
+}
+
+export class ApiError extends Error {
+  status: number
+  payload: ApiErrorPayload | null
+
+  constructor(message: string, status: number, payload: ApiErrorPayload | null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.payload = payload
+  }
+}
+
 async function parseResponseBody(response: Response): Promise<ParsedBody> {
   const contentType = response.headers.get('content-type') ?? ''
   const isJson = contentType.toLowerCase().includes('application/json')
@@ -24,15 +46,15 @@ async function parseResponseBody(response: Response): Promise<ParsedBody> {
   }
 }
 
-function buildHttpError(response: Response, parsed: ParsedBody, fallback: string): Error {
-  const payload = (parsed.data ?? null) as { error?: string; details?: string } | null
+function buildHttpError(response: Response, parsed: ParsedBody, fallback: string): ApiError {
+  const payload = (parsed.data ?? null) as ApiErrorPayload | null
   const message =
     payload?.error ||
     payload?.details ||
     (parsed.raw && !parsed.isJson ? parsed.raw : null) ||
     `${fallback} (HTTP ${response.status})`
 
-  return new Error(message)
+  return new ApiError(message, response.status, payload)
 }
 
 async function request<T>(

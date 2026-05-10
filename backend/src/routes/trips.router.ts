@@ -37,8 +37,18 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       presupuesto_total?: number;
     };
 
-    if (!nombre) {
-      res.status(400).json({ ok: false, error: 'El nombre del grupo es requerido' });
+    if (!nombre || !nombre.trim()) {
+      res.status(400).json({ ok: false, error: 'ERR-23-001: El nombre del grupo es requerido' });
+      return;
+    }
+
+    if (nombre.trim().length > 60) {
+      res.status(400).json({ ok: false, error: 'ERR-23-001: El nombre del grupo permite máximo 60 caracteres' });
+      return;
+    }
+
+    if (descripcion && descripcion.trim().length > 300) {
+      res.status(400).json({ ok: false, error: 'ERR-23-001: La descripción permite máximo 300 caracteres' });
       return;
     }
 

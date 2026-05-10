@@ -34,6 +34,8 @@ function InputField({
   onChange,
   error,
   hint,
+  maxLength,
+  multiline = false,
 }: {
   label: string
   type?: string
@@ -42,23 +44,49 @@ function InputField({
   onChange: (v: string) => void
   error?: string
   hint?: string
+  maxLength?: number
+  multiline?: boolean
 }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="font-body text-xs font-semibold text-[#1E0A4E]/60 uppercase tracking-wide">{label}</label>
-      <input
-        type={type}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-full font-body text-sm text-[#1E0A4E] placeholder-gray-400 border rounded-xl px-4 py-3 outline-none transition-all duration-200 bg-white
-          ${error
-            ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-            : 'border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10'
-          }
-        `}
-      />
-      {hint && !error && <p className="font-body text-[11px] text-[#1E0A4E]/40">{hint}</p>}
+      {multiline ? (
+        <textarea
+          placeholder={placeholder}
+          value={value}
+          maxLength={maxLength}
+          onChange={(e) => onChange(e.target.value)}
+          rows={4}
+          className={`w-full resize-none font-body text-sm text-[#1E0A4E] placeholder-gray-400 border rounded-xl px-4 py-3 outline-none transition-all duration-200 bg-white
+            ${error
+              ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+              : 'border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10'
+            }
+          `}
+        />
+      ) : (
+        <input
+          type={type}
+          placeholder={placeholder}
+          value={value}
+          maxLength={maxLength}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full font-body text-sm text-[#1E0A4E] placeholder-gray-400 border rounded-xl px-4 py-3 outline-none transition-all duration-200 bg-white
+            ${error
+              ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+              : 'border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10'
+            }
+          `}
+        />
+      )}
+      <div className="flex items-center justify-between gap-2">
+        {hint && !error && <p className="font-body text-[11px] text-[#1E0A4E]/40">{hint}</p>}
+        {maxLength !== undefined && (
+          <p className={`font-body text-[11px] ${value.length >= maxLength ? 'text-red-500' : 'text-[#1E0A4E]/40'}`}>
+            {value.length}/{maxLength}
+          </p>
+        )}
+      </div>
       {error && <p className="font-body text-xs text-red-500">{error}</p>}
     </div>
   )
@@ -190,7 +218,9 @@ export function CreateGroupPage() {
   const validate = () => {
     const e: Partial<FormData> = {}
     if (!form.name.trim()) e.name = 'El nombre del grupo es requerido.'
+    else if (form.name.trim().length > 60) e.name = 'Máximo 60 caracteres permitidos.'
     if (!form.destination) e.destination = 'Selecciona un destino.'
+    if (form.description.trim().length > 300) e.description = 'Máximo 300 caracteres permitidos.'
     if (!form.startDate) e.startDate = 'Fecha de inicio requerida.'
     if (!form.endDate) e.endDate = 'Fecha de regreso requerida.'
     if (!form.totalBudget || Number(form.totalBudget) <= 0) e.totalBudget = 'Define un presupuesto mayor a cero.'
@@ -383,6 +413,7 @@ export function CreateGroupPage() {
                 onChange={set('name') as (v: string) => void}
                 error={errors.name}
                 hint="Elige un nombre que identifique a tu grupo"
+                maxLength={60}
               />
               <DestinationSearch
                 value={form.destination}
@@ -398,6 +429,10 @@ export function CreateGroupPage() {
                 placeholder="¿De qué trata este viaje?"
                 value={form.description}
                 onChange={set('description') as (v: string) => void}
+                error={errors.description}
+                multiline
+                maxLength={300}
+                hint="Describe brevemente el propósito del viaje"
               />
             </div>
           </div>

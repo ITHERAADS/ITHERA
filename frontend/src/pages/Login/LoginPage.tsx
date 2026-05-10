@@ -8,6 +8,7 @@ import { ApiError } from "../../services/apiClient";
 
 const REDIRECT_STORAGE_KEY = "ithera_post_login_redirect";
 const LOGIN_LOCK_STORAGE_KEY = "ithera_login_lockout";
+const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)*\.[A-Za-z]{2,24}$/;
 
 type StoredLoginLock = {
   email: string;
@@ -68,6 +69,7 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -86,6 +88,9 @@ export function LoginPage() {
   const isLoginLocked = lockRemainingSeconds > 0;
   const lockMinutes = Math.floor(lockRemainingSeconds / 60);
   const lockSeconds = String(lockRemainingSeconds % 60).padStart(2, "0");
+  const normalizedEmail = normalizeLoginEmail(email);
+  const isEmailFormatValid = EMAIL_REGEX.test(normalizedEmail);
+  const isLoginFormReady = isEmailFormatValid && password.trim().length > 0;
 
   useEffect(() => {
     const storedLock = readStoredLoginLock();
@@ -99,7 +104,7 @@ export function LoginPage() {
   }, []);
 
   useEffect(() => {
-    const normalizedEmail = normalizeLoginEmail(email);
+    const currentEmail = normalizeLoginEmail(email);
     const storedLock = readStoredLoginLock();
 
     if (!storedLock) {
@@ -107,7 +112,7 @@ export function LoginPage() {
       return;
     }
 
-    if (!normalizedEmail || normalizedEmail === storedLock.email) {
+    if (!currentEmail || currentEmail === storedLock.email) {
       setLockRemainingSeconds(
         Math.max(Math.ceil((storedLock.lockedUntil - Date.now()) / 1000), 0),
       );
@@ -154,15 +159,14 @@ export function LoginPage() {
     setError("");
     setErrorCode(null);
 
-    if (!email || !password) {
-      setError("Todos los campos son obligatorios");
-      setErrorCode(null);
+    if (!validateEmail(email)) {
+      setErrorCode("ERR-14-004");
       return;
     }
 
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      setError("Ingresa un correo electrónico válido (ej. usuario@dominio.com).");
-      setErrorCode("ERR-14-004");
+    if (!password) {
+      setError("Ingresa tu contraseña.");
+      setErrorCode(null);
       return;
     }
 
@@ -214,6 +218,23 @@ export function LoginPage() {
 
   const clearCapsLockState = () => {
     setIsCapsLockOn(false);
+  };
+
+  const validateEmail = (value: string) => {
+    const normalizedEmail = normalizeLoginEmail(value);
+
+    if (!normalizedEmail) {
+      setEmailError("Ingresa tu correo electrónico.");
+      return false;
+    }
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setEmailError("Ingresa un correo electrónico válido (ej. usuario@dominio.com).");
+      return false;
+    }
+
+    setEmailError("");
+    return true;
   };
 
   const clearLoginError = () => {
@@ -385,15 +406,25 @@ export function LoginPage() {
                   Correo electrónico
                 </label>
                 <input
-                  type="email"
+                  type="text"
+                  inputMode="email"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
+                    setEmailError("");
                     clearLoginError();
                   }}
+                  onBlur={(e) => validateEmail(e.target.value)}
                   placeholder="correo@ejemplo.com"
-                  className={`${inputBase} ${error ? "border-[#EF4444]" : ""}`}
+                  aria-invalid={Boolean(emailError)}
+                  className={`${inputBase} ${emailError || error ? "border-[#EF4444]" : ""}`}
                 />
+                {emailError && (
+                  <p className="mt-1 text-[12px] font-medium text-[#EF4444]">
+                    {emailError}
+                  </p>
+                )}
               </div>
 
               {/* Password */}
@@ -566,7 +597,7 @@ export function LoginPage() {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={loading || isLoginLocked}
+                disabled={loading || isLoginLocked || !isLoginFormReady}
                 className="mt-2 h-[54px] w-full rounded-full bg-[linear-gradient(90deg,#7A4FD6_0%,#6D46D4_35%,#6E45E6_65%,#5B35D5_100%)] text-[18px] font-bold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {loading ? "Iniciando sesión..." : isLoginLocked ? `Bloqueado ${lockMinutes}:${lockSeconds}` : "Iniciar sesión"}

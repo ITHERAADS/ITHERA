@@ -2,48 +2,41 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
 import * as AuthService from '../domain/auth/auth.service';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const STRICT_EMAIL_REGEX = /^(?!.*\.\.)(?!\.)[A-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@(?!-)(?=.{1,253}$)(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,24}$/i;
-const COMMON_EMAIL_DOMAINS = [
-  'gmail.com',
-  'hotmail.com',
-  'outlook.com',
-  'yahoo.com',
-  'icloud.com',
-  'live.com',
-];
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCK_MS = 5 * 60 * 1000;
 
-function getForgotPasswordEmailError(email?: string): string | null {
-  const normalizedEmail = email?.trim().toLowerCase() ?? '';
+type LoginAttemptState = {
+  failedAttempts: number;
+  lockedUntil: number | null;
+};
 
-  if (!normalizedEmail) {
-    return 'El correo es obligatorio';
-  }
+const loginAttempts = new Map<string, LoginAttemptState>();
 
-  if (!STRICT_EMAIL_REGEX.test(normalizedEmail)) {
-    return 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).';
-  }
-
-  const domain = normalizedEmail.split('@')[1] ?? '';
-  const labels = domain.split('.');
-  const rootDomain = labels.slice(-2).join('.');
-
-  const possibleCommonDomainTypo = COMMON_EMAIL_DOMAINS.find((validDomain) => {
-    const validLabel = validDomain.split('.')[0];
-    const currentLabel = rootDomain.split('.')[0];
-
-    return (
-      rootDomain !== validDomain &&
-      rootDomain.endsWith(`.${validDomain.split('.')[validDomain.split('.').length - 1]}`) &&
-      currentLabel.includes(validLabel)
-    );
-  });
-
-  if (possibleCommonDomainTypo) {
-    return `Revisa el dominio del correo. ¿Quisiste escribir ${possibleCommonDomainTypo}?`;
-  }
-
-  return null;
+function getLoginAttemptKey(email: string, req: Request): string {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown-ip';
+  return `${email.trim().toLowerCase()}::${ip}`;
 }
+
+function getRemainingLockSeconds(state?: LoginAttemptState): number {
+  if (!state?.lockedUntil) return 0;
+
+  const remainingMs = state.lockedUntil - Date.now();
+
+  if (remainingMs <= 0) {
+    return 0;
+  }
+
+  return Math.ceil(remainingMs / 1000);
+}
+
+function clearExpiredLoginLock(key: string, state?: LoginAttemptState): void {
+  if (!state?.lockedUntil) return;
+
+  if (state.lockedUntil <= Date.now()) {
+    loginAttempts.delete(key);
+  }
+}
+
 const multer = require('multer');
 
 type MulterFile = AuthService.UploadedAvatarFile;
@@ -147,21 +140,43 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     if (!email || !password) {
       res.status(400).json({
         ok: false,
-        error: 'Email y password son requeridos',
+        code: 'ERR-23-001',
+        error: 'Todos los campos son obligatorios',
       });
       return;
     }
 
-    if (!EMAIL_REGEX.test(email.trim())) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
       res.status(400).json({
         ok: false,
-        error: 'El correo no tiene un formato válido',
+        code: 'ERR-14-004',
+        error: 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).',
+      });
+      return;
+    }
+
+    const attemptKey = getLoginAttemptKey(normalizedEmail, req);
+    const currentAttemptState = loginAttempts.get(attemptKey);
+    clearExpiredLoginLock(attemptKey, currentAttemptState);
+
+    const activeAttemptState = loginAttempts.get(attemptKey);
+    const remainingLockSeconds = getRemainingLockSeconds(activeAttemptState);
+
+    if (remainingLockSeconds > 0) {
+      res.status(429).json({
+        ok: false,
+        code: 'ERR-11-003',
+        error: 'Por seguridad, tu acceso ha sido pausado por 5 minutos. Inténtalo de nuevo más tarde.',
+        retryAfterSeconds: remainingLockSeconds,
+        lockedUntil: new Date(activeAttemptState?.lockedUntil ?? Date.now()).toISOString(),
       });
       return;
     }
 
     const { data, error } = await AuthService.signInUser({
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       password,
     });
 
@@ -172,18 +187,52 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
       if (rawCode === 'email_not_confirmed' || rawMessage.includes('email not confirmed')) {
         res.status(401).json({
           ok: false,
-          error: 'Debes confirmar tu correo antes de iniciar sesión',
+          code: 'ERR-11-002',
+          error: 'No encontramos una cuenta activa con ese correo. ¿Deseas registrarte?',
         });
         return;
       }
 
+      const previousState = loginAttempts.get(attemptKey) ?? {
+        failedAttempts: 0,
+        lockedUntil: null,
+      };
+
+      const failedAttempts = previousState.failedAttempts + 1;
+
+      if (failedAttempts >= MAX_LOGIN_ATTEMPTS) {
+        const lockedUntil = Date.now() + LOGIN_LOCK_MS;
+
+        loginAttempts.set(attemptKey, {
+          failedAttempts,
+          lockedUntil,
+        });
+
+        res.status(429).json({
+          ok: false,
+          code: 'ERR-11-003',
+          error: 'Por seguridad, tu acceso ha sido pausado por 5 minutos. Inténtalo de nuevo más tarde.',
+          retryAfterSeconds: Math.ceil(LOGIN_LOCK_MS / 1000),
+          lockedUntil: new Date(lockedUntil).toISOString(),
+        });
+        return;
+      }
+
+      loginAttempts.set(attemptKey, {
+        failedAttempts,
+        lockedUntil: null,
+      });
+
       res.status(401).json({
         ok: false,
-        error: 'Correo o contraseña incorrectos',
-        details: error.message,
+        code: 'ERR-11-001',
+        error: 'Las credenciales son incorrectas. Verifica tu correo y contraseña.',
+        remainingAttempts: MAX_LOGIN_ATTEMPTS - failedAttempts,
       });
       return;
     }
+
+    loginAttempts.delete(attemptKey);
 
     res.status(200).json({
       ok: true,
@@ -204,19 +253,16 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 router.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
   try {
     const { email } = req.body as { email?: string };
-    const normalizedEmail = email?.trim().toLowerCase() ?? '';
-    const emailValidationError = getForgotPasswordEmailError(email);
 
-    if (emailValidationError) {
+    if (!email) {
       res.status(400).json({
         ok: false,
-        code: 'ERR-14-004',
-        error: emailValidationError,
+        error: 'El correo es obligatorio',
       });
       return;
     }
 
-    const { error } = await AuthService.forgotPassword({ email: normalizedEmail });
+    const { error } = await AuthService.forgotPassword({ email });
 
     if (error) {
       res.status(400).json({
@@ -228,9 +274,8 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
 
     res.status(200).json({
       ok: true,
-      code: 'ERR-14-001',
       message:
-        'Si existe una cuenta con ese correo, recibirás un enlace en breve. Revisa tu bandeja de entrada y carpeta de spam.',
+        'Si el correo existe, se enviará un enlace para restablecer la contraseña.',
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';

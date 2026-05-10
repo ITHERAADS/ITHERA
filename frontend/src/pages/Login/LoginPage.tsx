@@ -1,9 +1,68 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import logoWhite from "../../assets/logo-white.png";
 import googleIcon from "../../assets/google.png";
 import facebookIcon from "../../assets/facebook.png";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
+import { ApiError } from "../../services/apiClient";
+
+const REDIRECT_STORAGE_KEY = "ithera_post_login_redirect";
+const LOGIN_LOCK_STORAGE_KEY = "ithera_login_lockout";
+
+type StoredLoginLock = {
+  email: string;
+  lockedUntil: number;
+};
+
+function normalizeLoginEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function readStoredLoginLock(): StoredLoginLock | null {
+  try {
+    const raw = localStorage.getItem(LOGIN_LOCK_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<StoredLoginLock>;
+    if (typeof parsed.email !== "string" || typeof parsed.lockedUntil !== "number") {
+      localStorage.removeItem(LOGIN_LOCK_STORAGE_KEY);
+      return null;
+    }
+
+    if (parsed.lockedUntil <= Date.now()) {
+      localStorage.removeItem(LOGIN_LOCK_STORAGE_KEY);
+      return null;
+    }
+
+    return {
+      email: parsed.email,
+      lockedUntil: parsed.lockedUntil,
+    };
+  } catch {
+    localStorage.removeItem(LOGIN_LOCK_STORAGE_KEY);
+    return null;
+  }
+}
+
+function persistLoginLock(emailValue: string, lockedUntil: number): void {
+  localStorage.setItem(
+    LOGIN_LOCK_STORAGE_KEY,
+    JSON.stringify({
+      email: normalizeLoginEmail(emailValue),
+      lockedUntil,
+    }),
+  );
+}
+
+function clearStoredLoginLock(): void {
+  localStorage.removeItem(LOGIN_LOCK_STORAGE_KEY);
+}
+
+function getSafeRedirect(value: string | null): string {
+  if (!value) return "/my-trips";
+  if (!value.startsWith("/") || value.startsWith("//")) return "/my-trips";
+  return value;
+}
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
@@ -13,25 +72,84 @@ export function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
+  const [lockRemainingSeconds, setLockRemainingSeconds] = useState(0);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const REDIRECT_STORAGE_KEY = "ithera_post_login_redirect";
-
   const { login, loginWithGoogle, loginWithFacebook } = useAuth();
-
-  function getSafeRedirect(value: string | null): string {
-    if (!value) return "/my-trips";
-    if (!value.startsWith("/") || value.startsWith("//")) return "/my-trips";
-    return value;
-  }
 
   const redirect = getSafeRedirect(
     searchParams.get("redirect") ||
       sessionStorage.getItem(REDIRECT_STORAGE_KEY),
   );
 
+  const isLoginLocked = lockRemainingSeconds > 0;
+  const lockMinutes = Math.floor(lockRemainingSeconds / 60);
+  const lockSeconds = String(lockRemainingSeconds % 60).padStart(2, "0");
+
+  useEffect(() => {
+    const storedLock = readStoredLoginLock();
+    if (!storedLock) return;
+
+    setEmail((currentEmail) => currentEmail || storedLock.email);
+    setLockRemainingSeconds(
+      Math.max(Math.ceil((storedLock.lockedUntil - Date.now()) / 1000), 0),
+    );
+    setError("Por seguridad, tu acceso ha sido pausado por 5 minutos. Inténtalo de nuevo más tarde.");
+  }, []);
+
+  useEffect(() => {
+    const normalizedEmail = normalizeLoginEmail(email);
+    const storedLock = readStoredLoginLock();
+
+    if (!storedLock) {
+      setLockRemainingSeconds((current) => (current > 0 ? 0 : current));
+      return;
+    }
+
+    if (!normalizedEmail || normalizedEmail === storedLock.email) {
+      setLockRemainingSeconds(
+        Math.max(Math.ceil((storedLock.lockedUntil - Date.now()) / 1000), 0),
+      );
+      return;
+    }
+
+    setLockRemainingSeconds((current) => {
+      if (current > 0) {
+        setError("");
+        return 0;
+      }
+      return current;
+    });
+  }, [email]);
+
+  useEffect(() => {
+    if (lockRemainingSeconds <= 0) {
+      const storedLock = readStoredLoginLock();
+      if (!storedLock) clearStoredLoginLock();
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setLockRemainingSeconds((current) => {
+        const next = Math.max(current - 1, 0);
+        if (next === 0) clearStoredLoginLock();
+        return next;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [lockRemainingSeconds]);
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (isLoginLocked) {
+      setError(
+        `Por seguridad, tu acceso ha sido pausado por 5 minutos. Inténtalo de nuevo en ${lockMinutes}:${lockSeconds}.`,
+      );
+      return;
+    }
+
     setError("");
 
     if (!email || !password) {
@@ -40,16 +158,39 @@ export function LoginPage() {
     }
 
     if (!/\S+@\S+\.\S+/.test(email)) {
-      setError("Correo inválido");
+      setError("Ingresa un correo electrónico válido (ej. usuario@dominio.com).");
       return;
     }
 
     try {
       setLoading(true);
       await login(email, password);
+      clearStoredLoginLock();
       sessionStorage.removeItem(REDIRECT_STORAGE_KEY);
       navigate(redirect, { replace: true });
     } catch (err) {
+      if (err instanceof ApiError) {
+        const retryAfterSeconds =
+          typeof err.payload?.retryAfterSeconds === "number"
+            ? err.payload.retryAfterSeconds
+            : 0;
+
+        if (err.payload?.code === "ERR-11-003" && retryAfterSeconds > 0) {
+          const lockedUntil = err.payload.lockedUntil
+            ? Date.parse(err.payload.lockedUntil)
+            : Date.now() + retryAfterSeconds * 1000;
+
+          if (!Number.isNaN(lockedUntil)) {
+            persistLoginLock(email, lockedUntil);
+          }
+
+          setLockRemainingSeconds(retryAfterSeconds);
+        }
+
+        setError(err.message);
+        return;
+      }
+
       const message =
         err instanceof Error ? err.message : "No se pudo iniciar sesión";
       setError(message);
@@ -234,7 +375,7 @@ export function LoginPage() {
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
-                    setError("");
+                    if (!isLoginLocked) setError("");
                   }}
                   placeholder="correo@ejemplo.com"
                   className={`${inputBase} ${error ? "border-[#EF4444]" : ""}`}
@@ -252,7 +393,7 @@ export function LoginPage() {
                     value={password}
                     onChange={(e) => {
                       setPassword(e.target.value);
-                      setError("");
+                      if (!isLoginLocked) setError("");
                     }}
                     onKeyDown={updateCapsLockState}
                     onKeyUp={updateCapsLockState}
@@ -360,7 +501,24 @@ export function LoginPage() {
               </div>
 
               {/* Error */}
-              {error && <p className="text-[12px] text-[#EF4444]">{error}</p>}
+              {error && (
+                <div
+                  role="alert"
+                  className={`rounded-[12px] border px-3 py-2 text-[12px] font-semibold ${
+                    isLoginLocked
+                      ? "border-[#F59E0B]/30 bg-[#FFFBEB] text-[#92400E]"
+                      : "border-[#EF4444]/30 bg-[#FEF2F2] text-[#EF4444]"
+                  }`}
+                >
+                  <p>{error}</p>
+                  {isLoginLocked && (
+                    <p className="mt-1 font-medium">
+                      Tiempo restante: {lockMinutes}:{lockSeconds}. El botón se
+                      habilitará automáticamente.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Remember me + Forgot password */}
               <div className="flex items-center justify-between pt-1">
@@ -385,10 +543,10 @@ export function LoginPage() {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || isLoginLocked}
                 className="mt-2 h-[54px] w-full rounded-full bg-[linear-gradient(90deg,#7A4FD6_0%,#6D46D4_35%,#6E45E6_65%,#5B35D5_100%)] text-[18px] font-bold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {loading ? "Iniciando sesión..." : "Iniciar sesión"}
+                {loading ? "Iniciando sesión..." : isLoginLocked ? `Bloqueado ${lockMinutes}:${lockSeconds}` : "Iniciar sesión"}
               </button>
 
               {/* Sign-up link */}

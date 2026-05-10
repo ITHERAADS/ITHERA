@@ -3,30 +3,37 @@ import { Link } from "react-router-dom";
 import logoWhite from "../../assets/logo-white.png";
 import { useAuth } from '../../context/useAuth';
 
+const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)*\.[A-Za-z]{2,24}$/;
+
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
 export function ForgotPasswordPage() {
   const { forgotPassword } = useAuth();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const normalizedEmail = normalizeEmail(email);
+  const isEmailValid = EMAIL_REGEX.test(normalizedEmail);
+  const canSubmit = isEmailValid && !loading;
 
   const handleSubmit = async () => {
     setError("");
     setMessage("");
 
-    if (!email.trim()) {
+    if (!normalizedEmail) {
       setError("Ingresa tu correo electrónico.");
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
       setError("Ingresa un correo electrónico válido (ej. usuario@dominio.com).");
       return;
     }
 
     try {
       setLoading(true);
-      await forgotPassword(email);
+      await forgotPassword(normalizedEmail);
       setMessage(
         "Si el correo existe, te enviaremos un enlace para restablecer tu contraseña."
       );
@@ -158,13 +165,24 @@ export function ForgotPasswordPage() {
                     type="email"
                     value={email}
                     onChange={(e) => {
-                      setEmail(e.target.value);
-                      setError("");
+                      const value = e.target.value;
+                      setEmail(value);
                       setMessage("");
+
+                      if (error && EMAIL_REGEX.test(normalizeEmail(value))) {
+                        setError("");
+                      }
                     }}
                     onBlur={(e) => {
-                      const value = e.target.value.trim();
-                      if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+                      const value = normalizeEmail(e.target.value);
+                      setEmail(value);
+
+                      if (!value) {
+                        setError("Ingresa tu correo electrónico.");
+                        return;
+                      }
+
+                      if (!EMAIL_REGEX.test(value)) {
                         setError("Ingresa un correo electrónico válido (ej. usuario@dominio.com).");
                       }
                     }}
@@ -188,8 +206,8 @@ export function ForgotPasswordPage() {
                 <button
                   type="button"
                   onClick={handleSubmit}
-                  disabled={loading}
-                  className="w-full rounded-[16px] bg-[#1E6FD9] py-3.5 text-[15px] font-semibold text-white transition hover:bg-[#175FC0] disabled:cursor-not-allowed disabled:opacity-70"
+                  disabled={!canSubmit}
+                  className="w-full rounded-[16px] bg-[#1E6FD9] py-3.5 text-[15px] font-semibold text-white transition hover:bg-[#175FC0] disabled:cursor-not-allowed disabled:bg-[#98A2B3] disabled:opacity-70"
                 >
                   {loading ? "Enviando enlace..." : "Enviar enlace de recuperación"}
                 </button>

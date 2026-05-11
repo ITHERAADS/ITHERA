@@ -9,6 +9,9 @@ import budgetRouter from './budget.router';
 
 const router = Router();
 
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const isValidISODate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+
 router.post('/', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -54,6 +57,32 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    if (!destino || !destino.trim()) {
+      res.status(400).json({ ok: false, error: 'ERR-23-001: Selecciona un destino para crear el viaje' });
+      return;
+    }
+
+    if (!isValidISODate(fecha_inicio)) {
+      res.status(400).json({ ok: false, error: 'ERR-23-001: La fecha de salida es requerida' });
+      return;
+    }
+
+    if (!isValidISODate(fecha_fin)) {
+      res.status(400).json({ ok: false, error: 'ERR-23-001: La fecha de regreso es requerida' });
+      return;
+    }
+
+    const today = todayISO();
+    if (fecha_inicio! < today) {
+      res.status(400).json({ ok: false, error: 'ERR-23-003: La fecha de salida no puede ser anterior a hoy' });
+      return;
+    }
+
+    if (fecha_fin! <= fecha_inicio!) {
+      res.status(400).json({ ok: false, error: 'ERR-23-003: La fecha de regreso debe ser posterior a la de inicio del viaje' });
+      return;
+    }
+
     if (!Number.isFinite(Number(presupuesto_total)) || Number(presupuesto_total) <= 0) {
       res.status(400).json({ ok: false, error: 'ERR-23-004: El monto del presupuesto debe ser un número positivo mayor a cero' });
       return;
@@ -88,7 +117,12 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
     res.status(201).json({ ok: true, message: 'Grupo creado correctamente', group: grupo });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
-    res.status(500).json({ ok: false, error: 'Error interno del servidor', details: msg });
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({
+      ok: false,
+      error: status === 500 ? 'Error interno del servidor' : msg,
+      ...(status === 500 ? { details: msg } : {}),
+    });
   }
 });
 

@@ -310,6 +310,14 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
   const codigo = await generateUniqueCode();
   const destinationFields = await buildDestinationFields(payload);
   const maximoMiembros = normalizeMaxMembers(payload.maximo_miembros);
+  const presupuestoTotal = Number(payload.presupuesto_total);
+
+  if (!Number.isFinite(presupuestoTotal) || presupuestoTotal <= 0) {
+    throw Object.assign(
+      new Error('ERR-23-004: El monto del presupuesto debe ser un número positivo mayor a cero'),
+      { statusCode: 400 }
+    );
+  }
 
   const { data: grupo, error: groupError } = await supabase
     .from('grupos_viaje')
@@ -321,7 +329,7 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
       fecha_fin: payload.fecha_fin ?? null,
       maximo_miembros: maximoMiembros,
       es_publico: payload.es_publico ?? false,
-      presupuesto_total: payload.presupuesto_total,
+      presupuesto_total: presupuestoTotal,
       codigo_invitacion: codigo,
       creado_por: Number(usuarioId),
       estado: 'activo',

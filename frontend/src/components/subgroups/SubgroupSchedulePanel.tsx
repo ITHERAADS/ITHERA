@@ -1,14 +1,30 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { Socket } from 'socket.io-client'
 import { useAuth } from '../../context/useAuth'
 import { mapsService, type PlaceResult } from '../../services/maps'
+import { budgetService, type BudgetCategory, type BudgetSplitType } from '../../services/budget'
+import { documentsService, type TripDocumentCategory } from '../../services/documents'
 import { subgroupScheduleService, type SubgroupMembership, type SubgroupSlot } from '../../services/subgroups'
+import {
+  contextLinksService,
+  type ContextEntityRef,
+  type ContextEntitySummary,
+  type ContextLink,
+  type ContextLinkOptions,
+} from '../../services/context-links'
 import type { Group } from '../../types/groups'
 import { SubgroupChatDrawer } from '../chat/SubgroupChatDrawer'
+import { ExpenseDraftForm } from '../budget/ExpenseDraftForm'
 
 interface Props {
   groupId: string | null
   group?: Group | null
+  members?: Array<{
+    usuario_id?: string | number | null
+    id?: string | number | null
+    nombre?: string | null
+    email?: string | null
+  }>
   isAdmin: boolean
   tripStartDate?: string | null
   tripEndDate?: string | null
@@ -27,7 +43,114 @@ type ActivityDraft = {
   results: PlaceResult[]
   selectedPlace: PlaceResult | null
   loading: boolean
+  selectedExpenseIds: string[]
+  selectedDocumentIds: string[]
+  expenseFilter: string
+  documentFilter: string
+  quickExpenseDescription: string
+  quickExpenseAmount: string
+  quickExpenseCategory: BudgetCategory
+  quickExpenseDate: string
+  quickExpensePaidBy: string
+  quickExpenseSplitType: BudgetSplitType
+  quickExpenseSplitAmounts: Record<string, string>
+  quickExpenseMemberIds: string[]
+  quickDocumentFile: File | null
+  quickDocumentCategory: TripDocumentCategory
+  quickDocumentNotes: string
 }
+
+type DraftActionModalMode =
+  | 'expense'
+  | 'document'
+  | null
+
+type DraftActionTab = 'associate' | 'create'
+
+const EMPTY_LINK_OPTIONS: ContextLinkOptions = {
+  expenses: [],
+  documents: [],
+  activities: [],
+  subgroupActivities: [],
+}
+
+const documentCategoryLabels: Record<TripDocumentCategory, string> = {
+  vuelo: 'Vuelo',
+  hospedaje: 'Hospedaje',
+  gasto: 'Gasto',
+  actividad: 'Actividad',
+  otro: 'Otro',
+}
+
+const todayValue = () => new Date().toISOString().split('T')[0]
+const fallbackSubgroupImage = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80'
+
+function ActionModal({
+  open,
+  title,
+  subtitle,
+  confirmLabel,
+  confirmDisabled = false,
+  panelClassName = 'max-w-lg',
+  onClose,
+  onConfirm,
+  children,
+}: {
+  open: boolean
+  title: string
+  subtitle: string
+  confirmLabel: string
+  confirmDisabled?: boolean
+  panelClassName?: string
+  onClose: () => void
+  onConfirm: () => void
+  children: ReactNode
+}) {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#0D0820]/70 px-4" onClick={onClose}>
+      <div
+        className={`max-h-[84vh] w-full overflow-y-auto rounded-2xl bg-white shadow-xl ${panelClassName}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-[#E2E8F0] px-5 py-4">
+          <h3 className="font-heading text-lg font-bold text-[#1E0A4E]">{title}</h3>
+          <p className="mt-1 text-sm text-[#64748B]">{subtitle}</p>
+        </div>
+        <div className="px-5 py-4">{children}</div>
+        <div className="flex justify-end gap-3 border-t border-[#E2E8F0] px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-[#D7DEEA] px-4 py-2.5 text-sm font-semibold text-[#3D4A5C]"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={confirmDisabled}
+            className="rounded-xl bg-[#1E6FD9] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const entityKey = (entity: ContextEntityRef): string => `${entity.type}:${entity.id}`
+
+const otherEntityForSubgroupActivity = (link: ContextLink, activityId: string): ContextEntitySummary | null => {
+  if (link.entityA.type === 'subgroup_activity' && link.entityA.id === activityId) return link.entityB
+  if (link.entityB.type === 'subgroup_activity' && link.entityB.id === activityId) return link.entityA
+  return null
+}
+
+const isSubgroupActivityContextType = (type: ContextEntityRef['type']): boolean =>
+  type === 'expense' || type === 'document'
 
 const dt = (value?: string | null) => {
   if (!value) return 'Sin hora'
@@ -44,6 +167,22 @@ const toLocalInputValue = (value?: string | null) => {
 }
 
 const toLocalTimeValue = (value?: string | null) => toLocalInputValue(value).slice(11, 16) || '12:00'
+
+const isSameLocalDay = (first?: string | null, second?: string | null) =>
+  toLocalInputValue(first).slice(0, 10) !== '' &&
+  toLocalInputValue(first).slice(0, 10) === toLocalInputValue(second).slice(0, 10)
+
+const subtractThirtyMinutes = (value: string) => {
+  const [hoursRaw, minutesRaw] = value.split(':')
+  const hours = Number(hoursRaw)
+  const minutes = Number(minutesRaw)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return value
+  const totalMinutes = hours * 60 + minutes - 30
+  if (totalMinutes < 0) return '00:00'
+  const nextHours = String(Math.floor(totalMinutes / 60)).padStart(2, '0')
+  const nextMinutes = String(totalMinutes % 60).padStart(2, '0')
+  return `${nextHours}:${nextMinutes}`
+}
 
 const isThirtyMinute = (value: string): boolean => {
   const d = new Date(value)
@@ -92,11 +231,10 @@ const primaryActivity = (subgroup: SubgroupSlot['subgroups'][number]) => subgrou
 export function SubgroupSchedulePanel({
   groupId,
   group,
+  members = [],
   isAdmin,
   tripStartDate,
   tripEndDate,
-  onOpenBudget,
-  onOpenVault,
   socket = null,
   isSocketConnected = false,
   currentUserId = null,
@@ -112,21 +250,93 @@ export function SubgroupSchedulePanel({
   const [newSlotStart, setNewSlotStart] = useState('')
   const [newSlotEnd, setNewSlotEnd] = useState('')
   const [activityDraftBySlot, setActivityDraftBySlot] = useState<Record<number, ActivityDraft>>({})
-  const [activityTitleBySubgroup, setActivityTitleBySubgroup] = useState<Record<number, string>>({})
-  const [editingSlotId, setEditingSlotId] = useState<number | null>(null)
-  const [editingSlotTitle, setEditingSlotTitle] = useState('')
-  const [editingSubgroupId, setEditingSubgroupId] = useState<number | null>(null)
-  const [editingSubgroupName, setEditingSubgroupName] = useState('')
+  const [slotModal, setSlotModal] = useState<{ mode: 'create' | 'edit'; slotId?: number } | null>(null)
+  const [subgroupModal, setSubgroupModal] = useState<{ mode: 'create' | 'edit'; slotId: number; subgroupId?: number } | null>(null)
+  const [subgroupFormName, setSubgroupFormName] = useState('')
+  const [subgroupFormTitle, setSubgroupFormTitle] = useState('')
+  const [subgroupFormDescription, setSubgroupFormDescription] = useState('')
+  const [subgroupFormLocation, setSubgroupFormLocation] = useState('')
+  const [subgroupFormTime, setSubgroupFormTime] = useState('12:00')
+  const [contextLinks, setContextLinks] = useState<ContextLink[]>([])
+  const [linkOptions, setLinkOptions] = useState<ContextLinkOptions>(EMPTY_LINK_OPTIONS)
+  const [draftActionModal, setDraftActionModal] = useState<{
+    slotId: number
+    mode: DraftActionModalMode
+    activityId?: number | null
+  } | null>(null)
+  const [draftExpenseTab, setDraftExpenseTab] = useState<DraftActionTab>('associate')
+  const [draftDocumentTab, setDraftDocumentTab] = useState<DraftActionTab>('associate')
+  const [subgroupPhotoByActivityId, setSubgroupPhotoByActivityId] = useState<Record<number, string>>({})
+  const [linkOptionsLoaded, setLinkOptionsLoaded] = useState(false)
+
+  const memberOptions = useMemo(
+    () =>
+      members
+        .map((member) => {
+          const id = String(member.usuario_id ?? member.id ?? '')
+          return {
+            id,
+            label: member.nombre || member.email || `Usuario ${id}`,
+          }
+        })
+        .filter((member) => member.id.length > 0),
+    [members]
+  )
+
+  const safeMemberOptions = useMemo(() => {
+    if (memberOptions.length > 0) return memberOptions
+    const fallbackId = currentUserId ?? (myUserId != null ? String(myUserId) : '')
+    if (!fallbackId) return []
+    return [{ id: fallbackId, label: currentUserName || `Usuario ${fallbackId}` }]
+  }, [currentUserId, currentUserName, memberOptions, myUserId])
+
+  const defaultExpensePayer = useMemo(() => {
+    if (currentUserId && safeMemberOptions.some((member) => member.id === currentUserId)) {
+      return currentUserId
+    }
+    return safeMemberOptions[0]?.id ?? ''
+  }, [currentUserId, safeMemberOptions])
 
   // Chat drawer state
   const [chatSubgroup, setChatSubgroup] = useState<{ slotId: number; subgroupId: number; name: string } | null>(null)
+
+  const loadContextLinks = useCallback(async () => {
+    if (!groupId || !accessToken) {
+      setContextLinks([])
+      return
+    }
+
+    const linksResponse = await contextLinksService.list(groupId, accessToken)
+    setContextLinks(linksResponse.links)
+  }, [accessToken, groupId])
+
+  const loadLinkOptions = useCallback(async (force = false) => {
+    if (!groupId || !accessToken) {
+      setLinkOptions(EMPTY_LINK_OPTIONS)
+      setLinkOptionsLoaded(false)
+      return
+    }
+    if (!force && linkOptionsLoaded) return
+
+    const optionsResponse = await contextLinksService.options(groupId, accessToken)
+    setLinkOptions(optionsResponse.options)
+    setLinkOptionsLoaded(true)
+  }, [accessToken, groupId, linkOptionsLoaded])
+
+  useEffect(() => {
+    setLinkOptions(EMPTY_LINK_OPTIONS)
+    setLinkOptionsLoaded(false)
+  }, [groupId])
 
   const load = useCallback(async () => {
     if (!groupId || !accessToken) return
     try {
       setLoading(true)
       setError(null)
-      const response = await subgroupScheduleService.getSchedule(groupId, accessToken)
+      const [response] = await Promise.all([
+        subgroupScheduleService.getSchedule(groupId, accessToken),
+        loadContextLinks(),
+      ])
       setSlots(response.slots ?? [])
       setMyUserId(response.myUserId ?? null)
     } catch (err) {
@@ -134,9 +344,47 @@ export function SubgroupSchedulePanel({
     } finally {
       setLoading(false)
     }
-  }, [accessToken, groupId])
+  }, [accessToken, groupId, loadContextLinks])
 
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    if (!accessToken || slots.length === 0 || group?.destino_photo_url) return
+    const missingActivities = slots
+      .flatMap((slot) => slot.subgroups)
+      .map((subgroup) => primaryActivity(subgroup))
+      .filter((activity): activity is NonNullable<typeof activity> =>
+        Boolean(activity && activity.id != null && !subgroupPhotoByActivityId[activity.id])
+      )
+
+    if (missingActivities.length === 0) return
+
+    let cancelled = false
+    void Promise.all(
+      missingActivities.map(async (activity) => {
+        try {
+          const response = await mapsService.searchPlacesByText(
+            {
+              textQuery: `${activity.title} ${activity.location ?? ''}`.trim(),
+              latitude: group?.destino_latitud ?? undefined,
+              longitude: group?.destino_longitud ?? undefined,
+              radius: 7000,
+              maxResultCount: 1,
+            },
+            accessToken,
+          )
+          const photoUrl = response.data?.[0]?.photoUrl ?? null
+          if (!cancelled && photoUrl) {
+            setSubgroupPhotoByActivityId((prev) => ({ ...prev, [activity.id]: photoUrl }))
+          }
+        } catch {
+          // optional enrichment only
+        }
+      }),
+    )
+
+    return () => { cancelled = true }
+  }, [accessToken, group?.destino_latitud, group?.destino_longitud, group?.destino_photo_url, slots, subgroupPhotoByActivityId])
 
   const runAction = async (action: () => Promise<void>) => {
     try {
@@ -157,9 +405,342 @@ export function SubgroupSchedulePanel({
         results: prev[slotId]?.results ?? [],
         selectedPlace: prev[slotId]?.selectedPlace ?? null,
         loading: prev[slotId]?.loading ?? false,
+        selectedExpenseIds: prev[slotId]?.selectedExpenseIds ?? [],
+        selectedDocumentIds: prev[slotId]?.selectedDocumentIds ?? [],
+        expenseFilter: prev[slotId]?.expenseFilter ?? '',
+        documentFilter: prev[slotId]?.documentFilter ?? '',
+        quickExpenseDescription: prev[slotId]?.quickExpenseDescription ?? '',
+        quickExpenseAmount: prev[slotId]?.quickExpenseAmount ?? '',
+        quickExpenseCategory: prev[slotId]?.quickExpenseCategory ?? 'actividad',
+        quickExpenseDate: prev[slotId]?.quickExpenseDate ?? todayValue(),
+        quickExpensePaidBy: prev[slotId]?.quickExpensePaidBy ?? defaultExpensePayer,
+        quickExpenseSplitType: prev[slotId]?.quickExpenseSplitType ?? 'equitativa',
+        quickExpenseSplitAmounts: prev[slotId]?.quickExpenseSplitAmounts ?? {},
+        quickExpenseMemberIds: prev[slotId]?.quickExpenseMemberIds ?? safeMemberOptions.map((member) => member.id),
+        quickDocumentFile: prev[slotId]?.quickDocumentFile ?? null,
+        quickDocumentCategory: prev[slotId]?.quickDocumentCategory ?? 'actividad',
+        quickDocumentNotes: prev[slotId]?.quickDocumentNotes ?? '',
         ...patch,
       },
     }))
+  }
+
+  const buildEmptyDraft = (slot?: SubgroupSlot): ActivityDraft => ({
+    query: '',
+    description: '',
+    timeValue: toLocalTimeValue(slot?.starts_at),
+    results: [],
+    selectedPlace: null,
+    loading: false,
+    selectedExpenseIds: [],
+    selectedDocumentIds: [],
+    expenseFilter: '',
+    documentFilter: '',
+    quickExpenseDescription: '',
+    quickExpenseAmount: '',
+    quickExpenseCategory: 'actividad',
+    quickExpenseDate: slot ? toLocalInputValue(slot.starts_at).slice(0, 10) : todayValue(),
+    quickExpensePaidBy: defaultExpensePayer,
+    quickExpenseSplitType: 'equitativa',
+    quickExpenseSplitAmounts: {},
+    quickExpenseMemberIds: safeMemberOptions.map((member) => member.id),
+    quickDocumentFile: null,
+    quickDocumentCategory: 'actividad',
+    quickDocumentNotes: '',
+  })
+
+  const getLinksForSubgroupActivity = (activityId?: number | string | null) => {
+    if (activityId == null) return []
+    const id = String(activityId)
+    return contextLinks
+      .map((link) => otherEntityForSubgroupActivity(link, id))
+      .filter((entity): entity is ContextEntitySummary =>
+        entity !== null && isSubgroupActivityContextType(entity.type)
+      )
+  }
+
+  const toggleDraftExpense = (slotId: number, expenseId: string) => {
+    const current = activityDraftBySlot[slotId]?.selectedExpenseIds ?? []
+    setActivityDraft(slotId, {
+      selectedExpenseIds: current.includes(expenseId)
+        ? current.filter((id) => id !== expenseId)
+        : [...current, expenseId],
+    })
+  }
+
+  const toggleDraftDocument = (slotId: number, documentId: string) => {
+    const current = activityDraftBySlot[slotId]?.selectedDocumentIds ?? []
+    setActivityDraft(slotId, {
+      selectedDocumentIds: current.includes(documentId)
+        ? current.filter((id) => id !== documentId)
+        : [...current, documentId],
+    })
+  }
+
+  const toggleDraftExpenseMember = (slotId: number, memberId: string) => {
+    const draft = activityDraftBySlot[slotId]
+    const currentIds = draft?.quickExpenseMemberIds ?? safeMemberOptions.map((member) => member.id)
+    const currentPayer = draft?.quickExpensePaidBy ?? defaultExpensePayer
+    const next = currentIds.includes(memberId)
+      ? currentIds.filter((id) => id !== memberId)
+      : [...currentIds, memberId]
+    if (next.length === 0) return
+    setActivityDraft(slotId, {
+      quickExpenseMemberIds: next,
+      quickExpensePaidBy: next.includes(currentPayer) ? currentPayer : (next[0] ?? ''),
+    })
+  }
+
+  const setDraftExpenseSplitAmount = (slotId: number, memberId: string, value: string) => {
+    const draft = activityDraftBySlot[slotId]
+    setActivityDraft(slotId, {
+      quickExpenseSplitAmounts: {
+        ...(draft?.quickExpenseSplitAmounts ?? {}),
+        [memberId]: value,
+      },
+    })
+  }
+
+  const getDraftExpenseSplitError = (draft?: ActivityDraft) => {
+    const totalAmount = parseFloat(draft?.quickExpenseAmount ?? '') || 0
+    if ((draft?.quickExpenseSplitType ?? 'equitativa') !== 'personalizada' || totalAmount <= 0) return null
+    const selectedIds = draft?.quickExpenseMemberIds ?? safeMemberOptions.map((member) => member.id)
+    const splitSum = safeMemberOptions
+      .filter((member) => selectedIds.includes(member.id))
+      .reduce((sum, member) => sum + (parseFloat(draft?.quickExpenseSplitAmounts?.[member.id] ?? '0') || 0), 0)
+    return Math.abs(splitSum - totalAmount) > 0.01
+      ? 'La division personalizada debe sumar el monto total.'
+      : null
+  }
+
+  const closeDraftActionModal = () => setDraftActionModal(null)
+
+  const openDraftActionModal = (
+    slotId: number,
+    mode: Exclude<DraftActionModalMode, null>,
+    activityId?: number | null,
+  ) => {
+    void loadLinkOptions(true)
+    const linked = activityId != null ? getLinksForSubgroupActivity(activityId) : []
+    const slot = slots.find((item) => item.id === slotId)
+    setActivityDraft(slotId, {
+      selectedExpenseIds: activityId != null
+        ? linked.filter((entity) => entity.type === 'expense').map((entity) => entity.id)
+        : [],
+      selectedDocumentIds: activityId != null
+        ? linked.filter((entity) => entity.type === 'document').map((entity) => entity.id)
+        : [],
+      expenseFilter: '',
+      documentFilter: '',
+      quickExpenseDescription: '',
+      quickExpenseAmount: '',
+      quickExpenseCategory: 'actividad',
+      quickExpenseDate: slot ? toLocalInputValue(slot.starts_at).slice(0, 10) : todayValue(),
+      quickExpensePaidBy: defaultExpensePayer,
+      quickExpenseSplitType: 'equitativa',
+      quickExpenseSplitAmounts: {},
+      quickExpenseMemberIds: safeMemberOptions.map((member) => member.id),
+      quickDocumentFile: null,
+      quickDocumentCategory: 'actividad',
+      quickDocumentNotes: '',
+    })
+    setDraftActionModal({ slotId, mode, activityId })
+  }
+
+  const openCreateSlotModal = () => {
+    setNewSlotTitle('')
+    setNewSlotStart('')
+    setNewSlotEnd('')
+    setSlotModal({ mode: 'create' })
+  }
+
+  const openEditSlotModal = (slot: SubgroupSlot) => {
+    setNewSlotTitle(slot.title)
+    setNewSlotStart(toLocalInputValue(slot.starts_at))
+    setNewSlotEnd(toLocalInputValue(slot.ends_at))
+    setSlotModal({ mode: 'edit', slotId: slot.id })
+  }
+
+  const closeSlotModal = () => setSlotModal(null)
+
+  const openCreateSubgroupModal = (slot: SubgroupSlot) => {
+    setSubgroupModal({ mode: 'create', slotId: slot.id })
+    setSubgroupFormName('')
+  }
+
+  const openEditSubgroupModal = (slot: SubgroupSlot, subgroup: SubgroupSlot['subgroups'][number]) => {
+    const details = primaryActivity(subgroup)
+    setSubgroupModal({ mode: 'edit', slotId: slot.id, subgroupId: subgroup.id })
+    setSubgroupFormName(subgroup.name)
+    setSubgroupFormTitle(details?.title ?? subgroup.name)
+    setSubgroupFormDescription(details?.description ?? '')
+    setSubgroupFormLocation(details?.location ?? '')
+    setSubgroupFormTime(toLocalTimeValue(details?.starts_at ?? slot.starts_at))
+  }
+
+  const closeSubgroupModal = () => setSubgroupModal(null)
+
+  const syncDraftLinksForActivity = async (
+    activityId: number,
+    type: 'expense' | 'document',
+    desiredIds: string[],
+  ) => {
+    if (!groupId || !accessToken) return
+
+    const currentResponse = await contextLinksService.list(groupId, accessToken, {
+      type: 'subgroup_activity',
+      id: String(activityId),
+    })
+
+    const currentRelevant = currentResponse.links
+      .map((link) => ({ link, entity: otherEntityForSubgroupActivity(link, String(activityId)) }))
+      .filter((item): item is { link: ContextLink; entity: ContextEntitySummary } =>
+        item.entity !== null && item.entity.type === type
+      )
+
+    const currentIds = new Set(currentRelevant.map((item) => item.entity.id))
+    const desiredIdSet = new Set(desiredIds)
+
+    await Promise.all([
+      ...currentRelevant
+        .filter((item) => !desiredIdSet.has(item.entity.id))
+        .map((item) => contextLinksService.remove(groupId, item.link.id, accessToken)),
+      ...desiredIds
+        .filter((id) => !currentIds.has(id))
+        .map((id) =>
+          contextLinksService.create(
+            groupId,
+            {
+              source: { type: 'subgroup_activity', id: String(activityId) },
+              target: { type, id },
+            },
+            accessToken,
+          ),
+        ),
+    ])
+  }
+
+  const createExpenseFromDraft = async (slotId: number): Promise<string | null> => {
+    const draft = activityDraftBySlot[slotId]
+    const shouldCreateExpense =
+      (draft?.quickExpenseAmount ?? '').trim().length > 0 ||
+      (draft?.quickExpenseDescription ?? '').trim().length > 0
+    const amount = Number(draft?.quickExpenseAmount ?? '')
+    if (!shouldCreateExpense) {
+      setError('Captura al menos el monto o la descripcion del gasto.')
+      return null
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError('El monto del gasto rapido debe ser mayor a 0.')
+      return null
+    }
+    if (!(draft?.quickExpenseDescription ?? '').trim()) {
+      setError('La descripcion del gasto es obligatoria.')
+      return null
+    }
+    if (!(draft?.quickExpensePaidBy ?? '').trim()) {
+      setError('Selecciona quien pagara el gasto.')
+      return null
+    }
+    if ((draft?.quickExpenseMemberIds ?? []).length === 0) {
+      setError('Selecciona al menos una persona para el gasto.')
+      return null
+    }
+    const splitError = getDraftExpenseSplitError(draft)
+    if (splitError) {
+      setError(splitError)
+      return null
+    }
+    setError(null)
+    if (!groupId || !accessToken) return null
+
+    const budgetResponse = await budgetService.createExpense(groupId, {
+      paid_by_user_id: draft.quickExpensePaidBy,
+      amount,
+      description: draft.quickExpenseDescription.trim(),
+      category: draft.quickExpenseCategory,
+      split_type: draft.quickExpenseSplitType,
+      member_ids: draft.quickExpenseMemberIds,
+      split_amounts: draft.quickExpenseSplitType === 'personalizada'
+        ? Object.fromEntries(
+          draft.quickExpenseMemberIds.map((memberId) => [
+            memberId,
+            parseFloat(draft.quickExpenseSplitAmounts[memberId] ?? '0') || 0,
+          ]),
+        )
+        : undefined,
+      expense_date: draft.quickExpenseDate || todayValue(),
+    }, accessToken)
+
+    const candidates = budgetResponse.expenses.filter((expense) =>
+      expense.description === draft.quickExpenseDescription.trim() &&
+      Number(expense.amount) === amount,
+    )
+    const sorted = [...(candidates.length > 0 ? candidates : budgetResponse.expenses)].sort((a, b) =>
+      new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime(),
+    )
+    return sorted[0]?.id ?? null
+  }
+
+  const confirmDraftExpense = async (slotId: number) => {
+    const createdExpenseId = await createExpenseFromDraft(slotId)
+    if (createdExpenseId == null) return
+
+    if (draftActionModal?.activityId != null) {
+      await runAction(async () => {
+        await contextLinksService.create(
+          groupId!,
+          {
+            source: { type: 'subgroup_activity', id: String(draftActionModal.activityId) },
+            target: { type: 'expense', id: createdExpenseId },
+          },
+          accessToken!,
+        )
+        await Promise.all([loadContextLinks(), loadLinkOptions(true)])
+      })
+    }
+
+    closeDraftActionModal()
+  }
+
+  const createDocumentFromDraft = async (slotId: number): Promise<string | null> => {
+    const draft = activityDraftBySlot[slotId]
+    if (!draft?.quickDocumentFile) {
+      setError('Selecciona un archivo para el documento.')
+      return null
+    }
+    if (!(draft.quickDocumentNotes ?? '').trim()) {
+      setError('La nota del documento es obligatoria.')
+      return null
+    }
+    setError(null)
+    if (!groupId || !accessToken) return null
+
+    const document = await documentsService.upload(groupId, draft.quickDocumentFile, draft.quickDocumentCategory, {
+      notes: draft.quickDocumentNotes.trim() || null,
+    }, accessToken)
+    return document.id
+  }
+
+  const confirmDraftDocument = async (slotId: number) => {
+    const createdDocumentId = await createDocumentFromDraft(slotId)
+    if (createdDocumentId == null) return
+
+    if (draftActionModal?.activityId != null) {
+      await runAction(async () => {
+        await contextLinksService.create(
+          groupId!,
+          {
+            source: { type: 'subgroup_activity', id: String(draftActionModal.activityId) },
+            target: { type: 'document', id: createdDocumentId },
+          },
+          accessToken!,
+        )
+        await Promise.all([loadContextLinks(), loadLinkOptions(true)])
+      })
+    }
+
+    closeDraftActionModal()
   }
 
   const minDateTime = tripStartDate ? `${tripStartDate}T00:00` : undefined
@@ -195,12 +776,55 @@ export function SubgroupSchedulePanel({
       setNewSlotTitle('')
       setNewSlotStart('')
       setNewSlotEnd('')
+      setSlotModal(null)
       await load()
     })
   }
 
+  const submitSlotModal = async () => {
+    if (!groupId || !accessToken || !newSlotTitle.trim() || !newSlotStart || !newSlotEnd) {
+      setError('Completa nombre, inicio y fin del horario.')
+      return
+    }
+
+    const start = new Date(newSlotStart)
+    const end = new Date(newSlotEnd)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      setError('Rango de fecha invalido para el horario')
+      return
+    }
+    if (!isThirtyMinute(newSlotStart) || !isThirtyMinute(newSlotEnd)) {
+      setError('Las horas deben estar en multiplos de 30 minutos')
+      return
+    }
+    if (tripStartDate && newSlotStart.slice(0, 10) < tripStartDate) {
+      setError(`La hora de inicio no puede ser menor al inicio del viaje (${tripStartDate})`)
+      return
+    }
+    if (tripEndDate && newSlotEnd.slice(0, 10) > tripEndDate) {
+      setError(`La hora de fin no puede ser mayor al fin del viaje (${tripEndDate})`)
+      return
+    }
+
+    if (slotModal?.mode === 'edit' && slotModal.slotId) {
+      await runAction(async () => {
+        await subgroupScheduleService.updateSlot(groupId, slotModal.slotId!, {
+          title: newSlotTitle.trim(),
+          starts_at: start.toISOString(),
+          ends_at: end.toISOString(),
+        }, accessToken)
+        setSlotModal(null)
+        await load()
+      })
+      return
+    }
+
+    await onCreateSlot()
+  }
+
   const onCreateSubgroup = async (slot: SubgroupSlot) => {
     if (!groupId || !accessToken) return
+    const slotDate = toLocalInputValue(slot.starts_at).slice(0, 10)
     const draft = activityDraftBySlot[slot.id] ?? {
       query: '',
       description: '',
@@ -208,6 +832,21 @@ export function SubgroupSchedulePanel({
       results: [],
       selectedPlace: null,
       loading: false,
+      selectedExpenseIds: [],
+      selectedDocumentIds: [],
+      expenseFilter: '',
+      documentFilter: '',
+      quickExpenseDescription: '',
+      quickExpenseAmount: '',
+      quickExpenseCategory: 'actividad',
+      quickExpenseDate: slotDate,
+      quickExpensePaidBy: defaultExpensePayer,
+      quickExpenseSplitType: 'equitativa',
+      quickExpenseSplitAmounts: {},
+      quickExpenseMemberIds: safeMemberOptions.map((member) => member.id),
+      quickDocumentFile: null,
+      quickDocumentCategory: 'actividad',
+      quickDocumentNotes: '',
     }
     const selectedPlace = draft.selectedPlace
     if (!selectedPlace) {
@@ -216,13 +855,15 @@ export function SubgroupSchedulePanel({
     }
     const title = selectedPlace.name || draft.query.trim()
     if (!title) return
-
-    const slotDate = toLocalInputValue(slot.starts_at).slice(0, 10)
     const startsAt = new Date(`${slotDate}T${draft.timeValue}:00`)
     const slotStart = new Date(slot.starts_at)
     const slotEnd = new Date(slot.ends_at)
     if (Number.isNaN(startsAt.getTime()) || startsAt < slotStart || startsAt >= slotEnd) {
       setError('La hora estimada debe estar dentro del horario del admin y antes de la hora de termino')
+      return
+    }
+    if (draft.quickDocumentFile && !draft.quickDocumentNotes.trim()) {
+      setError('La nota del documento es obligatoria para subirlo a la boveda.')
       return
     }
 
@@ -231,16 +872,113 @@ export function SubgroupSchedulePanel({
         name: title,
         description: draft.description.trim() || null,
       }, accessToken)
-      await subgroupScheduleService.createSubgroupActivity(groupId, slot.id, response.subgroup.id, {
+      const createdActivity = await subgroupScheduleService.createSubgroupActivity(groupId, slot.id, response.subgroup.id, {
         title,
         description: draft.description.trim() || null,
         location: selectedPlace.formattedAddress || null,
         starts_at: startsAt.toISOString(),
       }, accessToken)
+      const shouldCreateExpense =
+        draft.quickExpenseAmount.trim().length > 0 || draft.quickExpenseDescription.trim().length > 0
+      const quickExpenseValue = Number(draft.quickExpenseAmount)
+      const payerId = draft.quickExpensePaidBy || currentUserId || (myUserId != null ? String(myUserId) : null)
+
+      if (shouldCreateExpense) {
+        if (!payerId) throw new Error('No se encontro tu usuario para registrar el gasto rapido.')
+        if (!Number.isFinite(quickExpenseValue) || quickExpenseValue <= 0) {
+          throw new Error('El monto del gasto rapido debe ser mayor a 0.')
+        }
+        if (!draft.quickExpenseDescription.trim()) {
+          throw new Error('La descripcion del gasto es obligatoria.')
+        }
+        if ((draft.quickExpenseMemberIds ?? []).length === 0) {
+          throw new Error('Selecciona al menos una persona para el gasto.')
+        }
+        const splitError = getDraftExpenseSplitError(draft)
+        if (splitError) throw new Error(splitError)
+      }
+
+      const createdExpenseId = shouldCreateExpense && payerId
+        ? await budgetService.createExpense(groupId, {
+          paid_by_user_id: payerId,
+          amount: quickExpenseValue,
+          description: draft.quickExpenseDescription.trim(),
+          category: draft.quickExpenseCategory,
+          split_type: draft.quickExpenseSplitType,
+          member_ids: draft.quickExpenseMemberIds,
+          split_amounts: draft.quickExpenseSplitType === 'personalizada'
+            ? Object.fromEntries(
+              draft.quickExpenseMemberIds.map((memberId) => [
+                memberId,
+                parseFloat(draft.quickExpenseSplitAmounts[memberId] ?? '0') || 0,
+              ])
+            )
+            : undefined,
+          expense_date: draft.quickExpenseDate || slotDate,
+        }, accessToken).then((budgetResponse) => {
+          const expectedDescription = draft.quickExpenseDescription.trim()
+          const candidates = budgetResponse.expenses.filter((expense) =>
+            expense.description === expectedDescription &&
+            Number(expense.amount) === quickExpenseValue
+          )
+          const sorted = [...(candidates.length > 0 ? candidates : budgetResponse.expenses)].sort((a, b) =>
+            new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+          )
+          return sorted[0]?.id ?? null
+        })
+        : null
+
+      const createdDocumentId = draft.quickDocumentFile
+        ? await documentsService.upload(groupId, draft.quickDocumentFile, draft.quickDocumentCategory, {
+          notes: draft.quickDocumentNotes.trim() || null,
+        }, accessToken).then((document) => document.id)
+        : null
+
+      await Promise.all([
+        ...(draft.selectedExpenseIds ?? []).map((id) => contextLinksService.create(groupId, {
+          source: { type: 'subgroup_activity', id: String(createdActivity.activity.id) },
+          target: { type: 'expense', id },
+        }, accessToken)),
+        ...(createdExpenseId ? [contextLinksService.create(groupId, {
+          source: { type: 'subgroup_activity', id: String(createdActivity.activity.id) },
+          target: { type: 'expense', id: createdExpenseId },
+        }, accessToken)] : []),
+        ...(draft.selectedDocumentIds ?? []).map((id) => contextLinksService.create(groupId, {
+          source: { type: 'subgroup_activity', id: String(createdActivity.activity.id) },
+          target: { type: 'document', id },
+        }, accessToken)),
+        ...(createdDocumentId ? [contextLinksService.create(groupId, {
+          source: { type: 'subgroup_activity', id: String(createdActivity.activity.id) },
+          target: { type: 'document', id: createdDocumentId },
+        }, accessToken)] : []),
+      ])
       setActivityDraftBySlot((prev) => ({
         ...prev,
-        [slot.id]: { query: '', description: '', timeValue: toLocalTimeValue(slot.starts_at), results: [], selectedPlace: null, loading: false },
+        [slot.id]: {
+          query: '',
+          description: '',
+          timeValue: toLocalTimeValue(slot.starts_at),
+          results: [],
+          selectedPlace: null,
+          loading: false,
+          selectedExpenseIds: [],
+          selectedDocumentIds: [],
+          expenseFilter: '',
+          documentFilter: '',
+          quickExpenseDescription: '',
+          quickExpenseAmount: '',
+          quickExpenseCategory: 'actividad',
+          quickExpenseDate: slotDate,
+          quickExpensePaidBy: defaultExpensePayer,
+          quickExpenseSplitType: 'equitativa',
+          quickExpenseSplitAmounts: {},
+          quickExpenseMemberIds: safeMemberOptions.map((member) => member.id),
+          quickDocumentFile: null,
+          quickDocumentCategory: 'actividad',
+          quickDocumentNotes: '',
+        },
       }))
+      setSubgroupModal(null)
       await load()
     })
   }
@@ -257,6 +995,15 @@ export function SubgroupSchedulePanel({
       results: [],
       selectedPlace: null,
       loading: false,
+      selectedExpenseIds: [],
+      selectedDocumentIds: [],
+      documentFilter: '',
+      quickExpenseDescription: '',
+      quickExpenseAmount: '',
+      quickExpenseCategory: 'actividad',
+      quickDocumentFile: null,
+      quickDocumentCategory: 'actividad',
+      quickDocumentNotes: '',
     }
     if (!draft.query.trim()) {
       setError('Escribe una actividad o lugar para buscar.')
@@ -283,16 +1030,6 @@ export function SubgroupSchedulePanel({
     }
   }
 
-  const onUpdateSlotTitle = async (slotId: number) => {
-    if (!groupId || !accessToken || !editingSlotTitle.trim()) return
-    await runAction(async () => {
-      await subgroupScheduleService.updateSlot(groupId, slotId, { title: editingSlotTitle.trim() }, accessToken)
-      setEditingSlotId(null)
-      setEditingSlotTitle('')
-      await load()
-    })
-  }
-
   const onDeleteSlot = async (slotId: number) => {
     if (!groupId || !accessToken) return
     if (!window.confirm('Eliminar este horario y todo su contenido?')) return
@@ -310,17 +1047,6 @@ export function SubgroupSchedulePanel({
     })
   }
 
-  const onCreateActivity = async (slotId: number, subgroupId: number) => {
-    if (!groupId || !accessToken) return
-    const title = (activityTitleBySubgroup[subgroupId] ?? '').trim()
-    if (!title) return
-    await runAction(async () => {
-      await subgroupScheduleService.createSubgroupActivity(groupId, slotId, subgroupId, { title }, accessToken)
-      setActivityTitleBySubgroup((prev) => ({ ...prev, [subgroupId]: '' }))
-      await load()
-    })
-  }
-
   const onDeleteActivity = async (slotId: number, activityId: number) => {
     if (!groupId || !accessToken) return
     await runAction(async () => {
@@ -329,12 +1055,34 @@ export function SubgroupSchedulePanel({
     })
   }
 
-  const onUpdateSubgroupName = async (slotId: number, subgroupId: number) => {
-    if (!groupId || !accessToken || !editingSubgroupName.trim()) return
+  const submitSubgroupEdit = async () => {
+    if (!groupId || !accessToken || !subgroupModal || subgroupModal.mode !== 'edit' || !subgroupModal.subgroupId) return
+    if (!subgroupFormName.trim()) {
+      setError('El nombre del subgrupo es obligatorio.')
+      return
+    }
+
+    const slot = slots.find((item) => item.id === subgroupModal.slotId)
+    const subgroup = slot?.subgroups.find((item) => item.id === subgroupModal.subgroupId)
+    const details = subgroup ? primaryActivity(subgroup) : null
+    const slotDate = slot ? toLocalInputValue(slot.starts_at).slice(0, 10) : ''
+    const startsAt = slotDate ? new Date(`${slotDate}T${subgroupFormTime || '12:00'}:00`) : null
+
     await runAction(async () => {
-      await subgroupScheduleService.updateSubgroup(groupId, slotId, subgroupId, { name: editingSubgroupName.trim() }, accessToken)
-      setEditingSubgroupId(null)
-      setEditingSubgroupName('')
+      await subgroupScheduleService.updateSubgroup(groupId, subgroupModal.slotId, subgroupModal.subgroupId!, {
+        name: subgroupFormName.trim(),
+      }, accessToken)
+
+      if (details?.id != null) {
+        await subgroupScheduleService.updateSubgroupActivity(groupId, subgroupModal.slotId, details.id, {
+          title: subgroupFormTitle.trim() || subgroupFormName.trim(),
+          description: subgroupFormDescription.trim() || null,
+          location: subgroupFormLocation.trim() || null,
+          starts_at: startsAt ? startsAt.toISOString() : null,
+        }, accessToken)
+      }
+
+      setSubgroupModal(null)
       await load()
     })
   }
@@ -348,339 +1096,1040 @@ export function SubgroupSchedulePanel({
     })
   }
 
+  const modalSlotId = draftActionModal?.slotId ?? null
+  const modalDraft = modalSlotId != null ? activityDraftBySlot[modalSlotId] : null
+  const subgroupModalSlot = subgroupModal ? slots.find((slot) => slot.id === subgroupModal.slotId) ?? null : null
+  const subgroupModalDraft =
+    subgroupModal?.mode === 'create' && subgroupModalSlot
+      ? (activityDraftBySlot[subgroupModal.slotId] ?? buildEmptyDraft(subgroupModalSlot))
+      : null
+  const subgroupCreateTimeMin =
+    subgroupModal?.mode === 'create' && subgroupModalSlot ? toLocalTimeValue(subgroupModalSlot.starts_at) : undefined
+  const subgroupCreateTimeMax =
+    subgroupModal?.mode === 'create' && subgroupModalSlot ? subtractThirtyMinutes(toLocalTimeValue(subgroupModalSlot.ends_at)) : undefined
+  const subgroupCreateUsesSingleDayWindow =
+    subgroupModal?.mode === 'create' && subgroupModalSlot
+      ? isSameLocalDay(subgroupModalSlot.starts_at, subgroupModalSlot.ends_at)
+      : false
+  const subgroupModalEditSubgroup =
+    subgroupModal?.mode === 'edit' && subgroupModalSlot
+      ? subgroupModalSlot.subgroups.find((item) => item.id === subgroupModal.subgroupId) ?? null
+      : null
+  const subgroupModalEditActivity = subgroupModalEditSubgroup ? primaryActivity(subgroupModalEditSubgroup) : null
+  const subgroupModalEditLinks = subgroupModalEditActivity?.id != null
+    ? getLinksForSubgroupActivity(subgroupModalEditActivity.id)
+    : []
+
   return (
     <>
-    <div className="rounded-2xl border border-[#E2E8F0] bg-white p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="font-heading text-xl font-bold text-[#1E0A4E]">Horario para subgrupos</h2>
-          <p className="text-sm text-[#64748B]">Actividad especial del itinerario, sin votaciones.</p>
-        </div>
-        <p className="text-sm text-[#64748B]">Cada persona elige libremente una opcion o queda libre.</p>
-      </div>
-
-      {isAdmin && (
-        <div className="mb-5 grid gap-2 md:grid-cols-4">
-          <input
-            className="rounded-lg border px-3 py-2"
-            placeholder="Nombre del horario"
-            value={newSlotTitle}
-            onChange={(event) => setNewSlotTitle(event.target.value)}
-          />
-          <input
-            className="rounded-lg border px-3 py-2"
-            type="datetime-local"
-            min={minDateTime}
-            max={maxDateTime}
-            step={1800}
-            value={newSlotStart}
-            onChange={(event) => setNewSlotStart(event.target.value)}
-          />
-          <input
-            className="rounded-lg border px-3 py-2"
-            type="datetime-local"
-            min={minDateTime}
-            max={maxDateTime}
-            step={1800}
-            value={newSlotEnd}
-            onChange={(event) => setNewSlotEnd(event.target.value)}
-          />
-          <button type="button" onClick={() => void onCreateSlot()} className="rounded-lg bg-[#1E6FD9] px-4 py-2 font-semibold text-white">
-            Crear horario
-          </button>
-        </div>
-      )}
-
-      {error && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-      {loading && <p className="text-sm text-[#64748B]">Cargando...</p>}
-
-      <div className="space-y-4">
-        {!loading && slots.length === 0 && (
-          <div className="rounded-xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-4 py-8 text-center">
-            <p className="font-semibold text-[#1E0A4E]">Todavia no hay horarios de subgrupos.</p>
-            <p className="mt-1 text-sm text-[#64748B]">
-              Crea un horario con inicio y fin para que las personas propongan actividades dentro de ese bloque.
-            </p>
-          </div>
-        )}
-
-        {slots.map((slot) => {
-          const myMembership = slot.memberships.find((membership) => {
-            const mUid = membership.user_id != null ? String(membership.user_id) : String(membership.usuarios?.id_usuario)
-            return String(mUid) === String(myUserId)
-          })
-          const mySubgroupId = myMembership?.subgroup_id != null ? String(myMembership.subgroup_id) : null
-          const mySubgroup = slot.subgroups.find((sg) => mySubgroupId != null && String(sg.id) === mySubgroupId)
-
-          const draft = activityDraftBySlot[slot.id] ?? {
-            query: '',
-            description: '',
-            timeValue: toLocalTimeValue(slot.starts_at),
-            results: [],
-            selectedPlace: null,
-            loading: false,
-          }
-
-          return (
-            <div key={slot.id} className="rounded-xl border border-[#E2E8F0] p-4">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  {editingSlotId === slot.id ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        className="rounded-md border px-2 py-1 text-sm"
-                        value={editingSlotTitle}
-                        onChange={(event) => setEditingSlotTitle(event.target.value)}
-                      />
-                      <button type="button" className="rounded-md border px-2 py-1 text-xs" onClick={() => void onUpdateSlotTitle(slot.id)}>
-                        Guardar
-                      </button>
-                      <button type="button" className="rounded-md border px-2 py-1 text-xs" onClick={() => setEditingSlotId(null)}>
-                        Cancelar
-                      </button>
-                    </div>
-                  ) : (
-                    <h3 className="font-heading text-lg font-bold text-[#1E0A4E]">{slot.title}</h3>
-                  )}
-                  <p className="text-sm text-[#64748B]">{dt(slot.starts_at)} - {dt(slot.ends_at)}</p>
-                  <p className="mt-1 text-sm text-[#475569]">
-                    Tu estado: <span className="font-semibold">{mySubgroup ? `En ${mySubgroup.name}` : 'Libre'}</span>
-                  </p>
+      <div className="space-y-5">
+        <section className="overflow-hidden rounded-[28px] border border-[#E2E8F0] bg-white shadow-[0_20px_70px_rgba(30,10,78,0.08)]">
+          <div className="relative overflow-hidden px-6 py-6 md:px-8">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(122,79,214,0.18),_transparent_36%),radial-gradient(circle_at_top_right,_rgba(30,111,217,0.12),_transparent_30%)]" />
+            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-3xl">
+                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#D9D5F8] bg-[#F6F2FF] px-3 py-1 text-xs font-semibold text-[#6D45C0]">
+                  <span className="h-2 w-2 rounded-full bg-[#7A4FD6]" />
+                  Momentos para dividirse y reencontrarse
                 </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button type="button" onClick={() => void onJoin(slot.id, null)} className="rounded-md border px-3 py-1.5 text-sm">
-                    {myMembership?.subgroup_id ? 'Quedar libre' : 'Estoy libre'}
-                  </button>
-                  {isAdmin && (
-                    <>
-                      <button type="button" className="rounded-md border px-3 py-1.5 text-xs" onClick={() => { setEditingSlotId(slot.id); setEditingSlotTitle(slot.title) }}>
-                        Editar horario
-                      </button>
-                      <button type="button" className="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600" onClick={() => void onDeleteSlot(slot.id)}>
-                        Eliminar horario
-                      </button>
-                    </>
-                  )}
+                <h2 className="font-heading text-[30px] leading-tight text-[#1E0A4E]">Vista de subgrupos</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#64748B]">
+                  Organiza ratos libres del viaje para que cada quien elija plan, vea quien ya esta dentro y vuelva al
+                  grupo con todo claro.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-3 py-1.5 text-xs font-semibold text-[#1E6FD9]">
+                    {slots.length} {slots.length === 1 ? 'horario activo' : 'horarios activos'}
+                  </span>
+                  <span className="rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-3 py-1.5 text-xs font-semibold text-[#6D45C0]">
+                    {slots.reduce((sum, slot) => sum + slot.subgroups.length, 0)} opciones disponibles
+                  </span>
+                  <span className="rounded-full border border-[#D7DEEA] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569]">
+                    Cada persona puede elegir un plan o quedar libre
+                  </span>
                 </div>
               </div>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={openCreateSlotModal}
+                  className="inline-flex items-center justify-center rounded-2xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(30,111,217,0.28)] transition hover:translate-y-[-1px]"
+                >
+                  Crear horario
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
 
-              <div className="mb-4 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#1E0A4E]/60">Buscar lugar o actividad</p>
+        {error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+        {loading && <p className="px-1 text-sm text-[#64748B]">Cargando subgrupos...</p>}
+
+        {!loading && slots.length === 0 && (
+          <section className="rounded-[26px] border border-dashed border-[#CBD5E1] bg-white px-6 py-12 text-center shadow-[0_16px_40px_rgba(30,10,78,0.04)]">
+            <h3 className="font-heading text-2xl text-[#1E0A4E]">Todavia no hay horarios de subgrupos</h3>
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[#64748B]">
+              Crea un bloque de tiempo para que el grupo proponga planes paralelos, se reparta con libertad y despues
+              pueda volver a encontrarse sin perder el hilo del viaje.
+            </p>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={openCreateSlotModal}
+                className="mt-5 inline-flex items-center justify-center rounded-2xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white"
+              >
+                Crear primer horario
+              </button>
+            )}
+          </section>
+        )}
+
+        <div className="space-y-5">
+          {slots.map((slot) => {
+            const myMembership = slot.memberships.find((membership) => {
+              const mUid = membership.user_id != null ? String(membership.user_id) : String(membership.usuarios?.id_usuario)
+              return String(mUid) === String(myUserId)
+            })
+            const mySubgroupId = myMembership?.subgroup_id != null ? String(myMembership.subgroup_id) : null
+            const mySubgroup = slot.subgroups.find((sg) => mySubgroupId != null && String(sg.id) === mySubgroupId)
+
+            return (
+              <section
+                key={slot.id}
+                className="overflow-hidden rounded-[28px] border border-[#E2E8F0] bg-white shadow-[0_18px_52px_rgba(30,10,78,0.06)]"
+              >
+                <div className="border-b border-[#EEF2F7] bg-[linear-gradient(135deg,rgba(248,250,252,0.98),rgba(244,241,255,0.92))] px-6 py-5">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-[#D7DEEA] bg-white px-3 py-1 text-xs font-semibold text-[#475569]">
+                          Horario libre
+                        </span>
+                        <span className="rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-3 py-1 text-xs font-semibold text-[#6D45C0]">
+                          {dt(slot.starts_at)} - {dt(slot.ends_at)}
+                        </span>
+                      </div>
+                      <div>
+                        <h3 className="font-heading text-2xl text-[#1E0A4E]">{slot.title}</h3>
+                        <p className="mt-1 text-sm text-[#64748B]">
+                          Tu estado actual:{' '}
+                          <span className="font-semibold text-[#1E0A4E]">
+                            {mySubgroup ? `En ${mySubgroup.name}` : 'Libre'}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => void onJoin(slot.id, null)}
+                        className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-[#D7DEEA] bg-white px-5 text-sm font-semibold text-[#1E0A4E] transition hover:border-[#1E6FD9] hover:text-[#1E6FD9]"
+                      >
+                        {myMembership?.subgroup_id ? 'Quedar libre' : 'Estoy libre'}
+                      </button>
+                      {isAdmin && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditSlotModal(slot)}
+                            className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-[#D7DEEA] bg-white px-5 text-sm font-semibold text-[#475569]"
+                          >
+                            Editar horario
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void onDeleteSlot(slot.id)}
+                            className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-red-200 bg-[#FFF5F5] px-5 text-sm font-semibold text-red-600"
+                          >
+                            Eliminar
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-6 py-6">
+                  <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h4 className="font-heading text-lg text-[#1E0A4E]">Planes disponibles</h4>
+                      <p className="mt-1 text-sm text-[#64748B]">
+                        Cada opcion funciona como una mini actividad dentro de este bloque del viaje.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openCreateSubgroupModal(slot)}
+                      className="inline-flex items-center justify-center rounded-2xl bg-[#1E6FD9] px-4 py-3 text-sm font-semibold text-white"
+                    >
+                      {isAdmin ? 'Agregar opcion' : 'Proponer opcion'}
+                    </button>
+                  </div>
+
+                  {slot.subgroups.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-5 py-10 text-center">
+                      <p className="font-semibold text-[#1E0A4E]">Aun no hay planes dentro de este horario.</p>
+                      <p className="mt-1 text-sm text-[#64748B]">
+                        Abre el modal y agrega una opcion con lugar, hora y contexto para que el grupo elija facil.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-5 xl:grid-cols-2">
+                      {slot.subgroups.map((subgroup) => {
+                        const canManageSubgroup = isAdmin || Number(subgroup.created_by) === Number(myUserId)
+                        const isMine = mySubgroupId != null && String(mySubgroupId) === String(subgroup.id)
+                        const details = primaryActivity(subgroup)
+                        const linkedContext = getLinksForSubgroupActivity(details?.id)
+                        const linkedExpenses = linkedContext.filter((entity) => entity.type === 'expense')
+                        const linkedDocuments = linkedContext.filter((entity) => entity.type === 'document')
+                        const coverImage =
+                          (details?.id != null ? subgroupPhotoByActivityId[details.id] : null) ||
+                          group?.destino_photo_url ||
+                          fallbackSubgroupImage
+                        const openEditWithContext = () => openEditSubgroupModal(slot, subgroup)
+                        const openExpenseAssociationModal = () => {
+                          if (details?.id == null) return
+                          setDraftExpenseTab('associate')
+                          openDraftActionModal(slot.id, 'expense', details.id)
+                        }
+                        const openDocumentAssociationModal = () => {
+                          if (details?.id == null) return
+                          setDraftDocumentTab('associate')
+                          openDraftActionModal(slot.id, 'document', details.id)
+                        }
+
+                        return (
+                          <article
+                            key={subgroup.id}
+                            className={`overflow-hidden rounded-[24px] border bg-white shadow-[0_16px_40px_rgba(15,23,42,0.08)] ${
+                              isMine ? 'border-[#1E6FD9]' : 'border-[#E2E8F0]'
+                            }`}
+                          >
+                            <div className="relative min-h-[280px] overflow-hidden">
+                              <img
+                                src={coverImage}
+                                alt={details?.title ?? subgroup.name}
+                                className="absolute inset-0 h-full w-full object-cover"
+                              />
+                              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(14,11,33,0.12),rgba(14,11,33,0.78))]" />
+                              <div className="relative flex h-full min-h-[280px] flex-col justify-between p-5 text-white">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div className="flex flex-wrap gap-2">
+                                    <span className="rounded-full bg-white/16 px-3 py-1 text-xs font-semibold backdrop-blur">
+                                      Subgrupo
+                                    </span>
+                                    {details?.starts_at && (
+                                      <span className="rounded-full bg-white/16 px-3 py-1 text-xs font-semibold backdrop-blur">
+                                        {dt(details.starts_at)}
+                                      </span>
+                                    )}
+                                    {isMine && (
+                                      <span className="rounded-full bg-[#35C56A] px-3 py-1 text-xs font-semibold text-white">
+                                        Tu opcion
+                                      </span>
+                                    )}
+                                  </div>
+                                  {canManageSubgroup && (
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditSubgroupModal(slot, subgroup)}
+                                        className="rounded-full border border-white/30 bg-white/12 px-3 py-1.5 text-xs font-semibold backdrop-blur"
+                                      >
+                                        Editar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void onDeleteSubgroup(slot.id, subgroup.id)}
+                                        className="rounded-full border border-white/30 bg-[#8B1E3F]/60 px-3 py-1.5 text-xs font-semibold"
+                                      >
+                                        Eliminar
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div>
+                                  <h5 className="font-heading text-[28px] leading-tight">
+                                    {details?.title ?? subgroup.name}
+                                  </h5>
+                                  {details?.location && (
+                                    <p className="mt-2 max-w-xl text-sm text-white/88">{details.location}</p>
+                                  )}
+                                  {details?.description && (
+                                    <p className="mt-2 max-w-xl text-sm leading-6 text-white/82">
+                                      {details.description}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-3 pt-4">
+                                  <button
+                                    type="button"
+                                    onClick={() => void onJoin(slot.id, subgroup.id)}
+                                    className={`inline-flex min-h-[54px] items-center justify-center rounded-2xl px-5 text-sm font-semibold shadow-[0_14px_28px_rgba(15,23,42,0.18)] ${
+                                      isMine ? 'bg-white text-[#1E0A4E]' : 'bg-[#1E6FD9] text-white'
+                                    }`}
+                                  >
+                                    {isMine ? 'Estoy aqui' : 'Unirme a este plan'}
+                                  </button>
+                                  <div className="rounded-2xl border border-white/18 bg-white/10 px-4 py-3 text-sm text-white/88 backdrop-blur">
+                                    {subgroup.members.length === 0
+                                      ? 'Aun nadie se suma'
+                                      : `${subgroup.members.length} ${subgroup.members.length === 1 ? 'persona ya esta dentro' : 'personas ya estan dentro'}`}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-4 px-5 py-5">
+                              <section className="rounded-2xl bg-[#F8FAFC] px-4 py-4">
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">
+                                  Personas dentro
+                                </p>
+                                <MemberCircles members={subgroup.members} />
+                                {subgroup.members.length > 0 && (
+                                  <p className="mt-3 text-sm leading-6 text-[#475569]">
+                                    {subgroup.members.map(memberName).join(', ')}
+                                  </p>
+                                )}
+                              </section>
+
+                              <div className="grid gap-2 sm:grid-cols-3">
+                                <button
+                                  type="button"
+                                  onClick={details?.id != null ? openExpenseAssociationModal : openEditWithContext}
+                                  className="rounded-2xl border border-[#CFE0FF] bg-[#EEF4FF] px-4 py-3 text-sm font-semibold text-[#1E6FD9]"
+                                >
+                                  {linkedExpenses.length > 0 ? 'Gestionar gasto' : 'Asociar gasto'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={details?.id != null ? openDocumentAssociationModal : openEditWithContext}
+                                  className="rounded-2xl border border-[#D8C8FF] bg-[#F3EEFF] px-4 py-3 text-sm font-semibold text-[#6D45C0]"
+                                >
+                                  {linkedDocuments.length > 0 ? 'Gestionar documento' : 'Asociar documento'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setChatSubgroup({ slotId: slot.id, subgroupId: subgroup.id, name: subgroup.name })}
+                                  className="rounded-2xl border border-[#B9F0CB] bg-[#ECFDF5] px-4 py-3 text-sm font-semibold text-[#0A8A3E]"
+                                >
+                                  Abrir chat
+                                </button>
+                              </div>
+
+                              <section className="rounded-2xl border border-[#E2E8F0] bg-white px-4 py-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">
+                                      Contexto asociado
+                                    </p>
+                                    <p className="mt-1 text-sm text-[#64748B]">
+                                      Relaciona este plan con gastos o documentos para darle mas contexto al viaje.
+                                    </p>
+                                  </div>
+                                  {details?.id != null && (
+                                    <div className="flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => openDraftActionModal(slot.id, 'expense', details.id)}
+                                        className="rounded-xl border border-[#CFE0FF] bg-[#EEF4FF] px-3 py-2 text-sm font-semibold text-[#1E6FD9]"
+                                      >
+                                        Gestionar gasto
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => openDraftActionModal(slot.id, 'document', details.id)}
+                                        className="rounded-xl border border-[#D8C8FF] bg-[#F3EEFF] px-3 py-2 text-sm font-semibold text-[#6D45C0]"
+                                      >
+                                        Gestionar documento
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {linkedContext.length === 0 ? (
+                                  <p className="mt-4 rounded-xl bg-[#F8FAFC] px-3 py-3 text-sm text-[#64748B]">
+                                    Sin gastos ni documentos asociados por ahora.
+                                  </p>
+                                ) : (
+                                  <div className="mt-4 flex flex-wrap gap-2">
+                                    {linkedExpenses.map((entity) => (
+                                      <button
+                                        key={entityKey(entity)}
+                                        type="button"
+                                        onClick={openExpenseAssociationModal}
+                                        className="rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-3 py-1.5 text-xs font-semibold text-[#1E6FD9]"
+                                        title={entity.label}
+                                      >
+                                        Gasto: {entity.label}
+                                      </button>
+                                    ))}
+                                    {linkedDocuments.map((entity) => (
+                                      <button
+                                        key={entityKey(entity)}
+                                        type="button"
+                                        onClick={openDocumentAssociationModal}
+                                        className="rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-3 py-1.5 text-xs font-semibold text-[#6D45C0]"
+                                        title={entity.label}
+                                      >
+                                        Documento: {entity.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+
+                              </section>
+
+                              {subgroup.activities.slice(1).length > 0 && (
+                                <section className="rounded-2xl bg-[#F8FAFC] px-4 py-4">
+                                  <div className="mb-3 flex items-center justify-between gap-2">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">
+                                      Planes internos
+                                    </p>
+                                    <span className="text-xs text-[#94A3B8]">
+                                      {subgroup.activities.slice(1).length} notas
+                                    </span>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {subgroup.activities.slice(1).map((activity) => (
+                                      <div
+                                        key={activity.id}
+                                        className="flex items-center justify-between gap-3 rounded-xl border border-[#E2E8F0] bg-white px-3 py-3 text-sm text-[#334155]"
+                                      >
+                                        <div>
+                                          <p className="font-semibold text-[#1E0A4E]">{activity.title}</p>
+                                          {activity.description && (
+                                            <p className="mt-1 text-xs text-[#64748B]">{activity.description}</p>
+                                          )}
+                                        </div>
+                                        {(isAdmin || Number(activity.created_by) === Number(myUserId)) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => void onDeleteActivity(slot.id, activity.id)}
+                                            className="text-xs font-semibold text-red-600"
+                                          >
+                                            Eliminar
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </section>
+                              )}
+                            </div>
+                          </article>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )
+          })}
+        </div>
+      </div>
+
+
+      <ActionModal
+        open={slotModal !== null}
+        title={slotModal?.mode === 'edit' ? 'Editar horario' : 'Crear horario'}
+        subtitle="Define el bloque de tiempo donde las personas podran separarse y elegir un plan."
+        confirmLabel={slotModal?.mode === 'edit' ? 'Guardar horario' : 'Crear horario'}
+        confirmDisabled={!newSlotTitle.trim() || !newSlotStart || !newSlotEnd}
+        panelClassName="max-w-2xl"
+        onClose={closeSlotModal}
+        onConfirm={() => void submitSlotModal()}
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="grid gap-2 md:col-span-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Nombre</span>
+            <input
+              className="rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
+              placeholder="Ej: Tarde libre en la costera"
+              value={newSlotTitle}
+              onChange={(event) => setNewSlotTitle(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Inicio</span>
+            <input
+              className="rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
+              type="datetime-local"
+              min={minDateTime}
+              max={maxDateTime}
+              step={1800}
+              value={newSlotStart}
+              onChange={(event) => setNewSlotStart(event.target.value)}
+            />
+          </label>
+          <label className="grid gap-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Fin</span>
+            <input
+              className="rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
+              type="datetime-local"
+              min={minDateTime}
+              max={maxDateTime}
+              step={1800}
+              value={newSlotEnd}
+              onChange={(event) => setNewSlotEnd(event.target.value)}
+            />
+          </label>
+        </div>
+      </ActionModal>
+
+      <ActionModal
+        open={subgroupModal?.mode === 'create' && subgroupModalSlot != null && subgroupModalDraft != null}
+        title={subgroupModalSlot ? `Agregar opcion para ${subgroupModalSlot.title}` : 'Agregar opcion'}
+        subtitle="Busca un lugar, define una hora aproximada y agrega contexto si quieres dejar listo el plan."
+        confirmLabel="Crear opcion"
+        confirmDisabled={!subgroupModalDraft?.selectedPlace}
+        panelClassName="max-w-4xl"
+        onClose={closeSubgroupModal}
+        onConfirm={() => subgroupModalSlot && void onCreateSubgroup(subgroupModalSlot)}
+      >
+        {subgroupModalSlot && subgroupModalDraft && (
+          <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="space-y-4">
+              {error && (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">
+                  Buscar lugar o actividad
+                </label>
                 <div className="flex gap-2">
                   <input
-                    className="flex-1 rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm outline-none transition focus:border-bluePrimary focus:ring-2 focus:ring-bluePrimary/10"
+                    className="flex-1 rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
                     placeholder="Ej: restaurante, playa, museo..."
-                    value={draft.query}
-                    onChange={(event) => setActivityDraft(slot.id, { query: event.target.value, selectedPlace: null })}
+                    value={subgroupModalDraft.query}
+                    onChange={(event) =>
+                      setActivityDraft(subgroupModalSlot.id, { query: event.target.value, selectedPlace: null })
+                    }
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') {
                         event.preventDefault()
-                        void onSearchPlace(slot.id)
+                        void onSearchPlace(subgroupModalSlot.id)
                       }
                     }}
                   />
                   <button
                     type="button"
-                    onClick={() => void onSearchPlace(slot.id)}
-                    disabled={draft.loading}
-                    className="rounded-xl bg-purpleNavbar px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                    onClick={() => void onSearchPlace(subgroupModalSlot.id)}
+                    disabled={subgroupModalDraft.loading}
+                    className="rounded-2xl bg-[#1E0A4E] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
                   >
-                    {draft.loading ? 'Buscando...' : 'Buscar'}
+                    {subgroupModalDraft.loading ? 'Buscando...' : 'Buscar'}
                   </button>
                 </div>
+              </div>
 
-                <div className="mt-4">
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#1E0A4E]/60">
-                    Descripcion opcional
-                  </label>
-                  <textarea
-                    className="w-full resize-none rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm outline-none transition focus:border-bluePrimary focus:ring-2 focus:ring-bluePrimary/10"
-                    rows={3}
-                    placeholder="Ej: visitar por la tarde, revisar horarios, llevar efectivo..."
-                    value={draft.description}
-                    onChange={(event) => setActivityDraft(slot.id, { description: event.target.value })}
-                  />
+              {subgroupModalDraft.selectedPlace && (
+                <div className="rounded-2xl border border-[#CFE0FF] bg-[#EEF4FF] px-4 py-4">
+                  <p className="text-sm font-semibold text-[#1E0A4E]">
+                    {subgroupModalDraft.selectedPlace.name || 'Lugar sin nombre'}
+                  </p>
+                  <p className="mt-1 text-sm text-[#64748B]">
+                    {subgroupModalDraft.selectedPlace.formattedAddress || 'Direccion no disponible'}
+                  </p>
                 </div>
+              )}
 
-                <div className="mt-4">
-                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#1E0A4E]/60">
-                    Hora estimada
-                  </label>
+              <div className="grid gap-4 md:grid-cols-[0.85fr_1.15fr]">
+                <label className="grid gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Hora estimada</span>
                   <input
-                    className="w-full rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm outline-none transition focus:border-bluePrimary focus:ring-2 focus:ring-bluePrimary/10"
+                    className="rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
                     type="time"
-                    value={draft.timeValue}
-                    onChange={(event) => setActivityDraft(slot.id, { timeValue: event.target.value })}
+                    min={subgroupCreateUsesSingleDayWindow ? subgroupCreateTimeMin : undefined}
+                    max={subgroupCreateUsesSingleDayWindow ? subgroupCreateTimeMax : undefined}
+                    step={1800}
+                    value={subgroupModalDraft.timeValue}
+                    onChange={(event) => setActivityDraft(subgroupModalSlot.id, { timeValue: event.target.value })}
                   />
-                </div>
+                  {subgroupCreateUsesSingleDayWindow && subgroupCreateTimeMin && subgroupCreateTimeMax && (
+                    <p className="text-xs text-[#64748B]">
+                      Elige una hora entre {subgroupCreateTimeMin} y {subgroupCreateTimeMax} para este bloque.
+                    </p>
+                  )}
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Descripcion</span>
+                  <textarea
+                    className="min-h-[110px] resize-none rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
+                    placeholder="Ej: comida rapida, llevar traje de bano, llegar con tiempo..."
+                    value={subgroupModalDraft.description}
+                    onChange={(event) => setActivityDraft(subgroupModalSlot.id, { description: event.target.value })}
+                  />
+                </label>
+              </div>
 
-                {draft.selectedPlace && (
-                  <div className="mt-4 rounded-xl border border-bluePrimary/30 bg-bluePrimary/5 px-4 py-3">
-                    <p className="text-sm font-bold text-purpleNavbar">
-                      Seleccionado: {draft.selectedPlace.name || 'Lugar sin nombre'}
-                    </p>
-                    <p className="mt-0.5 text-xs text-gray500">
-                      {draft.selectedPlace.formattedAddress || 'Direccion no disponible'}
-                    </p>
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Resultados</p>
+                {subgroupModalDraft.results.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[#D7DEEA] bg-[#F8FAFC] px-4 py-8 text-center text-sm text-[#64748B]">
+                    Busca un lugar para seleccionar la opcion que quieres proponer.
                   </div>
-                )}
-
-                {draft.results.length > 0 && (
-                  <div className="mt-4 max-h-64 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-white">
-                    {draft.results.map((place) => {
-                      const isSelected = draft.selectedPlace?.id === place.id
+                ) : (
+                  <div className="max-h-[320px] overflow-y-auto rounded-2xl border border-[#E2E8F0] bg-white">
+                    {subgroupModalDraft.results.map((place) => {
+                      const isSelected = subgroupModalDraft.selectedPlace?.id === place.id
                       return (
                         <button
                           key={place.id || `${place.name}-${place.formattedAddress}`}
                           type="button"
-                          onClick={() => setActivityDraft(slot.id, { selectedPlace: place })}
-                          className={`block w-full border-b border-[#F1F5F9] px-4 py-3 text-left last:border-b-0 ${
-                            isSelected ? 'bg-bluePrimary/10' : 'bg-white hover:bg-[#F8FAFC]'
+                          onClick={() => setActivityDraft(subgroupModalSlot.id, { selectedPlace: place })}
+                          className={`block w-full border-b border-[#EEF2F7] px-4 py-4 text-left last:border-b-0 ${
+                            isSelected ? 'bg-[#EEF4FF]' : 'hover:bg-[#F8FAFC]'
                           }`}
                         >
-                          <p className="text-sm font-bold text-purpleNavbar">{place.name || 'Lugar sin nombre'}</p>
-                          <p className="mt-0.5 text-xs text-gray500">{place.formattedAddress || 'Direccion no disponible'}</p>
+                          <p className="text-sm font-semibold text-[#1E0A4E]">{place.name || 'Lugar sin nombre'}</p>
+                          <p className="mt-1 text-sm text-[#64748B]">
+                            {place.formattedAddress || 'Direccion no disponible'}
+                          </p>
                           {place.primaryCategory && (
-                            <p className="mt-1 text-[11px] text-bluePrimary">{place.primaryCategory}</p>
+                            <p className="mt-2 text-xs font-semibold text-[#1E6FD9]">{place.primaryCategory}</p>
                           )}
                         </button>
                       )
                     })}
                   </div>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => void onCreateSubgroup(slot)}
-                  disabled={!draft.selectedPlace}
-                  className="mt-4 rounded-xl bg-bluePrimary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  Crear actividad
-                </button>
-              </div>
-
-              <div className="grid gap-3 lg:grid-cols-2">
-                {slot.subgroups.map((subgroup) => {
-                  const canManageSubgroup = isAdmin || Number(subgroup.created_by) === Number(myUserId)
-                  const isMine = mySubgroupId != null && String(mySubgroupId) === String(subgroup.id)
-                  const details = primaryActivity(subgroup)
-
-                  return (
-                    <div key={subgroup.id} className={`rounded-xl border p-4 ${isMine ? 'border-[#1E6FD9] bg-[#F8FBFF]' : 'border-[#DCE3F0]'}`}>
-                      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="mb-2 flex items-center gap-2">
-                            <span className="rounded-full bg-[#DBEAFE] px-2 py-1 text-xs font-bold text-[#1E6FD9]">Actividad</span>
-                            <span className="rounded-full bg-[#F3EEFF] px-2 py-1 text-xs font-bold text-[#5B35B1]">Sin votacion</span>
-                          </div>
-                          {editingSubgroupId === subgroup.id ? (
-                            <div className="flex items-center gap-2">
-                              <input
-                                className="rounded-md border px-2 py-1 text-xs"
-                                value={editingSubgroupName}
-                                onChange={(event) => setEditingSubgroupName(event.target.value)}
-                              />
-                              <button type="button" className="rounded-md border px-2 py-1 text-xs" onClick={() => void onUpdateSubgroupName(slot.id, subgroup.id)}>
-                                Guardar
-                              </button>
-                              <button type="button" className="rounded-md border px-2 py-1 text-xs" onClick={() => setEditingSubgroupId(null)}>
-                                Cancelar
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <h4 className="font-heading text-lg font-bold text-[#1E0A4E]">{details?.title ?? subgroup.name}</h4>
-                              {details?.starts_at && <p className="text-sm text-[#64748B]">Hora estimada: {dt(details.starts_at)}</p>}
-                              {details?.description && <p className="mt-1 text-sm text-[#475569]">{details.description}</p>}
-                            </>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button type="button" onClick={() => void onJoin(slot.id, subgroup.id)} className="rounded-md bg-[#EEF4FF] px-3 py-1.5 text-xs font-semibold text-[#1E6FD9]">
-                            {isMine ? 'Estoy aqui' : 'Unirme'}
-                          </button>
-                          {canManageSubgroup && (
-                            <>
-                              <button type="button" className="rounded-md border px-2 py-1 text-xs" onClick={() => { setEditingSubgroupId(subgroup.id); setEditingSubgroupName(subgroup.name) }}>
-                                Editar
-                              </button>
-                              <button type="button" className="rounded-md border border-red-200 px-2 py-1 text-xs text-red-600" onClick={() => void onDeleteSubgroup(slot.id, subgroup.id)}>
-                                Eliminar
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mb-3 rounded-lg bg-[#F8FAFC] px-3 py-2">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#64748B]">Personas dentro</p>
-                        <MemberCircles members={subgroup.members} />
-                        {subgroup.members.length > 0 && (
-                          <p className="mt-2 text-sm text-[#475569]">{subgroup.members.map(memberName).join(', ')}</p>
-                        )}
-                      </div>
-
-                      <div className="mb-3 flex flex-wrap gap-2">
-                        {onOpenBudget && (
-                          <button
-                            type="button"
-                            onClick={onOpenBudget}
-                            className="rounded-md border border-[#1E6FD9]/30 bg-[#EEF4FF] px-2 py-1 text-xs font-semibold text-[#1E6FD9]"
-                          >
-                            Registrar gasto
-                          </button>
-                        )}
-                        {onOpenVault && (
-                          <button
-                            type="button"
-                            onClick={onOpenVault}
-                            className="rounded-md border border-[#7A4FD6]/30 bg-[#F3EEFF] px-2 py-1 text-xs font-semibold text-[#5B35B1]"
-                          >
-                            Subir documento
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setChatSubgroup({ slotId: slot.id, subgroupId: subgroup.id, name: subgroup.name })}
-                          className="rounded-md border border-[#35C56A]/30 bg-[#ECFDF5] px-2 py-1 text-xs font-semibold text-[#0A8A3E]"
-                        >
-                          Chat
-                        </button>
-                      </div>
-
-                      {subgroup.activities.slice(1).map((activity) => (
-                        <div key={activity.id} className="mb-1 flex items-center justify-between rounded-md bg-[#F8FAFC] px-2 py-1.5 text-sm">
-                          <span>{activity.title}</span>
-                          {(isAdmin || Number(activity.created_by) === Number(myUserId)) && (
-                            <button type="button" onClick={() => void onDeleteActivity(slot.id, activity.id)} className="text-xs text-red-600">
-                              Eliminar
-                            </button>
-                          )}
-                        </div>
-                      ))}
-
-                      <div className="mt-2 flex gap-2">
-                        <input
-                          className="w-full rounded-md border px-2 py-1.5 text-sm"
-                          placeholder="Plan interno"
-                          value={activityTitleBySubgroup[subgroup.id] ?? ''}
-                          onChange={(event) => setActivityTitleBySubgroup((prev) => ({ ...prev, [subgroup.id]: event.target.value }))}
-                        />
-                        <button type="button" onClick={() => void onCreateActivity(slot.id, subgroup.id)} className="rounded-md border px-2 py-1 text-xs">
-                          Agregar
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
               </div>
             </div>
-          )
-        })}
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
+                <p className="text-sm font-semibold text-[#1E0A4E]">Contexto opcional</p>
+                <p className="mt-1 text-sm leading-6 text-[#64748B]">
+                  Si ya existe un gasto o un documento para este plan, puedes dejarlo relacionado desde ahora.
+                </p>
+                <div className="mt-4 grid gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftExpenseTab('associate')
+                      openDraftActionModal(subgroupModalSlot.id, 'expense')
+                    }}
+                    className="rounded-2xl border border-[#CFE0FF] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E6FD9]"
+                  >
+                    Gestionar gasto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftDocumentTab('associate')
+                      openDraftActionModal(subgroupModalSlot.id, 'document')
+                    }}
+                    className="rounded-2xl border border-[#D8C8FF] bg-white px-4 py-3 text-left text-sm font-semibold text-[#6D45C0]"
+                  >
+                    Gestionar documento
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#E2E8F0] bg-white px-4 py-4">
+                <p className="text-sm font-semibold text-[#1E0A4E]">Resumen del plan</p>
+                <div className="mt-3 space-y-2 text-sm text-[#475569]">
+                  <p>
+                    <span className="font-semibold text-[#1E0A4E]">Horario:</span>{' '}
+                    {dt(subgroupModalSlot.starts_at)} - {dt(subgroupModalSlot.ends_at)}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E0A4E]">Hora estimada:</span>{' '}
+                    {subgroupModalDraft.timeValue || '12:00'}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-[#1E0A4E]">Lugar:</span>{' '}
+                    {subgroupModalDraft.selectedPlace?.name || 'Sin seleccionar'}
+                  </p>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {subgroupModalDraft.selectedExpenseIds.map((expenseId) => {
+                    const expense = linkOptions.expenses.find((item) => item.id === expenseId)
+                    if (!expense) return null
+                    return (
+                      <span
+                        key={expenseId}
+                        className="rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-3 py-1.5 text-xs font-semibold text-[#1E6FD9]"
+                      >
+                        Gasto: {expense.label}
+                      </span>
+                    )
+                  })}
+                  {(subgroupModalDraft.quickExpenseAmount.trim() || subgroupModalDraft.quickExpenseDescription.trim()) && (
+                    <span className="rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-3 py-1.5 text-xs font-semibold text-[#1E6FD9]">
+                      Gasto nuevo: {subgroupModalDraft.quickExpenseDescription.trim() || 'Sin descripcion'}
+                    </span>
+                  )}
+                  {subgroupModalDraft.selectedDocumentIds.map((documentId) => {
+                    const document = linkOptions.documents.find((item) => item.id === documentId)
+                    if (!document) return null
+                    return (
+                      <span
+                        key={documentId}
+                        className="rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-3 py-1.5 text-xs font-semibold text-[#6D45C0]"
+                      >
+                        Documento: {document.label}
+                      </span>
+                    )
+                  })}
+                  {subgroupModalDraft.quickDocumentFile && (
+                    <span className="rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-3 py-1.5 text-xs font-semibold text-[#6D45C0]">
+                      Documento nuevo: {subgroupModalDraft.quickDocumentFile.name}
+                    </span>
+                  )}
+                  {subgroupModalDraft.selectedExpenseIds.length === 0 &&
+                    subgroupModalDraft.selectedDocumentIds.length === 0 &&
+                    !subgroupModalDraft.quickExpenseAmount.trim() &&
+                    !subgroupModalDraft.quickExpenseDescription.trim() &&
+                    !subgroupModalDraft.quickDocumentFile && (
+                      <span className="rounded-xl bg-[#F8FAFC] px-3 py-2 text-xs text-[#7A8799]">
+                        Sin contexto agregado por ahora.
+                      </span>
+                    )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </ActionModal>
+
+      <ActionModal
+        open={subgroupModal?.mode === 'edit'}
+        title="Editar subgrupo"
+        subtitle="Ajusta nombre, lugar, descripcion y hora estimada del plan."
+        confirmLabel="Guardar cambios"
+        confirmDisabled={!subgroupFormName.trim()}
+        panelClassName="max-w-3xl"
+        onClose={closeSubgroupModal}
+        onConfirm={() => void submitSubgroupEdit()}
+      >
+        <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Nombre del subgrupo</span>
+              <input
+                className="rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
+                value={subgroupFormName}
+                onChange={(event) => setSubgroupFormName(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Titulo del plan</span>
+              <input
+                className="rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
+                value={subgroupFormTitle}
+                onChange={(event) => setSubgroupFormTitle(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Ubicacion</span>
+              <input
+                className="rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
+                value={subgroupFormLocation}
+                onChange={(event) => setSubgroupFormLocation(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Hora estimada</span>
+              <input
+                className="rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
+                type="time"
+                value={subgroupFormTime}
+                onChange={(event) => setSubgroupFormTime(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2 md:col-span-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">Descripcion</span>
+              <textarea
+                className="min-h-[140px] resize-none rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
+                value={subgroupFormDescription}
+                onChange={(event) => setSubgroupFormDescription(event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
+              <p className="text-sm font-semibold text-[#1E0A4E]">Contexto del plan</p>
+              <p className="mt-1 text-sm leading-6 text-[#64748B]">
+                Ajusta las relaciones de gasto y documento para esta actividad de subgrupo sin salir del modal.
+              </p>
+              <div className="mt-4 grid gap-2">
+                <button
+                  type="button"
+                  disabled={subgroupModalEditActivity?.id == null}
+                  onClick={() => {
+                    if (!subgroupModalSlot || subgroupModalEditActivity?.id == null) return
+                    setDraftExpenseTab('associate')
+                    openDraftActionModal(subgroupModalSlot.id, 'expense', subgroupModalEditActivity.id)
+                  }}
+                  className="rounded-2xl border border-[#CFE0FF] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E6FD9] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Gestionar gasto
+                </button>
+                <button
+                  type="button"
+                  disabled={subgroupModalEditActivity?.id == null}
+                  onClick={() => {
+                    if (!subgroupModalSlot || subgroupModalEditActivity?.id == null) return
+                    setDraftDocumentTab('associate')
+                    openDraftActionModal(subgroupModalSlot.id, 'document', subgroupModalEditActivity.id)
+                  }}
+                  className="rounded-2xl border border-[#D8C8FF] bg-white px-4 py-3 text-left text-sm font-semibold text-[#6D45C0] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Gestionar documento
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white px-4 py-4">
+              <p className="text-sm font-semibold text-[#1E0A4E]">Relaciones actuales</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {subgroupModalEditLinks.map((entity) => (
+                  <span
+                    key={entityKey(entity)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                      entity.type === 'expense'
+                        ? 'border border-[#CFE0FF] bg-[#EEF4FF] text-[#1E6FD9]'
+                        : 'border border-[#D8C8FF] bg-[#F3EEFF] text-[#6D45C0]'
+                    }`}
+                  >
+                    {entity.type === 'expense' ? 'Gasto' : 'Documento'}: {entity.label}
+                  </span>
+                ))}
+                {subgroupModalEditLinks.length === 0 && (
+                  <span className="rounded-xl bg-[#F8FAFC] px-3 py-2 text-xs text-[#7A8799]">
+                    Este plan todavia no tiene gastos ni documentos asociados.
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </ActionModal>
+
+      <ActionModal
+      open={draftActionModal?.mode === 'expense' && modalDraft != null}
+      title={draftActionModal?.activityId != null ? 'Gestionar gasto del plan' : 'Gestionar gasto'}
+      subtitle={
+        draftActionModal?.activityId != null
+          ? 'Relaciona un gasto existente o crea uno nuevo para esta opcion ya creada.'
+          : 'Asocia un gasto existente o crea uno nuevo desde este mismo modal.'
+      }
+      confirmLabel={draftExpenseTab === 'associate' ? 'Guardar seleccion' : 'Guardar gasto'}
+      onClose={closeDraftActionModal}
+      onConfirm={() => {
+        if (draftExpenseTab === 'associate') {
+          if (draftActionModal?.activityId != null && modalDraft) {
+            void runAction(async () => {
+              await syncDraftLinksForActivity(
+                draftActionModal.activityId!,
+                'expense',
+                modalDraft.selectedExpenseIds ?? [],
+              )
+              await loadContextLinks()
+              closeDraftActionModal()
+            })
+          } else {
+            closeDraftActionModal()
+          }
+        } else if (modalSlotId != null) {
+          void confirmDraftExpense(modalSlotId)
+        }
+      }}
+    >
+      <div className="mb-4 inline-flex rounded-lg border border-[#D7DEEA] bg-[#F8FAFC] p-1">
+        <button
+          type="button"
+          onClick={() => setDraftExpenseTab('associate')}
+          className={`rounded-md px-3 py-1.5 text-sm font-semibold ${draftExpenseTab === 'associate' ? 'bg-[#1E6FD9] text-white' : 'text-[#475569]'}`}
+        >
+          Asociar
+        </button>
+        <button
+          type="button"
+          onClick={() => setDraftExpenseTab('create')}
+          className={`rounded-md px-3 py-1.5 text-sm font-semibold ${draftExpenseTab === 'create' ? 'bg-[#1E6FD9] text-white' : 'text-[#475569]'}`}
+        >
+          Crear
+        </button>
       </div>
-    </div>
+      {draftExpenseTab === 'associate' ? (
+        linkOptions.expenses.length === 0 ? (
+          <p className="text-sm text-[#64748B]">No hay gastos registrados para asociar.</p>
+        ) : (
+          <div className="space-y-3">
+            <input
+              value={modalDraft?.expenseFilter ?? ''}
+              onChange={(event) => modalSlotId != null && setActivityDraft(modalSlotId, { expenseFilter: event.target.value })}
+              placeholder="Filtrar gastos"
+              className="w-full rounded-xl border border-[#D7DEEA] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1E6FD9]"
+            />
+            <div className="flex max-h-56 flex-wrap gap-2 overflow-y-auto">
+              {linkOptions.expenses
+                .filter((expense) => {
+                  const filter = (modalDraft?.expenseFilter ?? '').trim().toLowerCase()
+                  if (!filter) return true
+                  return `${expense.label} ${expense.subtitle ?? ''}`.toLowerCase().includes(filter)
+                })
+                .map((expense) => {
+                  const selected = modalDraft?.selectedExpenseIds.includes(expense.id)
+                  return (
+                    <button
+                      key={expense.id}
+                      type="button"
+                      onClick={() => modalSlotId != null && toggleDraftExpense(modalSlotId, expense.id)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${selected ? 'border-[#1E6FD9] bg-[#1E6FD9] text-white' : 'border-[#D7DEEA] bg-white text-[#3D4A5C]'}`}
+                      title={expense.subtitle ?? expense.label}
+                    >
+                      {expense.label}
+                    </button>
+                  )
+                })}
+            </div>
+          </div>
+        )
+      ) : (
+        <ExpenseDraftForm
+          amount={modalDraft?.quickExpenseAmount ?? ''}
+          description={modalDraft?.quickExpenseDescription ?? ''}
+          date={modalDraft?.quickExpenseDate ?? todayValue()}
+          category={modalDraft?.quickExpenseCategory ?? 'actividad'}
+          paidBy={modalDraft?.quickExpensePaidBy ?? defaultExpensePayer}
+          splitType={modalDraft?.quickExpenseSplitType ?? 'equitativa'}
+          splitAmounts={modalDraft?.quickExpenseSplitAmounts ?? {}}
+          selectedMemberIds={modalDraft?.quickExpenseMemberIds ?? safeMemberOptions.map((member) => member.id)}
+          members={safeMemberOptions}
+          onAmountChange={(value) => modalSlotId != null && setActivityDraft(modalSlotId, { quickExpenseAmount: value })}
+          onDescriptionChange={(value) => modalSlotId != null && setActivityDraft(modalSlotId, { quickExpenseDescription: value })}
+          onDateChange={(value) => modalSlotId != null && setActivityDraft(modalSlotId, { quickExpenseDate: value })}
+          onCategoryChange={(value) => modalSlotId != null && setActivityDraft(modalSlotId, { quickExpenseCategory: value })}
+          onPaidByChange={(value) => modalSlotId != null && setActivityDraft(modalSlotId, { quickExpensePaidBy: value })}
+          onSplitTypeChange={(value) => modalSlotId != null && setActivityDraft(modalSlotId, { quickExpenseSplitType: value })}
+          onSplitAmountChange={(memberId, value) => modalSlotId != null && setDraftExpenseSplitAmount(modalSlotId, memberId, value)}
+          onToggleMember={(memberId) => modalSlotId != null && toggleDraftExpenseMember(modalSlotId, memberId)}
+        />
+      )}
+    </ActionModal>
+
+      <ActionModal
+      open={draftActionModal?.mode === 'document' && modalDraft != null}
+      title={draftActionModal?.activityId != null ? 'Gestionar documento del plan' : 'Gestionar documento'}
+      subtitle={
+        draftActionModal?.activityId != null
+          ? 'Relaciona un documento existente o sube uno nuevo para esta opcion ya creada.'
+          : 'Asocia un documento existente o sube uno nuevo desde este mismo modal.'
+      }
+      confirmLabel={draftDocumentTab === 'associate' ? 'Guardar seleccion' : 'Guardar documento'}
+      onClose={closeDraftActionModal}
+      onConfirm={() => {
+        if (draftDocumentTab === 'associate') {
+          if (draftActionModal?.activityId != null && modalDraft) {
+            void runAction(async () => {
+              await syncDraftLinksForActivity(
+                draftActionModal.activityId!,
+                'document',
+                modalDraft.selectedDocumentIds ?? [],
+              )
+              await loadContextLinks()
+              closeDraftActionModal()
+            })
+          } else {
+            closeDraftActionModal()
+          }
+        } else if (modalSlotId != null) {
+          void confirmDraftDocument(modalSlotId)
+        }
+      }}
+    >
+      <div className="mb-4 inline-flex rounded-lg border border-[#D7DEEA] bg-[#F8FAFC] p-1">
+        <button
+          type="button"
+          onClick={() => setDraftDocumentTab('associate')}
+          className={`rounded-md px-3 py-1.5 text-sm font-semibold ${draftDocumentTab === 'associate' ? 'bg-[#7A4FD6] text-white' : 'text-[#475569]'}`}
+        >
+          Asociar
+        </button>
+        <button
+          type="button"
+          onClick={() => setDraftDocumentTab('create')}
+          className={`rounded-md px-3 py-1.5 text-sm font-semibold ${draftDocumentTab === 'create' ? 'bg-[#7A4FD6] text-white' : 'text-[#475569]'}`}
+        >
+          Crear
+        </button>
+      </div>
+      {draftDocumentTab === 'associate' ? (
+        linkOptions.documents.length === 0 ? (
+          <p className="text-sm text-[#64748B]">No hay documentos en la boveda para asociar.</p>
+        ) : (
+          <div className="space-y-3">
+            <input
+              value={modalDraft?.documentFilter ?? ''}
+              onChange={(event) => modalSlotId != null && setActivityDraft(modalSlotId, { documentFilter: event.target.value })}
+              placeholder="Filtrar documentos"
+              className="w-full rounded-xl border border-[#D7DEEA] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7A4FD6]"
+            />
+            <div className="flex max-h-56 flex-wrap gap-2 overflow-y-auto">
+              {linkOptions.documents
+                .filter((document) => {
+                  const filter = (modalDraft?.documentFilter ?? '').trim().toLowerCase()
+                  if (!filter) return true
+                  return `${document.label} ${document.subtitle ?? ''}`.toLowerCase().includes(filter)
+                })
+                .map((document) => {
+                  const selected = modalDraft?.selectedDocumentIds.includes(document.id)
+                  return (
+                    <button
+                      key={document.id}
+                      type="button"
+                      onClick={() => modalSlotId != null && toggleDraftDocument(modalSlotId, document.id)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${selected ? 'border-[#7A4FD6] bg-[#7A4FD6] text-white' : 'border-[#D7DEEA] bg-white text-[#3D4A5C]'}`}
+                      title={document.subtitle ?? document.label}
+                    >
+                      {document.label}
+                    </button>
+                  )
+                })}
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="grid gap-3">
+          <input
+            type="file"
+            onChange={(event) => modalSlotId != null && setActivityDraft(modalSlotId, { quickDocumentFile: event.target.files?.[0] ?? null })}
+            className="rounded-xl border border-[#D7DEEA] bg-white px-3 py-2.5 text-sm text-[#3D4A5C] outline-none focus:border-[#7A4FD6]"
+          />
+          <select
+            value={modalDraft?.quickDocumentCategory ?? 'actividad'}
+            onChange={(event) => modalSlotId != null && setActivityDraft(modalSlotId, { quickDocumentCategory: event.target.value as TripDocumentCategory })}
+            className="rounded-xl border border-[#D7DEEA] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7A4FD6]"
+          >
+            {(Object.keys(documentCategoryLabels) as TripDocumentCategory[]).map((category) => (
+              <option key={category} value={category}>{documentCategoryLabels[category]}</option>
+            ))}
+          </select>
+          <textarea
+            value={modalDraft?.quickDocumentNotes ?? ''}
+            onChange={(event) => modalSlotId != null && setActivityDraft(modalSlotId, { quickDocumentNotes: event.target.value })}
+            placeholder="Nota obligatoria del documento"
+            rows={3}
+            className="w-full resize-none rounded-xl border border-[#D7DEEA] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#7A4FD6]"
+          />
+        </div>
+      )}
+    </ActionModal>
 
     {chatSubgroup && (
       <SubgroupChatDrawer

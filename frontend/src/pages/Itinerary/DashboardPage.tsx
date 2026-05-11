@@ -16,6 +16,12 @@ import { ConfirmProposalModal } from '../../components/ConfirmProposalModal/Conf
 import { ActivityProposalModal } from '../../components/ActivityProposalModal/ActivityProposalModal'
 import { BudgetDashboard } from '../../components/budget/BudgetDashboard'
 import { budgetService, type BudgetSummary } from '../../services/budget'
+import {
+  contextLinksService,
+  type ContextEntityRef,
+  type ContextEntitySummary,
+  type ContextLink,
+} from '../../services/context-links'
 import { DocumentVaultPanel } from '../../components/documents/DocumentVaultPanel'
 import { SubgroupSchedulePanel } from '../../components/subgroups/SubgroupSchedulePanel'
 import { useSocket } from '../../hooks/useSocket'
@@ -568,6 +574,15 @@ interface DashboardUpdatedSocketPayload {
   createdAt?: string
 }
 
+const otherEntityForActivity = (link: ContextLink, activityId: string): ContextEntitySummary | null => {
+  if (link.entityA.type === 'activity' && link.entityA.id === activityId) return link.entityB
+  if (link.entityB.type === 'activity' && link.entityB.id === activityId) return link.entityA
+  return null
+}
+
+const isActivityContextType = (type: ContextEntityRef['type']): boolean =>
+  type === 'expense' || type === 'document'
+
 export function DashboardPage() {
 
   const navigate = useNavigate()
@@ -625,6 +640,7 @@ export function DashboardPage() {
   const [visibleCommentsCountByProposal, setVisibleCommentsCountByProposal] = useState<Record<string, number>>({})
   const [chatOpen, setChatOpen] = useState(false)
   const [chatUnread, setChatUnread] = useState(0)
+  const [contextLinks, setContextLinks] = useState<ContextLink[]>([])
   const chatOpenRef = useRef(chatOpen)
 
   // Keep ref in sync so the unread socket listener never captures stale chatOpen
@@ -659,7 +675,6 @@ export function DashboardPage() {
 
   const isEmpty = days.length === 0
   const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
-  const selectedDay = activeDay !== null ? days.find((day) => day.dayNumber === activeDay) : undefined
   const safeMembers = (Array.isArray(members) ? members : []).filter(
     (member): member is NonNullable<NonNullable<typeof members>[number]> => Boolean(member),
   )
@@ -694,6 +709,32 @@ export function DashboardPage() {
       }))
   }, [safeMembers])
 
+  const getLinksForActivity = useCallback((activityId: string) => {
+    return contextLinks
+      .map((link) => otherEntityForActivity(link, activityId))
+      .filter((entity): entity is ContextEntitySummary =>
+        entity !== null && isActivityContextType(entity.type)
+      )
+  }, [contextLinks])
+
+  const daysWithContext = useMemo(() => days.map((day) => ({
+    ...day,
+    activities: day.activities.map((activity) => ({
+      ...activity,
+      linkedContext: getLinksForActivity(activity.id),
+    })),
+  })), [days, getLinksForActivity])
+
+  const selectedDayWithContext = activeDay !== null
+    ? daysWithContext.find((day) => day.dayNumber === activeDay)
+    : undefined
+
+  const openActivityEditor = (activity: DayActivity) => {
+    lockProposalForActivity(activity)
+    setEditingActivity(activity)
+    setShowActivityModal(true)
+  }
+
   useEffect(() => {
   const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
 
@@ -711,11 +752,15 @@ export function DashboardPage() {
         setIsLoading(true)
 
         const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-        const [groupResult, membersResult, votesResult, budgetResult] = await Promise.allSettled([
+        const [groupResult, membersResult, votesResult, budgetResult, contextResult] = await Promise.allSettled([
           groupsService.getGroupDetails(resolvedGroupId, accessToken),
           groupsService.getMembers(resolvedGroupId, accessToken),
           proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
           budgetService.getDashboard(String(resolvedGroupId), accessToken),
+          Promise.all([
+            contextLinksService.list(resolvedGroupId, accessToken),
+            contextLinksService.options(resolvedGroupId, accessToken),
+          ]),
         ])
 
         const groupData =
@@ -742,6 +787,9 @@ export function DashboardPage() {
           if (budgetResult.status === 'fulfilled') {
             setBudgetSummary(budgetResult.value.summary)
           }
+          if (contextResult.status === 'fulfilled') {
+            setContextLinks(contextResult.value[0].links)
+          }
           setVotedActivityIds({})
         }
       } catch (error) {
@@ -766,11 +814,15 @@ export function DashboardPage() {
     if (!resolvedGroupId || !accessToken) return
 
     const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-    const [groupResult, membersResult, votesResult, budgetResult] = await Promise.allSettled([
+    const [groupResult, membersResult, votesResult, budgetResult, contextResult] = await Promise.allSettled([
       groupsService.getGroupDetails(resolvedGroupId, accessToken),
       groupsService.getMembers(resolvedGroupId, accessToken),
       proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
       budgetService.getDashboard(String(resolvedGroupId), accessToken),
+      Promise.all([
+        contextLinksService.list(resolvedGroupId, accessToken),
+        contextLinksService.options(resolvedGroupId, accessToken),
+      ]),
     ])
 
     const groupData =
@@ -794,6 +846,9 @@ export function DashboardPage() {
     setDays(daysWithRoutes)
     if (budgetResult.status === 'fulfilled') {
       setBudgetSummary(budgetResult.value.summary)
+    }
+    if (contextResult.status === 'fulfilled') {
+      setContextLinks(contextResult.value[0].links)
     }
     setVotedActivityIds({})
     setVoteResultByProposal(nextVotesMap)
@@ -1320,6 +1375,14 @@ export function DashboardPage() {
             groupId={resolvedGroupId ?? null}
             onSummaryChange={setBudgetSummary}
             onOpenVault={() => setActiveTab('boveda')}
+            onOpenItinerary={() => {
+              setDashboardView('general')
+              setActiveTab('inicio')
+            }}
+            onOpenSubgroups={() => {
+              setDashboardView('subgrupos')
+              setActiveTab('inicio')
+            }}
           />
         </div>
       ) : activeTab === 'boveda' ? (
@@ -1327,6 +1390,15 @@ export function DashboardPage() {
           groupId={resolvedGroupId ?? null}
           members={members}
           currentUser={localUser ?? null}
+          onOpenBudget={() => setActiveTab('pagar')}
+          onOpenItinerary={() => {
+            setDashboardView('general')
+            setActiveTab('inicio')
+          }}
+          onOpenSubgroups={() => {
+            setDashboardView('subgrupos')
+            setActiveTab('inicio')
+          }}
         />
       ) : activeTab === 'inicio' && dashboardView === 'subgrupos' ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
@@ -1349,6 +1421,7 @@ export function DashboardPage() {
           <SubgroupSchedulePanel
             groupId={resolvedGroupId ?? null}
             group={group}
+            members={members}
             isAdmin={isCurrentUserAdmin}
             tripStartDate={group?.fecha_inicio ?? null}
             tripEndDate={group?.fecha_fin ?? null}
@@ -1448,18 +1521,18 @@ export function DashboardPage() {
           </div>
           <HeroCard
             activeDay={activeDay}
-            totalDays={days.length}
-            selectedDay={selectedDay}
+            totalDays={daysWithContext.length}
+            selectedDay={selectedDayWithContext}
             group={group}
-            onAdd={() => openActivityModalForDay(activeDay ?? days[0]?.dayNumber ?? 1)}
+            onAdd={() => openActivityModalForDay(activeDay ?? daysWithContext[0]?.dayNumber ?? 1)}
             onExportPdf={handleExportConfirmedItineraryPdf}
             canManageSubgroups={isCurrentUserAdmin}
             onOpenSubgroups={() => setDashboardView('subgrupos')}
           />
           <InfoBanner memberCount={uniqueMemberCount} />
-          <TimelineStrip activeDay={activeDay} date={selectedDay?.date} activities={selectedDay?.activities} />
+          <TimelineStrip activeDay={activeDay} date={selectedDayWithContext?.date} activities={selectedDayWithContext?.activities} />
           <div className="flex flex-col gap-3">
-            {days.map((day) => (
+            {daysWithContext.map((day) => (
             <DayView
               key={day.dayNumber}
               ref={(handle) => {
@@ -1474,14 +1547,15 @@ export function DashboardPage() {
               isExpanded={day.dayNumber === expandedDay}
               onSelect={handleDayChange}
               onAddActivity={openActivityModalForDay}
+              onManageContext={openActivityEditor}
+              onOpenBudget={() => setActiveTab('pagar')}
+              onOpenVault={() => setActiveTab('boveda')}
               onAccept={(id) => void handleAcceptActivity(id)}
               onDelete={(id) => void handleDeleteActivity(id)}
               onEdit={(id) => {
                 const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
                 if (!activity) return
-                lockProposalForActivity(activity)
-                setEditingActivity(activity)
-                setShowActivityModal(true)
+                openActivityEditor(activity)
               }}
             />
             ))}
@@ -1525,9 +1599,7 @@ export function DashboardPage() {
                         onEdit={(id) => {
                           const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
                           if (activity) {
-                            lockProposalForActivity(activity)
-                            setEditingActivity(activity)
-                            setShowActivityModal(true)
+                            openActivityEditor(activity)
                           }
                         }}
                       />
@@ -1777,6 +1849,8 @@ export function DashboardPage() {
         token={accessToken}
         selectedDayNumber={selectedActivityDay}
         isCurrentUserAdmin={isCurrentUserAdmin}
+        currentUserId={localUser?.id_usuario != null ? String(localUser.id_usuario) : null}
+        members={safeMembers}
         onClose={() => {
           unlockProposalForActivity(editingActivity)
           setEditingActivity(null)

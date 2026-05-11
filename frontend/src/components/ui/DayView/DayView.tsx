@@ -1,4 +1,5 @@
 import { useState, useRef, useImperativeHandle, forwardRef } from 'react'
+import type { ContextEntitySummary } from '../../../services/context-links'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ export interface Activity {
   routeDurationText?: string | null
   routeTravelMode?: string | null
   adminDecisionType?: 'A' | 'B' | 'C' | null
+  linkedContext?: ContextEntitySummary[]
 }
 
 export interface DayViewProps {
@@ -38,6 +40,9 @@ export interface DayViewProps {
   onAccept?: (activityId: string) => void
   onDelete?: (activityId: string) => void
   onEdit?: (activityId: string) => void
+  onManageContext?: (activity: Activity) => void
+  onOpenBudget?: () => void
+  onOpenVault?: () => void
   currentUserId?: string | number | null
   currentUserRole?: 'admin' | 'viajero' | string | null
   onAddActivity?: (dayNumber: number) => void
@@ -197,6 +202,70 @@ function SectionLabel({ emoji, text }: { emoji: string; text: string }) {
   )
 }
 
+function ActivityContextBlock({
+  activity,
+  onManageContext,
+  onOpenBudget,
+  onOpenVault,
+}: {
+  activity: Activity
+  onManageContext?: (activity: Activity) => void
+  onOpenBudget?: () => void
+  onOpenVault?: () => void
+}) {
+  const linked = activity.linkedContext ?? []
+  const expenses = linked.filter((entity) => entity.type === 'expense')
+  const documents = linked.filter((entity) => entity.type === 'document')
+
+  return (
+    <div className="mt-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+          Contexto asociado
+        </p>
+        <button
+          type="button"
+          onClick={() => onManageContext?.(activity)}
+          className="rounded-lg border border-[#D7DEEA] bg-white px-2.5 py-1 font-body text-[11px] font-semibold text-[#3D4A5C] hover:bg-[#F1F5F9]"
+        >
+          Asociar
+        </button>
+      </div>
+
+      {linked.length === 0 ? (
+        <p className="font-body text-xs text-[#7A8799]">
+          Sin gastos ni documentos asociados.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {expenses.map((entity) => (
+            <button
+              key={`${entity.type}:${entity.id}`}
+              type="button"
+              onClick={onOpenBudget}
+              className="max-w-full rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#1E6FD9] hover:bg-[#E2EDFF]"
+              title={entity.label}
+            >
+              Gasto: <span className="font-medium">{entity.label}</span>
+            </button>
+          ))}
+          {documents.map((entity) => (
+            <button
+              key={`${entity.type}:${entity.id}`}
+              type="button"
+              onClick={onOpenVault}
+              className="max-w-full rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#5B35B1] hover:bg-[#ECE4FF]"
+              title={entity.label}
+            >
+              Documento: <span className="font-medium">{entity.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── ActivityCardConfirmed ─────────────────────────────────────────────────────
 
 function ActivityCardConfirmed({
@@ -205,12 +274,18 @@ function ActivityCardConfirmed({
   currentUserRole,
   onDelete,
   onEdit,
+  onManageContext,
+  onOpenBudget,
+  onOpenVault,
 }: {
   activity: Activity
   currentUserId?: string | number | null
   currentUserRole?: 'admin' | 'viajero' | string | null
   onDelete?: (id: string) => void
   onEdit?: (id: string) => void
+  onManageContext?: (activity: Activity) => void
+  onOpenBudget?: () => void
+  onOpenVault?: () => void
 }) {
   const iconColor = getCategoryColor(activity.category)
   const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
@@ -292,6 +367,12 @@ function ActivityCardConfirmed({
             Reservación confirmada
           </span>
         </div>
+        <ActivityContextBlock
+          activity={activity}
+          onManageContext={onManageContext}
+          onOpenBudget={onOpenBudget}
+          onOpenVault={onOpenVault}
+        />
         {(canEdit || canDelete) && (
           <div className="mt-3 flex items-center justify-end gap-2">
             {canEdit && (
@@ -330,6 +411,9 @@ function ActivityCardPending({
   onAccept,
   onDelete,
   onEdit,
+  onManageContext,
+  onOpenBudget,
+  onOpenVault,
 }: {
   activity: Activity
   currentUserId?: string | number | null
@@ -337,6 +421,9 @@ function ActivityCardPending({
   onAccept?: (id: string) => void
   onDelete?: (id: string) => void
   onEdit?: (id: string) => void
+  onManageContext?: (activity: Activity) => void
+  onOpenBudget?: () => void
+  onOpenVault?: () => void
 }) {
   const iconColor = getCategoryColor(activity.category)
   const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
@@ -426,6 +513,13 @@ function ActivityCardPending({
             Puesta por el admin directamente (Tipo A)
           </p>
         )}
+
+        <ActivityContextBlock
+          activity={activity}
+          onManageContext={onManageContext}
+          onOpenBudget={onOpenBudget}
+          onOpenVault={onOpenVault}
+        />
 
         {/* Accept / Delete row */}
         <div className="flex items-center gap-2 mt-3">
@@ -528,6 +622,9 @@ function ActivitiesBody({
   onDelete,
   onAddActivity,
   onEdit,
+  onManageContext,
+  onOpenBudget,
+  onOpenVault,
 }: {
   activities: Activity[]
   currentUserId?: string | number | null
@@ -536,6 +633,9 @@ function ActivitiesBody({
   onDelete?: (id: string) => void
   onAddActivity?: () => void
   onEdit?: (id: string) => void
+  onManageContext?: (activity: Activity) => void
+  onOpenBudget?: () => void
+  onOpenVault?: () => void
 }) {
   const transport = activities.filter((a) => a.category === 'transporte')
   const lodging   = activities.filter((a) => a.category === 'hospedaje')
@@ -548,8 +648,8 @@ function ActivitiesBody({
           <SectionLabel {...getSectionLabel('transporte')} />
           {transport.map((a) =>
             a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} />
-              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} />
+              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
+              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
           )}
         </section>
       )}
@@ -559,8 +659,8 @@ function ActivitiesBody({
           <SectionLabel {...getSectionLabel('hospedaje')} />
           {lodging.map((a) =>
             a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} />
-              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} />
+              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
+              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
           )}
         </section>
       )}
@@ -570,8 +670,8 @@ function ActivitiesBody({
           <SectionLabel {...getSectionLabel('actividad')} />
           {acts.map((a) =>
             a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} />
-              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} />
+              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
+              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
           )}
         </section>
       )}
@@ -595,6 +695,9 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
     onDelete,
     onEdit,
     onAddActivity,
+    onManageContext,
+    onOpenBudget,
+    onOpenVault,
     currentUserId,
     currentUserRole,
   },
@@ -686,6 +789,9 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
               onAccept={onAccept}
               onDelete={onDelete}
               onEdit={onEdit}
+              onManageContext={onManageContext}
+              onOpenBudget={onOpenBudget}
+              onOpenVault={onOpenVault}
               onAddActivity={() => onAddActivity?.(dayNumber)}
             />
           )}

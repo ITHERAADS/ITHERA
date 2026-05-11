@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { LandingPage } from './pages/Landing';
 import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
+import { OTPPage } from './pages/OTP';
 import { DashboardPage } from './pages/Itinerary';
 import { GroupPanelPage } from './pages/GroupPanel';
 import { CreateGroupPage } from './pages/CreateGroup';
@@ -27,6 +28,7 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/otp" element={<OTPPage />} />
         <Route path="/join-group" element={<JoinGroupPage />} />
 
         <Route

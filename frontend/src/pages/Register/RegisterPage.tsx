@@ -275,10 +275,7 @@ export function RegisterPage() {
       });
 
       if (result.requiresEmailConfirmation) {
-        setIsSuccessMessage(true);
-        setServerMessage(
-          "Tu cuenta fue creada correctamente. Te enviamos un enlace de verificación a tu correo. Debes abrir ese enlace antes de iniciar sesión."
-        );
+        navigate('/otp', { state: { email: normalizeEmail(form.email) } });
         return;
       }
 

@@ -58,6 +58,7 @@ export function GroupPanelPage() {
   )
 
   const isAdmin = currentMember?.rol === 'admin' || group?.myRole === 'admin'
+  const isPrivateGroup = group?.es_publico !== true
 
   useEffect(() => {
     if (!accessToken || !groupId) {
@@ -72,8 +73,10 @@ export function GroupPanelPage() {
         setError('')
 
         const currentGroup = getCurrentGroup()
+        let loadedGroup: Group | null = null
 
         if (currentGroup && String(currentGroup.id) === String(groupId)) {
+          loadedGroup = currentGroup
           setGroup(currentGroup)
         } else {
           try {
@@ -90,6 +93,7 @@ export function GroupPanelPage() {
               null
 
             if (foundGroup) {
+              loadedGroup = foundGroup
               saveCurrentGroup(foundGroup)
               setGroup(foundGroup)
             }
@@ -108,11 +112,21 @@ export function GroupPanelPage() {
         const canManage = memberRole === 'admin' || currentGroup?.myRole === 'admin'
 
         if (canManage) {
+          const fallbackGroup = getCurrentGroup()
+          const effectiveGroup =
+            loadedGroup ||
+            (fallbackGroup && String(fallbackGroup.id) === String(groupId)
+              ? fallbackGroup
+              : null)
+          const effectiveIsPrivate = effectiveGroup?.es_publico !== true
+
           const [inviteRes, qrRes, invitationsRes, joinRequestsRes] = await Promise.all([
             groupsService.getInvite(groupId, accessToken),
             groupsService.getQr(groupId, accessToken),
             groupsService.getInvitations(groupId, accessToken),
-            groupsService.getJoinRequests(groupId, accessToken),
+            effectiveIsPrivate
+              ? groupsService.getJoinRequests(groupId, accessToken)
+              : Promise.resolve({ requests: [] }),
           ])
 
           setInviteLink(inviteRes.inviteLink)
@@ -474,57 +488,59 @@ export function GroupPanelPage() {
                     </button>
                   </div>
 
-                  <div className="mt-6">
-                    <h3 className="font-heading text-base font-semibold text-[#1E0A4E]">
-                      Solicitudes de unión
-                    </h3>
-                    <p className="mt-1 font-body text-xs text-[#7A8799]">
-                      En grupos privados, los usuarios que usen el código quedan pendientes hasta que el administrador apruebe o rechace la solicitud.
-                    </p>
-
-                    {joinRequests.length === 0 ? (
-                      <p className="mt-3 rounded-xl bg-[#F8FAFC] px-4 py-3 font-body text-sm text-[#7A8799]">
-                        No hay solicitudes pendientes.
+                  {isPrivateGroup && (
+                    <div className="mt-6">
+                      <h3 className="font-heading text-base font-semibold text-[#1E0A4E]">
+                        Solicitudes de unión
+                      </h3>
+                      <p className="mt-1 font-body text-xs text-[#7A8799]">
+                        En grupos privados, los usuarios que usen el código quedan pendientes hasta que el administrador apruebe o rechace la solicitud.
                       </p>
-                    ) : (
-                      <div className="mt-3 space-y-2">
-                        {joinRequests.map((request) => (
-                          <div
-                            key={request.id}
-                            className="rounded-xl border border-[#E2E8F0] px-4 py-3"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-body text-sm font-medium text-[#1E0A4E]">
-                                  {request.nombre || request.email || `Usuario ${request.usuario_id}`}
-                                </p>
-                                {request.email && (
-                                  <p className="font-body text-xs text-[#7A8799]">{request.email}</p>
-                                )}
+
+                      {joinRequests.length === 0 ? (
+                        <p className="mt-3 rounded-xl bg-[#F8FAFC] px-4 py-3 font-body text-sm text-[#7A8799]">
+                          No hay solicitudes pendientes.
+                        </p>
+                      ) : (
+                        <div className="mt-3 space-y-2">
+                          {joinRequests.map((request) => (
+                            <div
+                              key={request.id}
+                              className="rounded-xl border border-[#E2E8F0] px-4 py-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-body text-sm font-medium text-[#1E0A4E]">
+                                    {request.nombre || request.email || `Usuario ${request.usuario_id}`}
+                                  </p>
+                                  {request.email && (
+                                    <p className="font-body text-xs text-[#7A8799]">{request.email}</p>
+                                  )}
+                                </div>
+                                <span className="rounded-full bg-[#FFF4D6] px-3 py-1 text-xs font-semibold text-[#A86B00]">
+                                  Pendiente
+                                </span>
                               </div>
-                              <span className="rounded-full bg-[#FFF4D6] px-3 py-1 text-xs font-semibold text-[#A86B00]">
-                                Pendiente
-                              </span>
+                              <div className="mt-3 grid grid-cols-2 gap-2">
+                                <button
+                                  onClick={() => handleResolveJoinRequest(request, 'approve')}
+                                  className="rounded-lg bg-[#1E6FD9] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2C8BE6]"
+                                >
+                                  Aprobar
+                                </button>
+                                <button
+                                  onClick={() => handleResolveJoinRequest(request, 'reject')}
+                                  className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-50"
+                                >
+                                  Rechazar
+                                </button>
+                              </div>
                             </div>
-                            <div className="mt-3 grid grid-cols-2 gap-2">
-                              <button
-                                onClick={() => handleResolveJoinRequest(request, 'approve')}
-                                className="rounded-lg bg-[#1E6FD9] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2C8BE6]"
-                              >
-                                Aprobar
-                              </button>
-                              <button
-                                onClick={() => handleResolveJoinRequest(request, 'reject')}
-                                className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-50"
-                              >
-                                Rechazar
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="mt-6">
                     <h3 className="font-heading text-base font-semibold text-[#1E0A4E]">
@@ -581,7 +597,9 @@ export function GroupPanelPage() {
             const [membersRes, invitationsRes, joinRequestsRes] = await Promise.all([
               groupsService.getMembers(group.id, accessToken),
               groupsService.getInvitations(group.id, accessToken),
-              groupsService.getJoinRequests(group.id, accessToken),
+              isPrivateGroup
+                ? groupsService.getJoinRequests(group.id, accessToken)
+                : Promise.resolve({ requests: [] }),
             ])
 
             setMembers(membersRes.members)

@@ -32,12 +32,13 @@ export type AuthContextType = {
   sessionUser: SessionUser | null;
   localUser: LocalUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<RegisterResult>;
   forgotPassword: (email: string) => Promise<void>;
   loginWithGoogle: (redirectTo?: string) => Promise<void>;
   loginWithFacebook: (redirectTo?: string) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: (token: string) => Promise<void>;
   refreshMe: (token?: string) => Promise<void>;
 };
 

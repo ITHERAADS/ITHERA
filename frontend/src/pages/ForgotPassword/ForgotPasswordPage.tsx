@@ -169,7 +169,14 @@ export function ForgotPasswordPage() {
                       setEmail(value);
                       setMessage("");
 
-                      if (error && EMAIL_REGEX.test(normalizeEmail(value))) {
+                      const normalized = normalizeEmail(value);
+                      if (normalized.length > 0 && normalized.includes("@")) {
+                        if (!EMAIL_REGEX.test(normalized)) {
+                          setError("Ingresa un correo electrónico válido (ej. usuario@dominio.com).");
+                        } else {
+                          setError("");
+                        }
+                      } else {
                         setError("");
                       }
                     }}

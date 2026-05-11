@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import logoWhite from "../../assets/logo-white.png";
 import googleIcon from "../../assets/google.png";
 import facebookIcon from "../../assets/facebook.png";
-import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { useNavigate, Link, useSearchParams, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { ApiError } from "../../services/apiClient";
 
@@ -78,6 +78,8 @@ export function LoginPage() {
   const [lockRemainingSeconds, setLockRemainingSeconds] = useState(0);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const sessionExpired = (location.state as { sessionExpired?: boolean } | null)?.sessionExpired === true;
   const { login, loginWithGoogle, loginWithFacebook } = useAuth();
 
   const redirect = getSafeRedirect(
@@ -172,7 +174,7 @@ export function LoginPage() {
 
     try {
       setLoading(true);
-      await login(email, password);
+      await login(email, password, rememberMe);
       setErrorCode(null);
       clearStoredLoginLock();
       sessionStorage.removeItem(REDIRECT_STORAGE_KEY);
@@ -398,6 +400,13 @@ export function LoginPage() {
               <div className="h-px flex-1 bg-[#E4E7EC]" />
             </div>
 
+            {/* Session expired banner */}
+            {sessionExpired && (
+              <div className="mb-5 rounded-xl border border-[#F59E0B]/30 bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
+                Tu sesión expiró. Por favor inicia sesión de nuevo.
+              </div>
+            )}
+
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
               {/* Email */}
@@ -411,9 +420,20 @@ export function LoginPage() {
                   autoComplete="email"
                   value={email}
                   onChange={(e) => {
-                    setEmail(e.target.value);
-                    setEmailError("");
+                    const val = e.target.value;
+                    setEmail(val);
                     clearLoginError();
+                    // Validación en tiempo real: solo cuando ya escribió algo con @
+                    const normalized = normalizeLoginEmail(val);
+                    if (normalized.length > 0 && normalized.includes("@")) {
+                      if (!EMAIL_REGEX.test(normalized)) {
+                        setEmailError("Ingresa un correo electrónico válido (ej. usuario@dominio.com).");
+                      } else {
+                        setEmailError("");
+                      }
+                    } else {
+                      setEmailError("");
+                    }
                   }}
                   onBlur={(e) => validateEmail(e.target.value)}
                   placeholder="correo@ejemplo.com"

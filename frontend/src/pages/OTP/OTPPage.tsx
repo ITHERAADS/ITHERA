@@ -99,7 +99,7 @@ export function OTPPage() {
       const { error: otpError } = await supabase.auth.verifyOtp({
         email,
         token: digits.join(""),
-        type: "email",
+        type: "signup",
       });
       if (otpError) throw otpError;
       setVerified(true);

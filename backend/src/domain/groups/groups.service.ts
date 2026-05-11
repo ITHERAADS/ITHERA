@@ -271,6 +271,20 @@ const countMembers = async (groupId: string): Promise<number> => {
   return count ?? 0;
 };
 
+const normalizeMaxMembers = (value?: number | null): number | null => {
+  if (value === undefined || value === null) return null;
+
+  const parsed = Number(value);
+
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 50) {
+    throw Object.assign(new Error('ERR-23-001: El máximo de miembros debe estar entre 1 y 50'), {
+      statusCode: 400,
+    });
+  }
+
+  return parsed;
+};
+
 export const getGroupDetails = async (authUserId: string, groupId: string) => {
   const { membership } = await ensureGroupMember(authUserId, groupId);
   const grupo = await ensureDestinationPhotoCached(await getGroupById(groupId));
@@ -287,6 +301,7 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
   const usuarioId = await getLocalUserId(authUserId);
   const codigo = await generateUniqueCode();
   const destinationFields = await buildDestinationFields(payload);
+  const maximoMiembros = normalizeMaxMembers(payload.maximo_miembros);
 
   const { data: grupo, error: groupError } = await supabase
     .from('grupos_viaje')
@@ -296,7 +311,7 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
       destino: payload.destino ?? null,
       fecha_inicio: payload.fecha_inicio ?? null,
       fecha_fin: payload.fecha_fin ?? null,
-      maximo_miembros: payload.maximo_miembros ?? null,
+      maximo_miembros: maximoMiembros,
       presupuesto_total: payload.presupuesto_total,
       codigo_invitacion: codigo,
       creado_por: Number(usuarioId),
@@ -818,6 +833,8 @@ export const updateGroup = async (
 ) => {
   await ensureGroupAdmin(authUserId, groupId);
   const destinationFields = await buildDestinationFields(payload);
+  const maximoMiembros =
+    payload.maximo_miembros !== undefined ? normalizeMaxMembers(payload.maximo_miembros) : undefined;
 
   const updateData = {
     ...(payload.nombre !== undefined ? { nombre: payload.nombre } : {}),
@@ -825,7 +842,7 @@ export const updateGroup = async (
     ...(payload.destino !== undefined ? { destino: payload.destino || null } : {}),
     ...(payload.fecha_inicio !== undefined ? { fecha_inicio: payload.fecha_inicio || null } : {}),
     ...(payload.fecha_fin !== undefined ? { fecha_fin: payload.fecha_fin || null } : {}),
-    ...(payload.maximo_miembros !== undefined ? { maximo_miembros: payload.maximo_miembros } : {}),
+    ...(payload.maximo_miembros !== undefined ? { maximo_miembros: maximoMiembros } : {}),
     ...(payload.destino_latitud !== undefined ? { destino_latitud: destinationFields.destino_latitud } : {}),
     ...(payload.destino_longitud !== undefined ? { destino_longitud: destinationFields.destino_longitud } : {}),
     ...(payload.destino_place_id !== undefined ? { destino_place_id: destinationFields.destino_place_id } : {}),

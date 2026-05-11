@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { groupsService, saveCurrentGroup } from '../../services/groups'
@@ -195,13 +195,12 @@ export function CreateGroupPage() {
   const [createdGroupId, setCreatedGroupId] = useState('')
   const [destinationData, setDestinationData] = useState<GeocodingResult | null>(null)
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
   const [form, setForm] = useState<FormData>({
-    name: searchParams.get('name') || '',
-    destination: searchParams.get('destination') || '',
+    name: '',
+    destination: '',
     startDate: '',
     endDate: '',
-    maxMembers: searchParams.get('members') || '10',
+    maxMembers: '10',
     totalBudget: '',
     description: '',
     isPublic: false,
@@ -222,6 +221,11 @@ export function CreateGroupPage() {
     else if (form.name.trim().length > 60) e.name = 'Máximo 60 caracteres permitidos.'
     if (!form.destination) e.destination = 'Selecciona un destino.'
     if (form.description.trim().length > 300) e.description = 'Máximo 300 caracteres permitidos.'
+    if (!Number.isFinite(Number(form.maxMembers)) || Number(form.maxMembers) < 1) {
+      e.maxMembers = 'El máximo de miembros debe ser al menos 1.'
+    } else if (Number(form.maxMembers) > 50) {
+      e.maxMembers = 'El máximo de miembros permitido es 50.'
+    }
     if (!form.startDate) e.startDate = 'Fecha de inicio requerida.'
     if (!form.endDate) e.endDate = 'Fecha de regreso requerida.'
     if (!form.totalBudget || Number(form.totalBudget) <= 0) e.totalBudget = 'Define un presupuesto mayor a cero.'
@@ -476,7 +480,7 @@ export function CreateGroupPage() {
               <div className="flex items-center gap-3">
                 <input
                   type="range"
-                  min={2}
+                  min={1}
                   max={50}
                   value={form.maxMembers}
                   onChange={(e) => set('maxMembers')(e.target.value)}
@@ -485,6 +489,14 @@ export function CreateGroupPage() {
                 <div className="w-14 h-10 bg-[#F4F6F8] border border-[#E2E8F0] rounded-xl flex items-center justify-center">
                   <span className="font-heading font-bold text-[#1E0A4E] text-sm">{form.maxMembers}</span>
                 </div>
+              </div>
+              <div className="mt-2 flex items-start justify-between gap-3">
+                <p className="font-body text-[11px] text-[#1E0A4E]/40">
+                  Puedes crear el viaje solo para ti. Después podrás invitar a más integrantes si lo necesitas.
+                </p>
+                {errors.maxMembers && (
+                  <p className="font-body text-xs text-red-500 text-right">{errors.maxMembers}</p>
+                )}
               </div>
             </div>
             <div className="mt-4">

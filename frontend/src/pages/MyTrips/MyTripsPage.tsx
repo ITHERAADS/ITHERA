@@ -119,11 +119,13 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
   const [code, setCode]       = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
+  const [info, setInfo]       = useState('')
   const { accessToken }       = useAuth()
 
   const handleJoin = async () => {
     if (!code.trim()) return setError('Ingresa un código de invitación.')
     setError('')
+    setInfo('')
     setLoading(true)
     try {
       if (!accessToken) {
@@ -132,8 +134,14 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
       }
 
       const response = await groupsService.joinGroup(code.trim().toUpperCase(), accessToken)
-      saveCurrentGroup(response.group)
 
+      if (response.group.requiresApproval) {
+        setInfo(response.message || 'Tu solicitud fue enviada. Espera a que el organizador la apruebe.')
+        setCode('')
+        return
+      }
+
+      saveCurrentGroup(response.group)
       onJoined()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Código inválido o expirado.')
@@ -148,7 +156,7 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
         <input
           type="text"
           value={code}
-          onChange={(e) => { setCode(e.target.value.toUpperCase()); setError('') }}
+          onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(''); setInfo('') }}
           onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
           placeholder="Ej: ABCD1234"
           maxLength={8}
@@ -163,6 +171,11 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
         </button>
       </div>
       {error && <p className="font-body text-xs text-red-500">{error}</p>}
+      {info && (
+        <p className="rounded-xl bg-[#FFF8E6] px-4 py-3 font-body text-xs text-[#8A5A00]">
+          {info} Te avisaremos por notificación cuando sea aceptada o rechazada.
+        </p>
+      )}
     </div>
   )
 }

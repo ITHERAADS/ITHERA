@@ -9,6 +9,7 @@ export interface Group {
   fecha_inicio?: string | null
   fecha_fin?: string | null
   maximo_miembros?: number | null
+  es_publico?: boolean
   codigo_invitacion: string
   creado_por?: string | number | null
   estado: GroupStatus
@@ -45,6 +46,7 @@ export interface CreateGroupPayload {
   fecha_inicio?: string
   fecha_fin?: string
   maximo_miembros?: number
+  es_publico?: boolean
   presupuesto_total: number
   destino_latitud?: number | null
   destino_longitud?: number | null
@@ -61,6 +63,7 @@ export interface UpdateGroupPayload {
   fecha_inicio?: string
   fecha_fin?: string
   maximo_miembros?: number
+  es_publico?: boolean
   destino_latitud?: number | null
   destino_longitud?: number | null
   destino_place_id?: string | null
@@ -101,6 +104,20 @@ export interface InvitePreview {
   memberCount: number
   maximo_miembros?: number | null
   canJoin: boolean
+  requiresApproval?: boolean
+}
+
+export interface GroupJoinRequest {
+  id: string
+  grupo_id: string
+  usuario_id: string
+  estado: 'pendiente' | 'aprobada' | 'rechazada' | 'cancelada'
+  mensaje?: string | null
+  created_at?: string
+  updated_at?: string
+  nombre?: string | null
+  email?: string | null
+  avatar_url?: string | null
 }
 
 export interface GroupInvitation {

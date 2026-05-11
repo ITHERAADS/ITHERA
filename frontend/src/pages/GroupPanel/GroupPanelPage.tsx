@@ -8,7 +8,7 @@ import {
   groupsService,
   saveCurrentGroup,
 } from '../../services/groups'
-import type { Group, GroupInvitation, GroupMember } from '../../types/groups'
+import type { Group, GroupInvitation, GroupJoinRequest, GroupMember } from '../../types/groups'
 
 type InviteMember = {
   id: number
@@ -43,6 +43,7 @@ export function GroupPanelPage() {
   const [group, setGroup] = useState<Group | null>(getCurrentGroup())
   const [members, setMembers] = useState<GroupMember[]>([])
   const [invitations, setInvitations] = useState<GroupInvitation[]>([])
+  const [joinRequests, setJoinRequests] = useState<GroupJoinRequest[]>([])
   const [inviteLink, setInviteLink] = useState('')
   const [qrBase64, setQrBase64] = useState('')
   const [loading, setLoading] = useState(true)
@@ -107,19 +108,22 @@ export function GroupPanelPage() {
         const canManage = memberRole === 'admin' || currentGroup?.myRole === 'admin'
 
         if (canManage) {
-          const [inviteRes, qrRes, invitationsRes] = await Promise.all([
+          const [inviteRes, qrRes, invitationsRes, joinRequestsRes] = await Promise.all([
             groupsService.getInvite(groupId, accessToken),
             groupsService.getQr(groupId, accessToken),
             groupsService.getInvitations(groupId, accessToken),
+            groupsService.getJoinRequests(groupId, accessToken),
           ])
 
           setInviteLink(inviteRes.inviteLink)
           setQrBase64(qrRes.qrBase64)
           setInvitations(invitationsRes.invitations)
+          setJoinRequests(joinRequestsRes.requests)
         } else {
           setInviteLink('')
           setQrBase64('')
           setInvitations([])
+          setJoinRequests([])
         }
 
         const fallbackGroup = getCurrentGroup()
@@ -165,6 +169,22 @@ export function GroupPanelPage() {
       setMembers(refreshed.members)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'No se pudo actualizar el rol')
+    }
+  }
+
+  const handleResolveJoinRequest = async (request: GroupJoinRequest, action: 'approve' | 'reject') => {
+    if (!accessToken || !group || !isAdmin) return
+
+    try {
+      await groupsService.resolveJoinRequest(group.id, request.id, action, accessToken)
+      const [membersRes, requestsRes] = await Promise.all([
+        groupsService.getMembers(group.id, accessToken),
+        groupsService.getJoinRequests(group.id, accessToken),
+      ])
+      setMembers(membersRes.members)
+      setJoinRequests(requestsRes.requests)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'No se pudo atender la solicitud')
     }
   }
 
@@ -293,6 +313,10 @@ export function GroupPanelPage() {
 
                     <span className="rounded-full bg-[#E8F0FF] px-3 py-1 font-semibold text-[#1E6FD9]">
                       Tu rol: {getDisplayRole(isAdmin ? 'admin' : 'viajero')}
+                    </span>
+
+                    <span className={`rounded-full px-3 py-1 font-semibold ${group.es_publico ? 'bg-[#EAFBF0] text-[#1F8A4C]' : 'bg-[#FFF4D6] text-[#A86B00]'}`}>
+                      {group.es_publico ? 'Grupo público' : 'Grupo privado'}
                     </span>
                   </div>
                 </div>
@@ -452,6 +476,58 @@ export function GroupPanelPage() {
 
                   <div className="mt-6">
                     <h3 className="font-heading text-base font-semibold text-[#1E0A4E]">
+                      Solicitudes de unión
+                    </h3>
+                    <p className="mt-1 font-body text-xs text-[#7A8799]">
+                      En grupos privados, los usuarios que usen el código quedan pendientes hasta que el administrador apruebe o rechace la solicitud.
+                    </p>
+
+                    {joinRequests.length === 0 ? (
+                      <p className="mt-3 rounded-xl bg-[#F8FAFC] px-4 py-3 font-body text-sm text-[#7A8799]">
+                        No hay solicitudes pendientes.
+                      </p>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        {joinRequests.map((request) => (
+                          <div
+                            key={request.id}
+                            className="rounded-xl border border-[#E2E8F0] px-4 py-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-body text-sm font-medium text-[#1E0A4E]">
+                                  {request.nombre || request.email || `Usuario ${request.usuario_id}`}
+                                </p>
+                                {request.email && (
+                                  <p className="font-body text-xs text-[#7A8799]">{request.email}</p>
+                                )}
+                              </div>
+                              <span className="rounded-full bg-[#FFF4D6] px-3 py-1 text-xs font-semibold text-[#A86B00]">
+                                Pendiente
+                              </span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              <button
+                                onClick={() => handleResolveJoinRequest(request, 'approve')}
+                                className="rounded-lg bg-[#1E6FD9] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2C8BE6]"
+                              >
+                                Aprobar
+                              </button>
+                              <button
+                                onClick={() => handleResolveJoinRequest(request, 'reject')}
+                                className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-50"
+                              >
+                                Rechazar
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-6">
+                    <h3 className="font-heading text-base font-semibold text-[#1E0A4E]">
                       Invitaciones pendientes
                     </h3>
 
@@ -502,13 +578,15 @@ export function GroupPanelPage() {
           onInvitationsSent={async () => {
             if (!accessToken) return
 
-            const [membersRes, invitationsRes] = await Promise.all([
+            const [membersRes, invitationsRes, joinRequestsRes] = await Promise.all([
               groupsService.getMembers(group.id, accessToken),
               groupsService.getInvitations(group.id, accessToken),
+              groupsService.getJoinRequests(group.id, accessToken),
             ])
 
             setMembers(membersRes.members)
             setInvitations(invitationsRes.invitations)
+            setJoinRequests(joinRequestsRes.requests)
           }}
         />
       )}

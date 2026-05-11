@@ -205,6 +205,16 @@ function readMetadataString(metadata: Record<string, unknown>, key: string): str
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+function getNotificationAction(metadata: Record<string, unknown>): { label: string; url: string } | null {
+  const actionUrl = readMetadataString(metadata, 'actionUrl')
+  if (!actionUrl) return null
+
+  return {
+    label: readMetadataString(metadata, 'actionLabel') ?? 'Abrir',
+    url: actionUrl,
+  }
+}
+
 function formatRelativeTime(value: string | null | undefined): string {
   if (!value) return ''
   const date = new Date(value)
@@ -620,29 +630,47 @@ function DashboardNavContent({
                   No tienes notificaciones
                 </div>
               ) : (
-                notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    onClick={() => { if (!n.leida) markAsRead(n.id); }}
-                    className={`flex items-start gap-3 px-4 py-3 hover:bg-[#F8FAFC] transition-colors border-b border-[#E2E8F0] last:border-none ${!n.leida ? 'cursor-pointer bg-[#F8FAFC]/50' : 'cursor-default opacity-70'}`}
-                  >
-                    <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${!n.leida ? 'bg-[#1E6FD9]' : 'bg-transparent'}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-snug">{n.titulo}</p>
-                        <span className="font-body text-[10px] text-[#1E0A4E]/40 whitespace-nowrap mt-0.5">
-                          {formatRelativeTime(n.created_at)}
-                        </span>
+                notifications.map((n) => {
+                  const action = getNotificationAction(n.metadata)
+
+                  return (
+                    <div
+                      key={n.id}
+                      onClick={() => { if (!n.leida) markAsRead(n.id); }}
+                      className={`flex items-start gap-3 px-4 py-3 hover:bg-[#F8FAFC] transition-colors border-b border-[#E2E8F0] last:border-none ${!n.leida ? 'cursor-pointer bg-[#F8FAFC]/50' : 'cursor-default opacity-70'}`}
+                    >
+                      <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${!n.leida ? 'bg-[#1E6FD9]' : 'bg-transparent'}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-snug">{n.titulo}</p>
+                          <span className="font-body text-[10px] text-[#1E0A4E]/40 whitespace-nowrap mt-0.5">
+                            {formatRelativeTime(n.created_at)}
+                          </span>
+                        </div>
+                        <p className="font-body text-xs text-gray600 leading-snug mt-1">{n.mensaje}</p>
+                        {formatScheduledInfo(n.metadata) && (
+                          <p className="font-body text-[11px] text-[#1E6FD9] bg-[#1E6FD9]/10 rounded-md px-2 py-1 mt-2 line-clamp-2">
+                            {formatScheduledInfo(n.metadata)}
+                          </p>
+                        )}
+                        {action && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              if (!n.leida) markAsRead(n.id)
+                              setNotifOpen(false)
+                              navigate(action.url)
+                            }}
+                            className="mt-2 inline-flex rounded-lg bg-[#1E6FD9] px-3 py-1.5 font-body text-[11px] font-semibold text-white hover:bg-[#2C8BE6]"
+                          >
+                            {action.label}
+                          </button>
+                        )}
                       </div>
-                      <p className="font-body text-xs text-gray600 leading-snug mt-1">{n.mensaje}</p>
-                      {formatScheduledInfo(n.metadata) && (
-                        <p className="font-body text-[11px] text-[#1E6FD9] bg-[#1E6FD9]/10 rounded-md px-2 py-1 mt-2 line-clamp-2">
-                          {formatScheduledInfo(n.metadata)}
-                        </p>
-                      )}
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           )}

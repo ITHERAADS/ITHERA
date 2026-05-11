@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { apiClient } from '../../services/apiClient'
@@ -172,11 +173,31 @@ function Toggle({
 // ── ProfilePage ───────────────────────────────────────────────────────────────
 
 export function ProfilePage() {
-  const { localUser, accessToken, refreshMe } = useAuth()
+  const { localUser, accessToken, refreshMe, deleteAccount } = useAuth()
+  const navigate = useNavigate()
 
   const fullName  = localUser?.nombre ?? 'Usuario'
   const email     = localUser?.email  ?? ''
   const nameParts = fullName.trim().split(/\s+/)
+
+  // ── Delete account state ──────────────────────────────────────────────────
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  const handleDeleteAccount = async () => {
+    if (!accessToken) return
+    try {
+      setDeleting(true)
+      setDeleteError('')
+      await deleteAccount(accessToken)
+      navigate('/login', { replace: true })
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'No se pudo eliminar la cuenta.')
+      setDeleting(false)
+    }
+  }
 
   // ── Personal data state ───────────────────────────────────────────────────
   const [editing, setEditing] = useState(false)
@@ -808,8 +829,72 @@ export function ProfilePage() {
             </div>
           </section>
 
+          {/* ── Danger zone ───────────────────────────────────────────────────── */}
+          <section className="bg-white rounded-2xl border border-[#EF4444]/30 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-[#EF4444]/20 flex items-center gap-3">
+              <h2 className="font-heading font-bold text-[#B91C1C] text-base">Zona de peligro</h2>
+            </div>
+            <div className="px-6 py-5 flex items-center justify-between gap-4">
+              <div>
+                <p className="font-body text-sm font-semibold text-[#1E0A4E]">Eliminar cuenta</p>
+                <p className="font-body text-xs text-[#6b7280] mt-0.5">
+                  Esta acción es permanente e irreversible. Se eliminarán todos tus datos.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(''); setDeleteError('') }}
+                className="shrink-0 rounded-xl border border-[#EF4444] px-4 py-2 font-body text-sm font-semibold text-[#EF4444] transition hover:bg-[#FEF2F2]"
+              >
+                Eliminar cuenta
+              </button>
+            </div>
+          </section>
+
         </div>
       </div>
+
+      {/* ── Delete confirmation modal ────────────────────────────────────────── */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl">
+            <h3 className="font-heading text-xl font-extrabold text-[#1E0A4E] mb-2">
+              ¿Eliminar tu cuenta?
+            </h3>
+            <p className="font-body text-sm text-[#6b7280] mb-5">
+              Esta acción es <strong>permanente e irreversible</strong>. Se eliminarán todos tus datos, grupos y configuración. Para confirmar, escribe <strong>ELIMINAR</strong> abajo.
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="Escribe ELIMINAR para confirmar"
+              className="w-full rounded-xl border border-[#D9DEE7] px-4 py-3 font-body text-sm outline-none focus:border-[#EF4444] focus:ring-2 focus:ring-[#EF4444]/15 mb-4"
+            />
+            {deleteError && (
+              <p className="font-body text-xs text-[#EF4444] mb-3">{deleteError}</p>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleting}
+                className="flex-1 rounded-xl border border-[#D9DEE7] py-2.5 font-body text-sm font-semibold text-[#344054] transition hover:bg-[#F9FAFB] disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirmText !== 'ELIMINAR' || deleting}
+                className="flex-1 rounded-xl bg-[#EF4444] py-2.5 font-body text-sm font-semibold text-white transition hover:bg-[#DC2626] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }

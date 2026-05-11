@@ -1,9 +1,10 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useAuth } from '../../context/useAuth';
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
   const { loading, accessToken, localUser } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -17,8 +18,9 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
     return (
       <Navigate
         to={`/login?redirect=${encodeURIComponent(
-          window.location.pathname + window.location.search
+          location.pathname + location.search
         )}`}
+        state={{ sessionExpired: true }}
         replace
       />
     );

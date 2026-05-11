@@ -18,6 +18,13 @@ import {
 
 const STORAGE_KEY = 'ithera_auth';
 
+function readStoredAuth() {
+  const raw = localStorage.getItem(STORAGE_KEY) ?? sessionStorage.getItem(STORAGE_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw) as { accessToken: string; sessionUser: SessionUser; localUser: LocalUser }; }
+  catch { return null; }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
@@ -29,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSessionUser(null);
     setLocalUser(null);
     localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_KEY);
   }, []);
 
   const persist = useCallback(
@@ -36,13 +44,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accessToken: string | null;
       sessionUser: SessionUser | null;
       localUser: LocalUser | null;
+      rememberMe?: boolean;
     }) => {
       if (!payload.accessToken || !payload.sessionUser) {
         localStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(STORAGE_KEY);
         return;
       }
 
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      const data = JSON.stringify({
+        accessToken: payload.accessToken,
+        sessionUser: payload.sessionUser,
+        localUser: payload.localUser,
+      });
+
+      if (payload.rememberMe === false) {
+        localStorage.removeItem(STORAGE_KEY);
+        sessionStorage.setItem(STORAGE_KEY, data);
+      } else {
+        sessionStorage.removeItem(STORAGE_KEY);
+        localStorage.setItem(STORAGE_KEY, data);
+      }
     },
     []
   );
@@ -101,10 +123,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, rememberMe = true) => {
       const loginRes = await apiClient.post<{
         ok: boolean;
-        session: { access_token: string } | null;
+        session: { access_token: string; refresh_token?: string } | null;
         user: SessionUser | null;
       }>('/auth/login', { email, password });
 
@@ -113,6 +135,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const token = loginRes.session.access_token;
+      const refreshToken = loginRes.session.refresh_token;
+
+      // Registrar sesión en Supabase client para que maneje
+      // la persistencia y el refresh automático del token
+      if (refreshToken) {
+        await supabase.auth.setSession({
+          access_token: token,
+          refresh_token: refreshToken,
+        });
+      }
+
       const syncedUser = await syncUser(token);
 
       setAccessToken(token);
@@ -123,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         accessToken: token,
         sessionUser: loginRes.user,
         localUser: syncedUser,
+        rememberMe,
       });
     },
     [persist, syncUser]
@@ -202,6 +236,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAuthState();
   }, [clearAuthState]);
 
+  const deleteAccount = useCallback(async (token: string) => {
+    await apiClient.delete('/auth/me', token);
+    await supabase.auth.signOut();
+    clearAuthState();
+  }, [clearAuthState]);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -215,10 +255,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (session?.access_token && session.user) {
           await applySession(session);
-        } else {
-          await supabase.auth.signOut();
-          clearAuthState();
+          return;
         }
+
+        // Fallback: intentar restaurar desde nuestro storage custom
+        const stored = readStoredAuth();
+        if (stored?.accessToken) {
+          try {
+            const syncRes = await apiClient.post<{ ok: boolean; user: LocalUser }>(
+              '/auth/sync-user',
+              {},
+              stored.accessToken
+            );
+            if (isMounted && syncRes.user) {
+              setAccessToken(stored.accessToken);
+              setSessionUser(stored.sessionUser);
+              setLocalUser(syncRes.user);
+              return;
+            }
+          } catch {
+            // Token expirado o inválido — limpiar
+          }
+        }
+
+        await supabase.auth.signOut();
+        clearAuthState();
       } catch (error) {
         console.error('Error al restaurar sesión:', error);
         await supabase.auth.signOut();
@@ -236,11 +297,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       try {
         if (session?.access_token && session.user) {
           await applySession(session);
-        } else {
+        } else if (event === 'SIGNED_OUT') {
+          // Solo limpiar en logout explícito, no en INITIAL_SESSION null
+          // (cuando el login va por backend custom, Supabase no tiene sesión propia)
           clearAuthState();
         }
       } catch (error) {
@@ -272,6 +335,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithGoogle,
       loginWithFacebook,
       logout,
+      deleteAccount,
       refreshMe,
     }),
     [
@@ -285,6 +349,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithGoogle,
       loginWithFacebook,
       logout,
+      deleteAccount,
       refreshMe,
     ]
   );

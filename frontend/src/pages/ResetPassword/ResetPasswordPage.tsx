@@ -392,9 +392,22 @@ export function ResetPasswordPage() {
                     <button
                       type="button"
                       onClick={() => setShowPassword((prev) => !prev)}
-                      className="absolute inset-y-0 right-3 flex items-center text-[#98A2B3] transition hover:text-[#667085]"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[#98A2B3] transition hover:text-[#667085]"
+                      aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
                     >
-                      {showPassword ? "Ocultar" : "Ver"}
+                      {showPassword ? (
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                          <path d="M3 3l18 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          <path d="M10.58 10.58a3 3 0 004.24 4.24" stroke="currentColor" strokeWidth="1.5" />
+                          <path d="M9.88 5.08A10.94 10.94 0 0112 5c6 0 10 7 10 7a21.84 21.84 0 01-4.35 5.27" stroke="currentColor" strokeWidth="1.5" />
+                          <path d="M6.61 6.61A21.82 21.82 0 002 12s4 7 10 7a10.94 10.94 0 005.27-1.35" stroke="currentColor" strokeWidth="1.5" />
+                        </svg>
+                      ) : (
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                          <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z" stroke="currentColor" strokeWidth="1.5" />
+                          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
+                        </svg>
+                      )}
                     </button>
                   </div>
 
@@ -467,9 +480,22 @@ export function ResetPasswordPage() {
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword((prev) => !prev)}
-                      className="absolute inset-y-0 right-3 flex items-center text-[#98A2B3] transition hover:text-[#667085]"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[#98A2B3] transition hover:text-[#667085]"
+                      aria-label={showConfirmPassword ? "Ocultar confirmación" : "Mostrar confirmación"}
                     >
-                      {showConfirmPassword ? "Ocultar" : "Ver"}
+                      {showConfirmPassword ? (
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                          <path d="M3 3l18 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          <path d="M10.58 10.58a3 3 0 004.24 4.24" stroke="currentColor" strokeWidth="1.5" />
+                          <path d="M9.88 5.08A10.94 10.94 0 0112 5c6 0 10 7 10 7a21.84 21.84 0 01-4.35 5.27" stroke="currentColor" strokeWidth="1.5" />
+                          <path d="M6.61 6.61A21.82 21.82 0 002 12s4 7 10 7a10.94 10.94 0 005.27-1.35" stroke="currentColor" strokeWidth="1.5" />
+                        </svg>
+                      ) : (
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                          <path d="M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6Z" stroke="currentColor" strokeWidth="1.5" />
+                          <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
+                        </svg>
+                      )}
                     </button>
                   </div>
 

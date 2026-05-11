@@ -92,6 +92,7 @@ export function RegisterPage() {
   const passwordChecks = useMemo(() => getPasswordChecks(form.password), [form.password]);
   const passwordStrength = useMemo(() => getPasswordStrength(form.password), [form.password]);
   const passwordsMatch = form.confirmPassword.length > 0 && form.password === form.confirmPassword;
+  const passwordsMismatch = form.confirmPassword.length > 0 && form.password !== form.confirmPassword;
   const showPasswordHelp = isPasswordFocused || form.password.length > 0;
   const normalizedEmail = normalizeEmail(form.email);
   const isEmailFormatValid = EMAIL_REGEX.test(normalizedEmail);
@@ -275,10 +276,7 @@ export function RegisterPage() {
       });
 
       if (result.requiresEmailConfirmation) {
-        setIsSuccessMessage(true);
-        setServerMessage(
-          "Tu cuenta fue creada correctamente. Te enviamos un enlace de verificación a tu correo. Debes abrir ese enlace antes de iniciar sesión."
-        );
+        navigate('/otp', { state: { email: normalizeEmail(form.email) } });
         return;
       }
 
@@ -552,7 +550,13 @@ export function RegisterPage() {
                     value={form.confirmPassword}
                     onChange={(e) => handleChange("confirmPassword", e.target.value)}
                     placeholder="••••••••"
-                    className={`${inputBase} pr-12 ${errors.confirmPassword ? "border-[#EF4444]" : ""}`}
+                    className={`${inputBase} pr-12 ${
+                      errors.confirmPassword || passwordsMismatch
+                        ? "border-[#EF4444] ring-2 ring-[#EF4444]/15"
+                        : passwordsMatch
+                          ? "border-[#16A34A] ring-2 ring-[#16A34A]/15"
+                          : ""
+                    }`}
                   />
                   <button
                     type="button"
@@ -580,6 +584,9 @@ export function RegisterPage() {
                   <p className="mt-1 flex items-center gap-1 text-[12px] font-medium text-[#16A34A]">
                     ✓ Las contraseñas coinciden.
                   </p>
+                )}
+                {passwordsMismatch && !errors.confirmPassword && (
+                  <p className="mt-1 text-[12px] text-[#EF4444]">Las contraseñas no coinciden.</p>
                 )}
                 {errors.confirmPassword && <p className="mt-1 text-[12px] text-[#EF4444]">{errors.confirmPassword}</p>}
               </div>

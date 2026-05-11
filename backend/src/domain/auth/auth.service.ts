@@ -214,3 +214,24 @@ export const deleteUserAvatarByAuthId = async (authUserId: string) => {
     .select('*')
     .single();
 };
+
+export const deleteAccountByAuthId = async (authUserId: string) => {
+  // 1. Eliminar avatar del storage si existe
+  const { data: currentUser } = await getUserByAuthId(authUserId);
+  const avatarPath = currentUser?.avatar_url
+    ? getStoragePathFromPublicUrl(currentUser.avatar_url)
+    : null;
+
+  if (avatarPath) {
+    await supabaseAdmin.storage.from('profile-avatars').remove([avatarPath]);
+  }
+
+  // 2. Eliminar registro en tabla usuarios
+  await supabaseAdmin.from('usuarios').delete().eq('auth_user_id', authUserId);
+
+  // 3. Eliminar usuario de Supabase Auth (operación irreversible)
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(authUserId);
+  if (error) return { data: null, error };
+
+  return { data: { deleted: true }, error: null };
+};

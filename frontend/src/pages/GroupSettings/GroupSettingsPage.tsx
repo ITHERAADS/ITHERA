@@ -110,8 +110,13 @@ export function GroupSettingsPage() {
       return
     }
 
-    if (!form.maxMembers || Number(form.maxMembers) < 2) {
-      setError('El máximo de miembros debe ser al menos 2.')
+    if (!Number.isFinite(Number(form.maxMembers)) || Number(form.maxMembers) < 1) {
+      setError('El máximo de miembros debe ser al menos 1.')
+      return
+    }
+
+    if (Number(form.maxMembers) > 50) {
+      setError('El máximo de miembros permitido es 50.')
       return
     }
 
@@ -282,11 +287,15 @@ export function GroupSettingsPage() {
                 </label>
                 <input
                   type="number"
-                  min={2}
+                  min={1}
+                  max={50}
                   value={form.maxMembers}
                   onChange={(e) => setField('maxMembers', e.target.value)}
                   className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
                 />
+                <p className="mt-1.5 text-[11px] text-[#1E0A4E]/40">
+                  Mínimo 1. El viaje puede iniciar solo con el creador y después aceptar más integrantes.
+                </p>
               </div>
 
               <div className="md:col-span-2">

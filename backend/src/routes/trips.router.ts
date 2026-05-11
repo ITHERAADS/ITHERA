@@ -53,8 +53,19 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
     }
 
     if (!Number.isFinite(Number(presupuesto_total)) || Number(presupuesto_total) <= 0) {
-      res.status(400).json({ ok: false, error: 'El presupuesto total es obligatorio y debe ser mayor a cero' });
+      res.status(400).json({ ok: false, error: 'ERR-23-004: El monto del presupuesto debe ser un número positivo mayor a cero' });
       return;
+    }
+
+    if (maximo_miembros !== undefined) {
+      const parsedMaxMembers = Number(maximo_miembros);
+      if (!Number.isInteger(parsedMaxMembers) || parsedMaxMembers < 1 || parsedMaxMembers > 50) {
+        res.status(400).json({
+          ok: false,
+          error: 'ERR-23-001: El máximo de miembros debe estar entre 1 y 50',
+        });
+        return;
+      }
     }
 
     const grupo = await GroupsService.createGroup(req.user!.id, {
@@ -277,6 +288,19 @@ router.delete('/:groupId/members/:memberId', requireAuth, async (req: Request, r
 
 router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
+    const { maximo_miembros } = req.body as { maximo_miembros?: number };
+
+    if (maximo_miembros !== undefined) {
+      const parsedMaxMembers = Number(maximo_miembros);
+      if (!Number.isInteger(parsedMaxMembers) || parsedMaxMembers < 1 || parsedMaxMembers > 50) {
+        res.status(400).json({
+          ok: false,
+          error: 'ERR-23-001: El máximo de miembros debe estar entre 1 y 50',
+        });
+        return;
+      }
+    }
+
     const group = await GroupsService.updateGroup(req.user!.id, req.params.groupId, req.body);
     res.status(200).json({ ok: true, message: 'Grupo actualizado correctamente', group });
   } catch (err: unknown) {

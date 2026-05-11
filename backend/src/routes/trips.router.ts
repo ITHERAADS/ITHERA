@@ -11,6 +11,8 @@ const router = Router();
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const isValidISODate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+const GROUP_NAME_MAX_LENGTH = 60;
+const GROUP_DESCRIPTION_MAX_LENGTH = 300;
 
 router.post('/', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -371,7 +373,44 @@ router.delete('/:groupId/members/:memberId', requireAuth, async (req: Request, r
 
 router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { maximo_miembros } = req.body as { maximo_miembros?: number };
+    const { nombre, descripcion, fecha_inicio, fecha_fin, maximo_miembros } = req.body as {
+      nombre?: string;
+      descripcion?: string;
+      fecha_inicio?: string;
+      fecha_fin?: string;
+      maximo_miembros?: number;
+    };
+
+    if (nombre !== undefined && (!nombre.trim() || nombre.trim().length > GROUP_NAME_MAX_LENGTH)) {
+      res.status(400).json({
+        ok: false,
+        error: `ERR-23-001: El nombre del grupo es requerido y permite máximo ${GROUP_NAME_MAX_LENGTH} caracteres`,
+      });
+      return;
+    }
+
+    if (descripcion !== undefined && descripcion.trim().length > GROUP_DESCRIPTION_MAX_LENGTH) {
+      res.status(400).json({
+        ok: false,
+        error: `ERR-23-001: La descripción permite máximo ${GROUP_DESCRIPTION_MAX_LENGTH} caracteres`,
+      });
+      return;
+    }
+
+    if (fecha_inicio !== undefined && fecha_inicio && !isValidISODate(fecha_inicio)) {
+      res.status(400).json({ ok: false, error: 'ERR-23-001: La fecha de salida tiene formato inválido' });
+      return;
+    }
+
+    if (fecha_fin !== undefined && fecha_fin && !isValidISODate(fecha_fin)) {
+      res.status(400).json({ ok: false, error: 'ERR-23-001: La fecha de regreso tiene formato inválido' });
+      return;
+    }
+
+    if (fecha_inicio && fecha_fin && fecha_fin <= fecha_inicio) {
+      res.status(400).json({ ok: false, error: 'ERR-23-003: La fecha de regreso debe ser posterior a la de inicio del viaje' });
+      return;
+    }
 
     if (maximo_miembros !== undefined) {
       const parsedMaxMembers = Number(maximo_miembros);

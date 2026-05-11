@@ -34,6 +34,50 @@ function buildForm(group: Group): SettingsForm {
   }
 }
 
+const GROUP_NAME_MAX_LENGTH = 60
+const GROUP_DESCRIPTION_MAX_LENGTH = 300
+
+const todayISO = () => {
+  const now = new Date()
+  const timezoneOffset = now.getTimezoneOffset() * 60_000
+  return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10)
+}
+
+const addDaysISO = (date: string, days: number) => {
+  const parsed = new Date(`${date}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return ''
+  parsed.setDate(parsed.getDate() + days)
+  return parsed.toISOString().slice(0, 10)
+}
+
+const getValidationError = (form: SettingsForm) => {
+  const maxMembers = Number(form.maxMembers)
+  const today = todayISO()
+
+  if (!form.name.trim()) return 'El nombre del grupo es obligatorio.'
+  if (form.name.trim().length > GROUP_NAME_MAX_LENGTH) {
+    return `El nombre del grupo permite máximo ${GROUP_NAME_MAX_LENGTH} caracteres.`
+  }
+  if (!form.destination.trim()) return 'Selecciona un destino válido.'
+  if (form.description.trim().length > GROUP_DESCRIPTION_MAX_LENGTH) {
+    return `La descripción permite máximo ${GROUP_DESCRIPTION_MAX_LENGTH} caracteres.`
+  }
+  if (form.startDate && form.startDate < today) {
+    return 'La fecha de inicio no puede ser anterior a hoy.'
+  }
+  if (form.endDate && form.endDate < today) {
+    return 'La fecha de fin no puede ser anterior a hoy.'
+  }
+  if (form.startDate && form.endDate && form.endDate <= form.startDate) {
+    return 'La fecha final debe ser posterior a la inicial.'
+  }
+  if (!Number.isInteger(maxMembers) || maxMembers < 1 || maxMembers > 50) {
+    return 'El máximo de miembros debe estar entre 1 y 50.'
+  }
+
+  return ''
+}
+
 export function GroupSettingsPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -57,6 +101,8 @@ export function GroupSettingsPage() {
   const [destinationData, setDestinationData] = useState<GeocodingResult | null>(null)
 
   const groupId = searchParams.get('groupId') || group?.id || ''
+  const formError = getValidationError(form)
+  const minEndDate = form.startDate ? addDaysISO(form.startDate, 1) : todayISO()
 
   useEffect(() => {
     if (!accessToken || !groupId) {
@@ -92,34 +138,33 @@ export function GroupSettingsPage() {
   }, [accessToken, groupId])
 
   const setField = (key: keyof SettingsForm, value: string | boolean) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
+    let nextValue = value
+
+    if (typeof value === 'string') {
+      if (key === 'name') nextValue = value.slice(0, GROUP_NAME_MAX_LENGTH)
+      if (key === 'description') nextValue = value.slice(0, GROUP_DESCRIPTION_MAX_LENGTH)
+      if (key === 'maxMembers') nextValue = value.replace(/[^0-9]/g, '')
+    }
+
+    setForm((prev) => {
+      const next = { ...prev, [key]: nextValue }
+
+      if (key === 'startDate' && typeof nextValue === 'string' && next.endDate && next.endDate <= nextValue) {
+        next.endDate = ''
+      }
+
+      return next
+    })
+    setError('')
+    setSuccess('')
   }
 
   const handleSave = async () => {
     if (!accessToken || !group) return
 
-    if (!form.name.trim()) {
-      setError('El nombre del grupo es obligatorio')
-      return
-    }
-
-    if (!form.destination.trim()) {
-      setError('Selecciona un destino válido.')
-      return
-    }
-
-    if (form.startDate && form.endDate && form.startDate > form.endDate) {
-      setError('La fecha final no puede ser menor a la inicial')
-      return
-    }
-
-    if (!Number.isFinite(Number(form.maxMembers)) || Number(form.maxMembers) < 1) {
-      setError('El máximo de miembros debe ser al menos 1.')
-      return
-    }
-
-    if (Number(form.maxMembers) > 50) {
-      setError('El máximo de miembros permitido es 50.')
+    const validationError = getValidationError(form)
+    if (validationError) {
+      setError(validationError)
       return
     }
 
@@ -245,9 +290,16 @@ export function GroupSettingsPage() {
                 </label>
                 <input
                   value={form.name}
+                  maxLength={GROUP_NAME_MAX_LENGTH}
                   onChange={(e) => setField('name', e.target.value)}
-                  className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
+                  className={`w-full border rounded-xl px-4 py-3 text-sm ${form.name.trim().length > GROUP_NAME_MAX_LENGTH ? 'border-red-400' : 'border-[#E2E8F0]'}`}
                 />
+                <div className="mt-1.5 flex items-center justify-between gap-3">
+                  <p className="text-[11px] text-[#1E0A4E]/40">Máximo {GROUP_NAME_MAX_LENGTH} caracteres.</p>
+                  <p className={`text-[11px] ${form.name.length >= GROUP_NAME_MAX_LENGTH ? 'text-red-500' : 'text-[#1E0A4E]/40'}`}>
+                    {form.name.length}/{GROUP_NAME_MAX_LENGTH}
+                  </p>
+                </div>
               </div>
 
               <div className="md:col-span-2">
@@ -268,6 +320,7 @@ export function GroupSettingsPage() {
                 <input
                   type="date"
                   value={form.startDate}
+                  min={todayISO()}
                   onChange={(e) => setField('startDate', e.target.value)}
                   className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
                 />
@@ -280,6 +333,7 @@ export function GroupSettingsPage() {
                 <input
                   type="date"
                   value={form.endDate}
+                  min={minEndDate}
                   onChange={(e) => setField('endDate', e.target.value)}
                   className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
                 />
@@ -294,6 +348,10 @@ export function GroupSettingsPage() {
                   min={1}
                   max={50}
                   value={form.maxMembers}
+                  onKeyDown={(e) => {
+                    if (["-", "+", "e", "E", "."].includes(e.key)) e.preventDefault()
+                  }}
+                  onWheel={(e) => e.currentTarget.blur()}
                   onChange={(e) => setField('maxMembers', e.target.value)}
                   className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
                 />
@@ -334,21 +392,34 @@ export function GroupSettingsPage() {
                 </label>
                 <textarea
                   value={form.description}
+                  maxLength={GROUP_DESCRIPTION_MAX_LENGTH}
                   onChange={(e) => setField('description', e.target.value)}
                   rows={4}
-                  className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm resize-none"
+                  className={`w-full border rounded-xl px-4 py-3 text-sm resize-none ${form.description.trim().length > GROUP_DESCRIPTION_MAX_LENGTH ? 'border-red-400' : 'border-[#E2E8F0]'}`}
                 />
+                <div className="mt-1.5 flex items-center justify-between gap-3">
+                  <p className="text-[11px] text-[#1E0A4E]/40">Máximo {GROUP_DESCRIPTION_MAX_LENGTH} caracteres.</p>
+                  <p className={`text-[11px] ${form.description.length >= GROUP_DESCRIPTION_MAX_LENGTH ? 'text-red-500' : 'text-[#1E0A4E]/40'}`}>
+                    {form.description.length}/{GROUP_DESCRIPTION_MAX_LENGTH}
+                  </p>
+                </div>
               </div>
             </div>
 
+            {formError && !error && (
+              <p className="mt-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                {formError}
+              </p>
+            )}
             {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
             {success && <p className="mt-4 text-sm text-[#35C56A]">{success}</p>}
 
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 onClick={handleSave}
-                disabled={saving}
-                className="bg-[#1E6FD9] text-white rounded-xl px-5 py-3 text-sm disabled:opacity-50"
+                disabled={saving || Boolean(formError)}
+                title={formError || undefined}
+                className="bg-[#1E6FD9] text-white rounded-xl px-5 py-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {saving ? 'Guardando...' : 'Guardar cambios'}
               </button>

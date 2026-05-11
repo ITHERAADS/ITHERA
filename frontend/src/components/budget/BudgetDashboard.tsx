@@ -9,6 +9,14 @@ import {
   type BudgetMember,
   type BudgetSummary,
 } from '../../services/budget'
+import { documentsService, type TripDocumentCategory } from '../../services/documents'
+import {
+  contextLinksService,
+  type ContextEntityRef,
+  type ContextEntitySummary,
+  type ContextLink,
+  type ContextLinkOptions,
+} from '../../services/context-links'
 
 export interface Expense {
   id: string
@@ -21,12 +29,21 @@ export interface Expense {
   fecha: string
   splitAmounts?: Record<string, number>
   participantIds?: string[]
+  linkedActivities?: ContextEntityRef[]
+  linkedDocuments?: string[]
+  draftDocument?: {
+    file: File
+    category: TripDocumentCategory
+    notes: string
+  } | null
 }
 
 interface Props {
   groupId: string | null
   onSummaryChange?: (summary: BudgetSummary | null) => void
   onOpenVault?: () => void
+  onOpenItinerary?: () => void
+  onOpenSubgroups?: () => void
 }
 
 const CATEGORY_LABELS: Record<Expense['categoria'], string> = {
@@ -43,6 +60,13 @@ const EMPTY_TOTALS: Record<Expense['categoria'], number> = {
   actividad: 0,
   comida: 0,
   otro: 0,
+}
+
+const EMPTY_LINK_OPTIONS: ContextLinkOptions = {
+  expenses: [],
+  documents: [],
+  activities: [],
+  subgroupActivities: [],
 }
 
 function formatMXN(n: number): string {
@@ -115,7 +139,24 @@ function normalizeExpense(expense: BudgetDashboardResponse['expenses'][number]):
   }
 }
 
-export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVault }) => {
+const entityKey = (entity: ContextEntityRef): string => `${entity.type}:${entity.id}`
+
+const otherEntityForExpense = (link: ContextLink, expenseId: string): ContextEntitySummary | null => {
+  if (link.entityA.type === 'expense' && link.entityA.id === expenseId) return link.entityB
+  if (link.entityB.type === 'expense' && link.entityB.id === expenseId) return link.entityA
+  return null
+}
+
+const isExpenseContextType = (type: ContextEntityRef['type']): boolean =>
+  type === 'activity' || type === 'subgroup_activity' || type === 'document'
+
+export const BudgetDashboard: FC<Props> = ({
+  groupId,
+  onSummaryChange,
+  onOpenVault,
+  onOpenItinerary,
+  onOpenSubgroups,
+}) => {
   const { accessToken, localUser } = useAuth()
   const [dashboard, setDashboard] = useState<BudgetDashboardResponse | null>(null)
   const [expenses, setExpenses] = useState<Expense[]>([])
@@ -128,6 +169,8 @@ export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVau
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [contextLinks, setContextLinks] = useState<ContextLink[]>([])
+  const [linkOptions, setLinkOptions] = useState<ContextLinkOptions>(EMPTY_LINK_OPTIONS)
 
   const toUserMessage = (err: unknown, fallback: string): string => {
     const raw = err instanceof Error ? err.message : ''
@@ -169,9 +212,103 @@ export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVau
     }
   }, [accessToken, applyDashboard, groupId, onSummaryChange])
 
+  const loadContextLinks = useCallback(async () => {
+    if (!groupId || !accessToken) {
+      setContextLinks([])
+      setLinkOptions(EMPTY_LINK_OPTIONS)
+      return
+    }
+
+    const [linksResponse, optionsResponse] = await Promise.all([
+      contextLinksService.list(groupId, accessToken),
+      contextLinksService.options(groupId, accessToken),
+    ])
+    setContextLinks(linksResponse.links)
+    setLinkOptions(optionsResponse.options)
+  }, [accessToken, groupId])
+
   useEffect(() => {
     void loadDashboard()
   }, [loadDashboard])
+
+  useEffect(() => {
+    void loadContextLinks().catch(() => {
+      setContextLinks([])
+      setLinkOptions(EMPTY_LINK_OPTIONS)
+    })
+  }, [loadContextLinks])
+
+  const getLinksForExpense = useCallback((expenseId: string) => {
+    return contextLinks
+      .map((link) => otherEntityForExpense(link, expenseId))
+      .filter((entity): entity is ContextEntitySummary =>
+        entity !== null && isExpenseContextType(entity.type)
+      )
+  }, [contextLinks])
+
+  const getExpenseWithLinks = useCallback((expense: Expense): Expense => {
+    const linked = getLinksForExpense(expense.id)
+    return {
+      ...expense,
+      linkedActivities: linked
+        .filter((entity) => entity.type === 'activity' || entity.type === 'subgroup_activity')
+        .map((entity) => ({ type: entity.type, id: entity.id })),
+      linkedDocuments: linked
+        .filter((entity) => entity.type === 'document')
+        .map((entity) => entity.id),
+    }
+  }, [getLinksForExpense])
+
+  const findSavedExpenseId = (
+    nextDashboard: BudgetDashboardResponse,
+    expense: Expense,
+    previousIds: Set<string>,
+  ): string | null => {
+    const candidates = nextDashboard.expenses
+      .filter((item) => !previousIds.has(String(item.id)))
+      .filter((item) =>
+        item.description === expense.titulo &&
+        Number(item.amount) === Number(expense.monto) &&
+        String(item.paidByUserId) === String(expense.pagadoPorId) &&
+        item.category === expense.categoria
+      )
+      .sort((a, b) => Number(b.id) - Number(a.id))
+
+    return candidates[0]?.id ? String(candidates[0].id) : null
+  }
+
+  const syncExpenseLinks = async (expenseId: string, expense: Expense) => {
+    if (!groupId || !accessToken) return
+
+    const desiredEntities: ContextEntityRef[] = [
+      ...(expense.linkedActivities ?? []),
+      ...(expense.linkedDocuments ?? []).map((id) => ({ type: 'document' as const, id })),
+    ]
+
+    const desiredKeys = new Set(desiredEntities.map(entityKey))
+    const currentResponse = await contextLinksService.list(groupId, accessToken, {
+      type: 'expense',
+      id: expenseId,
+    })
+    const currentRelevant = currentResponse.links
+      .map((link) => ({ link, entity: otherEntityForExpense(link, expenseId) }))
+      .filter((item): item is { link: ContextLink; entity: ContextEntitySummary } =>
+        item.entity !== null && isExpenseContextType(item.entity.type)
+      )
+
+    await Promise.all([
+      ...currentRelevant
+        .filter(({ entity }) => entity && !desiredKeys.has(entityKey(entity)))
+        .map(({ link }) => contextLinksService.remove(groupId, link.id, accessToken)),
+      ...desiredEntities
+        .filter((entity) => !currentRelevant.some((item) => item.entity && entityKey(item.entity) === entityKey(entity)))
+        .map((entity) => contextLinksService.create(groupId, {
+          source: { type: 'expense', id: expenseId },
+          target: entity,
+        }, accessToken)),
+    ])
+  }
+
 
   const totalBudget = dashboard?.summary.totalBudget ?? 0
   const comprometido = dashboard?.summary.committed ?? 0
@@ -204,6 +341,7 @@ export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVau
 
     setIsSaving(true)
     setError(null)
+    const previousExpenseIds = new Set(expenses.map((item) => item.id))
 
     const payload = {
       paid_by_user_id: expense.pagadoPorId,
@@ -222,6 +360,20 @@ export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVau
       const nextDashboard = editingExpense
         ? await budgetService.updateExpense(groupId, expense.id, payload, accessToken)
         : await budgetService.createExpense(groupId, payload, accessToken)
+      const savedExpenseId = editingExpense?.id ?? findSavedExpenseId(nextDashboard, expense, previousExpenseIds)
+      if (savedExpenseId) {
+        await syncExpenseLinks(savedExpenseId, expense)
+        if (expense.draftDocument) {
+          const document = await documentsService.upload(groupId, expense.draftDocument.file, expense.draftDocument.category, {
+            notes: expense.draftDocument.notes,
+          }, accessToken)
+          await contextLinksService.create(groupId, {
+            source: { type: 'expense', id: savedExpenseId },
+            target: { type: 'document', id: document.id },
+          }, accessToken)
+        }
+        await loadContextLinks()
+      }
       applyDashboard(nextDashboard)
       setShowModal(false)
       setEditingExpense(null)
@@ -233,7 +385,7 @@ export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVau
   }
 
   const openEdit = (expense: Expense) => {
-    setEditingExpense(expense)
+    setEditingExpense(getExpenseWithLinks(expense))
     setShowModal(true)
   }
 
@@ -425,10 +577,15 @@ export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVau
               <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-4 py-8 text-center font-body text-sm text-[#7A8799]">
                 Aun no hay gastos registrados para este viaje.
               </div>
-            ) : expenses.map((expense) => (
-              <div key={expense.id} className="flex items-center gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
+            ) : expenses.map((expense) => {
+              const linkedEntities = getLinksForExpense(expense.id)
+              const linkedActivities = linkedEntities.filter((entity) => entity.type === 'activity' || entity.type === 'subgroup_activity')
+              const linkedDocuments = linkedEntities.filter((entity) => entity.type === 'document')
+
+              return (
+              <div key={expense.id} className="flex items-start gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
                 <div
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                  className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
                   style={{ backgroundColor: `${categoryColor(expense.categoria)}18`, color: categoryColor(expense.categoria) }}
                 >
                   <CategoryIcon categoria={expense.categoria} />
@@ -436,6 +593,40 @@ export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVau
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-body text-sm font-semibold text-[#3D4A5C]">{expense.titulo}</p>
                   <p className="font-body text-xs text-[#7A8799]">Pago {expense.pagadoPor} - {expense.fecha}</p>
+                  {(linkedActivities.length > 0 || linkedDocuments.length > 0) ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {linkedActivities.map((entity) => (
+                        <button
+                          key={entityKey(entity)}
+                          type="button"
+                          onClick={() => {
+                            if (entity.type === 'subgroup_activity') onOpenSubgroups?.()
+                            else onOpenItinerary?.()
+                          }}
+                          className="max-w-full rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#1E6FD9] hover:bg-[#E2EDFF]"
+                          title={entity.label}
+                        >
+                          {entity.type === 'subgroup_activity' ? 'Subgrupo' : 'Actividad'}:{' '}
+                          <span className="font-medium">{entity.label}</span>
+                        </button>
+                      ))}
+                      {linkedDocuments.map((entity) => (
+                        <button
+                          key={entityKey(entity)}
+                          type="button"
+                          onClick={onOpenVault}
+                          className="max-w-full rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#5B35B1] hover:bg-[#ECE4FF]"
+                          title={entity.label}
+                        >
+                          Documento: <span className="font-medium">{entity.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 rounded-lg bg-[#F8FAFC] px-2.5 py-1.5 font-body text-xs text-[#7A8799]">
+                      Sin actividad ni documento asociado.
+                    </p>
+                  )}
                 </div>
                 <span className="shrink-0 font-heading text-sm font-bold text-[#3D4A5C]">{formatMXN(expense.monto)}</span>
                 {canModifyExpenses && (
@@ -444,7 +635,7 @@ export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVau
                     aria-label="Editar gasto"
                     className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#F4F6F8] hover:text-[#1E6FD9]"
                   >
-                    Editar
+                    Editar/asociar
                   </button>
                 )}
                 <button
@@ -464,7 +655,8 @@ export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVau
                   </button>
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
@@ -511,6 +703,8 @@ export const BudgetDashboard: FC<Props> = ({ groupId, onSummaryChange, onOpenVau
         open={showModal}
         members={members}
         editingExpense={editingExpense}
+        activityOptions={[...linkOptions.activities, ...linkOptions.subgroupActivities]}
+        documentOptions={linkOptions.documents}
         onClose={() => { setShowModal(false); setEditingExpense(null) }}
         onSave={(expense) => void handleSaveExpense(expense)}
       />

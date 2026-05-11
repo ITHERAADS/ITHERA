@@ -1,4 +1,5 @@
-import { getAmadeusAccessToken, amadeusGet } from '../src/infrastructure/external-apis/amadeus.service';
+import { beforeEach, describe, expect, it } from '@jest/globals';
+import { getAmadeusAccessToken } from '../src/infrastructure/external-apis/amadeus.service';
 
 describe('Amadeus API Integrity Test', () => {
   beforeEach(() => {
@@ -12,7 +13,7 @@ describe('Amadeus API Integrity Test', () => {
   it('should return 401 or throw error if credentials are invalid (not hang)', async () => {
     try {
       await getAmadeusAccessToken();
-      fail('Should have thrown an error');
+      throw new Error('Should have thrown an error');
     } catch (error: any) {
       expect(error.message).toMatch(/No se pudo autenticar con Amadeus/);
     }

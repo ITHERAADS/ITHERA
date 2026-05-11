@@ -108,31 +108,6 @@ const ensureSubgroupInSlot = async (subgroupId: string, slotId: string) => {
   return data;
 };
 
-const getGroupUserProfiles = async (groupId: string) => {
-  const { data: groupMembers, error } = await supabase
-    .from('grupo_miembros')
-    .select('usuario_id')
-    .eq('grupo_id', groupId);
-  if (error) throw new Error(error.message);
-
-  const userIds = Array.from(new Set((groupMembers ?? [])
-    .map((row: any) => Number(row.usuario_id))
-    .filter((id) => Number.isFinite(id))));
-  if (userIds.length === 0) return new Map<number, any>();
-
-  const users = await Promise.all(userIds.map(async (userId) => {
-    const { data, error: userError } = await supabase
-      .from('usuarios')
-      .select('id_usuario, nombre, email, avatar_url')
-      .eq('id_usuario', userId)
-      .maybeSingle();
-    if (userError) throw new Error(userError.message);
-    return data;
-  }));
-
-  return new Map((users ?? []).map((user: any) => [Number(user.id_usuario), user]));
-};
-
 export const getSubgroupSchedule = async (authUserId: string, groupId: string) => {
   const member = await ensureGroupMember(authUserId, groupId);
 
@@ -148,11 +123,10 @@ export const getSubgroupSchedule = async (authUserId: string, groupId: string) =
     return { slots: [], myUserId: member.userId };
   }
 
-  const [{ data: subgroups, error: subgroupsError }, { data: activities, error: activitiesError }, { data: memberships, error: membershipsError }, userProfiles] = await Promise.all([
+  const [{ data: subgroups, error: subgroupsError }, { data: activities, error: activitiesError }, { data: memberships, error: membershipsError }] = await Promise.all([
     supabase.from('subgroups').select('*').in('slot_id', slotIds).order('created_at', { ascending: true }),
     supabase.from('subgroup_activities').select('*').in('slot_id', slotIds).order('created_at', { ascending: true }),
-    supabase.from('subgroup_memberships').select('*, usuarios!user_id(id_usuario, nombre, avatar_url)').in('slot_id', slotIds),
-    getGroupUserProfiles(groupId),
+    supabase.from('subgroup_memberships').select('*, usuarios!user_id(id_usuario, nombre, email, avatar_url)').in('slot_id', slotIds),
   ]);
 
   if (subgroupsError) throw new Error(subgroupsError.message);
@@ -179,7 +153,7 @@ export const getSubgroupSchedule = async (authUserId: string, groupId: string) =
   for (const row of memberships ?? []) {
     const slotId = Number((row as any).slot_id);
     const list = membershipsBySlot.get(slotId) ?? [];
-    const user = userProfiles.get(Number((row as any).user_id)) ?? (row as any).usuarios ?? null;
+    const user = (row as any).usuarios ?? null;
     list.push({
       ...row,
       usuarios: user,

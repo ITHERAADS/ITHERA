@@ -340,26 +340,23 @@ export function ProposalDetailModal({ proposal, tripId, onClose, onAccept }: Pro
               </div>
             )}
 
-            {/* Campo nuevo comentario — solo si no está confirmada */}
-            {!isConfirmed && (
-              <div className="flex gap-2 mt-1">
-                <textarea
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Escribe un comentario..."
-                  rows={2}
-                  className="flex-1 resize-none rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 font-body text-xs text-[#1E0A4E] placeholder-gray-400 outline-none transition focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/20"
-                />
-                <button
-                  onClick={() => void handleSendComment()}
-                  disabled={!draft.trim() || sending}
-                  className="self-end rounded-xl bg-[#1E6FD9] text-white font-body text-xs font-semibold px-3 py-2 hover:bg-[#1a5fc2] transition-colors disabled:opacity-40"
-                >
-                  {sending ? '...' : 'Enviar'}
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2 mt-1">
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Escribe un comentario..."
+                rows={2}
+                className="flex-1 resize-none rounded-xl border border-[#E2E8F0] bg-white px-3 py-2 font-body text-xs text-[#1E0A4E] placeholder-gray-400 outline-none transition focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/20"
+              />
+              <button
+                onClick={() => void handleSendComment()}
+                disabled={!draft.trim() || sending}
+                className="self-end rounded-xl bg-[#1E6FD9] text-white font-body text-xs font-semibold px-3 py-2 hover:bg-[#1a5fc2] transition-colors disabled:opacity-40"
+              >
+                {sending ? '...' : 'Enviar'}
+              </button>
+            </div>
           </div>
         </div>
 

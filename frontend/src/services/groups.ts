@@ -8,6 +8,7 @@ import type {
   InvitePreview,
   UpdateGroupPayload,
   GroupInvitation,
+  GroupJoinRequest,
 } from '../types/groups'
 import type { Activity } from '../components/ui/DayView/DayView'
 
@@ -50,7 +51,7 @@ export const groupsService = {
   },
 
   joinGroup: async (codigo: string, token: string) => {
-    return apiClient.post<{ ok: boolean; message: string; group: Group }>(
+    return apiClient.post<{ ok: boolean; message: string; group: Group & { requiresApproval?: boolean; joinRequestId?: string } }>(
       '/groups/join',
       { codigo },
       token
@@ -129,6 +130,26 @@ export const groupsService = {
   getInvitations: async (groupId: string, token: string) => {
     return apiClient.get<{ ok: boolean; invitations: GroupInvitation[] }>(
       `/groups/${groupId}/invitations`,
+      token
+    )
+  },
+
+  getJoinRequests: async (groupId: string, token: string) => {
+    return apiClient.get<{ ok: boolean; requests: GroupJoinRequest[] }>(
+      `/groups/${groupId}/join-requests`,
+      token
+    )
+  },
+
+  resolveJoinRequest: async (
+    groupId: string,
+    requestId: string,
+    action: 'approve' | 'reject',
+    token: string
+  ) => {
+    return apiClient.patch<{ ok: boolean; message: string }>(
+      `/groups/${groupId}/join-requests/${requestId}`,
+      { action },
       token
     )
   },

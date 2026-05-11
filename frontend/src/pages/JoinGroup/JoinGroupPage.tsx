@@ -16,6 +16,7 @@ export function JoinGroupPage() {
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState('')
+  const [requestPending, setRequestPending] = useState(false)
 
   useEffect(() => {
     async function loadPreview() {
@@ -54,6 +55,12 @@ export function JoinGroupPage() {
       setError('')
 
       const response = await groupsService.joinGroup(code, accessToken)
+
+      if (response.group.requiresApproval) {
+        setRequestPending(true)
+        return
+      }
+
       saveCurrentGroup(response.group)
 
       navigate(`/grouppanel?groupId=${encodeURIComponent(response.group.id)}`)
@@ -93,6 +100,24 @@ export function JoinGroupPage() {
               </h1>
               <p className="mt-3 font-body text-sm text-red-500">{error}</p>
 
+              <button
+                onClick={() => navigate('/my-trips')}
+                className="mt-6 rounded-xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white"
+              >
+                Volver a mis viajes
+              </button>
+            </div>
+          ) : requestPending ? (
+            <div className="text-center">
+              <p className="mb-3 inline-flex rounded-full bg-[#FFF4D6] px-3 py-1 text-xs font-semibold text-[#A86B00]">
+                Solicitud enviada
+              </p>
+              <h1 className="font-heading text-2xl font-bold text-[#1E0A4E]">
+                Tu solicitud está pendiente de aprobación
+              </h1>
+              <p className="mt-3 font-body text-sm text-[#7A8799]">
+                Tu solicitud fue enviada al organizador. Espera a que sea aprobada; te avisaremos por notificación cuando puedas entrar al itinerario del grupo.
+              </p>
               <button
                 onClick={() => navigate('/my-trips')}
                 className="mt-6 rounded-xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white"
@@ -149,6 +174,12 @@ export function JoinGroupPage() {
                 </p>
               )}
 
+              {preview.requiresApproval && preview.canJoin && (
+                <p className="mt-4 rounded-xl bg-[#FFF8E6] px-4 py-3 text-sm text-[#8A5A00]">
+                  Este grupo es privado. Al aceptar, se enviará una solicitud al administrador para aprobación.
+                </p>
+              )}
+
               {!localUser && (
                 <p className="mt-4 rounded-xl bg-[#FFF8E6] px-4 py-3 text-sm text-[#8A5A00]">
                   Para aceptar la invitación necesitas iniciar sesión.
@@ -162,9 +193,11 @@ export function JoinGroupPage() {
                   className="flex-1 rounded-xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {joining
-                    ? 'Aceptando...'
+                    ? 'Procesando...'
                     : localUser
-                      ? 'Aceptar invitación'
+                      ? preview.requiresApproval
+                        ? 'Solicitar acceso'
+                        : 'Aceptar invitación'
                       : 'Iniciar sesión para aceptar'}
                 </button>
 

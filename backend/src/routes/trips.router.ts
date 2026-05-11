@@ -22,6 +22,7 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       fecha_inicio,
       fecha_fin,
       maximo_miembros,
+      es_publico,
       presupuesto_total,
     } = req.body as {
       nombre?: string;
@@ -34,6 +35,7 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       fecha_inicio?: string;
       fecha_fin?: string;
       maximo_miembros?: number;
+      es_publico?: boolean;
       presupuesto_total?: number;
     };
 
@@ -79,6 +81,7 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       fecha_inicio,
       fecha_fin,
       maximo_miembros,
+      es_publico: es_publico === true,
       presupuesto_total: Number(presupuesto_total),
     });
 
@@ -99,7 +102,13 @@ router.post('/join', requireAuth, async (req: Request, res: Response): Promise<v
     }
 
     const grupo = await GroupsService.joinGroupByCode(req.user!.id, { codigo });
-    res.status(200).json({ ok: true, message: 'Te uniste al grupo correctamente', group: grupo });
+    res.status(200).json({
+      ok: true,
+      message: grupo.requiresApproval
+        ? 'Tu solicitud fue enviada. Espera a que el organizador la apruebe.'
+        : 'Te uniste al grupo correctamente',
+      group: grupo,
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
     const status = (err as any).statusCode ?? 500;
@@ -163,6 +172,46 @@ router.get('/:groupId/invitations', requireAuth, async (req: Request, res: Respo
     res.status(200).json({
       ok: true,
       invitations,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
+
+router.get('/:groupId/join-requests', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const requests = await GroupsService.getJoinRequests(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, requests });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: msg });
+  }
+});
+
+router.patch('/:groupId/join-requests/:requestId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { action } = req.body as { action?: 'approve' | 'reject' };
+
+    if (!action || !['approve', 'reject'].includes(action)) {
+      res.status(400).json({ ok: false, error: 'Acción inválida. Usa approve o reject.' });
+      return;
+    }
+
+    const result = await GroupsService.resolveJoinRequest(
+      req.user!.id,
+      req.params.groupId,
+      req.params.requestId,
+      action
+    );
+
+    res.status(200).json({
+      ok: true,
+      message: action === 'approve' ? 'Solicitud aprobada correctamente' : 'Solicitud rechazada correctamente',
+      ...result,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';

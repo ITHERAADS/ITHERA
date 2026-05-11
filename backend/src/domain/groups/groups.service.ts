@@ -49,6 +49,14 @@ const getFrontendJoinLink = (code: string): string => {
   return `${baseUrl}/join-group?code=${encodeURIComponent(code)}`;
 };
 
+const getFrontendPath = (path: string): string => path;
+
+const getGroupPanelPath = (groupId: number | string): string =>
+  getFrontendPath(`/grouppanel?groupId=${encodeURIComponent(String(groupId))}`);
+
+const getGroupDashboardPath = (groupId: number | string): string =>
+  getFrontendPath(`/dashboard?groupId=${encodeURIComponent(String(groupId))}`);
+
 const buildInviteEmailHtml = ({
   groupName,
   groupDescription,
@@ -312,6 +320,7 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
       fecha_inicio: payload.fecha_inicio ?? null,
       fecha_fin: payload.fecha_fin ?? null,
       maximo_miembros: maximoMiembros,
+      es_publico: payload.es_publico ?? false,
       presupuesto_total: payload.presupuesto_total,
       codigo_invitacion: codigo,
       creado_por: Number(usuarioId),
@@ -367,6 +376,93 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
     throw Object.assign(new Error('El usuario ya pertenece a este grupo'), { statusCode: 409 });
   }
 
+  const isPublicGroup = grupo.es_publico === true;
+
+  if (!isPublicGroup) {
+    const { data: existingRequest, error: requestLookupError } = await supabase
+      .from('grupo_solicitudes_union')
+      .select('id, estado')
+      .eq('grupo_id', grupo.id)
+      .eq('usuario_id', localUser.id_usuario)
+      .eq('estado', 'pendiente')
+      .maybeSingle();
+
+    if (requestLookupError) throw new Error(requestLookupError.message);
+
+    if (existingRequest) {
+      throw Object.assign(new Error('Tu solicitud para unirte a este grupo privado está pendiente de aprobación.'), {
+        statusCode: 409,
+        code: 'JOIN_REQUEST_PENDING',
+      });
+    }
+
+    const { data: createdRequest, error: requestError } = await supabase
+      .from('grupo_solicitudes_union')
+      .insert({
+        grupo_id: grupo.id,
+        usuario_id: localUser.id_usuario,
+        codigo_invitacion: normalizedCode,
+        estado: 'pendiente',
+      })
+      .select('id')
+      .single();
+
+    if (requestError) throw new Error(requestError.message);
+
+    const { data: admins } = await supabase
+      .from('grupo_miembros')
+      .select('usuario_id')
+      .eq('grupo_id', grupo.id)
+      .eq('rol', 'admin');
+
+    const actorName = localUser.nombre || localUser.email || 'Un viajero';
+
+    if (admins) {
+      for (const admin of admins) {
+        await NotificationsService.createNotification({
+          usuarioId: Number(admin.usuario_id),
+          grupoId: Number(grupo.id),
+          tipo: 'solicitud_union',
+          titulo: 'Solicitud para unirse al grupo',
+          mensaje: `${actorName} quiere unirse al grupo privado "${grupo.nombre}". Revisa la solicitud para aprobarla o rechazarla.`,
+          entidadTipo: 'grupo_solicitud_union',
+          entidadId: Number(createdRequest.id),
+          metadata: {
+            actorName,
+            actorUsuarioId: Number(localUser.id_usuario),
+            itemTitle: grupo.nombre,
+            itemType: 'grupo',
+            requestId: Number(createdRequest.id),
+            actionLabel: 'Ir al panel de solicitudes',
+            actionUrl: getGroupPanelPath(grupo.id),
+          },
+        });
+      }
+    }
+
+    NotificationsService.emitGroupDashboardUpdated(Number(grupo.id), {
+      tipo: 'solicitud_union_creada',
+      entidadTipo: 'grupo_solicitud_union',
+      entidadId: Number(createdRequest.id),
+      actorUsuarioId: Number(localUser.id_usuario),
+      metadata: {
+        actorName,
+        itemTitle: grupo.nombre,
+        requestId: Number(createdRequest.id),
+        actionLabel: 'Ir al panel de solicitudes',
+        actionUrl: getGroupPanelPath(grupo.id),
+      },
+    });
+
+    return {
+      ...grupo,
+      memberCount: await countMembers(String(grupo.id)),
+      myRole: 'pendiente_aprobacion',
+      joinRequestId: String(createdRequest.id),
+      requiresApproval: true,
+    };
+  }
+
   if (grupo.maximo_miembros) {
     const miembrosActuales = await countMembers(String(grupo.id));
     if (miembrosActuales >= grupo.maximo_miembros) {
@@ -414,6 +510,8 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
             actorUsuarioId: Number(localUser.id_usuario),
             itemTitle: grupo.nombre,
             itemType: 'grupo',
+            actionLabel: 'Ver grupo',
+            actionUrl: getGroupPanelPath(grupo.id),
           },
         });
       }
@@ -612,7 +710,9 @@ export const getInvitePreviewByCode = async (
     codigo: grupo.codigo_invitacion,
     memberCount,
     maximo_miembros: grupo.maximo_miembros ?? null,
+    es_publico: grupo.es_publico ?? false,
     canJoin,
+    requiresApproval: grupo.es_publico !== true,
   };
 };
 
@@ -785,6 +885,229 @@ export const createGroupInvitations = async (
   };
 };
 
+
+export const getJoinRequests = async (authUserId: string, groupId: string) => {
+  await ensureGroupAdmin(authUserId, groupId);
+
+  const { data, error } = await supabase
+    .from('grupo_solicitudes_union')
+    .select('id, grupo_id, usuario_id, estado, mensaje, created_at, updated_at')
+    .eq('grupo_id', groupId)
+    .eq('estado', 'pendiente')
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const userIds = Array.from(new Set((data ?? [])
+    .map((item: any) => Number(item.usuario_id))
+    .filter((id) => Number.isFinite(id))));
+
+  const users = await Promise.all(userIds.map(async (userId) => {
+    const { data: user, error: userError } = await supabase
+      .from('usuarios')
+      .select('id_usuario, nombre, email, avatar_url')
+      .eq('id_usuario', userId)
+      .maybeSingle();
+    if (userError) throw new Error(userError.message);
+    return user;
+  }));
+
+  const usersById = new Map((users ?? []).map((user: any) => [String(user.id_usuario), user]));
+
+  return (data ?? []).map((item: any) => {
+    const user = usersById.get(String(item.usuario_id));
+    return {
+      id: String(item.id),
+      grupo_id: String(item.grupo_id),
+      usuario_id: String(item.usuario_id),
+      estado: item.estado,
+      mensaje: item.mensaje ?? null,
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+      nombre: user?.nombre ?? null,
+      email: user?.email ?? null,
+      avatar_url: user?.avatar_url ?? null,
+    };
+  });
+};
+
+export const resolveJoinRequest = async (
+  authUserId: string,
+  groupId: string,
+  requestId: string,
+  action: 'approve' | 'reject'
+) => {
+  const { usuarioId } = await ensureGroupAdmin(authUserId, groupId);
+
+  const { data: request, error: requestError } = await supabase
+    .from('grupo_solicitudes_union')
+    .select('id, grupo_id, usuario_id, estado')
+    .eq('id', requestId)
+    .eq('grupo_id', groupId)
+    .single();
+
+  if (requestError || !request) {
+    throw Object.assign(new Error('Solicitud no encontrada'), { statusCode: 404 });
+  }
+
+  if (request.estado !== 'pendiente') {
+    throw Object.assign(new Error('Esta solicitud ya fue atendida'), { statusCode: 409 });
+  }
+
+  const grupo = await getGroupById(groupId);
+
+  if (action === 'reject') {
+    const { data, error } = await supabase
+      .from('grupo_solicitudes_union')
+      .update({
+        estado: 'rechazada',
+        resuelta_por: Number(usuarioId),
+        resolved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', requestId)
+      .select('*')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+
+    await NotificationsService.createNotification({
+      usuarioId: Number(request.usuario_id),
+      grupoId: Number(groupId),
+      tipo: 'solicitud_union_rechazada',
+      titulo: 'Solicitud rechazada',
+      mensaje: `Tu solicitud para unirte al grupo "${grupo.nombre}" fue rechazada por el organizador.`,
+      entidadTipo: 'grupo_solicitud_union',
+      entidadId: Number(requestId),
+      metadata: {
+        actorName,
+        itemTitle: grupo.nombre,
+        itemType: 'grupo',
+        requestId: Number(requestId),
+        status: 'rechazada',
+        actionLabel: 'Volver a mis viajes',
+        actionUrl: '/my-trips',
+      },
+    });
+
+    NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+      tipo: 'solicitud_union_rechazada',
+      entidadTipo: 'grupo_solicitud_union',
+      entidadId: Number(requestId),
+      actorUsuarioId: Number(usuarioId),
+      metadata: { actorName, action, targetUsuarioId: Number(request.usuario_id) },
+    });
+
+    return { request: data, member: null };
+  }
+
+  if (grupo.maximo_miembros) {
+    const miembrosActuales = await countMembers(String(grupo.id));
+    if (miembrosActuales >= grupo.maximo_miembros) {
+      throw Object.assign(new Error('El grupo alcanzó el máximo de miembros'), { statusCode: 409 });
+    }
+  }
+
+  const membership = await getMembership(groupId, String(request.usuario_id));
+  if (membership) {
+    await supabase
+      .from('grupo_solicitudes_union')
+      .update({
+        estado: 'aprobada',
+        resuelta_por: Number(usuarioId),
+        resolved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', requestId);
+
+    const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+
+    await NotificationsService.createNotification({
+      usuarioId: Number(request.usuario_id),
+      grupoId: Number(groupId),
+      tipo: 'solicitud_union_aprobada',
+      titulo: 'Solicitud aprobada',
+      mensaje: `Tu solicitud fue aprobada. Ya puedes entrar al grupo "${grupo.nombre}".`,
+      entidadTipo: 'grupo',
+      entidadId: Number(groupId),
+      metadata: {
+        actorName,
+        itemTitle: grupo.nombre,
+        itemType: 'grupo',
+        requestId: Number(requestId),
+        status: 'aprobada',
+        actionLabel: 'Entrar al itinerario',
+        actionUrl: getGroupDashboardPath(groupId),
+      },
+    });
+
+    NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+      tipo: 'solicitud_union_aprobada',
+      entidadTipo: 'grupo_solicitud_union',
+      entidadId: Number(requestId),
+      actorUsuarioId: Number(usuarioId),
+      metadata: { actorName, action, targetUsuarioId: Number(request.usuario_id) },
+    });
+
+    return { request: { ...request, estado: 'aprobada' }, member: membership };
+  }
+
+  const { data: member, error: insertError } = await supabase
+    .from('grupo_miembros')
+    .insert({ grupo_id: Number(groupId), usuario_id: Number(request.usuario_id), rol: 'viajero' })
+    .select('*')
+    .single();
+
+  if (insertError) throw new Error(insertError.message);
+
+  const { data: updatedRequest, error: updateError } = await supabase
+    .from('grupo_solicitudes_union')
+    .update({
+      estado: 'aprobada',
+      resuelta_por: Number(usuarioId),
+      resolved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', requestId)
+    .select('*')
+    .single();
+
+  if (updateError) throw new Error(updateError.message);
+
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+
+  await NotificationsService.createNotification({
+    usuarioId: Number(request.usuario_id),
+    grupoId: Number(groupId),
+    tipo: 'solicitud_union_aprobada',
+    titulo: 'Solicitud aprobada',
+    mensaje: `Tu solicitud fue aprobada. Ya puedes entrar al grupo "${grupo.nombre}".`,
+    entidadTipo: 'grupo',
+    entidadId: Number(groupId),
+    metadata: {
+      actorName,
+      itemTitle: grupo.nombre,
+      itemType: 'grupo',
+      requestId: Number(requestId),
+      status: 'aprobada',
+      actionLabel: 'Entrar al itinerario',
+      actionUrl: getGroupDashboardPath(groupId),
+    },
+  });
+
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'solicitud_union_aprobada',
+    entidadTipo: 'grupo_solicitud_union',
+    entidadId: Number(requestId),
+    actorUsuarioId: Number(usuarioId),
+    metadata: { actorName, action, targetUsuarioId: Number(request.usuario_id) },
+  });
+
+  return { request: updatedRequest, member };
+};
+
 export const getMyTravelHistory = async (authUserId: string) => {
   const usuarioId = await getLocalUserId(authUserId);
 
@@ -800,6 +1123,7 @@ export const getMyTravelHistory = async (authUserId: string) => {
         fecha_inicio,
         fecha_fin,
         maximo_miembros,
+        es_publico,
         codigo_invitacion,
         estado,
         created_at,
@@ -843,6 +1167,7 @@ export const updateGroup = async (
     ...(payload.fecha_inicio !== undefined ? { fecha_inicio: payload.fecha_inicio || null } : {}),
     ...(payload.fecha_fin !== undefined ? { fecha_fin: payload.fecha_fin || null } : {}),
     ...(payload.maximo_miembros !== undefined ? { maximo_miembros: maximoMiembros } : {}),
+    ...(payload.es_publico !== undefined ? { es_publico: payload.es_publico === true } : {}),
     ...(payload.destino_latitud !== undefined ? { destino_latitud: destinationFields.destino_latitud } : {}),
     ...(payload.destino_longitud !== undefined ? { destino_longitud: destinationFields.destino_longitud } : {}),
     ...(payload.destino_place_id !== undefined ? { destino_place_id: destinationFields.destino_place_id } : {}),

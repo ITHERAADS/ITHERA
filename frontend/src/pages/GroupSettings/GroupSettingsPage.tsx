@@ -19,6 +19,7 @@ type SettingsForm = {
   endDate: string
   maxMembers: string
   description: string
+  isPublic: boolean
 }
 
 function buildForm(group: Group): SettingsForm {
@@ -29,6 +30,7 @@ function buildForm(group: Group): SettingsForm {
     endDate: group.fecha_fin || '',
     maxMembers: group.maximo_miembros ? String(group.maximo_miembros) : '10',
     description: group.descripcion || '',
+    isPublic: group.es_publico === true,
   }
 }
 
@@ -45,6 +47,7 @@ export function GroupSettingsPage() {
     endDate: '',
     maxMembers: '10',
     description: '',
+    isPublic: false,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -88,7 +91,7 @@ export function GroupSettingsPage() {
     loadGroup()
   }, [accessToken, groupId])
 
-  const setField = (key: keyof SettingsForm, value: string) => {
+  const setField = (key: keyof SettingsForm, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -139,6 +142,7 @@ export function GroupSettingsPage() {
           fecha_inicio: form.startDate || undefined,
           fecha_fin: form.endDate || undefined,
           maximo_miembros: Number(form.maxMembers),
+          es_publico: form.isPublic,
         },
         accessToken
       )
@@ -296,6 +300,32 @@ export function GroupSettingsPage() {
                 <p className="mt-1.5 text-[11px] text-[#1E0A4E]/40">
                   Mínimo 1. El viaje puede iniciar solo con el creador y después aceptar más integrantes.
                 </p>
+              </div>
+
+              <div className="md:col-span-2 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-heading text-sm font-semibold text-[#1E0A4E]">Grupo público</h3>
+                    <p className="mt-1 font-body text-xs text-[#7A8799]">
+                      Activado: cualquiera con el código entra sin aprobación. Desactivado: el admin aprueba solicitudes.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={form.isPublic}
+                    onClick={() => setField('isPublic', !form.isPublic)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#1E6FD9]/30 ${
+                      form.isPublic ? 'bg-[#1E6FD9]' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                        form.isPublic ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
 
               <div className="md:col-span-2">

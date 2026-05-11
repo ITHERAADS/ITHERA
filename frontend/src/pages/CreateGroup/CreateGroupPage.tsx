@@ -264,6 +264,7 @@ export function CreateGroupPage() {
             fecha_inicio: form.startDate || undefined,
             fecha_fin: form.endDate || undefined,
             maximo_miembros: Number(form.maxMembers),
+            es_publico: form.isPublic,
             presupuesto_total: Number(form.totalBudget),
           },
         accessToken
@@ -539,7 +540,7 @@ export function CreateGroupPage() {
                   Grupo público
                 </h3>
                 <p className="font-body text-xs text-[#7A8799]">
-                  Cualquiera con el código puede unirse sin aprobación
+                  Activado: cualquiera con el código entra sin aprobación. Desactivado: el admin aprueba solicitudes.
                 </p>
               </div>
               <button

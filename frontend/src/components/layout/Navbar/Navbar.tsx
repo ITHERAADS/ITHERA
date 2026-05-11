@@ -322,8 +322,8 @@ function DashboardMobileMenu({ trip, user }: { trip: TripInfo; user: NavUserInfo
         <p className="font-body text-[10px] font-semibold text-white/40 uppercase tracking-widest">
           Viaje activo
         </p>
-        <p className="font-body text-sm font-bold text-white">{trip.name}</p>
-        <p className="font-body text-xs text-white/60">{trip.subtitle}</p>
+        <p className="break-words font-body text-sm font-bold leading-tight text-white">{trip.name}</p>
+        <p className="break-words font-body text-xs leading-tight text-white/60">{trip.subtitle}</p>
       </div>
       {/* User info */}
       <div className="flex items-center gap-3">

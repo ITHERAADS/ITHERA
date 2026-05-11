@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { mapsService, type PlaceResult } from '../../services/maps'
 import { groupsService } from '../../services/groups'
 import { proposalsService } from '../../services/proposals'
@@ -195,6 +195,19 @@ export function ActivityProposalModal({
     return safeMemberOptions[0]?.id ?? ''
   }, [currentUserId, safeMemberOptions])
 
+  const getActivityDate = useCallback(() => {
+    const startDate = group?.fecha_inicio
+    if (!startDate || !selectedDayNumber) return null
+
+    const selectedDate = new Date(
+      new Date(`${startDate}T12:00:00`).getTime() + (selectedDayNumber - 1) * 86400000
+    )
+    const yyyy = selectedDate.getFullYear()
+    const mm = String(selectedDate.getMonth() + 1).padStart(2, '0')
+    const dd = String(selectedDate.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}T${timeValue}:00`
+  }, [group?.fecha_inicio, selectedDayNumber, timeValue])
+
   const resetContextDraft = () => {
     setSelectedExpenseIds([])
     setSelectedDocumentIds([])
@@ -217,7 +230,7 @@ export function ActivityProposalModal({
   useEffect(() => {
     if (!open) return
     setQuickExpenseDate(getActivityDate()?.slice(0, 10) ?? todayValue())
-  }, [open, group?.fecha_inicio, selectedDayNumber, timeValue])
+  }, [getActivityDate, open])
 
   useEffect(() => {
     if (!open) return
@@ -302,7 +315,7 @@ export function ActivityProposalModal({
     void hydrate()
 
     return () => { cancelled = true }
-  }, [defaultExpensePayer, editingActivity, group?.id, open, safeMemberOptions, token])
+  }, [defaultExpensePayer, editingActivity, getActivityDate, group?.id, open, safeMemberOptions, token])
 
   if (!open) return null
 
@@ -379,19 +392,6 @@ export function ActivityProposalModal({
     } finally {
       setLoading(false)
     }
-  }
-
-  const getActivityDate = () => {
-    const startDate = group?.fecha_inicio
-    if (!startDate || !selectedDayNumber) return null
-
-    const selectedDate = new Date(
-      new Date(`${startDate}T12:00:00`).getTime() + (selectedDayNumber - 1) * 86400000
-    )
-    const yyyy = selectedDate.getFullYear()
-    const mm = String(selectedDate.getMonth() + 1).padStart(2, '0')
-    const dd = String(selectedDate.getDate()).padStart(2, '0')
-    return `${yyyy}-${mm}-${dd}T${timeValue}:00`
   }
 
   const buildActivityPayload = () => {

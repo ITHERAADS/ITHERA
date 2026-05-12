@@ -299,74 +299,81 @@ export function GroupPanelPage() {
         showTripSelector={false}
         showRightPanel={false}
       >
-        <div className="flex-1 overflow-y-auto px-4 py-8">
-          <div className="mx-auto max-w-4xl space-y-5">
-            <div className="rounded-2xl border border-[#E2E8F0] bg-white p-6 shadow-sm">
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h1 className="font-heading text-2xl font-bold text-[#1E0A4E]">
-                    {group.nombre}
-                  </h1>
+        <div className="flex-1 overflow-x-hidden overflow-y-auto px-4 py-8">
+          <div className="mx-auto w-full max-w-4xl space-y-5">
+            <div className="relative rounded-2xl border border-[#E2E8F0] bg-white p-6 shadow-sm">
+              <div className="min-w-0 lg:max-w-[calc(100%-390px)]">
+                <h1
+                  className="max-w-full break-words font-heading text-2xl font-bold leading-tight text-[#1E0A4E]"
+                  title={group.nombre}
+                >
+                  {group.nombre}
+                </h1>
 
-                  <p className="mt-1 font-body text-sm text-[#7A8799]">
-                    {group.descripcion || 'Sin descripción'}
-                  </p>
+                <p
+                  className="mt-2 max-w-full break-words font-body text-sm leading-relaxed text-[#7A8799]"
+                  title={group.descripcion || 'Sin descripción'}
+                >
+                  {group.descripcion || 'Sin descripción'}
+                </p>
 
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                    <span className="rounded-full bg-[#F4F6F8] px-3 py-1 text-[#1E0A4E]">
-                      Destino: {group.destino || 'Pendiente'}
-                    </span>
+                <div className="mt-4 flex max-w-full flex-wrap gap-2 text-xs">
+                  <span className="max-w-full break-words rounded-full bg-[#F4F6F8] px-3 py-1 text-[#1E0A4E]">
+                    Destino: {group.destino || 'Pendiente'}
+                  </span>
 
-                    <span className="rounded-full bg-[#F4F6F8] px-3 py-1 text-[#1E0A4E]">
-                      Fechas: {formatDateRange(group.fecha_inicio, group.fecha_fin)}
-                    </span>
+                  <span className="max-w-full break-words rounded-full bg-[#F4F6F8] px-3 py-1 text-[#1E0A4E]">
+                    Fechas: {formatDateRange(group.fecha_inicio, group.fecha_fin)}
+                  </span>
 
-                    <span className="rounded-full bg-[#F4F6F8] px-3 py-1 text-[#1E0A4E]">
-                      Código: {group.codigo_invitacion}
-                    </span>
+                  <span className="max-w-full break-words rounded-full bg-[#F4F6F8] px-3 py-1 text-[#1E0A4E]">
+                    Código: {group.codigo_invitacion}
+                  </span>
 
-                    <span className="rounded-full bg-[#E8F0FF] px-3 py-1 font-semibold text-[#1E6FD9]">
-                      Tu rol: {getDisplayRole(isAdmin ? 'admin' : 'viajero')}
-                    </span>
+                  <span className="rounded-full bg-[#E8F0FF] px-3 py-1 font-semibold text-[#1E6FD9]">
+                    Tu rol: {getDisplayRole(isAdmin ? 'admin' : 'viajero')}
+                  </span>
 
-                    <span className={`rounded-full px-3 py-1 font-semibold ${group.es_publico ? 'bg-[#EAFBF0] text-[#1F8A4C]' : 'bg-[#FFF4D6] text-[#A86B00]'}`}>
-                      {group.es_publico ? 'Grupo público' : 'Grupo privado'}
-                    </span>
-                  </div>
+                  <span className={`rounded-full px-3 py-1 font-semibold ${group.es_publico ? 'bg-[#EAFBF0] text-[#1F8A4C]' : 'bg-[#FFF4D6] text-[#A86B00]'}`}>
+                    {group.es_publico ? 'Grupo público' : 'Grupo privado'}
+                  </span>
                 </div>
+              </div>
 
-                <div className="flex flex-wrap gap-2">
-                  {isAdmin && (
-                    <>
-                      <button
-                        onClick={() => setIsInviteModalOpen(true)}
-                        className="rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm text-[#1E0A4E] hover:bg-[#F8FAFC]"
-                      >
-                        Invitar al grupo
-                      </button>
+              <div className="mt-5 grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:absolute lg:right-6 lg:top-6 lg:mt-0 lg:w-[360px]">
+                {isAdmin && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsInviteModalOpen(true)}
+                      className="min-h-12 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-center text-sm font-semibold text-[#1E0A4E] shadow-sm transition hover:bg-[#F8FAFC]"
+                    >
+                      Invitar
+                    </button>
 
-                      <button
-                        onClick={() =>
-                          navigate(
-                            `/group-settings?groupId=${encodeURIComponent(group.id)}`
-                          )
-                        }
-                        className="rounded-xl bg-[#1E6FD9] px-4 py-3 text-sm text-white hover:bg-[#2C8BE6]"
-                      >
-                        Configuración
-                      </button>
-                    </>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(
+                          `/group-settings?groupId=${encodeURIComponent(group.id)}`
+                        )
+                      }
+                      className="min-h-12 rounded-xl bg-[#1E6FD9] px-4 py-3 text-center text-sm font-semibold text-white shadow-sm transition hover:bg-[#2C8BE6]"
+                    >
+                      Configuración
+                    </button>
+                  </>
+                )}
 
-                  <button
-                    onClick={() =>
-                      navigate(`/dashboard?groupId=${encodeURIComponent(group.id)}`)
-                    }
-                    className="rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm text-[#1E0A4E] hover:bg-[#F8FAFC]"
-                  >
-                    Ver itinerario
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(`/dashboard?groupId=${encodeURIComponent(group.id)}`)
+                  }
+                  className={`${isAdmin ? '' : 'sm:col-start-3'} min-h-12 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-center text-sm font-semibold text-[#1E0A4E] shadow-sm transition hover:bg-[#F8FAFC]`}
+                >
+                  Itinerario
+                </button>
               </div>
 
               {copied && (
@@ -406,7 +413,7 @@ export function GroupPanelPage() {
                             )}
                           </p>
 
-                          <p className="font-body text-xs text-[#7A8799]">
+                          <p className="break-words font-body text-xs text-[#7A8799]">
                             {member.email}
                           </p>
                         </div>
@@ -558,8 +565,8 @@ export function GroupPanelPage() {
                             key={invitation.id}
                             className="flex items-center justify-between rounded-xl border border-[#E2E8F0] px-4 py-3"
                           >
-                            <div>
-                              <p className="font-body text-sm font-medium text-[#1E0A4E]">
+                            <div className="min-w-0">
+                              <p className="break-words font-body text-sm font-medium text-[#1E0A4E]">
                                 {invitation.email}
                               </p>
 

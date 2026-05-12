@@ -13,6 +13,46 @@ import {
 } from './groups.entity';
 import * as NotificationsService from '../notifications/notifications.service';
 
+
+const GROUP_NAME_MAX_LENGTH = 60;
+const GROUP_DESCRIPTION_MAX_LENGTH = 300;
+
+const normalizeRequiredText = (value: unknown, fieldLabel: string, maxLength: number): string => {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw Object.assign(new Error(`ERR-23-001: ${fieldLabel} es requerido`), { statusCode: 400 });
+  }
+
+  const normalized = value.trim();
+
+  if (normalized.length > maxLength) {
+    throw Object.assign(
+      new Error(`ERR-23-001: ${fieldLabel} permite máximo ${maxLength} caracteres`),
+      { statusCode: 400 }
+    );
+  }
+
+  return normalized;
+};
+
+const normalizeOptionalText = (value: unknown, fieldLabel: string, maxLength: number): string | null => {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') {
+    throw Object.assign(new Error(`ERR-23-001: ${fieldLabel} debe ser texto válido`), { statusCode: 400 });
+  }
+
+  const normalized = value.trim();
+  if (!normalized) return null;
+
+  if (normalized.length > maxLength) {
+    throw Object.assign(
+      new Error(`ERR-23-001: ${fieldLabel} permite máximo ${maxLength} caracteres`),
+      { statusCode: 400 }
+    );
+  }
+
+  return normalized;
+};
+
 const generateGroupCode = (length = 8): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   return Array.from({ length }, () =>
@@ -308,6 +348,12 @@ export const getGroupDetails = async (authUserId: string, groupId: string) => {
 export const createGroup = async (authUserId: string, payload: CreateGroupPayload) => {
   const usuarioId = await getLocalUserId(authUserId);
   const codigo = await generateUniqueCode();
+  const nombre = normalizeRequiredText(payload.nombre, 'El nombre del grupo', GROUP_NAME_MAX_LENGTH);
+  const descripcion = normalizeOptionalText(
+    payload.descripcion,
+    'La descripción',
+    GROUP_DESCRIPTION_MAX_LENGTH
+  );
   const destinationFields = await buildDestinationFields(payload);
   const maximoMiembros = normalizeMaxMembers(payload.maximo_miembros);
   const presupuestoTotal = Number(payload.presupuesto_total);
@@ -322,8 +368,8 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
   const { data: grupo, error: groupError } = await supabase
     .from('grupos_viaje')
     .insert({
-      nombre: payload.nombre,
-      descripcion: payload.descripcion ?? null,
+      nombre,
+      descripcion,
       destino: payload.destino ?? null,
       fecha_inicio: payload.fecha_inicio ?? null,
       fecha_fin: payload.fecha_fin ?? null,
@@ -1167,10 +1213,18 @@ export const updateGroup = async (
   const destinationFields = await buildDestinationFields(payload);
   const maximoMiembros =
     payload.maximo_miembros !== undefined ? normalizeMaxMembers(payload.maximo_miembros) : undefined;
+  const nombre =
+    payload.nombre !== undefined
+      ? normalizeRequiredText(payload.nombre, 'El nombre del grupo', GROUP_NAME_MAX_LENGTH)
+      : undefined;
+  const descripcion =
+    payload.descripcion !== undefined
+      ? normalizeOptionalText(payload.descripcion, 'La descripción', GROUP_DESCRIPTION_MAX_LENGTH)
+      : undefined;
 
   const updateData = {
-    ...(payload.nombre !== undefined ? { nombre: payload.nombre } : {}),
-    ...(payload.descripcion !== undefined ? { descripcion: payload.descripcion || null } : {}),
+    ...(payload.nombre !== undefined ? { nombre } : {}),
+    ...(payload.descripcion !== undefined ? { descripcion } : {}),
     ...(payload.destino !== undefined ? { destino: payload.destino || null } : {}),
     ...(payload.fecha_inicio !== undefined ? { fecha_inicio: payload.fecha_inicio || null } : {}),
     ...(payload.fecha_fin !== undefined ? { fecha_fin: payload.fecha_fin || null } : {}),

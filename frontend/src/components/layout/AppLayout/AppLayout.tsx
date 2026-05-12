@@ -105,29 +105,33 @@ export function AppLayout({
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
       />
 
-      <div className="flex flex-1 overflow-hidden pt-20">
+      <div className="flex min-w-0 flex-1 overflow-hidden pt-20">
         <aside
           className={[
             'shrink-0 overflow-hidden bg-purpleNavbar transition-all duration-300 ease-in-out',
             sidebarOpen ? 'w-[240px]' : 'w-0',
           ].join(' ')}
         >
-          <div className="flex h-full w-[240px] flex-col overflow-y-auto px-4 pb-4 pt-6">
+          <div className="flex h-full w-[240px] min-w-0 flex-col overflow-x-hidden overflow-y-auto px-4 pb-4 pt-6">
             {trip ? (
               <>
-                <div className="mb-4">
-                  <h2 className="font-heading text-base font-bold leading-tight text-white">{trip.name}</h2>
-                  <p className="mt-0.5 font-body text-xs text-white/50">{trip.subtitle}</p>
+                <div className="mb-4 min-w-0">
+                  <h2 className="max-w-full break-words font-heading text-base font-bold leading-tight text-white" title={trip.name}>
+                    {trip.name}
+                  </h2>
+                  <p className="mt-0.5 max-w-full break-words font-body text-xs leading-tight text-white/50" title={trip.subtitle}>
+                    {trip.subtitle}
+                  </p>
                 </div>
 
-                <div className="mb-5 flex flex-wrap gap-2">
-                  <div className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
+                <div className="mb-5 flex max-w-full flex-wrap gap-2">
+                  <div className="flex max-w-full items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
                     <span className="text-white/70"><IconCalendar /></span>
-                    <span className="font-body text-[11px] text-white/70">{trip.dates}</span>
+                    <span className="min-w-0 break-words font-body text-[11px] leading-tight text-white/70">{trip.dates}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
+                  <div className="flex max-w-full items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
                     <span className="text-white/70"><IconUsers /></span>
-                    <span className="font-body text-[11px] text-white/70">{trip.people}</span>
+                    <span className="min-w-0 break-words font-body text-[11px] leading-tight text-white/70">{trip.people}</span>
                   </div>
                 </div>
 
@@ -155,7 +159,7 @@ export function AppLayout({
           </div>
         </aside>
 
-        <main className="flex flex-1 flex-col overflow-hidden bg-[#F0EEF8]">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F0EEF8]">
           {children}
         </main>
 

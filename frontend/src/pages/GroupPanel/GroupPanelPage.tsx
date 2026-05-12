@@ -35,6 +35,10 @@ function getDisplayRole(rol?: string) {
   return rol === 'admin' ? 'Organizador' : 'Viajero'
 }
 
+function isClosedGroup(group?: Group | null) {
+  return ['cerrado', 'archivado', 'finalizado'].includes(String(group?.estado ?? '').toLowerCase())
+}
+
 export function GroupPanelPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -58,6 +62,8 @@ export function GroupPanelPage() {
   )
 
   const isAdmin = currentMember?.rol === 'admin' || group?.myRole === 'admin'
+  const isReadOnly = isClosedGroup(group)
+  const canManageGroup = isAdmin && !isReadOnly
   const isPrivateGroup = group?.es_publico !== true
 
   useEffect(() => {
@@ -109,7 +115,7 @@ export function GroupPanelPage() {
           (member) => String(member.usuario_id) === String(localUser?.id_usuario)
         )?.rol
 
-        const canManage = memberRole === 'admin' || currentGroup?.myRole === 'admin'
+        const canManage = (memberRole === 'admin' || currentGroup?.myRole === 'admin') && !isClosedGroup(loadedGroup || currentGroup)
 
         if (canManage) {
           const fallbackGroup = getCurrentGroup()
@@ -173,7 +179,7 @@ export function GroupPanelPage() {
   }
 
   const handleToggleRole = async (member: GroupMember) => {
-    if (!accessToken || !group || !isAdmin) return
+    if (!accessToken || !group || !canManageGroup) return
 
     try {
       const nextRole = member.rol === 'admin' ? 'viajero' : 'admin'
@@ -187,7 +193,7 @@ export function GroupPanelPage() {
   }
 
   const handleResolveJoinRequest = async (request: GroupJoinRequest, action: 'approve' | 'reject') => {
-    if (!accessToken || !group || !isAdmin) return
+    if (!accessToken || !group || !canManageGroup) return
 
     try {
       await groupsService.resolveJoinRequest(group.id, request.id, action, accessToken)
@@ -203,7 +209,7 @@ export function GroupPanelPage() {
   }
 
   const handleRemove = async (member: GroupMember) => {
-    if (!accessToken || !group || !isAdmin) return
+    if (!accessToken || !group || !canManageGroup) return
 
     const confirmed = window.confirm(
       `¿Seguro que quieres expulsar a ${member.nombre || member.email} del grupo?`
@@ -341,7 +347,7 @@ export function GroupPanelPage() {
               </div>
 
               <div className="mt-5 grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:absolute lg:right-6 lg:top-6 lg:mt-0 lg:w-[360px]">
-                {isAdmin && (
+                {canManageGroup && (
                   <>
                     <button
                       type="button"
@@ -383,9 +389,18 @@ export function GroupPanelPage() {
               )}
             </div>
 
+            {isReadOnly && (
+              <div className="rounded-2xl border border-[#CBD5E1] bg-[#F8FAFC] px-5 py-4">
+                <p className="font-heading text-sm font-semibold text-[#1E0A4E]">Viaje cerrado · modo solo lectura</p>
+                <p className="mt-1 font-body text-sm leading-relaxed text-[#64748B]">
+                  Este viaje ya finalizó. Puedes consultar integrantes, invitaciones históricas e itinerario, pero las acciones de gestión, invitación y expulsión están deshabilitadas.
+                </p>
+              </div>
+            )}
+
             <div
               className={
-                isAdmin
+                canManageGroup
                   ? 'grid grid-cols-1 gap-5 lg:grid-cols-[1.2fr_0.8fr]'
                   : 'grid grid-cols-1 gap-5'
               }
@@ -429,7 +444,7 @@ export function GroupPanelPage() {
                             {getDisplayRole(member.rol)}
                           </span>
 
-                          {isAdmin && !isSelf && (
+                          {canManageGroup && !isSelf && (
                             <>
                               <button
                                 onClick={() => handleToggleRole(member)}
@@ -453,7 +468,7 @@ export function GroupPanelPage() {
                 </div>
               </div>
 
-              {isAdmin && (
+              {canManageGroup && (
                 <div className="rounded-3xl border border-[#E2E8F0] bg-white p-6 shadow-sm">
                   <div className="mb-5">
                     <h2 className="font-heading text-xl font-bold text-[#1E0A4E]">
@@ -590,7 +605,7 @@ export function GroupPanelPage() {
         </div>
       </AppLayout>
 
-      {isAdmin && (
+      {canManageGroup && (
         <InviteModal
           isOpen={isInviteModalOpen}
           onClose={() => setIsInviteModalOpen(false)}

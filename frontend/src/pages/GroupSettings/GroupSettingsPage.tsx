@@ -43,6 +43,10 @@ const todayISO = () => {
   return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10)
 }
 
+function isClosedGroup(group?: Group | null) {
+  return ['cerrado', 'archivado', 'finalizado'].includes(String(group?.estado ?? '').toLowerCase())
+}
+
 const addDaysISO = (date: string, days: number) => {
   const parsed = new Date(`${date}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) return ''
@@ -103,6 +107,7 @@ export function GroupSettingsPage() {
   const groupId = searchParams.get('groupId') || group?.id || ''
   const formError = getValidationError(form)
   const minEndDate = form.startDate ? addDaysISO(form.startDate, 1) : todayISO()
+  const isReadOnly = isClosedGroup(group)
 
   useEffect(() => {
     if (!accessToken || !groupId) {
@@ -138,6 +143,7 @@ export function GroupSettingsPage() {
   }, [accessToken, groupId])
 
   const setField = (key: keyof SettingsForm, value: string | boolean) => {
+    if (isReadOnly) return
     let nextValue = value
 
     if (typeof value === 'string') {
@@ -160,7 +166,7 @@ export function GroupSettingsPage() {
   }
 
   const handleSave = async () => {
-    if (!accessToken || !group) return
+    if (!accessToken || !group || isReadOnly) return
 
     const validationError = getValidationError(form)
     if (validationError) {
@@ -203,7 +209,7 @@ export function GroupSettingsPage() {
   }
 
   const handleDelete = async () => {
-    if (!accessToken || !group) return
+    if (!accessToken || !group || isReadOnly) return
 
     const confirmed = window.confirm(`¿Seguro que quieres eliminar el grupo "${group.nombre}"?`)
     if (!confirmed) return
@@ -273,7 +279,7 @@ export function GroupSettingsPage() {
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
                 <h1 className="font-heading font-bold text-[#1E0A4E] text-2xl">Configuración del grupo</h1>
-                <p className="font-body text-sm text-[#7A8799]">Edita la información principal del viaje</p>
+                <p className="font-body text-sm text-[#7A8799]">{isReadOnly ? 'Consulta la información del viaje cerrado' : 'Edita la información principal del viaje'}</p>
               </div>
               <button
                 onClick={() => navigate(`/grouppanel?groupId=${encodeURIComponent(group?.id || '')}`)}
@@ -282,6 +288,15 @@ export function GroupSettingsPage() {
                 Volver al panel
               </button>
             </div>
+
+            {isReadOnly && (
+              <div className="mb-5 rounded-2xl border border-[#CBD5E1] bg-[#F8FAFC] px-4 py-3">
+                <p className="font-heading text-sm font-semibold text-[#1E0A4E]">Viaje cerrado · configuración en modo lectura</p>
+                <p className="mt-1 font-body text-sm leading-relaxed text-[#64748B]">
+                  Este viaje ya finalizó. La información se conserva para consulta, pero no se puede editar ni eliminar.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
@@ -292,6 +307,7 @@ export function GroupSettingsPage() {
                   value={form.name}
                   maxLength={GROUP_NAME_MAX_LENGTH}
                   onChange={(e) => setField('name', e.target.value)}
+                  disabled={isReadOnly}
                   className={`w-full border rounded-xl px-4 py-3 text-sm ${form.name.trim().length > GROUP_NAME_MAX_LENGTH ? 'border-red-400' : 'border-[#E2E8F0]'}`}
                 />
                 <div className="mt-1.5 flex items-center justify-between gap-3">
@@ -310,6 +326,7 @@ export function GroupSettingsPage() {
                     setDestinationData(result ?? null)
                   }}
                   token={accessToken}
+                  disabled={isReadOnly}
                 />
               </div>
 
@@ -322,6 +339,7 @@ export function GroupSettingsPage() {
                   value={form.startDate}
                   min={todayISO()}
                   onChange={(e) => setField('startDate', e.target.value)}
+                  disabled={isReadOnly}
                   className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
                 />
               </div>
@@ -335,6 +353,7 @@ export function GroupSettingsPage() {
                   value={form.endDate}
                   min={minEndDate}
                   onChange={(e) => setField('endDate', e.target.value)}
+                  disabled={isReadOnly}
                   className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
                 />
               </div>
@@ -353,6 +372,7 @@ export function GroupSettingsPage() {
                   }}
                   onWheel={(e) => e.currentTarget.blur()}
                   onChange={(e) => setField('maxMembers', e.target.value)}
+                  disabled={isReadOnly}
                   className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
                 />
                 <p className="mt-1.5 text-[11px] text-[#1E0A4E]/40">
@@ -373,6 +393,7 @@ export function GroupSettingsPage() {
                     role="switch"
                     aria-checked={form.isPublic}
                     onClick={() => setField('isPublic', !form.isPublic)}
+                    disabled={isReadOnly}
                     className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#1E6FD9]/30 ${
                       form.isPublic ? 'bg-[#1E6FD9]' : 'bg-gray-200'
                     }`}
@@ -394,6 +415,7 @@ export function GroupSettingsPage() {
                   value={form.description}
                   maxLength={GROUP_DESCRIPTION_MAX_LENGTH}
                   onChange={(e) => setField('description', e.target.value)}
+                  disabled={isReadOnly}
                   rows={4}
                   className={`w-full border rounded-xl px-4 py-3 text-sm resize-none ${form.description.trim().length > GROUP_DESCRIPTION_MAX_LENGTH ? 'border-red-400' : 'border-[#E2E8F0]'}`}
                 />
@@ -417,11 +439,11 @@ export function GroupSettingsPage() {
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 onClick={handleSave}
-                disabled={saving || Boolean(formError)}
+                disabled={isReadOnly || saving || Boolean(formError)}
                 title={formError || undefined}
                 className="bg-[#1E6FD9] text-white rounded-xl px-5 py-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {saving ? 'Guardando...' : 'Guardar cambios'}
+                {isReadOnly ? 'Solo lectura' : (saving ? 'Guardando...' : 'Guardar cambios')}
               </button>
             </div>
           </div>
@@ -429,14 +451,14 @@ export function GroupSettingsPage() {
           <div className="bg-white rounded-2xl border border-red-200 p-6 shadow-sm">
             <h2 className="font-heading text-lg text-red-600 font-semibold">Zona de peligro</h2>
             <p className="font-body text-sm text-[#7A8799] mt-1">
-              Eliminar el grupo borrará la configuración y la membresía asociada al grupo.
+              {isReadOnly ? 'Este viaje está cerrado y no puede eliminarse desde el modo historial.' : 'Eliminar el grupo borrará la configuración y la membresía asociada al grupo.'}
             </p>
             <button
               onClick={handleDelete}
-              disabled={deleting}
+              disabled={isReadOnly || deleting}
               className="mt-4 bg-red-500 text-white rounded-xl px-5 py-3 text-sm disabled:opacity-50"
             >
-              {deleting ? 'Eliminando...' : 'Eliminar grupo'}
+              {isReadOnly ? 'No disponible en historial' : (deleting ? 'Eliminando...' : 'Eliminar grupo')}
             </button>
           </div>
         </div>

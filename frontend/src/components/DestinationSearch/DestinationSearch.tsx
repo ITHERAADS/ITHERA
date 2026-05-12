@@ -12,6 +12,7 @@ type DestinationSearchProps = {
   error?: string
   label?: string
   placeholder?: string
+  disabled?: boolean
 }
 
 export function DestinationSearch({
@@ -21,6 +22,7 @@ export function DestinationSearch({
   error,
   label = 'Destino',
   placeholder = 'Ej: Cancún, México',
+  disabled = false,
 }: DestinationSearchProps) {
   const [search, setSearch] = useState(value)
   const [suggestions, setSuggestions] = useState<PlaceAutocompleteResult[]>([])
@@ -37,11 +39,12 @@ export function DestinationSearch({
   useEffect(() => {
     if (debounceRef.current) window.clearTimeout(debounceRef.current)
 
-    if (!search.trim() || search.trim().length < 3 || selected) {
+    if (disabled || !search.trim() || search.trim().length < 3 || selected) {
       setSuggestions([])
       return
     }
 
+    if (disabled) return
     if (!token) {
       setSuggestions([])
       return
@@ -65,9 +68,10 @@ export function DestinationSearch({
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current)
     }
-  }, [search, selected, token])
+  }, [search, selected, token, disabled])
 
   const handleSelectSuggestion = async (suggestion: PlaceAutocompleteResult) => {
+    if (disabled) return
     if (!token) {
       setLocalError('Tu sesión expiró. Vuelve a iniciar sesión.')
       return
@@ -112,13 +116,14 @@ export function DestinationSearch({
         type="text"
         placeholder={placeholder}
         value={search}
+        disabled={disabled}
         onChange={(e) => {
           setSearch(e.target.value)
           setSelected(false)
           setLocalError('')
           onChange(e.target.value, undefined)
         }}
-        className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition bg-white ${
+        className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition bg-white disabled:cursor-not-allowed disabled:bg-[#F8FAFC] disabled:text-[#64748B] ${
           error || localError
             ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
             : value
@@ -133,7 +138,7 @@ export function DestinationSearch({
         </p>
       )}
 
-      {suggestions.length > 0 && (
+      {!disabled && suggestions.length > 0 && (
         <div className="absolute left-0 right-0 top-[76px] z-30 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-lg">
           {suggestions.map((suggestion) => (
             <button

@@ -33,6 +33,39 @@ function getFirstName(nombre: string | null | undefined): string {
   return nombre.split(' ')[0]
 }
 
+function getTodayIsoDate(): string {
+  const now = new Date()
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const parts = formatter.formatToParts(now)
+  const year = parts.find((part) => part.type === 'year')?.value
+  const month = parts.find((part) => part.type === 'month')?.value
+  const day = parts.find((part) => part.type === 'day')?.value
+  return `${year}-${month}-${day}`
+}
+
+function isClosedOrExpiredTrip(item: GroupHistoryItem): boolean {
+  const group = item.grupos_viaje
+  const status = group?.estado?.toLowerCase?.()
+  const isClosedStatus = status === 'cerrado' || status === 'archivado' || status === 'finalizado'
+  const isExpiredByDate = Boolean(group?.fecha_fin && group.fecha_fin.slice(0, 10) < getTodayIsoDate())
+  return isClosedStatus || isExpiredByDate
+}
+
+function normalizeHistoryItems(items: GroupHistoryItem[] = []): GroupHistoryItem[] {
+  return items.map((item) => ({
+    ...item,
+    grupos_viaje: {
+      ...item.grupos_viaje,
+      estado: isClosedOrExpiredTrip(item) ? 'cerrado' : item.grupos_viaje.estado,
+    },
+  }))
+}
+
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 function IconPlus() {
@@ -49,6 +82,14 @@ function IconKey() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <circle cx="8" cy="15" r="4" stroke="currentColor" strokeWidth="2"/>
       <path d="M12 11l8-8M18 6l2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function IconChevronDown() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <polyline points="6 9 12 15 18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
 }
@@ -186,7 +227,7 @@ function StatusChip({ estado }: { estado: string }) {
   const map: Record<string, { label: string; className: string }> = {
     activo:     { label: 'ACTIVO',     className: 'bg-[#35C56A] text-white' },
     finalizado: { label: 'FINALIZADO', className: 'bg-[#E5E7EB] text-[#6B7280]' },
-    cerrado:    { label: 'CERRADO',    className: 'bg-red-100 text-red-500' },
+    cerrado:    { label: 'CERRADO',    className: 'bg-[#D1D5DB] text-[#374151]' },
     archivado:  { label: 'ARCHIVADO',  className: 'bg-[#D1D5DB] text-[#374151]' },
   }
   const cfg = map[estado] ?? { label: estado.toUpperCase(), className: 'bg-[#E5E7EB] text-[#6B7280]' }
@@ -194,6 +235,60 @@ function StatusChip({ estado }: { estado: string }) {
     <span className={`inline-block rounded-full px-2.5 py-0.5 font-body text-[10px] font-bold tracking-wide ${cfg.className}`}>
       {cfg.label}
     </span>
+  )
+}
+
+// ── Past (readonly) trip card ─────────────────────────────────────────────────
+// Usada exclusivamente para viajes cerrados/archivados/finalizados.
+// El botón de acción abre el viaje en modo solo lectura.
+
+function PastTripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => void }) {
+  const g = item.grupos_viaje
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white p-5 text-left shadow-sm transition-all hover:shadow-md hover:border-[#C3D3EC]"
+    >
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <StatusChip estado={g.estado} />
+        <RolBadge rol={item.rol} />
+      </div>
+
+      <h2 className="font-heading text-lg font-bold leading-tight mb-1 text-[#1E0A4E]">
+        {g.nombre}
+      </h2>
+
+      {g.destino && (
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-[#9CA3AF]"><IconMap /></span>
+          <p className="font-body text-[13px] text-[#6B7280]">{g.destino}</p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5 mb-4">
+        <span className="text-[#9CA3AF]"><IconClock /></span>
+        <p className="font-body text-[12px] text-[#9CA3AF]">
+          {formatRange(g.fecha_inicio, g.fecha_fin)}
+        </p>
+      </div>
+
+      {/* Aviso de solo lectura */}
+      <div className="mb-3 rounded-xl bg-[#F1F5F9] px-3 py-2">
+        <p className="font-body text-[11px] text-[#64748B] leading-relaxed">
+          Este viaje ya finalizó. Puedes consultar el itinerario y el resumen financiero en modo lectura.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="font-body text-xs text-[#6B7280]">
+          {item.rol === 'admin' ? 'Tú organizaste este viaje' : 'Participaste como viajero'}
+        </span>
+        <span className="inline-flex min-w-[132px] items-center justify-center rounded-full border border-[#C3D3EC] bg-[#F8FAFC] px-5 py-2.5 font-body text-[13px] font-semibold text-[#64748B] shadow-sm transition-all">
+          Ver historial →
+        </span>
+      </div>
+    </button>
   )
 }
 
@@ -352,6 +447,7 @@ export function MyTripsPage() {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState(false)
   const [showJoin, setShowJoin] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
 
   async function fetchTrips() {
   if (!accessToken) return
@@ -361,8 +457,9 @@ export function MyTripsPage() {
 
   try {
     const data = await groupsService.getMyHistory(accessToken)
-    setActivos(data.activos ?? [])
-    setPasados(data.pasados ?? [])
+    const allTrips = normalizeHistoryItems([...(data.activos ?? []), ...(data.pasados ?? [])])
+    setActivos(allTrips.filter((item) => !isClosedOrExpiredTrip(item)))
+    setPasados(allTrips.filter((item) => isClosedOrExpiredTrip(item)))
   } catch {
     setError(true)
   } finally {
@@ -519,21 +616,39 @@ export function MyTripsPage() {
               </div>
             )}
 
-            {/* ── Historial ── */}
+            {/* ── Historial (viajes cerrados / archivados / finalizados) ── */}
             {pasados.length > 0 && (
-              <section>
-                <p className="mb-2 font-body text-[11px] font-semibold uppercase tracking-wider text-[#6B7280]">
-                  Historial
-                </p>
-                <div className="flex flex-col gap-3">
-                  {pasados.map((item) => (
-                    <TripCard
-                      key={item.grupos_viaje.id}
-                      item={item}
-                      onClick={() => openTrip(item)}
-                    />
-                  ))}
-                </div>
+              <section className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setShowHistory((value) => !value)}
+                  className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[#F8FAFC]"
+                  aria-expanded={showHistory}
+                >
+                  <div>
+                    <p className="font-body text-[11px] font-semibold uppercase tracking-wider text-[#6B7280]">
+                      Historial
+                    </p>
+                    <p className="mt-1 font-body text-sm text-[#1E0A4E]">
+                      {pasados.length} viaje{pasados.length !== 1 ? 's' : ''} cerrado{pasados.length !== 1 ? 's' : ''} disponible{pasados.length !== 1 ? 's' : ''} para consulta.
+                    </p>
+                  </div>
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F5F9] text-[#64748B] transition-transform ${showHistory ? 'rotate-180' : ''}`}>
+                    <IconChevronDown />
+                  </span>
+                </button>
+
+                {showHistory && (
+                  <div className="flex flex-col gap-3 border-t border-[#E2E8F0] bg-[#F8FAFC] p-4">
+                    {pasados.map((item) => (
+                      <PastTripCard
+                        key={item.grupos_viaje.id}
+                        item={item}
+                        onClick={() => openTrip(item)}
+                      />
+                    ))}
+                  </div>
+                )}
               </section>
             )}
 

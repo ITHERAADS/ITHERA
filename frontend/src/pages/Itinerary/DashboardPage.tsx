@@ -371,9 +371,11 @@ function InfoBanner({ memberCount }: { memberCount: number }) {
 function BottomNavbar({
   activeTab,
   onTabChange,
+  isReadOnly = false,
 }: {
   activeTab: string
   onTabChange: (tab: string) => void
+  isReadOnly?: boolean
 }) {
   const tabs = [
     {
@@ -437,9 +439,13 @@ function BottomNavbar({
       },
     ]
 
+  const visibleTabs = isReadOnly
+    ? tabs.filter((tab) => ['inicio', 'pagar', 'boveda'].includes(tab.id))
+    : tabs
+
   return (
     <div className="flex h-14 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4">
-      {tabs.map((tab) => {
+      {visibleTabs.map((tab) => {
         const isActive = tab.id === activeTab
         return (
           <button
@@ -707,6 +713,21 @@ export function DashboardPage() {
   )
   const currentUserRole = currentMember?.rol ?? group?.myRole ?? currentGroup?.myRole ?? 'viajero'
   const isCurrentUserAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
+
+  // Modo solo lectura: viaje cerrado, archivado o finalizado (CU-2.10 / CU-2.11)
+  const isReadOnly = ['cerrado', 'archivado', 'finalizado'].includes(
+    String(group?.estado ?? currentGroup?.estado ?? '').toLowerCase()
+  )
+
+  useEffect(() => {
+    if (!isReadOnly) return
+    if (['buscar', 'comparar', 'mapas'].includes(activeTab)) {
+      setActiveTab('inicio')
+    }
+    if (dashboardView === 'subgrupos') {
+      setDashboardView('general')
+    }
+  }, [activeTab, dashboardView, isReadOnly])
   const budgetFromSummary = Number(budgetSummary?.totalBudget ?? NaN)
   const hasSummaryBudget = Number.isFinite(budgetFromSummary)
   const groupBudgetRaw = group?.presupuesto_total ?? currentGroup?.presupuesto_total ?? 0
@@ -1411,7 +1432,7 @@ export function DashboardPage() {
           </div>
         </div>
       ) : isEmpty && !(activeTab === 'inicio' && dashboardView === 'subgrupos') ? (
-        <EmptyState onAdd={() => setShowActivityModal(true)} />
+        <EmptyState onAdd={isReadOnly ? () => {} : () => setShowActivityModal(true)} />
       ) : activeTab === 'comparar' ? (
         <div className="flex-1 overflow-y-auto px-4 py-6">
           <ComparisonPage onBack={() => setActiveTab('pagar')} />
@@ -1422,6 +1443,18 @@ export function DashboardPage() {
         </div>
       ) : activeTab === 'pagar' ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
+          {isReadOnly && (
+            <div className="mb-4 flex items-start gap-3 rounded-2xl border border-[#CBD5E1] bg-[#F8FAFC] px-4 py-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="mt-0.5 shrink-0 text-[#64748B]" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5"/>
+                <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <circle cx="12" cy="16" r="1" fill="currentColor"/>
+              </svg>
+              <p className="font-body text-[12px] text-[#64748B] leading-relaxed">
+                Presupuesto en modo lectura. Puedes consultar balances y deudas, pero no registrar nuevos gastos.
+              </p>
+            </div>
+          )}
           <BudgetDashboard
             groupId={resolvedGroupId ?? null}
             onSummaryChange={setBudgetSummary}
@@ -1434,6 +1467,7 @@ export function DashboardPage() {
               setDashboardView('subgrupos')
               setActiveTab('inicio')
             }}
+            isReadOnly={isReadOnly}
           />
         </div>
       ) : activeTab === 'boveda' ? (
@@ -1450,6 +1484,7 @@ export function DashboardPage() {
             setDashboardView('subgrupos')
             setActiveTab('inicio')
           }}
+          isReadOnly={isReadOnly}
         />
       ) : activeTab === 'inicio' && dashboardView === 'subgrupos' ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
@@ -1575,11 +1610,24 @@ export function DashboardPage() {
             totalDays={daysWithContext.length}
             selectedDay={selectedDayWithContext}
             group={group}
-            onAdd={() => openActivityModalForDay(activeDay ?? daysWithContext[0]?.dayNumber ?? 1)}
+            onAdd={isReadOnly ? () => {} : () => openActivityModalForDay(activeDay ?? daysWithContext[0]?.dayNumber ?? 1)}
             onExportPdf={handleExportConfirmedItineraryPdf}
-            canManageSubgroups={isCurrentUserAdmin}
+            canManageSubgroups={isCurrentUserAdmin && !isReadOnly}
             onOpenSubgroups={() => setDashboardView('subgrupos')}
           />
+          {/* ── Banner modo solo lectura (ERR-211-002 / CU-2.10) ── */}
+          {isReadOnly && (
+            <div className="mb-4 flex items-start gap-3 rounded-2xl border border-[#CBD5E1] bg-[#F8FAFC] px-4 py-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="mt-0.5 shrink-0 text-[#64748B]" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5"/>
+                <line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <circle cx="12" cy="16" r="1" fill="currentColor"/>
+              </svg>
+              <p className="font-body text-[12px] text-[#64748B] leading-relaxed">
+                Este viaje ya finalizó. Puedes consultar el itinerario y el resumen financiero en modo lectura.
+              </p>
+            </div>
+          )}
           <InfoBanner memberCount={uniqueMemberCount} />
           <TimelineStrip activeDay={activeDay} date={selectedDayWithContext?.date} activities={selectedDayWithContext?.activities} />
           <div className="flex flex-col gap-3">
@@ -1597,19 +1645,19 @@ export function DashboardPage() {
               isActive={day.dayNumber === activeDay}
               isExpanded={day.dayNumber === expandedDay}
               onSelect={handleDayChange}
-              onAddActivity={openActivityModalForDay}
-              onManageContext={openActivityEditor}
+              onAddActivity={isReadOnly ? undefined : openActivityModalForDay}
+              onManageContext={isReadOnly ? undefined : openActivityEditor}
               onOpenBudget={() => setActiveTab('pagar')}
               onOpenVault={() => setActiveTab('boveda')}
-              onAccept={(id) => void handleAcceptActivity(id)}
-              onDelete={(id) => void handleDeleteActivity(id)}
-              onEdit={(id) => {
+              onAccept={isReadOnly ? undefined : (id) => void handleAcceptActivity(id)}
+              onDelete={isReadOnly ? undefined : (id) => void handleDeleteActivity(id)}
+              onEdit={isReadOnly ? undefined : (id) => {
                 const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
                 if (!activity) return
                 openActivityEditor(activity)
               }}
-              renderConfirmedActions={renderProposalQuickActions}
-              renderPendingActions={renderProposalQuickActions}
+              renderConfirmedActions={isReadOnly ? undefined : renderProposalQuickActions}
+              renderPendingActions={isReadOnly ? undefined : renderProposalQuickActions}
             />
             ))}
           </div>
@@ -1618,7 +1666,7 @@ export function DashboardPage() {
       )}
 
       <ActivityProposalModal
-        open={showActivityModal}
+        open={showActivityModal && !isReadOnly}
         group={group}
         token={accessToken}
         selectedDayNumber={selectedActivityDay}
@@ -1932,7 +1980,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      <BottomNavbar activeTab={activeTab} onTabChange={setActiveTab} />
+      <BottomNavbar activeTab={activeTab} onTabChange={setActiveTab} isReadOnly={isReadOnly} />
       {selectedProposal && (
         <ProposalDetailModal
           proposal={selectedProposal}
@@ -1971,6 +2019,7 @@ export function DashboardPage() {
         currentUserId={localUser?.id_usuario != null ? String(localUser.id_usuario) : null}
         currentUserName={userName}
         participants={chatParticipants}
+        isReadOnly={isReadOnly}
       />
     </AppLayout>
   )

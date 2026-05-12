@@ -675,8 +675,12 @@ export function DashboardPage() {
 
   const isEmpty = days.length === 0
   const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
-  const safeMembers = (Array.isArray(members) ? members : []).filter(
-    (member): member is NonNullable<NonNullable<typeof members>[number]> => Boolean(member),
+  const safeMembers = useMemo(
+    () =>
+      (Array.isArray(members) ? members : []).filter(
+        (member): member is NonNullable<NonNullable<typeof members>[number]> => Boolean(member),
+      ),
+    [members]
   )
   const uniqueMemberCount = new Set(safeMembers.map((member) => String(member.usuario_id ?? member.id))).size
   const currentMember = safeMembers.find(

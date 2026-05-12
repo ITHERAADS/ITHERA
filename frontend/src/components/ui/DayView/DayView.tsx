@@ -1,4 +1,4 @@
-import { useState, useRef, useImperativeHandle, forwardRef } from 'react'
+import { useState, useRef, useImperativeHandle, forwardRef, type ReactNode } from 'react'
 import type { ContextEntitySummary } from '../../../services/context-links'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -27,6 +27,8 @@ export interface Activity {
   routeTravelMode?: string | null
   adminDecisionType?: 'A' | 'B' | 'C' | null
   linkedContext?: ContextEntitySummary[]
+  startsAt?: string | null
+  endsAt?: string | null
 }
 
 export interface DayViewProps {
@@ -46,6 +48,8 @@ export interface DayViewProps {
   currentUserId?: string | number | null
   currentUserRole?: 'admin' | 'viajero' | string | null
   onAddActivity?: (dayNumber: number) => void
+  renderConfirmedActions?: (activity: Activity) => ReactNode
+  renderPendingActions?: (activity: Activity) => ReactNode
 }
 
 export interface DayViewHandle {
@@ -189,6 +193,140 @@ function getGoogleMapsRouteUrl(activity: Activity): string | null {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=${encodeURIComponent(travelMode)}`
 }
 
+function IconLayers({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 3l9 4.5-9 4.5-9-4.5L12 3z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M3 12l9 4.5 9-4.5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M3 16.5L12 21l9-4.5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function IconMessageCircle({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function getActivitySortTimestamp(activity: Activity): number {
+  if (activity.startsAt) {
+    const parsed = new Date(activity.startsAt).getTime()
+    if (Number.isFinite(parsed)) return parsed
+  }
+
+  const hhmm = activity.time.match(/([01]\d|2[0-3]):([0-5]\d)/)
+  if (hhmm) {
+    return Number(hhmm[1]) * 60 + Number(hhmm[2])
+  }
+
+  return Number.MAX_SAFE_INTEGER
+}
+
+function sortActivitiesChronologically(activities: Activity[]): Activity[] {
+  return [...activities].sort((left, right) => {
+    const startDiff = getActivitySortTimestamp(left) - getActivitySortTimestamp(right)
+    if (startDiff !== 0) return startDiff
+    return left.title.localeCompare(right.title, 'es')
+  })
+}
+
+function getConflictActivityIds(activities: Activity[]): Set<string> {
+  const ids = new Set<string>()
+  const groups = new Map<string, string[]>()
+
+  for (const activity of activities) {
+    const key = activity.startsAt ?? activity.time
+    if (!key || key === 'Hora pendiente') continue
+    const bucket = groups.get(key) ?? []
+    bucket.push(activity.id)
+    groups.set(key, bucket)
+  }
+
+  for (const bucket of groups.values()) {
+    if (bucket.length <= 1) continue
+    for (const activityId of bucket) ids.add(activityId)
+  }
+
+  return ids
+}
+
+function TimelineItem({
+  activity,
+  isLast,
+  hasConflict,
+  children,
+}: {
+  activity: Activity
+  isLast: boolean
+  hasConflict: boolean
+  children: ReactNode
+}) {
+  const accentColor = hasConflict ? '#DC2626' : getCategoryColor(activity.category)
+
+  return (
+    <div className="relative rounded-[28px] border border-[#E0EAFF] bg-[linear-gradient(180deg,#FFFFFF_0%,#FCFDFF_100%)] px-4 py-4 pl-[116px] shadow-[0_12px_30px_rgba(30,111,217,0.07)]">
+      <div className="absolute bottom-0 left-[48px] top-0 w-[34px] rounded-full bg-[linear-gradient(180deg,#F4F8FF_0%,#E7F0FF_100%)]" aria-hidden="true" />
+      <div
+        className="absolute bottom-6 left-[64px] top-6 w-[5px] rounded-full"
+        style={{ backgroundColor: hasConflict ? '#FCA5A5' : '#9CB9F2' }}
+        aria-hidden="true"
+      />
+      <div className="absolute left-0 top-0 flex w-[92px] flex-col items-center">
+        <span
+          className="inline-flex min-h-[38px] w-[70px] items-center justify-center rounded-2xl border px-3 py-2 font-body text-xs font-bold shadow-sm"
+          style={{
+            color: accentColor,
+            borderColor: hasConflict ? '#FECACA' : '#D9E2F2',
+            backgroundColor: hasConflict ? '#FEF2F2' : '#FFFFFF',
+          }}
+        >
+          {activity.time}
+        </span>
+        {!isLast && (
+          <span
+            className="mt-2 h-full min-h-[120px] w-[5px] rounded-full opacity-0"
+            style={{ backgroundColor: hasConflict ? '#FCA5A5' : '#9CB9F2' }}
+          />
+        )}
+      </div>
+
+      <span
+        className="absolute left-[75px] top-7 h-6 w-6 rounded-full border-[5px] bg-white"
+        style={{ borderColor: accentColor, boxShadow: `0 0 0 6px rgba(255,255,255,0.98), 0 0 0 11px ${hasConflict ? 'rgba(254,226,226,0.95)' : 'rgba(224,234,255,0.95)'}` }}
+        aria-hidden="true"
+      />
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-body text-[11px] font-semibold"
+            style={{
+              color: accentColor,
+              backgroundColor: hasConflict ? '#FEF2F2' : '#F8FAFC',
+            }}
+          >
+            <CategoryIcon category={activity.category} size={12} />
+            {activity.category === 'actividad'
+              ? 'Actividad grupal'
+              : activity.category === 'hospedaje'
+                ? 'Hospedaje'
+                : 'Traslado'}
+          </span>
+          {hasConflict && (
+            <span className="inline-flex items-center rounded-full bg-[#FEF2F2] px-2.5 py-1 font-body text-[11px] font-semibold text-[#B91C1C]">
+              Conflicto de horario
+            </span>
+          )}
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 // ── SectionLabel ──────────────────────────────────────────────────────────────
 
 function SectionLabel({ emoji, text }: { emoji: string; text: string }) {
@@ -277,6 +415,7 @@ function ActivityCardConfirmed({
   onManageContext,
   onOpenBudget,
   onOpenVault,
+  actionButtons,
 }: {
   activity: Activity
   currentUserId?: string | number | null
@@ -286,6 +425,7 @@ function ActivityCardConfirmed({
   onManageContext?: (activity: Activity) => void
   onOpenBudget?: () => void
   onOpenVault?: () => void
+  actionButtons?: ReactNode
 }) {
   const iconColor = getCategoryColor(activity.category)
   const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
@@ -373,12 +513,13 @@ function ActivityCardConfirmed({
           onOpenBudget={onOpenBudget}
           onOpenVault={onOpenVault}
         />
-        {(canEdit || canDelete) && (
-          <div className="mt-3 flex items-center justify-end gap-2">
+        {(actionButtons || canEdit || canDelete) && (
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-[#EEF2FF] pt-3">
+            {actionButtons}
             {canEdit && (
               <button
                 onClick={() => onEdit?.(activity.id)}
-                className="w-9 h-9 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0"
+                className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0"
                 aria-label="Editar actividad confirmada"
                 title="Editar (volverá a votación)"
               >
@@ -389,7 +530,7 @@ function ActivityCardConfirmed({
             {canDelete && (
               <button
                 onClick={() => onDelete?.(activity.id)}
-                className="w-9 h-9 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
+                className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
                 aria-label="Eliminar actividad confirmada"
               >
                 <IconTrash size={14} />
@@ -414,6 +555,7 @@ function ActivityCardPending({
   onManageContext,
   onOpenBudget,
   onOpenVault,
+  actionButtons,
 }: {
   activity: Activity
   currentUserId?: string | number | null
@@ -424,6 +566,7 @@ function ActivityCardPending({
   onManageContext?: (activity: Activity) => void
   onOpenBudget?: () => void
   onOpenVault?: () => void
+  actionButtons?: ReactNode
 }) {
   const iconColor = getCategoryColor(activity.category)
   const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
@@ -522,7 +665,7 @@ function ActivityCardPending({
         />
 
         {/* Accept / Delete row */}
-        <div className="flex items-center gap-2 mt-3">
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#EEF2FF] pt-3">
           {hasVoted ? (
             <button
               disabled
@@ -541,12 +684,13 @@ function ActivityCardPending({
             </button>
           )}
 
-          {(canDelete || canEdit) && (
-            <>
+          {(actionButtons || canDelete || canEdit) && (
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              {actionButtons}
               {canDelete && (
                 <button
                   onClick={() => onDelete?.(activity.id)}
-                  className="w-11 h-11 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
+                  className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
                   aria-label="Eliminar propuesta"
                 >
                   <IconTrash size={14} />
@@ -556,13 +700,13 @@ function ActivityCardPending({
               {canEdit && (
                 <button
                   onClick={() => onEdit?.(activity.id)}
-                  className="w-11 h-11 flex items-center justify-center rounded-xl border border-[#E2E8F0] text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0"
+                  className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0"
                   aria-label="Editar propuesta"
                 >
                   <IconEdit size={14} />
                 </button>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -577,12 +721,12 @@ function AddActivityRow({ onClick }: { onClick?: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="w-full bg-surface border border-dashed border-purpleMedium/30 rounded-2xl h-14 flex items-center justify-center gap-2 hover:border-bluePrimary/50 hover:bg-[#EEF4FF] transition-colors group"
+      className="inline-flex min-h-[58px] w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[#AFC4F4] bg-white px-4 py-3 hover:border-bluePrimary/50 hover:bg-[#EEF4FF] transition-colors group"
     >
       <span className="text-gray500 group-hover:text-bluePrimary transition-colors">
         <IconSearch size={16} />
       </span>
-      <span className="font-body text-[13px] text-gray500 group-hover:text-bluePrimary transition-colors">
+      <span className="font-body text-[13px] font-semibold text-gray500 group-hover:text-bluePrimary transition-colors">
         Buscar y proponer actividad
       </span>
     </button>
@@ -625,6 +769,8 @@ function ActivitiesBody({
   onManageContext,
   onOpenBudget,
   onOpenVault,
+  renderConfirmedActions,
+  renderPendingActions,
 }: {
   activities: Activity[]
   currentUserId?: string | number | null
@@ -636,52 +782,242 @@ function ActivitiesBody({
   onManageContext?: (activity: Activity) => void
   onOpenBudget?: () => void
   onOpenVault?: () => void
+  renderConfirmedActions?: (activity: Activity) => ReactNode
+  renderPendingActions?: (activity: Activity) => ReactNode
 }) {
-  const transport = activities.filter((a) => a.category === 'transporte')
-  const lodging   = activities.filter((a) => a.category === 'hospedaje')
-  const acts      = activities.filter((a) => a.category === 'actividad')
+  const [activeSection, setActiveSection] = useState<'confirmadas' | 'pendientes'>('confirmadas')
+  const orderedActivities = sortActivitiesChronologically(activities)
+  const conflictActivityIds = getConflictActivityIds(orderedActivities)
+  const confirmedActivities = orderedActivities.filter((a) => a.status === 'confirmada')
+  const pendingActivities = orderedActivities.filter((a) => a.status === 'pendiente')
+  const activitySectionLabel = getSectionLabel('actividad')
+  const visibleSection =
+    activeSection === 'confirmadas' && confirmedActivities.length === 0 && pendingActivities.length > 0
+      ? 'pendientes'
+      : activeSection
+
+  const renderConfirmedTimeline = () =>
+    confirmedActivities.length > 0 ? (
+      <div className="space-y-5">
+        {confirmedActivities.map((a, index) => (
+          <TimelineItem
+            key={`confirmed-${a.id}`}
+            activity={a}
+            isLast={index === confirmedActivities.length - 1}
+            hasConflict={conflictActivityIds.has(a.id)}
+          >
+            <ActivityCardConfirmed
+              activity={a}
+              currentUserId={currentUserId}
+              currentUserRole={currentUserRole}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              onManageContext={onManageContext}
+              onOpenBudget={onOpenBudget}
+              onOpenVault={onOpenVault}
+              actionButtons={renderConfirmedActions?.(a)}
+            />
+          </TimelineItem>
+        ))}
+      </div>
+    ) : (
+      <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+        <p className="font-body text-xs text-gray500">Aun no hay actividades confirmadas para este dia.</p>
+      </div>
+    )
+
+  const renderPendingTimeline = () =>
+    pendingActivities.length > 0 ? (
+      <div className="space-y-5">
+        {pendingActivities.map((a, index) => (
+          <TimelineItem
+            key={`pending-${a.id}`}
+            activity={a}
+            isLast={index === pendingActivities.length - 1}
+            hasConflict={conflictActivityIds.has(a.id)}
+          >
+            <ActivityCardPending
+              activity={a}
+              currentUserId={currentUserId}
+              currentUserRole={currentUserRole}
+              onAccept={onAccept}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              onManageContext={onManageContext}
+              onOpenBudget={onOpenBudget}
+              onOpenVault={onOpenVault}
+              actionButtons={renderPendingActions?.(a)}
+            />
+          </TimelineItem>
+        ))}
+      </div>
+    ) : (
+      <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+        <p className="font-body text-xs text-gray500">No hay propuestas pendientes para este dia.</p>
+      </div>
+    )
 
   return (
-    <div>
-      {transport.length > 0 && (
-        <section>
-          <SectionLabel {...getSectionLabel('transporte')} />
-          {transport.map((a) =>
-            a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
-              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
-          )}
-        </section>
-      )}
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-[#D9E4F7] bg-[#F8FAFF] px-4 py-4">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_260px]">
+          <div className="xl:contents">
+            <DaySectionSwitcher
+              label="Linea de tiempo confirmada"
+              count={confirmedActivities.length}
+              accent="blue"
+              icon={<IconLayers size={16} />}
+              active={visibleSection === 'confirmadas'}
+              onClick={() => setActiveSection('confirmadas')}
+            />
+            <DaySectionSwitcher
+              label="Propuestas por confirmar"
+              count={pendingActivities.length}
+              accent="purple"
+              icon={<IconMessageCircle size={16} />}
+              active={visibleSection === 'pendientes'}
+              onClick={() => setActiveSection('pendientes')}
+            />
+          </div>
+          <div className="w-full">
+            <AddActivityRow onClick={onAddActivity} />
+          </div>
+        </div>
+      </section>
 
-      {lodging.length > 0 && (
-        <section>
-          <SectionLabel {...getSectionLabel('hospedaje')} />
-          {lodging.map((a) =>
-            a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
-              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
-          )}
-        </section>
-      )}
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <SectionLabel
+            emoji={activitySectionLabel.emoji}
+            text={visibleSection === 'confirmadas' ? 'CONFIRMADAS' : 'PROPUESTAS POR CONFIRMAR'}
+          />
+          <span
+            className={[
+              'rounded-full px-3 py-1 font-body text-[11px] font-semibold',
+              visibleSection === 'confirmadas'
+                ? 'bg-greenAccent/10 text-greenAccent'
+                : 'bg-purpleMedium/10 text-purpleMedium',
+            ].join(' ')}
+          >
+            {visibleSection === 'confirmadas' ? confirmedActivities.length : pendingActivities.length}
+          </span>
+        </div>
+        {visibleSection === 'confirmadas' ? renderConfirmedTimeline() : renderPendingTimeline()}
+      </section>
+    </div>
+  )
+}
 
-      {acts.length > 0 && (
-        <section>
-          <SectionLabel {...getSectionLabel('actividad')} />
-          {acts.map((a) =>
-            a.status === 'confirmada'
-              ? <ActivityCardConfirmed key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
-              : <ActivityCardPending key={a.id} activity={a} currentUserId={currentUserId} currentUserRole={currentUserRole} onAccept={onAccept} onDelete={onDelete} onEdit={onEdit} onManageContext={onManageContext} onOpenBudget={onOpenBudget} onOpenVault={onOpenVault} />
-          )}
-        </section>
-      )}
+function DaySectionSwitcher({
+  label,
+  count,
+  accent,
+  icon,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number
+  accent: 'blue' | 'purple'
+  icon: ReactNode
+  active: boolean
+  onClick: () => void
+}) {
+  const styles =
+    active
+      ? accent === 'blue'
+        ? 'border-[#1E6FD9]/35 bg-[#F8FAFF] text-[#1E0A4E] shadow-[0_8px_22px_rgba(30,111,217,0.08)]'
+        : 'border-[#7A4FD6]/35 bg-[#FBF8FF] text-[#1E0A4E] shadow-[0_8px_22px_rgba(122,79,214,0.08)]'
+      : accent === 'blue'
+        ? 'border-[#DCE7FA] bg-white text-[#1E0A4E] hover:border-[#1E6FD9]/40 hover:bg-[#F8FAFF]'
+        : 'border-[#E6DBFF] bg-white text-[#1E0A4E] hover:border-[#7A4FD6]/40 hover:bg-[#FBF8FF]'
 
-      <AddActivityRow onClick={onAddActivity} />
+  const badgeStyles =
+    accent === 'blue'
+      ? 'bg-[#EEF4FF] text-[#1E6FD9]'
+      : 'bg-[#F3EEFF] text-[#7A4FD6]'
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-h-[58px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${styles}`}
+    >
+      <span className="flex items-center gap-3">
+        <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${badgeStyles}`}>
+          {icon}
+        </span>
+        <span>
+          <span className="block font-body text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
+            Seccion
+          </span>
+          <span className="mt-0.5 block font-heading text-sm font-bold">{label}</span>
+        </span>
+      </span>
+      <span className={`rounded-full px-2.5 py-1 font-body text-xs font-semibold ${badgeStyles}`}>
+        {count}
+      </span>
+    </button>
+  )
+}
+
+function DaySectionModal({
+  title,
+  subtitle,
+  open,
+  onClose,
+  children,
+}: {
+  title: string
+  subtitle: string
+  open: boolean
+  onClose: () => void
+  children: ReactNode
+}) {
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[65] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-[30px] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.28)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="border-b border-[#E2E8F0] px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
+                Vista del día
+              </p>
+              <h3 className="mt-2 font-heading text-2xl font-bold text-[#1E0A4E]">
+                {title}
+              </h3>
+              <p className="mt-1 font-body text-sm text-[#64748B]">
+                {subtitle}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-[#E2E8F0] px-3 py-2 font-body text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC]"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+        <div className="overflow-y-auto px-6 py-5">
+          {children}
+        </div>
+      </div>
     </div>
   )
 }
 
 // ── DayView ───────────────────────────────────────────────────────────────────
+
+void DaySectionModal
 
 export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
   {
@@ -700,6 +1036,8 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
     onOpenVault,
     currentUserId,
     currentUserRole,
+    renderConfirmedActions,
+    renderPendingActions,
   },
   ref,
 ) {
@@ -792,6 +1130,8 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
               onManageContext={onManageContext}
               onOpenBudget={onOpenBudget}
               onOpenVault={onOpenVault}
+              renderConfirmedActions={renderConfirmedActions}
+              renderPendingActions={renderPendingActions}
               onAddActivity={() => onAddActivity?.(dayNumber)}
             />
           )}

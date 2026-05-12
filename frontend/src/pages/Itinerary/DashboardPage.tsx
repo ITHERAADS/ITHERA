@@ -9,7 +9,6 @@ import { AppLayout, RightPanelDashboard, SidebarDashboard } from '../../componen
 import { ChatDrawer } from '../../components/chat/ChatDrawer'
 import { DayView } from '../../components/ui/DayView'
 import type { Activity as DayActivity, DayViewHandle } from '../../components/ui/DayView'
-import { ProposalCard } from '../../components/ProposalCard/ProposalCard'
 import { ComparisonPage } from '../Comparison/ComparisonPage'
 import { ProposalDetailModal } from '../../components/ProposalDetailModal/ProposalDetailModal'
 import { ConfirmProposalModal } from '../../components/ConfirmProposalModal/ConfirmProposalModal'
@@ -272,6 +271,14 @@ function TimelineStrip({
   const transport = activities.filter((activity) => activity.category === 'transporte').length
   const lodging = activities.filter((activity) => activity.category === 'hospedaje').length
   const acts = activities.filter((activity) => activity.category === 'actividad').length
+  const sortedActivities = [...activities].sort((left, right) => {
+    const leftTime = left.startsAt ? new Date(left.startsAt).getTime() : Number.MAX_SAFE_INTEGER
+    const rightTime = right.startsAt ? new Date(right.startsAt).getTime() : Number.MAX_SAFE_INTEGER
+    if (leftTime !== rightTime) return leftTime - rightTime
+    return left.title.localeCompare(right.title, 'es')
+  })
+  const firstActivity = sortedActivities[0]
+  const lastActivity = sortedActivities[sortedActivities.length - 1]
 
   return (
     <div className="mb-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4">
@@ -321,6 +328,16 @@ function TimelineStrip({
           {acts > 0 && (
             <span className="rounded-full bg-surface px-3 py-1 font-body text-[11px] leading-none text-purpleMedium">
               {acts} actividad{acts !== 1 ? 'es' : ''}
+            </span>
+          )}
+          {firstActivity && (
+            <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-[11px] leading-none text-bluePrimary">
+              Primera: {firstActivity.time}
+            </span>
+          )}
+          {lastActivity && lastActivity.id !== firstActivity?.id && (
+            <span className="rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[11px] leading-none text-purpleMedium">
+              Ultima: {lastActivity.time}
             </span>
           )}
         </div>
@@ -623,14 +640,16 @@ export function DashboardPage() {
   const [selectedActivityDay, setSelectedActivityDay] = useState<number | null>(null)
   const [editingActivity, setEditingActivity] = useState<DayActivity | null>(null)
   const [acceptingActivityId, setAcceptingActivityId] = useState<string | null>(null)
-  const [acceptErrorActivityIds, setAcceptErrorActivityIds] = useState<Record<string, boolean>>({})
+  const [, setAcceptErrorActivityIds] = useState<Record<string, boolean>>({})
   const [votedActivityIds, setVotedActivityIds] = useState<Record<string, boolean>>({})
-  const [lockedProposalIds, setLockedProposalIds] = useState<Record<string, boolean>>({})
-  const [lockErrorActivityIds, setLockErrorActivityIds] = useState<Record<string, boolean>>({})
+  const [, setLockedProposalIds] = useState<Record<string, boolean>>({})
+  const [, setLockErrorActivityIds] = useState<Record<string, boolean>>({})
   const [voteResultByProposal, setVoteResultByProposal] = useState<Record<string, VoteResult>>({})
   const [selectedProposal, setSelectedProposal] = useState<DayActivity | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const [expandedCommentsProposalId, setExpandedCommentsProposalId] = useState<string | null>(null)
+  const [voteHistoryActivity, setVoteHistoryActivity] = useState<DayActivity | null>(null)
+  const [chatProposalActivity, setChatProposalActivity] = useState<DayActivity | null>(null)
   const [commentsByProposal, setCommentsByProposal] = useState<Record<string, ProposalComment[]>>({})
   const [commentDraftByProposal, setCommentDraftByProposal] = useState<Record<string, string>>({})
   const [loadingCommentsProposalId, setLoadingCommentsProposalId] = useState<string | null>(null)
@@ -1016,31 +1035,30 @@ export function DashboardPage() {
     await reloadDashboard()
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard])
 
-  const handleToggleComments = useCallback(async (proposalId: string) => {
-    if (!accessToken || !resolvedGroupId) return
+  const openVoteHistoryModal = useCallback((activity: DayActivity) => {
+    setVoteHistoryActivity(activity)
+  }, [])
 
-    const isSame = expandedCommentsProposalId === proposalId
-    if (isSame) {
-      setExpandedCommentsProposalId(null)
-      return
-    }
+  const openChatModal = useCallback(async (activity: DayActivity) => {
+    if (!activity.proposalId || !accessToken || !resolvedGroupId) return
 
-    setExpandedCommentsProposalId(proposalId)
+    setChatProposalActivity(activity)
+    setExpandedCommentsProposalId(activity.proposalId)
     setVisibleCommentsCountByProposal((prev) => ({
       ...prev,
-      [proposalId]: prev[proposalId] ?? 3,
+      [activity.proposalId!]: prev[activity.proposalId!] ?? 6,
     }))
 
-    if (commentsByProposal[proposalId]) return
+    if (commentsByProposal[activity.proposalId]) return
 
     try {
-      setLoadingCommentsProposalId(proposalId)
-      const response = await proposalsService.getComments(String(resolvedGroupId), proposalId, accessToken)
-      setCommentsByProposal((prev) => ({ ...prev, [proposalId]: response.comments ?? [] }))
+      setLoadingCommentsProposalId(activity.proposalId)
+      const response = await proposalsService.getComments(String(resolvedGroupId), activity.proposalId, accessToken)
+      setCommentsByProposal((prev) => ({ ...prev, [activity.proposalId!]: response.comments ?? [] }))
     } finally {
       setLoadingCommentsProposalId(null)
     }
-  }, [accessToken, resolvedGroupId, expandedCommentsProposalId, commentsByProposal])
+  }, [accessToken, resolvedGroupId, commentsByProposal])
 
   const handleCreateComment = useCallback(async (proposalId: string) => {
     const content = commentDraftByProposal[proposalId]?.trim()
@@ -1298,6 +1316,35 @@ export function DashboardPage() {
       socket.off('lock_error', handleLockError)
     }
   }, [socket, days])
+
+  const renderProposalQuickActions = (activity: DayActivity) =>
+    activity.proposalId ? (
+      <>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            openVoteHistoryModal(activity)
+          }}
+          className="inline-flex h-9 min-w-[86px] items-center justify-center rounded-xl border border-[#D9E2F2] bg-white px-3 font-body text-xs font-semibold text-[#1E0A4E] transition-colors hover:bg-[#F8FAFF]"
+        >
+          Votacion
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            void openChatModal(activity)
+          }}
+          className="inline-flex h-9 min-w-[86px] items-center justify-center gap-1.5 rounded-xl border border-[#CFE0FF] bg-white px-3 font-body text-xs font-semibold text-bluePrimary transition-colors hover:bg-[#EEF4FF]"
+        >
+          Chat
+          <span className="rounded-full bg-bluePrimary/10 px-1.5 py-0.5 text-[10px] font-bold text-bluePrimary">
+            {commentsByProposal[activity.proposalId]?.length ?? 0}
+          </span>
+        </button>
+      </>
+    ) : null
 
   return (
     <AppLayout
@@ -1561,289 +1608,12 @@ export function DashboardPage() {
                 if (!activity) return
                 openActivityEditor(activity)
               }}
+              renderConfirmedActions={renderProposalQuickActions}
+              renderPendingActions={renderProposalQuickActions}
             />
             ))}
           </div>
 
-          {/* ── Propuestas pendientes ── */}
-          {(() => {
-            const proposalsWithThread = days
-              .flatMap((d) => d.activities)
-              .filter((a) => a.proposalId && (a.status === 'pendiente' || a.status === 'confirmada'))
-            if (proposalsWithThread.length === 0) return null
-            return (
-              <div className="mt-6">
-                <h2 className="font-heading font-bold text-[#1E0A4E] text-base mb-3">
-                  Propuestas y comentarios
-                </h2>
-                <div className="flex flex-col gap-3">
-                  {proposalsWithThread.map((activity) => (
-                    <div key={activity.id} className="rounded-2xl border border-transparent" onClick={() => setSelectedProposal(activity)}>
-                      <ProposalCard
-                        activity={activity}
-                        currentUserId={localUser?.id_usuario}
-                        currentUserRole={currentUserRole}
-                        proposalStatus={
-                          activity.status === 'confirmada'
-                            ? 'bloqueada'
-                          : acceptingActivityId === activity.id
-                            ? 'procesando'
-                          : (activity.proposalId && voteResultByProposal[activity.proposalId]?.mi_voto) || activity.hasVoted || votedActivityIds[activity.id]
-                            ? 'votada'
-                          : activity.proposalId && lockedProposalIds[activity.proposalId]
-                            ? 'bloqueada'
-                          : acceptErrorActivityIds[activity.id]
-                            ? 'error'
-                          : lockErrorActivityIds[activity.id]
-                            ? 'error'
-                          : 'pendiente'
-                        }
-                        onAccept={(id) => void handleAcceptActivity(id)}
-                        onDelete={(id) => void handleDeleteActivity(id)}
-                        onEdit={(id) => {
-                          const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
-                          if (activity) {
-                            openActivityEditor(activity)
-                          }
-                        }}
-                      />
-
-                      {activity.proposalId && (
-                        <div className="mt-2 rounded-2xl border border-[#D9E2F2] bg-gradient-to-b from-white to-[#F8FAFF] px-3 py-3">
-                          {(() => {
-                            const voteResult = voteResultByProposal[activity.proposalId!]
-                            const votesFor = voteResult?.votos_a_favor ?? voteResult?.votos ?? 0
-                            const votesAgainst = voteResult?.votos_en_contra ?? 0
-                            const totalMembers = Math.max(uniqueMemberCount, 1)
-                            const pendingVotes = voteResult?.votos_pendientes ?? Math.max(totalMembers - (votesFor + votesAgainst), 0)
-                            const requiresAdminTieBreak = Boolean(voteResult?.requiere_desempate_admin)
-                            const hasUserVoted =
-                              Boolean(voteResult?.mi_voto) ||
-                              Boolean(activity.hasVoted) ||
-                              Boolean(votedActivityIds[activity.id])
-                            const commentsLoaded = commentsByProposal[activity.proposalId!]?.length ?? 0
-                            const isCommentsOpen = expandedCommentsProposalId === activity.proposalId
-
-                            return (
-                              <>
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 font-body text-[11px] font-semibold text-green-700">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                                      A favor: {votesFor}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 font-body text-[11px] font-semibold text-rose-700">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                                      En contra: {votesAgainst}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 font-body text-[11px] font-semibold text-amber-700">
-                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                                      Pendientes: {pendingVotes}
-                                    </span>
-                                    {requiresAdminTieBreak && (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-1 font-body text-[11px] font-semibold text-purple-700">
-                                        Empate: requiere desempate admin
-                                      </span>
-                                    )}
-                                  </div>
-                                  <button
-                                    onClick={() => void handleToggleComments(activity.proposalId!)}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-[#CFE0FF] bg-white px-3 py-1.5 font-body text-xs font-semibold text-bluePrimary transition-colors hover:bg-[#EEF4FF]"
-                                  >
-                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                    {isCommentsOpen ? 'Ocultar chat' : 'Abrir chat'}
-                                    <span className="rounded-full bg-bluePrimary/10 px-1.5 py-0.5 text-[10px] font-bold text-bluePrimary">
-                                      {commentsLoaded}
-                                    </span>
-                                  </button>
-                                </div>
-                                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#E8EEF8]">
-                                  <div className="h-full bg-green-500" style={{ width: `${Math.min((votesFor / totalMembers) * 100, 100)}%` }} />
-                                </div>
-                                {activity.status === 'pendiente' && (
-                                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <button
-                                      onClick={() => void handleAcceptActivity(activity.id)}
-                                      disabled={acceptingActivityId === activity.id || hasUserVoted}
-                                      className="inline-flex min-w-[132px] items-center justify-center gap-1.5 rounded-full bg-[#1E6FD9] px-4 py-2 font-body text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#145DC0] disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                      Votar a favor
-                                    </button>
-                                    <button
-                                      onClick={() => void handleRejectActivity(activity.id)}
-                                      disabled={acceptingActivityId === activity.id || hasUserVoted}
-                                      className="inline-flex min-w-[132px] items-center justify-center gap-1.5 rounded-full border border-[#F3B1B1] bg-[#FFF5F5] px-4 py-2 font-body text-xs font-semibold text-[#C03535] transition-all hover:border-[#E79292] hover:bg-[#FFEAEA] disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                      Votar en contra
-                                    </button>
-                                    {hasUserVoted && (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-[#EEF2F7] px-3 py-1.5 font-body text-[11px] font-semibold text-[#475569]">
-                                        Ya emitiste tu voto
-                                      </span>
-                                    )}
-                                    {isCurrentUserAdmin && (
-                                      <>
-                                        <button
-                                          onClick={() => void handleAdminDecision(activity.proposalId!, 'aprobar')}
-                                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#A8E6BF] bg-[#EAFBF1] px-3 py-1.5 font-body text-xs font-semibold text-[#1E7A45]"
-                                        >
-                                          Decisión admin: aprobar
-                                        </button>
-                                        <button
-                                          onClick={() => void handleAdminDecision(activity.proposalId!, 'rechazar')}
-                                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#FBC7C7] bg-[#FFF5F5] px-3 py-1.5 font-body text-xs font-semibold text-[#C03535]"
-                                        >
-                                          Decisión admin: rechazar
-                                        </button>
-                                      </>
-                                    )}
-                                  </div>
-                                )}
-                              </>
-                            )
-                          })()}
-
-                          {expandedCommentsProposalId === activity.proposalId && (
-                            <div className="mt-3 space-y-2">
-                              {loadingCommentsProposalId === activity.proposalId ? (
-                                <p className="font-body text-xs text-gray500">Cargando comentarios...</p>
-                              ) : (commentsByProposal[activity.proposalId] ?? []).length === 0 ? (
-                                <p className="font-body text-xs text-gray500">Sin comentarios todavía.</p>
-                              ) : (
-                                <div className="max-h-36 space-y-2 overflow-y-auto pr-1">
-                                  {(commentsByProposal[activity.proposalId] ?? [])
-                                    .slice(
-                                      0,
-                                      visibleCommentsCountByProposal[activity.proposalId] ?? 3
-                                    )
-                                    .map((comment) => (
-                                    <div key={comment.id} className="rounded-lg bg-surface px-2 py-1.5">
-                                      <div className="mb-1 flex items-center justify-between gap-2">
-                                        <p className="font-body text-[11px] font-semibold text-gray700">
-                                          {comment.authorName || `Usuario ${comment.usuarioId}`}
-                                        </p>
-                                        <p className="font-body text-[10px] text-gray500">
-                                          {new Date(comment.createdAt).toLocaleString('es-MX', {
-                                            day: '2-digit',
-                                            month: '2-digit',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                          })}
-                                        </p>
-                                      </div>
-
-                                      {editingCommentId === comment.id ? (
-                                        <div className="space-y-2">
-                                          <textarea
-                                            value={editingCommentText}
-                                            onChange={(e) => setEditingCommentText(e.target.value)}
-                                            rows={2}
-                                            className="w-full resize-none rounded-md border border-[#E2E8F0] px-2 py-1 text-xs outline-none focus:border-bluePrimary"
-                                          />
-                                          <div className="flex gap-2">
-                                            <button
-                                              onClick={() => void handleSaveEditComment(activity.proposalId!, comment.id)}
-                                              className="rounded-md bg-bluePrimary px-2 py-1 font-body text-[11px] font-semibold text-white"
-                                            >
-                                              Guardar
-                                            </button>
-                                            <button
-                                              onClick={handleCancelEditComment}
-                                              className="rounded-md border border-[#E2E8F0] px-2 py-1 font-body text-[11px] text-gray700"
-                                            >
-                                              Cancelar
-                                            </button>
-                                          </div>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <p className="font-body text-xs text-gray700">{comment.contenido}</p>
-                                          {String(comment.usuarioId) === String(localUser?.id_usuario) && (
-                                            <div className="mt-1.5 flex gap-2">
-                                              <button
-                                                onClick={() => handleStartEditComment(comment)}
-                                                className="font-body text-[11px] font-semibold text-bluePrimary hover:underline"
-                                              >
-                                                Editar
-                                              </button>
-                                              <button
-                                                onClick={() => void handleDeleteComment(activity.proposalId!, comment.id)}
-                                                className="font-body text-[11px] font-semibold text-red-500 hover:underline"
-                                              >
-                                                Eliminar
-                                              </button>
-                                            </div>
-                                          )}
-                                        </>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {(commentsByProposal[activity.proposalId] ?? []).length >
-                                (visibleCommentsCountByProposal[activity.proposalId] ?? 3) && (
-                                <button
-                                  onClick={() =>
-                                    setVisibleCommentsCountByProposal((prev) => ({
-                                      ...prev,
-                                      [activity.proposalId!]:
-                                        (prev[activity.proposalId!] ?? 3) + 3,
-                                    }))
-                                  }
-                                  className="font-body text-[11px] font-semibold text-bluePrimary hover:underline"
-                                >
-                                  Ver más comentarios
-                                </button>
-                              )}
-
-                              {(visibleCommentsCountByProposal[activity.proposalId] ?? 3) > 3 &&
-                                (commentsByProposal[activity.proposalId] ?? []).length > 3 && (
-                                  <button
-                                    onClick={() =>
-                                      setVisibleCommentsCountByProposal((prev) => ({
-                                        ...prev,
-                                        [activity.proposalId!]: 3,
-                                      }))
-                                    }
-                                    className="ml-3 font-body text-[11px] font-semibold text-gray500 hover:underline"
-                                  >
-                                    Ver menos
-                                  </button>
-                                )}
-
-                              <div className="flex gap-2">
-                                <input
-                                  value={commentDraftByProposal[activity.proposalId] ?? ''}
-                                  onChange={(e) =>
-                                    setCommentDraftByProposal((prev) => ({
-                                      ...prev,
-                                      [activity.proposalId!]: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Agregar comentario..."
-                                  className="flex-1 rounded-lg border border-[#E2E8F0] px-2 py-1.5 font-body text-xs outline-none focus:border-bluePrimary"
-                                />
-                                <button
-                                  onClick={() => void handleCreateComment(activity.proposalId!)}
-                                  disabled={sendingCommentProposalId === activity.proposalId}
-                                  className="rounded-lg bg-bluePrimary px-2.5 py-1.5 font-body text-xs font-semibold text-white disabled:opacity-50"
-                                >
-                                  {sendingCommentProposalId === activity.proposalId ? 'Enviando...' : 'Enviar'}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })()}
         </div>
       )}
 
@@ -1866,6 +1636,301 @@ export function DashboardPage() {
         }}
         editingActivity={editingActivity}
       />
+
+      {voteHistoryActivity?.proposalId && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+          onClick={() => setVoteHistoryActivity(null)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-[28px] bg-white p-6 shadow-[0_28px_80px_rgba(15,23,42,0.28)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {(() => {
+              const voteResult = voteResultByProposal[voteHistoryActivity.proposalId!]
+              const votesFor = voteResult?.votos_a_favor ?? voteResult?.votos ?? 0
+              const votesAgainst = voteResult?.votos_en_contra ?? 0
+              const totalMembers = Math.max(uniqueMemberCount, 1)
+              const pendingVotes = voteResult?.votos_pendientes ?? Math.max(totalMembers - (votesFor + votesAgainst), 0)
+              const requiresAdminTieBreak = Boolean(voteResult?.requiere_desempate_admin)
+              const hasUserVoted =
+                Boolean(voteResult?.mi_voto) ||
+                Boolean(voteHistoryActivity.hasVoted) ||
+                Boolean(votedActivityIds[voteHistoryActivity.id])
+              const progressWidth = Math.min((votesFor / totalMembers) * 100, 100)
+
+              return (
+                <>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
+                        Resumen de votacion
+                      </p>
+                      <h3 className="mt-2 font-heading text-2xl font-bold text-[#1E0A4E]">
+                        {voteHistoryActivity.title}
+                      </h3>
+                      <p className="mt-1 font-body text-sm text-[#64748B]">
+                        {voteHistoryActivity.time} · {voteHistoryActivity.location || 'Ubicación pendiente'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setVoteHistoryActivity(null)}
+                      className="rounded-full border border-[#E2E8F0] px-3 py-2 font-body text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC]"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+
+                  <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-[#BBF7D0] bg-[#F0FDF4] px-4 py-4">
+                      <p className="font-body text-xs font-semibold uppercase tracking-[0.14em] text-[#166534]">A favor</p>
+                      <p className="mt-2 font-heading text-3xl font-bold text-[#166534]">{votesFor}</p>
+                    </div>
+                    <div className="rounded-2xl border border-[#FECDD3] bg-[#FFF1F2] px-4 py-4">
+                      <p className="font-body text-xs font-semibold uppercase tracking-[0.14em] text-[#BE123C]">En contra</p>
+                      <p className="mt-2 font-heading text-3xl font-bold text-[#BE123C]">{votesAgainst}</p>
+                    </div>
+                    <div className="rounded-2xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-4">
+                      <p className="font-body text-xs font-semibold uppercase tracking-[0.14em] text-[#B45309]">Pendientes</p>
+                      <p className="mt-2 font-heading text-3xl font-bold text-[#B45309]">{pendingVotes}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFF] px-4 py-4">
+                    <div className="flex flex-col gap-4">
+                      <p className="font-body text-sm text-[#475569]">
+                        {requiresAdminTieBreak
+                          ? 'La propuesta terminó empatada y necesita decisión administrativa.'
+                          : 'Aquí puedes revisar el resultado de la propuesta sin ensuciar la línea de tiempo.'}
+                      </p>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-[#E8EEF8]">
+                        <div className="h-full bg-green-500" style={{ width: `${progressWidth}%` }} />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {voteHistoryActivity.status === 'pendiente' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleAcceptActivity(voteHistoryActivity.id)}
+                              disabled={acceptingActivityId === voteHistoryActivity.id || hasUserVoted}
+                              className="inline-flex min-w-[132px] items-center justify-center rounded-full bg-[#1E6FD9] px-4 py-2 font-body text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#145DC0] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Votar a favor
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleRejectActivity(voteHistoryActivity.id)}
+                              disabled={acceptingActivityId === voteHistoryActivity.id || hasUserVoted}
+                              className="inline-flex min-w-[132px] items-center justify-center rounded-full border border-[#F3B1B1] bg-[#FFF5F5] px-4 py-2 font-body text-xs font-semibold text-[#C03535] transition-all hover:border-[#E79292] hover:bg-[#FFEAEA] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Votar en contra
+                            </button>
+                          </>
+                        )}
+                        {hasUserVoted && (
+                          <span className="inline-flex items-center rounded-full bg-[#EEF2F7] px-3 py-1.5 font-body text-[11px] font-semibold text-[#475569]">
+                            Ya emitiste tu voto
+                          </span>
+                        )}
+                        {isCurrentUserAdmin && voteHistoryActivity.status === 'pendiente' && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleAdminDecision(voteHistoryActivity.proposalId!, 'aprobar')}
+                              className="inline-flex items-center rounded-lg border border-[#A8E6BF] bg-[#EAFBF1] px-3 py-1.5 font-body text-xs font-semibold text-[#1E7A45]"
+                            >
+                              Decision admin: aprobar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleAdminDecision(voteHistoryActivity.proposalId!, 'rechazar')}
+                              className="inline-flex items-center rounded-lg border border-[#FBC7C7] bg-[#FFF5F5] px-3 py-1.5 font-body text-xs font-semibold text-[#C03535]"
+                            >
+                              Decision admin: rechazar
+                            </button>
+                          </>
+                        )}
+                        <button
+                        type="button"
+                        onClick={() => {
+                          setVoteHistoryActivity(null)
+                          void openChatModal(voteHistoryActivity)
+                        }}
+                        className="rounded-full border border-[#CFE0FF] bg-white px-3 py-2 font-body text-xs font-semibold text-bluePrimary hover:bg-[#EEF4FF]"
+                      >
+                        Abrir chat
+                      </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
+      {chatProposalActivity?.proposalId && (
+        <div
+          className="fixed inset-0 z-[75] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+          onClick={() => {
+            setChatProposalActivity(null)
+            setExpandedCommentsProposalId(null)
+          }}
+        >
+          <div
+            className="w-full max-w-3xl rounded-[28px] bg-white p-6 shadow-[0_28px_80px_rgba(15,23,42,0.28)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
+                  Chat de propuesta
+                </p>
+                <h3 className="mt-2 font-heading text-2xl font-bold text-[#1E0A4E]">
+                  {chatProposalActivity.title}
+                </h3>
+                <p className="mt-1 font-body text-sm text-[#64748B]">
+                  Comentarios del grupo sobre esta actividad.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVoteHistoryActivity(chatProposalActivity)
+                    setChatProposalActivity(null)
+                  }}
+                  className="rounded-full border border-[#D9E2F2] bg-white px-3 py-2 font-body text-xs font-semibold text-[#1E0A4E] hover:bg-[#F8FAFF]"
+                >
+                  Ver historial
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setChatProposalActivity(null)
+                    setExpandedCommentsProposalId(null)
+                  }}
+                  className="rounded-full border border-[#E2E8F0] px-3 py-2 font-body text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC]"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-[24px] border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+              {loadingCommentsProposalId === chatProposalActivity.proposalId ? (
+                <p className="font-body text-sm text-[#64748B]">Cargando comentarios...</p>
+              ) : (commentsByProposal[chatProposalActivity.proposalId] ?? []).length === 0 ? (
+                <p className="font-body text-sm text-[#64748B]">Aún no hay comentarios en esta propuesta.</p>
+              ) : (
+                <div className="max-h-[360px] space-y-3 overflow-y-auto pr-2">
+                  {(commentsByProposal[chatProposalActivity.proposalId] ?? [])
+                    .slice(0, visibleCommentsCountByProposal[chatProposalActivity.proposalId] ?? 6)
+                    .map((comment) => (
+                    <div key={comment.id} className="rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="font-body text-xs font-semibold text-[#1E0A4E]">
+                          {comment.authorName || `Usuario ${comment.usuarioId}`}
+                        </p>
+                        <p className="font-body text-[11px] text-[#64748B]">
+                          {new Date(comment.createdAt).toLocaleString('es-MX', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                      {editingCommentId === comment.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editingCommentText}
+                            onChange={(e) => setEditingCommentText(e.target.value)}
+                            rows={3}
+                            className="w-full resize-none rounded-2xl border border-[#D9E2F2] px-3 py-2 text-sm outline-none focus:border-bluePrimary"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => void handleSaveEditComment(chatProposalActivity.proposalId!, comment.id)}
+                              className="rounded-full bg-bluePrimary px-3 py-2 font-body text-xs font-semibold text-white"
+                            >
+                              Guardar
+                            </button>
+                            <button
+                              onClick={handleCancelEditComment}
+                              className="rounded-full border border-[#E2E8F0] px-3 py-2 font-body text-xs font-semibold text-[#475569]"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="font-body text-sm text-[#334155]">{comment.contenido}</p>
+                          {String(comment.usuarioId) === String(localUser?.id_usuario) && (
+                            <div className="mt-2 flex gap-3">
+                              <button
+                                onClick={() => handleStartEditComment(comment)}
+                                className="font-body text-xs font-semibold text-bluePrimary hover:underline"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                onClick={() => void handleDeleteComment(chatProposalActivity.proposalId!, comment.id)}
+                                className="font-body text-xs font-semibold text-red-500 hover:underline"
+                              >
+                                Eliminar
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {(commentsByProposal[chatProposalActivity.proposalId] ?? []).length >
+                (visibleCommentsCountByProposal[chatProposalActivity.proposalId] ?? 6) && (
+                <button
+                  onClick={() =>
+                    setVisibleCommentsCountByProposal((prev) => ({
+                      ...prev,
+                      [chatProposalActivity.proposalId!]: (prev[chatProposalActivity.proposalId!] ?? 6) + 6,
+                    }))
+                  }
+                  className="mt-3 font-body text-xs font-semibold text-bluePrimary hover:underline"
+                >
+                  Ver más comentarios
+                </button>
+              )}
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <input
+                value={commentDraftByProposal[chatProposalActivity.proposalId] ?? ''}
+                onChange={(e) =>
+                  setCommentDraftByProposal((prev) => ({
+                    ...prev,
+                    [chatProposalActivity.proposalId!]: e.target.value,
+                  }))
+                }
+                placeholder="Agregar comentario..."
+                className="flex-1 rounded-2xl border border-[#D9E2F2] px-4 py-3 font-body text-sm outline-none focus:border-bluePrimary"
+              />
+              <button
+                onClick={() => void handleCreateComment(chatProposalActivity.proposalId!)}
+                disabled={sendingCommentProposalId === chatProposalActivity.proposalId}
+                className="rounded-2xl bg-bluePrimary px-4 py-3 font-body text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {sendingCommentProposalId === chatProposalActivity.proposalId ? 'Enviando...' : 'Enviar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <BottomNavbar activeTab={activeTab} onTabChange={setActiveTab} />
       {selectedProposal && (

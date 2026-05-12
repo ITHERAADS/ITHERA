@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FC } from 'react'
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 import { RegisterExpenseModal } from './RegisterExpenseModal'
 import { MyWalletView } from './MyWalletView'
 import { useAuth } from '../../context/useAuth'
@@ -668,6 +669,41 @@ export const BudgetDashboard: FC<Props> = ({
         <div className="flex flex-col gap-5 rounded-2xl border border-[#E2E8F0] bg-white p-4">
           <div>
             <h3 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Participantes</h3>
+            <div className="mb-5 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={(Object.keys(CATEGORY_LABELS) as Expense['categoria'][]).map((categoria) => ({
+                      name: CATEGORY_LABELS[categoria],
+                      value: categoryTotals[categoria] ?? 0,
+                      fill: categoryColor(categoria),
+                    }))}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={100}
+                    paddingAngle={2}
+                    label={({ name }) => name}
+                    labelLine={false}
+                  >
+                    {(Object.keys(CATEGORY_LABELS) as Expense['categoria'][]).map((categoria) => (
+                      <Cell key={categoria} fill={categoryColor(categoria)} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value) => [formatMXN(Number(value ?? 0)), 'Gasto']}
+                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px' }}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    wrapperStyle={{ paddingTop: '12px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
             <div className="flex flex-wrap gap-2">
               {members.map((member) => (
                 <div key={member.usuario_id} className="flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-1.5">
@@ -710,6 +746,8 @@ export const BudgetDashboard: FC<Props> = ({
         editingExpense={editingExpense}
         activityOptions={[...linkOptions.activities, ...linkOptions.subgroupActivities]}
         documentOptions={linkOptions.documents}
+        totalBudget={totalBudget}
+        comprometido={comprometido}
         onClose={() => { setShowModal(false); setEditingExpense(null) }}
         onSave={(expense) => void handleSaveExpense(expense)}
       />

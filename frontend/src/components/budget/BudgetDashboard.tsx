@@ -44,6 +44,8 @@ interface Props {
   onOpenVault?: () => void
   onOpenItinerary?: () => void
   onOpenSubgroups?: () => void
+  /** Modo solo lectura: viaje cerrado/archivado/finalizado (CU-2.10) */
+  isReadOnly?: boolean
 }
 
 const CATEGORY_LABELS: Record<Expense['categoria'], string> = {
@@ -156,6 +158,7 @@ export const BudgetDashboard: FC<Props> = ({
   onOpenVault,
   onOpenItinerary,
   onOpenSubgroups,
+  isReadOnly = false,
 }) => {
   const { accessToken, localUser } = useAuth()
   const [dashboard, setDashboard] = useState<BudgetDashboardResponse | null>(null)
@@ -320,8 +323,8 @@ export const BudgetDashboard: FC<Props> = ({
   const barLabel = totalBudget === 0
     ? 'Define un presupuesto para activar seguimiento'
     : pct < 70 ? 'Presupuesto saludable' : pct < 90 ? 'Atencion: presupuesto al limite' : 'Presupuesto excedido'
-  const canModifyExpenses = dashboard?.myRole === 'admin'
-  const canAdjustBudget = dashboard?.myRole === 'admin'
+  const canModifyExpenses = dashboard?.myRole === 'admin' && !isReadOnly
+  const canAdjustBudget = dashboard?.myRole === 'admin' && !isReadOnly
   const requiresBudgetSetup = totalBudget <= 0
 
   const handleSaveExpense = async (expense: Expense) => {
@@ -521,13 +524,15 @@ export const BudgetDashboard: FC<Props> = ({
 
       <div className="flex flex-1 flex-col gap-4 px-6 py-5">
         <div className="flex gap-3">
-          <button
-            onClick={() => { setEditingExpense(null); setShowModal(true) }}
-            disabled={!groupId || members.length === 0 || isSaving || requiresBudgetSetup}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E6FD9] py-3 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            + Registrar gasto
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => { setEditingExpense(null); setShowModal(true) }}
+              disabled={!groupId || members.length === 0 || isSaving || requiresBudgetSetup}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E6FD9] py-3 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              + Registrar gasto
+            </button>
+          )}
           <button
             onClick={() => setView('wallet')}
             disabled={requiresBudgetSetup}
@@ -700,7 +705,7 @@ export const BudgetDashboard: FC<Props> = ({
       </div>
 
       <RegisterExpenseModal
-        open={showModal}
+        open={showModal && !isReadOnly}
         members={members}
         editingExpense={editingExpense}
         activityOptions={[...linkOptions.activities, ...linkOptions.subgroupActivities]}

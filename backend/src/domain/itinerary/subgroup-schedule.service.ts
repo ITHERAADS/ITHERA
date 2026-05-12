@@ -163,13 +163,25 @@ export const getSubgroupSchedule = async (authUserId: string, groupId: string) =
   }
 
   const normalizedSlots = (slots ?? []).map((slot: any) => {
-    const slotSubgroups = (subgroupsBySlot.get(Number(slot.id)) ?? []).map((subgroup: any) => ({
-      ...subgroup,
-      activities: activitiesBySubgroup.get(Number(subgroup.id)) ?? [],
-      members: (membershipsBySlot.get(Number(slot.id)) ?? []).filter(
-        (m: any) => m.subgroup_id != null && Number(m.subgroup_id) === Number(subgroup.id),
-      ),
-    }));
+    const slotSubgroups = (subgroupsBySlot.get(Number(slot.id)) ?? [])
+      .map((subgroup: any) => ({
+        ...subgroup,
+        activities: [...(activitiesBySubgroup.get(Number(subgroup.id)) ?? [])].sort((left: any, right: any) => {
+          const leftTime = left?.starts_at ? new Date(String(left.starts_at)).getTime() : Number.MAX_SAFE_INTEGER;
+          const rightTime = right?.starts_at ? new Date(String(right.starts_at)).getTime() : Number.MAX_SAFE_INTEGER;
+          if (leftTime !== rightTime) return leftTime - rightTime;
+          return Number(left?.id ?? 0) - Number(right?.id ?? 0);
+        }),
+        members: (membershipsBySlot.get(Number(slot.id)) ?? []).filter(
+          (m: any) => m.subgroup_id != null && Number(m.subgroup_id) === Number(subgroup.id),
+        ),
+      }))
+      .sort((left: any, right: any) => {
+        const leftPrimary = left.activities[0]?.starts_at ? new Date(String(left.activities[0].starts_at)).getTime() : Number.MAX_SAFE_INTEGER;
+        const rightPrimary = right.activities[0]?.starts_at ? new Date(String(right.activities[0].starts_at)).getTime() : Number.MAX_SAFE_INTEGER;
+        if (leftPrimary !== rightPrimary) return leftPrimary - rightPrimary;
+        return Number(left?.id ?? 0) - Number(right?.id ?? 0);
+      });
 
     return {
       ...slot,

@@ -53,7 +53,7 @@ function SearchBottomNavbar({ group }: { group?: Group | null }) {
     { id: 'buscar', label: 'Buscar', icon: <IconSearch />, to: null },
     { id: 'comparar', label: 'Comparar', icon: <IconCompare />, to: dashboardPath },
     { id: 'mapas', label: 'Mapas', icon: <IconMap />, to: '/search/map-places' },
-    { id: 'pagar', label: 'Pagar', icon: <IconMoney />, to: dashboardPath },
+    { id: 'pagar', label: 'Finanzas', icon: <IconMoney />, to: dashboardPath },
     { id: 'boveda', label: 'Bóveda', icon: <IconVault />, to: dashboardPath },
   ]
 

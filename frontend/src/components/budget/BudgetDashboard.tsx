@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FC } from 'react'
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 import { RegisterExpenseModal } from './RegisterExpenseModal'
 import { MyWalletView } from './MyWalletView'
 import { useAuth } from '../../context/useAuth'
@@ -575,99 +576,44 @@ export const BudgetDashboard: FC<Props> = ({
           </div>
         )}
 
-        <div>
-          <h2 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Gastos del grupo</h2>
-          <div className="flex flex-col gap-2">
-            {expenses.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-4 py-8 text-center font-body text-sm text-[#7A8799]">
-                Aun no hay gastos registrados para este viaje.
-              </div>
-            ) : expenses.map((expense) => {
-              const linkedEntities = getLinksForExpense(expense.id)
-              const linkedActivities = linkedEntities.filter((entity) => entity.type === 'activity' || entity.type === 'subgroup_activity')
-              const linkedDocuments = linkedEntities.filter((entity) => entity.type === 'document')
-
-              return (
-              <div key={expense.id} className="flex items-start gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
-                <div
-                  className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-                  style={{ backgroundColor: `${categoryColor(expense.categoria)}18`, color: categoryColor(expense.categoria) }}
-                >
-                  <CategoryIcon categoria={expense.categoria} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-body text-sm font-semibold text-[#3D4A5C]">{expense.titulo}</p>
-                  <p className="font-body text-xs text-[#7A8799]">Pago {expense.pagadoPor} - {expense.fecha}</p>
-                  {(linkedActivities.length > 0 || linkedDocuments.length > 0) ? (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {linkedActivities.map((entity) => (
-                        <button
-                          key={entityKey(entity)}
-                          type="button"
-                          onClick={() => {
-                            if (entity.type === 'subgroup_activity') onOpenSubgroups?.()
-                            else onOpenItinerary?.()
-                          }}
-                          className="max-w-full rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#1E6FD9] hover:bg-[#E2EDFF]"
-                          title={entity.label}
-                        >
-                          {entity.type === 'subgroup_activity' ? 'Subgrupo' : 'Actividad'}:{' '}
-                          <span className="font-medium">{entity.label}</span>
-                        </button>
-                      ))}
-                      {linkedDocuments.map((entity) => (
-                        <button
-                          key={entityKey(entity)}
-                          type="button"
-                          onClick={onOpenVault}
-                          className="max-w-full rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#5B35B1] hover:bg-[#ECE4FF]"
-                          title={entity.label}
-                        >
-                          Documento: <span className="font-medium">{entity.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-2 rounded-lg bg-[#F8FAFC] px-2.5 py-1.5 font-body text-xs text-[#7A8799]">
-                      Sin actividad ni documento asociado.
-                    </p>
-                  )}
-                </div>
-                <span className="shrink-0 font-heading text-sm font-bold text-[#3D4A5C]">{formatMXN(expense.monto)}</span>
-                {canModifyExpenses && (
-                  <button
-                    onClick={() => openEdit(expense)}
-                    aria-label="Editar gasto"
-                    className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#F4F6F8] hover:text-[#1E6FD9]"
-                  >
-                    Editar/asociar
-                  </button>
-                )}
-                <button
-                  onClick={onOpenVault}
-                  aria-label="Abrir boveda"
-                  className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#F4F6F8] hover:text-[#7A4FD6]"
-                >
-                  Bóveda
-                </button>
-                {canModifyExpenses && (
-                  <button
-                    onClick={() => void handleDelete(expense.id)}
-                    aria-label="Eliminar gasto"
-                    className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#FEF2F2] hover:text-[#EF4444]"
-                  >
-                    Eliminar
-                  </button>
-                )}
-              </div>
-              )
-            })}
-          </div>
-        </div>
-
         <div className="flex flex-col gap-5 rounded-2xl border border-[#E2E8F0] bg-white p-4">
           <div>
             <h3 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Participantes</h3>
+            <div className="mb-5 h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={(Object.keys(CATEGORY_LABELS) as Expense['categoria'][]).map((categoria) => ({
+                      name: CATEGORY_LABELS[categoria],
+                      value: categoryTotals[categoria] ?? 0,
+                      fill: categoryColor(categoria),
+                    }))}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={100}
+                    paddingAngle={2}
+                    label={({ name }) => name}
+                    labelLine={false}
+                  >
+                    {(Object.keys(CATEGORY_LABELS) as Expense['categoria'][]).map((categoria) => (
+                      <Cell key={categoria} fill={categoryColor(categoria)} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value) => [formatMXN(Number(value ?? 0)), 'Gasto']}
+                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px' }}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    wrapperStyle={{ paddingTop: '12px' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
             <div className="flex flex-wrap gap-2">
               {members.map((member) => (
                 <div key={member.usuario_id} className="flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-1.5">
@@ -702,6 +648,96 @@ export const BudgetDashboard: FC<Props> = ({
             </div>
           </div>
         </div>
+
+        <div>
+          <h2 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Gastos del grupo</h2>
+          <div className="flex flex-col gap-2">
+            {expenses.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-4 py-8 text-center font-body text-sm text-[#7A8799]">
+                Aun no hay gastos registrados para este viaje.
+              </div>
+            ) : [...expenses].reverse().map((expense) => {
+              const linkedEntities = getLinksForExpense(expense.id)
+              const linkedActivities = linkedEntities.filter((entity) => entity.type === 'activity' || entity.type === 'subgroup_activity')
+              const linkedDocuments = linkedEntities.filter((entity) => entity.type === 'document')
+
+              return (
+                <div key={expense.id} className="flex items-start gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
+                  <div
+                    className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                    style={{ backgroundColor: `${categoryColor(expense.categoria)}18`, color: categoryColor(expense.categoria) }}
+                  >
+                    <CategoryIcon categoria={expense.categoria} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-body text-sm font-semibold text-[#3D4A5C]">{expense.titulo}</p>
+                    <p className="font-body text-xs text-[#7A8799]">Pago {expense.pagadoPor} - {expense.fecha}</p>
+                    {(linkedActivities.length > 0 || linkedDocuments.length > 0) ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {linkedActivities.map((entity) => (
+                          <button
+                            key={entityKey(entity)}
+                            type="button"
+                            onClick={() => {
+                              if (entity.type === 'subgroup_activity') onOpenSubgroups?.()
+                              else onOpenItinerary?.()
+                            }}
+                            className="max-w-full rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#1E6FD9] hover:bg-[#E2EDFF]"
+                            title={entity.label}
+                          >
+                            {entity.type === 'subgroup_activity' ? 'Subgrupo' : 'Actividad'}:{' '}
+                            <span className="font-medium">{entity.label}</span>
+                          </button>
+                        ))}
+                        {linkedDocuments.map((entity) => (
+                          <button
+                            key={entityKey(entity)}
+                            type="button"
+                            onClick={onOpenVault}
+                            className="max-w-full rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#5B35B1] hover:bg-[#ECE4FF]"
+                            title={entity.label}
+                          >
+                            Documento: <span className="font-medium">{entity.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-2 rounded-lg bg-[#F8FAFC] px-2.5 py-1.5 font-body text-xs text-[#7A8799]">
+                        Sin actividad ni documento asociado.
+                      </p>
+                    )}
+                  </div>
+                  <span className="shrink-0 font-heading text-sm font-bold text-[#3D4A5C]">{formatMXN(expense.monto)}</span>
+                  {canModifyExpenses && (
+                    <button
+                      onClick={() => openEdit(expense)}
+                      aria-label="Editar gasto"
+                      className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#F4F6F8] hover:text-[#1E6FD9]"
+                    >
+                      Editar/asociar
+                    </button>
+                  )}
+                  <button
+                    onClick={onOpenVault}
+                    aria-label="Abrir boveda"
+                    className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#F4F6F8] hover:text-[#7A4FD6]"
+                  >
+                    Bóveda
+                  </button>
+                  {canModifyExpenses && (
+                    <button
+                      onClick={() => void handleDelete(expense.id)}
+                      aria-label="Eliminar gasto"
+                      className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#FEF2F2] hover:text-[#EF4444]"
+                    >
+                      Eliminar
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       <RegisterExpenseModal
@@ -710,6 +746,8 @@ export const BudgetDashboard: FC<Props> = ({
         editingExpense={editingExpense}
         activityOptions={[...linkOptions.activities, ...linkOptions.subgroupActivities]}
         documentOptions={linkOptions.documents}
+        totalBudget={totalBudget}
+        comprometido={comprometido}
         onClose={() => { setShowModal(false); setEditingExpense(null) }}
         onSave={(expense) => void handleSaveExpense(expense)}
       />

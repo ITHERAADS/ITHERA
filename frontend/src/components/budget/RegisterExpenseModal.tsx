@@ -11,6 +11,8 @@ interface Props {
   activityOptions?: ContextEntitySummary[]
   documentOptions?: ContextEntitySummary[]
   editingExpense?: Expense | null
+  totalBudget?: number
+  comprometido?: number
   onClose: () => void
   onSave: (expense: Expense) => void
 }
@@ -103,6 +105,8 @@ export const RegisterExpenseModal: FC<Props> = ({
   activityOptions = [],
   documentOptions = [],
   editingExpense,
+  totalBudget = 0,
+  comprometido = 0,
   onClose,
   onSave,
 }) => {
@@ -180,7 +184,15 @@ export const RegisterExpenseModal: FC<Props> = ({
     splitType === 'personalizada' && totalAmount > 0 && Math.abs(splitSum - totalAmount) > 0.01
       ? `La suma de los montos ($${Math.round(splitSum)}) no coincide con el total ($${Math.round(totalAmount)})`
       : null
-  const isValid = totalAmount > 0 && description.trim().length > 0 && selectedMemberIds.length > 0 && splitError === null
+
+  const editingPreviousAmount = editingExpense ? Number(editingExpense.monto) : 0
+  const nextCommitted = comprometido - editingPreviousAmount + totalAmount
+  const budgetError =
+    totalBudget > 0 && nextCommitted - totalBudget > 0.01
+      ? 'Este gasto excede el presupuesto total del viaje. Ajusta el presupuesto o reduce el monto.'
+      : null
+
+  const isValid = totalAmount > 0 && description.trim().length > 0 && selectedMemberIds.length > 0 && splitError === null && budgetError === null
 
   const toggleMember = (memberId: string) => {
     setSelectedMemberIds((prev) => {
@@ -291,6 +303,12 @@ export const RegisterExpenseModal: FC<Props> = ({
         {/* Cuerpo scrolleable */}
         <div className="flex-1 overflow-y-auto px-6">
           <div className="flex flex-col gap-4 pb-2">
+            {budgetError && (
+              <div className="rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-4 py-3 font-body text-sm text-[#C03535]">
+                {budgetError}
+              </div>
+            )}
+
             <div>
               <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Monto</label>
               <div className="relative">
@@ -341,7 +359,7 @@ export const RegisterExpenseModal: FC<Props> = ({
             </div>
 
             <div>
-              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Pagador</label>
+              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">¿Quién pagó?</label>
               <select
                 value={paidBy}
                 onChange={(e) => setPaidBy(e.target.value)}
@@ -354,7 +372,7 @@ export const RegisterExpenseModal: FC<Props> = ({
             </div>
 
             <div>
-              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Personas del gasto</label>
+              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Participantes</label>
               <div className="flex flex-wrap gap-2 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-3">
                 {members.map((member) => {
                   const selected = selectedMemberIds.includes(member.usuario_id)
@@ -378,7 +396,7 @@ export const RegisterExpenseModal: FC<Props> = ({
             </div>
 
             <div>
-              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Tipo de División</label>
+              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">¿Cómo dividir la cuenta?</label>
               <div className="flex gap-2">
                 {(['equitativa', 'personalizada'] as const).map((type) => (
                   <button
@@ -425,7 +443,7 @@ export const RegisterExpenseModal: FC<Props> = ({
 
             {(activityOptions.length > 0 || documentOptions.length > 0) && (
               <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3">
-                <p className="font-body text-sm font-semibold text-[#3D4A5C]">Contexto relacionado</p>
+                <p className="font-body text-sm font-semibold text-[#3D4A5C]">Vincular con el viaje</p>
                 <p className="mt-1 font-body text-xs text-[#7A8799]">
                   Relaciona esta salida con acciones separadas para que el formulario principal no se vuelva confuso.
                 </p>

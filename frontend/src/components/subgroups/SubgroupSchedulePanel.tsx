@@ -280,7 +280,6 @@ export function SubgroupSchedulePanel({
   currentUserId = null,
   currentUserName = 'Usuario',
   editSlotRequest = null,
-  focusRequest = null,
   onScheduleChanged,
 }: Props) {
   const { accessToken } = useAuth()
@@ -313,9 +312,7 @@ export function SubgroupSchedulePanel({
   const [linkOptionsLoaded, setLinkOptionsLoaded] = useState(false)
   const [handledEditSlotRequestNonce, setHandledEditSlotRequestNonce] = useState<number | null>(null)
   const [expandedSubgroupDay, setExpandedSubgroupDay] = useState<string | null>(null)
-  const [focusedSubgroupTarget, setFocusedSubgroupTarget] = useState<{ slotId: number; subgroupId?: number | null } | null>(null)
   const didInitializeExpandedDayRef = useRef(false)
-  const focusedTargetRef = useRef<HTMLElement | null>(null)
 
   const memberOptions = useMemo(
     () =>

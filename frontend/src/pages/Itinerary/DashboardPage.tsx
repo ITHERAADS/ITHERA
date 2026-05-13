@@ -956,7 +956,7 @@ export function DashboardPage() {
   return () => {
       isMounted = false
     }
-  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, navigate])
+  }, [groupIdFromState, groupId, currentGroup?.id, currentGroup?.fecha_inicio, localUser?.id_usuario, accessToken, navigate])
 
   const reloadDashboard = useCallback(async () => {
     const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
@@ -1011,7 +1011,7 @@ export function DashboardPage() {
       setContextLinks(contextResult.value[0].links)
     }
     setVoteResultByProposal(nextVotesMap)
-  }, [groupIdFromState, groupId, currentGroup?.id, accessToken])
+  }, [groupIdFromState, groupId, currentGroup?.id, currentGroup?.fecha_inicio, localUser?.id_usuario, accessToken])
 
   const refreshCommentsForProposal = useCallback(async (proposalId: string) => {
     if (!accessToken || !resolvedGroupId) return

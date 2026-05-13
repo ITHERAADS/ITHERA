@@ -2,6 +2,21 @@ import { createOfferRequest, DuffelOffer, DuffelSegment, DuffelSlice } from '../
 import { FlightBaggage, FlightOffer, FlightSegment, FlightSliceSummary, SearchFlightsParams } from './flights.entity';
 
 const DEFAULT_MAX_RESULTS = 20;
+const MAX_TRIP_PEOPLE = 50;
+const MAX_SEARCH_RANGE_DAYS = 7;
+
+function parseIsoDate(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function diffDays(start: string, end: string): number | null {
+  const startDate = parseIsoDate(start);
+  const endDate = parseIsoDate(end);
+  if (!startDate || !endDate) return null;
+  return Math.round((endDate.getTime() - startDate.getTime()) / 86400000);
+}
 const FALLBACK_USD_TO_MXN = 17.2;
 
 function currencyRateToMxn(currency: string | null | undefined): number {
@@ -147,12 +162,47 @@ function validateParams(params: SearchFlightsParams): void {
     throw Object.assign(new Error('origin, destination y departureDate son requeridos'), { statusCode: 400 });
   }
 
+  if (!/^[A-Z]{3}$/.test(params.origin) || !/^[A-Z]{3}$/.test(params.destination)) {
+    throw Object.assign(new Error('Origen y destino deben ser códigos IATA válidos de 3 letras'), { statusCode: 400 });
+  }
+
   if (params.origin === params.destination) {
     throw Object.assign(new Error('El origen y el destino no pueden ser iguales'), { statusCode: 400 });
   }
 
-  if ((params.infantsWithoutSeat ?? 0) > (params.adults ?? 1)) {
+  if (!parseIsoDate(params.departureDate)) {
+    throw Object.assign(new Error('La fecha de salida debe tener formato YYYY-MM-DD'), { statusCode: 400 });
+  }
+
+  if (params.returnDate) {
+    const days = diffDays(params.departureDate, params.returnDate);
+    if (days === null) {
+      throw Object.assign(new Error('La fecha de regreso debe tener formato YYYY-MM-DD'), { statusCode: 400 });
+    }
+
+    if (days < 1) {
+      throw Object.assign(new Error('La fecha de regreso debe ser posterior a la salida'), { statusCode: 400 });
+    }
+
+    if (days > MAX_SEARCH_RANGE_DAYS) {
+      throw Object.assign(new Error(`La búsqueda de vuelos permite máximo ${MAX_SEARCH_RANGE_DAYS} día(s) entre salida y regreso`), { statusCode: 400 });
+    }
+  }
+
+  const adults = params.adults ?? 1;
+  const children = params.children ?? 0;
+  const infantsWithoutSeat = params.infantsWithoutSeat ?? 0;
+
+  if (adults < 1 || children < 0 || infantsWithoutSeat < 0) {
+    throw Object.assign(new Error('Los pasajeros deben ser cantidades positivas válidas'), { statusCode: 400 });
+  }
+
+  if (infantsWithoutSeat > adults) {
     throw Object.assign(new Error('No puede haber más infantes sin asiento que adultos'), { statusCode: 400 });
+  }
+
+  if (adults + children + infantsWithoutSeat > MAX_TRIP_PEOPLE) {
+    throw Object.assign(new Error(`La búsqueda permite máximo ${MAX_TRIP_PEOPLE} pasajeros en total`), { statusCode: 400 });
   }
 }
 
@@ -165,7 +215,7 @@ export async function searchFlights(params: SearchFlightsParams): Promise<Flight
     children: Math.max(0, params.children ?? 0),
     infantsWithoutSeat: Math.max(0, params.infantsWithoutSeat ?? 0),
     cabinClass: params.cabinClass ?? 'economy',
-    max: Math.max(1, params.max ?? DEFAULT_MAX_RESULTS),
+    max: Math.max(1, Math.min(params.max ?? DEFAULT_MAX_RESULTS, 50)),
   };
 
   validateParams(normalizedParams);

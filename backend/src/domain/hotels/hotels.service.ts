@@ -9,6 +9,9 @@ import {
 import { HotelOffer, HotelRoomRate, HotelSearchParams } from './hotels.entity';
 
 const DEFAULT_LIMIT = 12;
+const MAX_TRIP_PEOPLE = 50;
+const MAX_HOTEL_ROOMS = 50;
+const MAX_SEARCH_RANGE_DAYS = 7;
 const DEFAULT_RADIUS_METERS = 15000;
 
 function textLimit(value: string | null | undefined, max = 190): string | null {
@@ -38,11 +41,17 @@ function getFirstImageUrl(value: unknown): string | null {
   return null;
 }
 
+function parseIsoDate(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function calculateNights(checkIn: string, checkOut: string): number {
-  const start = new Date(`${checkIn}T00:00:00Z`).getTime();
-  const end = new Date(`${checkOut}T00:00:00Z`).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 1;
-  return Math.max(1, Math.round((end - start) / 86400000));
+  const startDate = parseIsoDate(checkIn);
+  const endDate = parseIsoDate(checkOut);
+  if (!startDate || !endDate || endDate <= startDate) return 1;
+  return Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000));
 }
 
 function splitDestination(destination: string | undefined): { cityName?: string; countryCode?: string } {
@@ -57,25 +66,32 @@ function splitDestination(destination: string | undefined): { cityName?: string;
 }
 
 function buildOccupancies(params: HotelSearchParams) {
-  const rooms = Math.max(1, Math.trunc(params.rooms ?? 1));
-  const adults = Math.max(1, Math.trunc(params.adults ?? 1));
-  const children = params.childrenAges ?? [];
+  const rooms = Math.max(1, Math.min(MAX_HOTEL_ROOMS, Math.trunc(params.rooms ?? 1)));
+  const adults = Math.max(1, Math.min(MAX_TRIP_PEOPLE, Math.trunc(params.adults ?? 1)));
+  const children = (params.childrenAges ?? []).filter((age) => Number.isFinite(age) && age >= 0 && age <= 17);
 
-  if (rooms === 1) {
-    return [{ adults, children }];
+  if (adults + children.length > MAX_TRIP_PEOPLE) {
+    throw Object.assign(new Error(`La búsqueda permite máximo ${MAX_TRIP_PEOPLE} huéspedes en total`), { statusCode: 400 });
   }
 
-  const baseAdults = Math.floor(adults / rooms);
-  let remainingAdults = adults % rooms;
+  if (rooms > adults) {
+    throw Object.assign(new Error('El número de habitaciones no puede ser mayor que el número de adultos'), { statusCode: 400 });
+  }
 
-  return Array.from({ length: rooms }, (_, index) => {
-    const roomAdults = Math.max(1, baseAdults + (remainingAdults > 0 ? 1 : 0));
-    remainingAdults -= 1;
-    return {
-      adults: roomAdults,
-      children: index === 0 ? children : [],
-    };
+  const occupancies = Array.from({ length: rooms }, () => ({ adults: 0, children: [] as number[] }));
+
+  for (let i = 0; i < adults; i += 1) {
+    occupancies[i % rooms].adults += 1;
+  }
+
+  children.forEach((age, index) => {
+    occupancies[index % rooms].children.push(age);
   });
+
+  return occupancies.map((occupancy) => ({
+    adults: Math.max(1, occupancy.adults),
+    children: occupancy.children,
+  }));
 }
 
 interface GooglePlaceSummary {
@@ -194,8 +210,18 @@ function validateSearchParams(params: HotelSearchParams): void {
     throw Object.assign(new Error('checkIn y checkOut son requeridos'), { statusCode: 400 });
   }
 
-  if (params.checkOut <= params.checkIn) {
+  if (!parseIsoDate(params.checkIn) || !parseIsoDate(params.checkOut)) {
+    throw Object.assign(new Error('checkIn y checkOut deben tener formato YYYY-MM-DD'), { statusCode: 400 });
+  }
+
+  const nights = calculateNights(params.checkIn, params.checkOut);
+
+  if (nights < 1) {
     throw Object.assign(new Error('checkOut debe ser posterior a checkIn'), { statusCode: 400 });
+  }
+
+  if (nights > MAX_SEARCH_RANGE_DAYS) {
+    throw Object.assign(new Error(`La búsqueda de hospedaje permite máximo ${MAX_SEARCH_RANGE_DAYS} noche(s)`), { statusCode: 400 });
   }
 
   const hasLocation = Boolean(params.destination || params.placeId || (typeof params.latitude === 'number' && typeof params.longitude === 'number'));

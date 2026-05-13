@@ -259,6 +259,8 @@ function SectionLabel({
 }
 
 // ── Validation helpers ────────────────────────────────────────────────────────
+const MAX_TRIP_DURATION_DAYS = 60;
+
 const todayISO = () => {
   const now = new Date();
   const timezoneOffset = now.getTimezoneOffset() * 60_000;
@@ -266,10 +268,20 @@ const todayISO = () => {
 };
 
 const addDaysISO = (date: string, days: number) => {
-  const parsed = new Date(`${date}T00:00:00`);
+  const parsed = new Date(`${date}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) return "";
   parsed.setDate(parsed.getDate() + days);
   return parsed.toISOString().slice(0, 10);
+};
+
+const daysBetweenISO = (startDate: string, endDate: string) => {
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((end.getTime() - start.getTime()) / millisecondsPerDay);
 };
 
 const sanitizePositiveDecimal = (value: string) => {
@@ -309,6 +321,12 @@ const getValidationErrors = (form: FormData) => {
 
   if (form.startDate && form.endDate && form.endDate <= form.startDate) {
     e.endDate = "La fecha de regreso debe ser posterior a la de inicio.";
+  } else if (form.startDate && form.endDate) {
+    const durationDays = daysBetweenISO(form.startDate, form.endDate);
+
+    if (durationDays !== null && durationDays > MAX_TRIP_DURATION_DAYS) {
+      e.endDate = `La duración máxima del viaje es de ${MAX_TRIP_DURATION_DAYS} días.`;
+    }
   }
 
   if (!form.totalBudget.trim()) {
@@ -355,13 +373,12 @@ export function CreateGroupPage() {
     setForm((current) => {
       const next = { ...current, [key]: normalizedValue };
 
-      if (
-        key === "startDate" &&
-        typeof normalizedValue === "string" &&
-        next.endDate &&
-        next.endDate <= normalizedValue
-      ) {
-        next.endDate = "";
+      if (key === "startDate" && typeof normalizedValue === "string" && next.endDate) {
+        const maxEndDate = addDaysISO(normalizedValue, MAX_TRIP_DURATION_DAYS);
+
+        if (next.endDate <= normalizedValue || (maxEndDate && next.endDate > maxEndDate)) {
+          next.endDate = "";
+        }
       }
 
       setErrors(getValidationErrors(next));
@@ -381,6 +398,9 @@ export function CreateGroupPage() {
   const minEndDate = form.startDate
     ? addDaysISO(form.startDate, 1)
     : todayISO();
+  const maxEndDate = form.startDate
+    ? addDaysISO(form.startDate, MAX_TRIP_DURATION_DAYS)
+    : undefined;
 
   const handleCreate = async () => {
     if (!validate()) return;
@@ -735,6 +755,12 @@ export function CreateGroupPage() {
                   placeholder=""
                   value={form.endDate}
                   min={minEndDate}
+                  max={maxEndDate}
+                  hint={
+                    form.startDate
+                      ? `Debe ser posterior a la salida y no exceder ${MAX_TRIP_DURATION_DAYS} días.`
+                      : "Selecciona primero la fecha de salida."
+                  }
                   onChange={set("endDate") as (v: string) => void}
                   error={errors.endDate}
                 />
@@ -861,7 +887,10 @@ export function CreateGroupPage() {
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="font-body text-xs text-amber-700">
                   Completa nombre, destino, fechas válidas y presupuesto base
-                  mayor a cero para habilitar la creación del grupo.
+                  mayor a cero para habilitar la creación del grupo. La fecha de
+                  regreso debe ser posterior a la salida y el viaje no puede exceder
+                  {" "}
+                  {MAX_TRIP_DURATION_DAYS} días.
                 </p>
               </div>
             )}

@@ -47,7 +47,7 @@ router.post('/search', requireAuth, async (req: Request, res: Response): Promise
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
     const status = (err as { statusCode?: number }).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: 'Error al buscar hospedajes', details: msg });
+    res.status(status).json({ ok: false, error: status === 400 ? msg : 'Error al buscar hospedajes', details: msg });
   }
 });
 

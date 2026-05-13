@@ -144,10 +144,6 @@ export function ProposalCard({
           {badge.label}
         </span>
 
-        <span className="absolute top-3 right-3 bg-[#1E0A4E]/70 backdrop-blur-sm text-white text-xs font-bold px-2.5 py-1 rounded-full font-body">
-          ${activity.price.toLocaleString('es-MX')} {activity.currency}
-        </span>
-
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="bg-black/30 backdrop-blur-sm rounded-full p-2">
             <CategoryIcon category={activity.category} />

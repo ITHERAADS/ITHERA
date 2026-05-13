@@ -195,7 +195,7 @@ export function ActivityProposalModal({
     return safeMemberOptions[0]?.id ?? ''
   }, [currentUserId, safeMemberOptions])
 
-  const getActivityDate = useCallback(() => {
+  const selectedActivityDate = useMemo(() => {
     const startDate = group?.fecha_inicio
     if (!startDate || !selectedDayNumber) return null
 
@@ -205,8 +205,13 @@ export function ActivityProposalModal({
     const yyyy = selectedDate.getFullYear()
     const mm = String(selectedDate.getMonth() + 1).padStart(2, '0')
     const dd = String(selectedDate.getDate()).padStart(2, '0')
-    return `${yyyy}-${mm}-${dd}T${timeValue}:00`
-  }, [group?.fecha_inicio, selectedDayNumber, timeValue])
+    return `${yyyy}-${mm}-${dd}`
+  }, [group?.fecha_inicio, selectedDayNumber])
+
+  const getActivityDate = useCallback(() => {
+    if (!selectedActivityDate) return null
+    return `${selectedActivityDate}T${timeValue}:00`
+  }, [selectedActivityDate, timeValue])
 
   const resetContextDraft = () => {
     setSelectedExpenseIds([])
@@ -276,7 +281,7 @@ export function ActivityProposalModal({
       setQuickExpenseAmount('')
       setQuickExpenseDescription('')
       setQuickExpenseCategory('actividad')
-      setQuickExpenseDate(getActivityDate()?.slice(0, 10) ?? todayValue())
+      setQuickExpenseDate(selectedActivityDate ?? todayValue())
       setQuickExpensePaidBy(defaultExpensePayer)
       setQuickExpenseSplitType('equitativa')
       setQuickExpenseSplitAmounts({})
@@ -315,7 +320,7 @@ export function ActivityProposalModal({
     void hydrate()
 
     return () => { cancelled = true }
-  }, [defaultExpensePayer, editingActivity, getActivityDate, group?.id, open, safeMemberOptions, token])
+  }, [defaultExpensePayer, editingActivity, group?.id, open, safeMemberOptions, selectedActivityDate, token])
 
   if (!open) return null
 

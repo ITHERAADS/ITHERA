@@ -5,9 +5,11 @@ import type { ContextEntitySummary } from '../../../services/context-links'
 
 export interface Activity {
   id: string
+  kind?: 'activity' | 'subgroup-slot'
   proposalId?: string | null
   createdBy?: string | null
   hasVoted?: boolean
+  myVote?: 'a_favor' | 'en_contra' | 'abstencion' | null
   title: string
   description: string
   category: 'transporte' | 'hospedaje' | 'actividad'
@@ -29,6 +31,14 @@ export interface Activity {
   linkedContext?: ContextEntitySummary[]
   startsAt?: string | null
   endsAt?: string | null
+  subgroupSlot?: {
+    slotId: number
+    startsAt: string
+    endsAt: string
+    groupCount: number
+    participantCount: number
+    targetSubgroupId?: number | null
+  }
 }
 
 export interface DayViewProps {
@@ -40,6 +50,7 @@ export interface DayViewProps {
   isExpanded?: boolean
   onSelect?: (dayNumber: number) => void
   onAccept?: (activityId: string) => void
+  onReject?: (activityId: string) => void
   onDelete?: (activityId: string) => void
   onEdit?: (activityId: string) => void
   onManageContext?: (activity: Activity) => void
@@ -182,10 +193,6 @@ function getSectionLabel(category: Activity['category']): { emoji: string; text:
   return { emoji: '⭐', text: 'ACTIVIDADES' }
 }
 
-function formatPrice(price: number, currency: string): string {
-  return `$${price.toLocaleString('es-MX')} ${currency}`
-}
-
 function getGoogleMapsRouteUrl(activity: Activity): string | null {
   if (activity.latitude == null || activity.longitude == null) return null
   const destination = `${activity.latitude},${activity.longitude}`
@@ -211,18 +218,60 @@ function IconMessageCircle({ size = 14 }: { size?: number }) {
   )
 }
 
+function getMinutesFromDate(value?: string | null): number | null {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (!Number.isFinite(parsed.getTime())) return null
+  return parsed.getHours() * 60 + parsed.getMinutes()
+}
+
+function getMinutesFromTimeLabel(value?: string | null): number | null {
+  if (!value) return null
+  const match = value.match(/(\d{1,2}):([0-5]\d)\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?/i)
+  if (!match) return null
+
+  let hours = Number(match[1])
+  const minutes = Number(match[2])
+  const meridiem = match[3]?.toLowerCase().replace(/\s|\./g, '')
+  if (meridiem === 'pm' && hours < 12) hours += 12
+  if (meridiem === 'am' && hours === 12) hours = 0
+  if (hours > 23) return null
+
+  return hours * 60 + minutes
+}
+
 function getActivitySortTimestamp(activity: Activity): number {
+  const labelMinutes = getMinutesFromTimeLabel(activity.time)
+  if (labelMinutes !== null) return labelMinutes
+
+  if (activity.startsAt) {
+    const minutes = getMinutesFromDate(activity.startsAt)
+    if (minutes !== null) return minutes
+  }
+
+  return Number.MAX_SAFE_INTEGER
+}
+
+function getActivityTimelineTimeLabel(activity: Activity): string {
+  if (activity.kind === 'subgroup-slot' && activity.subgroupSlot?.startsAt) {
+    return new Date(activity.subgroupSlot.startsAt).toLocaleTimeString('es-MX', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'America/Mexico_City',
+    })
+  }
+
+  return activity.time
+}
+
+function getActivityStartTime(activity: Activity): number | null {
   if (activity.startsAt) {
     const parsed = new Date(activity.startsAt).getTime()
     if (Number.isFinite(parsed)) return parsed
   }
 
-  const hhmm = activity.time.match(/([01]\d|2[0-3]):([0-5]\d)/)
-  if (hhmm) {
-    return Number(hhmm[1]) * 60 + Number(hhmm[2])
-  }
-
-  return Number.MAX_SAFE_INTEGER
+  return null
 }
 
 function sortActivitiesChronologically(activities: Activity[]): Activity[] {
@@ -253,74 +302,112 @@ function getConflictActivityIds(activities: Activity[]): Set<string> {
   return ids
 }
 
+type TimelineNowPosition =
+  | { type: 'before'; label: string; timeLabel: string | null }
+  | { type: 'on'; activityId: string; label: string }
+  | { type: 'after'; label: string; timeLabel: string | null }
+  | null
+
+function isSameCalendarDay(left: number, right: number): boolean {
+  return new Date(left).toDateString() === new Date(right).toDateString()
+}
+
+function getTimelineNowPosition(activities: Activity[]): TimelineNowPosition {
+  const starts = activities
+    .map((activity) => ({ activity, start: getActivityStartTime(activity) }))
+    .filter((item): item is { activity: Activity; start: number } => item.start !== null)
+    .sort((a, b) => a.start - b.start)
+
+  if (starts.length === 0) return null
+
+  const now = Date.now()
+  const nowLabel = new Date(now).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+  const first = starts[0]
+  const last = starts[starts.length - 1]
+  const isActivityDayToday = isSameCalendarDay(first.start, now)
+
+  if (now < first.start) {
+    return { type: 'before', label: 'Aun no inicia', timeLabel: isActivityDayToday ? nowLabel : null }
+  }
+
+  for (let index = 0; index < starts.length; index += 1) {
+    const current = starts[index]
+    const next = starts[index + 1]
+    if (now >= current.start && (!next || now < next.start)) {
+      return { type: 'on', activityId: current.activity.id, label: 'Ahora' }
+    }
+  }
+
+  if (now > last.start) {
+    return { type: 'after', label: 'Dia completado', timeLabel: isActivityDayToday ? nowLabel : null }
+  }
+
+  return null
+}
+
+function TimelineNowMarker({ label, timeLabel }: { label: string; timeLabel: string | null }) {
+  return (
+    <div className="relative grid grid-cols-[64px_28px_minmax(0,1fr)] gap-3">
+      <div className="relative z-10 flex justify-end pt-1">
+        {timeLabel && (
+          <span className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border border-[#E2D8FF] bg-white px-2.5 font-body text-[11px] font-bold text-[#7A4FD6]">
+            {timeLabel}
+          </span>
+        )}
+      </div>
+      <div className="relative z-10 flex justify-center pt-[7px]" aria-hidden="true">
+        <span className="h-7 w-7 rounded-full border-[6px] border-white bg-[#7A4FD6] shadow-[0_0_0_8px_rgba(232,222,255,0.95),0_12px_28px_rgba(122,79,214,0.28)]" />
+      </div>
+      <div className="flex min-h-[34px] items-center">
+        <span className="inline-flex rounded-full border border-[#E2D8FF] bg-[#F7F2FF] px-3 py-1.5 font-body text-[11px] font-bold text-[#5B35B1]">
+          {label}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function TimelineItem({
   activity,
-  isLast,
   hasConflict,
+  isNow,
   children,
 }: {
   activity: Activity
-  isLast: boolean
   hasConflict: boolean
+  isNow: boolean
   children: ReactNode
 }) {
-  const accentColor = hasConflict ? '#DC2626' : getCategoryColor(activity.category)
+  const accentColor = hasConflict ? '#DC2626' : isNow ? '#1E0A4E' : '#7A4FD6'
 
   return (
-    <div className="relative rounded-[28px] border border-[#E0EAFF] bg-[linear-gradient(180deg,#FFFFFF_0%,#FCFDFF_100%)] px-4 py-4 pl-[116px] shadow-[0_12px_30px_rgba(30,111,217,0.07)]">
-      <div className="absolute bottom-0 left-[48px] top-0 w-[34px] rounded-full bg-[linear-gradient(180deg,#F4F8FF_0%,#E7F0FF_100%)]" aria-hidden="true" />
-      <div
-        className="absolute bottom-6 left-[64px] top-6 w-[5px] rounded-full"
-        style={{ backgroundColor: hasConflict ? '#FCA5A5' : '#9CB9F2' }}
-        aria-hidden="true"
-      />
-      <div className="absolute left-0 top-0 flex w-[92px] flex-col items-center">
+    <div className="relative grid grid-cols-[64px_28px_minmax(0,1fr)] gap-3">
+      <div className="relative z-10 flex justify-end pt-1.5">
         <span
-          className="inline-flex min-h-[38px] w-[70px] items-center justify-center rounded-2xl border px-3 py-2 font-body text-xs font-bold shadow-sm"
+          className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border px-2.5 font-body text-[11px] font-bold"
           style={{
             color: accentColor,
-            borderColor: hasConflict ? '#FECACA' : '#D9E2F2',
-            backgroundColor: hasConflict ? '#FEF2F2' : '#FFFFFF',
+            borderColor: hasConflict ? '#FECACA' : '#E2D8FF',
+            backgroundColor: hasConflict ? '#FFF7F7' : '#FFFFFF',
           }}
         >
-          {activity.time}
+          {getActivityTimelineTimeLabel(activity)}
         </span>
-        {!isLast && (
-          <span
-            className="mt-2 h-full min-h-[120px] w-[5px] rounded-full opacity-0"
-            style={{ backgroundColor: hasConflict ? '#FCA5A5' : '#9CB9F2' }}
-          />
-        )}
       </div>
 
-      <span
-        className="absolute left-[75px] top-7 h-6 w-6 rounded-full border-[5px] bg-white"
-        style={{ borderColor: accentColor, boxShadow: `0 0 0 6px rgba(255,255,255,0.98), 0 0 0 11px ${hasConflict ? 'rgba(254,226,226,0.95)' : 'rgba(224,234,255,0.95)'}` }}
-        aria-hidden="true"
-      />
+      <div aria-hidden="true" />
 
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-body text-[11px] font-semibold"
-            style={{
-              color: accentColor,
-              backgroundColor: hasConflict ? '#FEF2F2' : '#F8FAFC',
-            }}
-          >
-            <CategoryIcon category={activity.category} size={12} />
-            {activity.category === 'actividad'
-              ? 'Actividad grupal'
-              : activity.category === 'hospedaje'
-                ? 'Hospedaje'
-                : 'Traslado'}
+      <div className="min-w-0">
+        {hasConflict && (
+          <span className="mb-2 inline-flex items-center rounded-full bg-[#FEF2F2] px-2.5 py-1 font-body text-[11px] font-semibold text-[#B91C1C]">
+            Conflicto de horario
           </span>
-          {hasConflict && (
-            <span className="inline-flex items-center rounded-full bg-[#FEF2F2] px-2.5 py-1 font-body text-[11px] font-semibold text-[#B91C1C]">
-              Conflicto de horario
-            </span>
-          )}
-        </div>
+        )}
+        {isNow && (
+          <span className="mb-2 inline-flex items-center rounded-full border border-[#E2D8FF] bg-[#F7F2FF] px-3 py-1.5 font-body text-[11px] font-bold text-[#5B35B1]">
+            Ahora
+          </span>
+        )}
         {children}
       </div>
     </div>
@@ -342,7 +429,6 @@ function SectionLabel({ emoji, text }: { emoji: string; text: string }) {
 
 function ActivityContextBlock({
   activity,
-  onManageContext,
   onOpenBudget,
   onOpenVault,
 }: {
@@ -361,13 +447,6 @@ function ActivityContextBlock({
         <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#64748B]">
           Contexto asociado
         </p>
-        <button
-          type="button"
-          onClick={() => onManageContext?.(activity)}
-          className="rounded-lg border border-[#D7DEEA] bg-white px-2.5 py-1 font-body text-[11px] font-semibold text-[#3D4A5C] hover:bg-[#F1F5F9]"
-        >
-          Asociar
-        </button>
       </div>
 
       {linked.length === 0 ? (
@@ -406,6 +485,55 @@ function ActivityContextBlock({
 
 // ── ActivityCardConfirmed ─────────────────────────────────────────────────────
 
+function SubgroupSlotCard({
+  activity,
+  actionButtons,
+}: {
+  activity: Activity
+  actionButtons?: ReactNode
+}) {
+  const slot = activity.subgroupSlot
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-[#D8C8FF] bg-[linear-gradient(135deg,#FFFFFF_0%,#F7F2FF_100%)] shadow-[0_14px_34px_rgba(122,79,214,0.10)]">
+      <div className="flex flex-col gap-4 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="inline-flex rounded-full bg-[#1E0A4E] px-3 py-1 font-body text-[11px] font-bold uppercase tracking-[0.14em] text-white">
+              Subgrupos
+            </span>
+            <span className="inline-flex rounded-full border border-[#D8C8FF] bg-white px-3 py-1 font-body text-[11px] font-bold text-[#6D45C0]">
+              {activity.time}
+            </span>
+          </div>
+          <h3 className="font-heading text-lg font-bold leading-tight text-[#1E0A4E]">
+            {activity.title}
+          </h3>
+          {activity.description && (
+            <p className="mt-1 max-w-3xl font-body text-sm leading-6 text-[#64748B]">
+              {activity.description}
+            </p>
+          )}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="rounded-full bg-white px-3 py-1 font-body text-xs font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
+              {slot?.groupCount ?? 0} opcion{slot?.groupCount === 1 ? '' : 'es'}
+            </span>
+            <span className="rounded-full bg-white px-3 py-1 font-body text-xs font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
+              {slot?.participantCount ?? 0} participante{slot?.participantCount === 1 ? '' : 's'}
+            </span>
+          </div>
+        </div>
+
+        {actionButtons && (
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {actionButtons}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function ActivityCardConfirmed({
   activity,
   currentUserId,
@@ -427,6 +555,10 @@ function ActivityCardConfirmed({
   onOpenVault?: () => void
   actionButtons?: ReactNode
 }) {
+  if (activity.kind === 'subgroup-slot') {
+    return <SubgroupSlotCard activity={activity} actionButtons={actionButtons} />
+  }
+
   const iconColor = getCategoryColor(activity.category)
   const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
   const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
@@ -435,7 +567,7 @@ function ActivityCardConfirmed({
   const routeUrl = getGoogleMapsRouteUrl(activity)
 
   return (
-    <div className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden mb-3">
+    <div className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden">
       {/* Image */}
       <div className="relative h-36 overflow-hidden">
         <img
@@ -448,10 +580,6 @@ function ActivityCardConfirmed({
         <span className="absolute top-3 left-3 inline-flex items-center gap-1 font-body text-[11px] font-bold text-white bg-greenAccent rounded-full px-3 py-1 shadow-sm">
           <IconCheck size={10} />
           CONFIRMADO
-        </span>
-        {/* Price badge */}
-        <span className="absolute top-3 right-3 font-body text-xs font-semibold text-white bg-[#1E0A4E]/70 backdrop-blur-sm rounded-full px-3 py-1">
-          {formatPrice(activity.price, activity.currency)} / pers.
         </span>
         {/* Category icon circle */}
         <div
@@ -550,6 +678,7 @@ function ActivityCardPending({
   currentUserId,
   currentUserRole,
   onAccept,
+  onReject,
   onDelete,
   onEdit,
   onManageContext,
@@ -561,6 +690,7 @@ function ActivityCardPending({
   currentUserId?: string | number | null
   currentUserRole?: 'admin' | 'viajero' | string | null
   onAccept?: (id: string) => void
+  onReject?: (id: string) => void
   onDelete?: (id: string) => void
   onEdit?: (id: string) => void
   onManageContext?: (activity: Activity) => void
@@ -573,11 +703,11 @@ function ActivityCardPending({
   const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
   const canEdit = isOwner
   const canDelete = isOwner || isAdmin
-  const hasVoted = activity.hasVoted === true
+  const myVote = activity.myVote ?? null
   const routeUrl = getGoogleMapsRouteUrl(activity)
 
   return (
-    <div className="bg-white rounded-2xl border-2 border-dashed border-[#E2E8F0] overflow-hidden mb-3">
+    <div className="bg-white rounded-2xl border-2 border-dashed border-[#E2E8F0] overflow-hidden">
       {/* Image */}
       <div className="relative h-36 overflow-hidden">
         <img
@@ -589,10 +719,6 @@ function ActivityCardPending({
         {/* Pending badge */}
         <span className="absolute top-3 left-3 font-body text-[11px] font-bold text-white bg-purpleMedium rounded-full px-3 py-1">
           POR CONFIRMAR
-        </span>
-        {/* Price badge */}
-        <span className="absolute top-3 right-3 font-body text-xs font-semibold text-white bg-[#1E0A4E]/70 backdrop-blur-sm rounded-full px-3 py-1">
-          {formatPrice(activity.price, activity.currency)} / pers.
         </span>
         {/* Category icon circle */}
         <div
@@ -666,23 +792,31 @@ function ActivityCardPending({
 
         {/* Accept / Delete row */}
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#EEF2FF] pt-3">
-          {hasVoted ? (
+          <div className="grid h-11 flex-1 grid-cols-2 overflow-hidden rounded-xl border border-[#D9E2F2] bg-white">
             <button
-              disabled
-              className="flex-1 inline-flex items-center justify-center gap-1.5 font-body text-sm font-bold text-[#64748B] bg-[#E5E7EB] rounded-xl h-11 cursor-not-allowed"
-            >
-              <IconCheck size={12} />
-              Ya votaste
-            </button>
-          ) : (
-            <button
+              type="button"
               onClick={() => onAccept?.(activity.id)}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 font-body text-sm font-bold text-white bg-bluePrimary rounded-xl h-11 hover:bg-bluePrimary/90 transition-colors"
+              className={`inline-flex items-center justify-center gap-1.5 border-r border-[#D9E2F2] px-3 font-body text-sm font-bold transition-colors ${
+                myVote === 'a_favor'
+                  ? 'bg-[#16A34A] text-white hover:bg-[#15803D]'
+                  : 'bg-[#ECFDF3] text-[#166534] hover:bg-[#DCFCE7]'
+              }`}
             >
               <IconCheck size={12} />
-              Aceptar propuesta
+              A favor
             </button>
-          )}
+            <button
+              type="button"
+              onClick={() => onReject?.(activity.id)}
+              className={`inline-flex items-center justify-center px-3 font-body text-sm font-bold transition-colors ${
+                myVote === 'en_contra'
+                  ? 'bg-[#BE123C] text-white hover:bg-[#9F1239]'
+                  : 'text-[#BE123C] hover:bg-[#FFF1F2]'
+              }`}
+            >
+              En contra
+            </button>
+          </div>
 
           {(actionButtons || canDelete || canEdit) && (
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -763,6 +897,7 @@ function ActivitiesBody({
   currentUserId,
   currentUserRole,
   onAccept,
+  onReject,
   onDelete,
   onAddActivity,
   onEdit,
@@ -776,6 +911,7 @@ function ActivitiesBody({
   currentUserId?: string | number | null
   currentUserRole?: 'admin' | 'viajero' | string | null
   onAccept?: (id: string) => void
+  onReject?: (id: string) => void
   onDelete?: (id: string) => void
   onAddActivity?: () => void
   onEdit?: (id: string) => void
@@ -795,16 +931,25 @@ function ActivitiesBody({
     activeSection === 'confirmadas' && confirmedActivities.length === 0 && pendingActivities.length > 0
       ? 'pendientes'
       : activeSection
+  const visibleActivities = visibleSection === 'confirmadas' ? confirmedActivities : pendingActivities
+  const nowPosition = getTimelineNowPosition(visibleActivities)
 
   const renderConfirmedTimeline = () =>
     confirmedActivities.length > 0 ? (
-      <div className="space-y-5">
-        {confirmedActivities.map((a, index) => (
+      <div className="relative space-y-6">
+        <div
+          className="absolute bottom-4 left-[89px] top-4 z-0 w-[3px] rounded-full bg-[linear-gradient(180deg,#7A4FD6_0%,#1E6FD9_52%,#7A4FD6_100%)] shadow-[0_0_18px_rgba(122,79,214,0.22)]"
+          aria-hidden="true"
+        />
+        {nowPosition?.type === 'before' && (
+          <TimelineNowMarker label={nowPosition.label} timeLabel={nowPosition.timeLabel} />
+        )}
+        {confirmedActivities.map((a) => (
           <TimelineItem
             key={`confirmed-${a.id}`}
             activity={a}
-            isLast={index === confirmedActivities.length - 1}
             hasConflict={conflictActivityIds.has(a.id)}
+            isNow={nowPosition?.type === 'on' && nowPosition.activityId === a.id}
           >
             <ActivityCardConfirmed
               activity={a}
@@ -819,6 +964,9 @@ function ActivitiesBody({
             />
           </TimelineItem>
         ))}
+        {nowPosition?.type === 'after' && (
+          <TimelineNowMarker label={nowPosition.label} timeLabel={nowPosition.timeLabel} />
+        )}
       </div>
     ) : (
       <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
@@ -828,19 +976,27 @@ function ActivitiesBody({
 
   const renderPendingTimeline = () =>
     pendingActivities.length > 0 ? (
-      <div className="space-y-5">
-        {pendingActivities.map((a, index) => (
+      <div className="relative space-y-6">
+        <div
+          className="absolute bottom-4 left-[89px] top-4 z-0 w-[3px] rounded-full bg-[linear-gradient(180deg,#7A4FD6_0%,#1E6FD9_52%,#7A4FD6_100%)] shadow-[0_0_18px_rgba(122,79,214,0.22)]"
+          aria-hidden="true"
+        />
+        {nowPosition?.type === 'before' && (
+          <TimelineNowMarker label={nowPosition.label} timeLabel={nowPosition.timeLabel} />
+        )}
+        {pendingActivities.map((a) => (
           <TimelineItem
             key={`pending-${a.id}`}
             activity={a}
-            isLast={index === pendingActivities.length - 1}
             hasConflict={conflictActivityIds.has(a.id)}
+            isNow={nowPosition?.type === 'on' && nowPosition.activityId === a.id}
           >
             <ActivityCardPending
               activity={a}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
               onAccept={onAccept}
+              onReject={onReject}
               onDelete={onDelete}
               onEdit={onEdit}
               onManageContext={onManageContext}
@@ -850,6 +1006,9 @@ function ActivitiesBody({
             />
           </TimelineItem>
         ))}
+        {nowPosition?.type === 'after' && (
+          <TimelineNowMarker label={nowPosition.label} timeLabel={nowPosition.timeLabel} />
+        )}
       </div>
     ) : (
       <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
@@ -1028,6 +1187,7 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
     isExpanded: controlledExpanded,
     onSelect,
     onAccept,
+    onReject,
     onDelete,
     onEdit,
     onAddActivity,
@@ -1125,6 +1285,7 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
               onAccept={onAccept}
+              onReject={onReject}
               onDelete={onDelete}
               onEdit={onEdit}
               onManageContext={onManageContext}

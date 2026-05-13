@@ -125,6 +125,104 @@ const getActivityDate = (activity: any, fallbackDate: string): string => {
   return String(activity.fecha_inicio).slice(0, 10);
 };
 
+const toActivityRange = (startsAt?: string | null, endsAt?: string | null) => {
+  if (!startsAt) return null;
+
+  const startMs = new Date(startsAt).getTime();
+  if (!Number.isFinite(startMs)) return null;
+
+  const endCandidateMs = endsAt ? new Date(endsAt).getTime() : NaN;
+  const endMs = Number.isFinite(endCandidateMs) && endCandidateMs > startMs
+    ? endCandidateMs
+    : startMs;
+
+  return {
+    startsAt,
+    endsAt: endsAt ?? startsAt,
+    day: String(startsAt).slice(0, 10),
+    startMs,
+    endMs,
+  };
+};
+
+const rangesOverlap = (
+  left: NonNullable<ReturnType<typeof toActivityRange>>,
+  right: NonNullable<ReturnType<typeof toActivityRange>>,
+): boolean => {
+  if (left.day !== right.day) return false;
+
+  const leftEndExclusive = left.endMs > left.startMs ? left.endMs : left.startMs + 1;
+  const rightEndExclusive = right.endMs > right.startMs ? right.endMs : right.startMs + 1;
+
+  return left.startMs < rightEndExclusive && right.startMs < leftEndExclusive;
+};
+
+const ensureNoGroupActivityCollision = async ({
+  itineraryId,
+  groupId,
+  nextStartsAt,
+  nextEndsAt,
+  excludeActivityId,
+}: {
+  itineraryId: string | number;
+  groupId?: string | number | null;
+  nextStartsAt?: string | null;
+  nextEndsAt?: string | null;
+  excludeActivityId?: string | null;
+}) => {
+  const candidateRange = toActivityRange(nextStartsAt, nextEndsAt);
+  if (!candidateRange) return;
+
+  const { data: siblingActivities, error } = await supabase
+    .from('actividades')
+    .select('id_actividad, titulo, fecha_inicio, fecha_fin, estado')
+    .eq('itinerario_id', itineraryId);
+
+  if (error) throw new Error(error.message);
+
+  const conflictingActivity = (siblingActivities ?? []).find((activity: any) => {
+    if (excludeActivityId && String(activity.id_actividad) === String(excludeActivityId)) return false;
+    if (String(activity.estado ?? '') === 'cancelada') return false;
+
+    const siblingRange = toActivityRange(
+      activity.fecha_inicio ? String(activity.fecha_inicio) : null,
+      activity.fecha_fin ? String(activity.fecha_fin) : null,
+    );
+
+    return siblingRange ? rangesOverlap(candidateRange, siblingRange) : false;
+  });
+
+  if (conflictingActivity) {
+    throw Object.assign(
+      new Error(`Ya existe una actividad grupal que se empalma con este horario: "${String(conflictingActivity.titulo ?? 'Actividad existente')}"`),
+      { statusCode: 409 },
+    );
+  }
+
+  if (!groupId) return;
+
+  const { data: subgroupSlots, error: subgroupSlotsError } = await supabase
+    .from('subgroup_slots')
+    .select('id, title, starts_at, ends_at')
+    .eq('group_id', groupId);
+  if (subgroupSlotsError) throw new Error(subgroupSlotsError.message);
+
+  const conflictingSlot = (subgroupSlots ?? []).find((slot: any) => {
+    const slotRange = toActivityRange(
+      slot.starts_at ? String(slot.starts_at) : null,
+      slot.ends_at ? String(slot.ends_at) : null,
+    );
+    return slotRange ? rangesOverlap(candidateRange, slotRange) : false;
+  });
+
+  if (conflictingSlot) {
+    throw Object.assign(
+      new Error(`Este horario se empalma con el bloque de subgrupos "${String((conflictingSlot as any).title ?? 'Horario de subgrupos')}"`),
+      { statusCode: 409 },
+    );
+  }
+};
+
 const addDays = (dateValue: string, days: number): string => {
   const date = new Date(`${dateValue}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -397,6 +495,8 @@ export const getGroupItinerary = async (
       latitude: activity.latitud ?? null,
       longitude: activity.longitud ?? null,
       adminDecisionType: adminDecisionType === 'A' ? 'A' : null,
+      startsAt: activity.fecha_inicio ? String(activity.fecha_inicio) : null,
+      endsAt: activity.fecha_fin ? String(activity.fecha_fin) : null,
     });
   }
 
@@ -457,6 +557,13 @@ export const createGroupActivity = async (
 
     itinerary = createdItinerary;
   }
+
+  await ensureNoGroupActivityCollision({
+    itineraryId: itinerary.id_itinerario,
+    groupId,
+    nextStartsAt: payload.fecha_inicio ?? null,
+    nextEndsAt: payload.fecha_fin ?? payload.fecha_inicio ?? null,
+  });
 
   const { data: proposal, error: proposalError } = await supabase
   .from('propuestas')
@@ -615,6 +722,19 @@ export const updateGroupActivity = async (
       statusCode: 403,
     });
   }
+
+  const nextStartsAt =
+    payload.fecha_inicio !== undefined ? payload.fecha_inicio : ((currentActivity as any).fecha_inicio ?? null);
+  const nextEndsAt =
+    payload.fecha_fin !== undefined ? payload.fecha_fin : ((currentActivity as any).fecha_fin ?? nextStartsAt ?? null);
+
+  await ensureNoGroupActivityCollision({
+    itineraryId: itinerary.id_itinerario,
+    groupId,
+    nextStartsAt,
+    nextEndsAt,
+    excludeActivityId: activityId,
+  });
 
   const updateData = {
     ...(payload.titulo !== undefined ? { titulo: payload.titulo } : {}),

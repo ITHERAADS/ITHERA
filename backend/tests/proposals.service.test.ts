@@ -266,7 +266,7 @@ describe('ProposalsService integrity tests', () => {
     });
   });
 
-  it('castSingleVote: rechaza segundo voto del mismo usuario en la misma propuesta', async () => {
+  it('castSingleVote: mantiene el voto si el usuario repite la misma opcion', async () => {
     mockDb.voto.push({
       id_voto: '99',
       id_propuesta: '99',
@@ -276,8 +276,14 @@ describe('ProposalsService integrity tests', () => {
     });
 
     await expect(ProposalsService.castSingleVote('auth-user', '7', '99', {}))
-      .rejects
-      .toMatchObject({ statusCode: 409, message: 'Ya emitiste tu voto para esta propuesta' });
+      .resolves
+      .toMatchObject({
+        message: 'Tu voto se mantiene igual',
+        vote: { id_voto: '99', voto_tipo: 'a_favor' },
+        approved: false,
+        rejected: false,
+        votesFor: 1,
+      });
   });
 
   it('getProposalVoteResults: devuelve propuestas ordenadas por popularidad', async () => {

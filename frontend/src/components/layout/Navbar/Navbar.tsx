@@ -215,6 +215,29 @@ function getNotificationAction(metadata: Record<string, unknown>): { label: stri
   }
 }
 
+function getTodayIsoDate(): string {
+  const now = new Date()
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const parts = formatter.formatToParts(now)
+  const year = parts.find((part) => part.type === 'year')?.value
+  const month = parts.find((part) => part.type === 'month')?.value
+  const day = parts.find((part) => part.type === 'day')?.value
+  return `${year}-${month}-${day}`
+}
+
+function isClosedOrExpiredTrip(item: GroupHistoryItem): boolean {
+  const group = item.grupos_viaje
+  const status = group?.estado?.toLowerCase?.()
+  const isClosedStatus = status === 'cerrado' || status === 'archivado' || status === 'finalizado'
+  const isExpiredByDate = Boolean(group?.fecha_fin && group.fecha_fin.slice(0, 10) < getTodayIsoDate())
+  return isClosedStatus || isExpiredByDate
+}
+
 function formatRelativeTime(value: string | null | undefined): string {
   if (!value) return ''
   const date = new Date(value)
@@ -435,7 +458,7 @@ function DashboardNavContent({
         setTripMenuError(null)
         const response = await groupsService.getMyHistory(accessToken)
         if (!isMounted) return
-        setTripHistory([...(response.activos ?? []), ...(response.pasados ?? [])])
+        setTripHistory((response.activos ?? []).filter((item) => !isClosedOrExpiredTrip(item)))
       } catch (error) {
         if (!isMounted) return
         setTripMenuError(error instanceof Error ? error.message : 'No se pudieron cargar tus grupos')

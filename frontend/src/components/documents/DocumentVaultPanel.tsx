@@ -62,6 +62,7 @@ interface Props {
   onOpenBudget?: () => void
   onOpenItinerary?: () => void
   onOpenSubgroups?: () => void
+  isReadOnly?: boolean
 }
 
 type VaultActionModalState =
@@ -162,6 +163,7 @@ export const DocumentVaultPanel: FC<Props> = ({
   onOpenBudget,
   onOpenItinerary,
   onOpenSubgroups,
+  isReadOnly = false,
 }) => {
   const { accessToken } = useAuth()
   const [items, setItems] = useState<TripDocument[]>([])
@@ -360,6 +362,7 @@ export const DocumentVaultPanel: FC<Props> = ({
   }
 
   const saveEditedLinks = async (documentId: string) => {
+    if (isReadOnly) return
     if (!groupId || !accessToken) return
     setSavingLinksDocId(documentId)
     setError(null)
@@ -377,6 +380,7 @@ export const DocumentVaultPanel: FC<Props> = ({
   }
 
   const openDocumentAction = (item: TripDocument, mode: 'expense' | 'activity') => {
+    if (isReadOnly) return
     startEditLinks(item)
     resetExpenseDraft()
     setActionModal({ target: 'document', docId: item.id, mode })
@@ -406,6 +410,7 @@ export const DocumentVaultPanel: FC<Props> = ({
   }, [groupId, accessToken])
 
   const handleUpload = async (file: File | null) => {
+    if (isReadOnly) return
     if (!file || !groupId || !accessToken) return
     if (!notes.trim()) {
       setError('La nota es obligatoria para subir el documento a la boveda.')
@@ -489,6 +494,7 @@ export const DocumentVaultPanel: FC<Props> = ({
   }
 
   const handleDelete = async (docId: string) => {
+    if (isReadOnly) return
     if (!groupId || !accessToken) return
     setError(null)
     try {
@@ -500,6 +506,7 @@ export const DocumentVaultPanel: FC<Props> = ({
   }
 
   const createExpenseForDocument = async (documentId: string) => {
+    if (isReadOnly) return
     if (!groupId || !accessToken) return
     const amount = Number(draftExpenseAmount)
     const payerId = currentUser?.id_usuario != null ? String(currentUser.id_usuario) : ''
@@ -588,17 +595,19 @@ export const DocumentVaultPanel: FC<Props> = ({
           </div>
 
           <div className="flex shrink-0 flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setError(null)
-                setShowUploadModal(true)
-              }}
-              disabled={isUploading}
-              className="rounded-xl bg-[#1E6FD9] px-4 py-2.5 font-body text-sm font-semibold text-white hover:bg-[#2C8BE6] disabled:opacity-50"
-            >
-              {isUploading ? 'Subiendo...' : 'Subir documento'}
-            </button>
+            {!isReadOnly && (
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null)
+                  setShowUploadModal(true)
+                }}
+                disabled={isUploading}
+                className="rounded-xl bg-[#1E6FD9] px-4 py-2.5 font-body text-sm font-semibold text-white hover:bg-[#2C8BE6] disabled:opacity-50"
+              >
+                {isUploading ? 'Subiendo...' : 'Subir documento'}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void load()}
@@ -609,6 +618,12 @@ export const DocumentVaultPanel: FC<Props> = ({
             </button>
           </div>
         </div>
+
+        {isReadOnly && (
+          <div className="mt-4 rounded-xl border border-[#CBD5E1] bg-[#F8FAFC] px-4 py-3 font-body text-sm text-[#64748B]">
+            Este viaje ya finalizó. La bóveda está en modo lectura: puedes abrir documentos existentes, pero no subir, relacionar ni eliminar archivos.
+          </div>
+        )}
 
         {error && (
           <div className="mt-3 rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-3 py-2 font-body text-sm text-[#C03535]">
@@ -656,18 +671,22 @@ export const DocumentVaultPanel: FC<Props> = ({
               {activeFilter === 'todos' ? 'Todavía no hay documentos guardados.' : 'No hay documentos en esta categoría.'}
             </p>
             <p className="mt-1 font-body text-sm text-[#7A8799]">
-              Sube un boleto, una reservación o cualquier comprobante que quieras tener listo durante el viaje.
+              {isReadOnly
+                ? 'No hay documentos guardados para consultar en este viaje cerrado.'
+                : 'Sube un boleto, una reservación o cualquier comprobante que quieras tener listo durante el viaje.'}
             </p>
-            <button
-              type="button"
-              onClick={() => {
-                setError(null)
-                setShowUploadModal(true)
-              }}
-              className="mt-4 rounded-xl bg-[#1E6FD9] px-4 py-2.5 font-body text-sm font-semibold text-white hover:bg-[#2C8BE6]"
-            >
-              Subir primer documento
-            </button>
+            {!isReadOnly && (
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null)
+                  setShowUploadModal(true)
+                }}
+                className="mt-4 rounded-xl bg-[#1E6FD9] px-4 py-2.5 font-body text-sm font-semibold text-white hover:bg-[#2C8BE6]"
+              >
+                Subir primer documento
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -743,6 +762,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                       </div>
                     </div>
 
+                    {!isReadOnly && (
                     <div className="flex shrink-0 flex-col gap-2 lg:w-[170px]">
                       <button
                         type="button"
@@ -769,6 +789,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                         Eliminar
                       </button>
                     </div>
+                    )}
                   </div>
                 </div>
               )
@@ -778,7 +799,7 @@ export const DocumentVaultPanel: FC<Props> = ({
       </div>
 
       <ActionModal
-        open={showUploadModal}
+        open={showUploadModal && !isReadOnly}
         title="Subir documento"
         subtitle="Guarda un archivo del viaje con una nota clara. Si quieres, después lo relacionas con un gasto o una actividad existente."
         confirmLabel={isUploading ? 'Subiendo...' : 'Subir a boveda'}
@@ -897,7 +918,7 @@ export const DocumentVaultPanel: FC<Props> = ({
       </ActionModal>
 
       <ActionModal
-        open={actionModal?.mode === 'expense'}
+        open={actionModal?.mode === 'expense' && !isReadOnly}
         title="Relacionar gasto"
         subtitle="Selecciona un gasto existente o crea uno nuevo para dejarlo asociado al documento."
         confirmLabel={
@@ -994,7 +1015,7 @@ export const DocumentVaultPanel: FC<Props> = ({
       </ActionModal>
 
       <ActionModal
-        open={actionModal?.mode === 'activity'}
+        open={actionModal?.mode === 'activity' && !isReadOnly}
         title="Relacionar actividad"
         subtitle="Selecciona una actividad ya existente del viaje para dejarla asociada al documento."
         confirmLabel={actionModal?.target === 'document' && savingLinksDocId ? 'Guardando...' : 'Guardar seleccion'}

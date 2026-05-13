@@ -28,6 +28,7 @@ export interface ChatDrawerProps {
   currentUserId: string | null
   currentUserName: string
   participants: Participant[]
+  isReadOnly?: boolean
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -125,6 +126,7 @@ export function ChatDrawer({
   currentUserId,
   currentUserName,
   participants,
+  isReadOnly = false,
 }: ChatDrawerProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
@@ -220,7 +222,7 @@ export function ChatDrawer({
 
   const handleSend = useCallback(() => {
     const text = chatInput.trim()
-    if (!text || !groupId || !accessToken) return
+    if (isReadOnly || !text || !groupId || !accessToken) return
 
     setChatError(null)
     setChatInput('')
@@ -258,12 +260,12 @@ export function ChatDrawer({
       setMessages((prev) => prev.filter((m) => m.id !== clientId))
       setChatError(err instanceof Error ? err.message : 'No se pudo enviar el mensaje')
     })
-  }, [chatInput, groupId, accessToken, currentUserId, currentUserName, socket, isSocketConnected])
+  }, [chatInput, groupId, accessToken, currentUserId, currentUserName, socket, isSocketConnected, isReadOnly])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      if (!isReadOnly) handleSend()
     }
   }
 
@@ -322,7 +324,7 @@ export function ChatDrawer({
                 className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSocketConnected ? 'bg-[#35C56A]' : 'bg-white/40'}`}
               />
               <span className="font-body text-[11px] text-white/70">
-                {isSocketConnected ? 'En tiempo real' : 'Reconectando...'}
+                {isReadOnly ? 'Solo lectura' : (isSocketConnected ? 'En tiempo real' : 'Reconectando...')}
               </span>
             </div>
           </div>
@@ -370,7 +372,7 @@ export function ChatDrawer({
               </div>
               <p className="font-heading font-bold text-sm text-[#1E0A4E]">Sé el primero en escribir</p>
               <p className="font-body text-[12px] text-gray-500 max-w-[180px]">
-                Usa el chat para coordinar con tu grupo en tiempo real
+                {isReadOnly ? 'El historial del chat se conserva en modo lectura.' : 'Usa el chat para coordinar con tu grupo en tiempo real'}
               </p>
             </div>
           )}
@@ -443,7 +445,16 @@ export function ChatDrawer({
           </div>
         )}
 
+        {isReadOnly && (
+          <div className="border-t border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+            <p className="font-body text-[11px] leading-relaxed text-[#64748B]">
+              Este viaje ya finalizó. El chat queda disponible únicamente como historial de consulta.
+            </p>
+          </div>
+        )}
+
         {/* Input */}
+        {!isReadOnly && (
         <div className="px-4 py-3 border-t border-[#E2E8F0] bg-white shrink-0">
           <div className="flex items-end gap-2">
             <textarea
@@ -471,6 +482,7 @@ export function ChatDrawer({
             Enter para enviar · Shift+Enter nueva línea
           </p>
         </div>
+        )}
       </div>
     </>
   )

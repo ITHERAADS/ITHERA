@@ -1162,8 +1162,102 @@ export const resolveJoinRequest = async (
   return { request: updatedRequest, member };
 };
 
+/**
+ * CU-2.10 — Autoarchivar viajes vencidos.
+ * Actualiza a 'cerrado' todos los grupos con estado 'activo' cuya fecha_fin
+ * ya pasó. Se ejecuta antes de responder /groups/my-history.
+ * No toca viajes sin fecha_fin ni elimina miembros, gastos ni propuestas.
+ * Si falla lanza ERR-210-001 según el estándar de manejo de errores.
+ */
+const CLOSED_GROUP_STATUSES = new Set(['cerrado', 'archivado', 'finalizado']);
+
+const getTodayIsoDate = (): string => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  const parts = formatter.formatToParts(new Date());
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+
+  return `${year}-${month}-${day}`;
+};
+
+const normalizeGroupStatus = (estado: unknown): string =>
+  typeof estado === 'string' ? estado.trim().toLowerCase() : '';
+
+const isClosedGroupStatus = (estado: unknown): boolean =>
+  CLOSED_GROUP_STATUSES.has(normalizeGroupStatus(estado));
+
+const isExpiredTripDate = (fechaFin: unknown, today = getTodayIsoDate()): boolean =>
+  typeof fechaFin === 'string' && fechaFin.trim() !== '' && fechaFin.slice(0, 10) < today;
+
+const shouldCloseGroup = (group: { estado?: unknown; fecha_fin?: unknown }, today = getTodayIsoDate()): boolean =>
+  isExpiredTripDate(group.fecha_fin, today) && !isClosedGroupStatus(group.estado);
+
+export const archiveExpiredGroups = async (): Promise<void> => {
+  const today = getTodayIsoDate();
+
+  const { data: expiredGroups, error: selectError } = await supabase
+    .from('grupos_viaje')
+    .select('id, estado, fecha_fin')
+    .not('fecha_fin', 'is', null)
+    .lt('fecha_fin', today);
+
+  if (selectError) {
+    throw Object.assign(
+      new Error('ERR-210-001: No se pudo cerrar el viaje. Inténtalo de nuevo.'),
+      { statusCode: 500 }
+    );
+  }
+
+  const idsToClose =
+    expiredGroups
+      ?.filter((group: any) => shouldCloseGroup(group, today))
+      .map((group: any) => group.id) ?? [];
+
+  if (idsToClose.length === 0) return;
+
+  const { error: updateGroupsError } = await supabase
+    .from('grupos_viaje')
+    .update({ estado: 'cerrado' })
+    .in('id', idsToClose);
+
+  if (updateGroupsError) {
+    throw Object.assign(
+      new Error('ERR-210-001: No se pudo cerrar el viaje. Inténtalo de nuevo.'),
+      { statusCode: 500 }
+    );
+  }
+
+  const { error: updateItinerariesError } = await supabase
+    .from('itinerarios')
+    .update({ estado: 'cerrado' })
+    .in('grupo_id', idsToClose)
+    .neq('estado', 'cerrado');
+
+  if (updateItinerariesError) {
+    throw Object.assign(
+      new Error('ERR-210-001: No se pudo cerrar el viaje. Inténtalo de nuevo.'),
+      { statusCode: 500 }
+    );
+  }
+};
+
 export const getMyTravelHistory = async (authUserId: string) => {
   const usuarioId = await getLocalUserId(authUserId);
+
+  // Autoarchivar viajes vencidos antes de responder (CU-2.10)
+  try {
+    await archiveExpiredGroups();
+  } catch {
+    // Si falla el archivado automático no bloqueamos la respuesta al usuario;
+    // el error ya fue registrado y se reflejará en el próximo intento.
+  }
 
   const { data, error } = await supabase
     .from('grupo_miembros')
@@ -1193,13 +1287,26 @@ export const getMyTravelHistory = async (authUserId: string) => {
 
   if (error) throw new Error(error.message);
 
-  const activos =
-    data?.filter((item: any) => item.grupos_viaje?.estado === 'activo') ?? [];
+  const today = getTodayIsoDate();
+  const normalizedHistory =
+    data?.map((item: any) => {
+      const group = item.grupos_viaje;
+      if (!group) return item;
 
-  const pasados =
-    data?.filter((item: any) =>
-      ['finalizado', 'cerrado', 'archivado'].includes(item.grupos_viaje?.estado)
-    ) ?? [];
+      const shouldExposeAsClosed = isClosedGroupStatus(group.estado) || isExpiredTripDate(group.fecha_fin, today);
+
+      return {
+        ...item,
+        grupos_viaje: {
+          ...group,
+          estado: shouldExposeAsClosed ? 'cerrado' : group.estado,
+        },
+      };
+    }) ?? [];
+
+  const activos = normalizedHistory.filter((item: any) => !isClosedGroupStatus(item.grupos_viaje?.estado));
+
+  const pasados = normalizedHistory.filter((item: any) => isClosedGroupStatus(item.grupos_viaje?.estado));
 
   return { activos, pasados };
 };

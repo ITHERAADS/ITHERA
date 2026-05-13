@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { SearchIntegratedShell } from './SearchIntegratedShell'
 import { useAuth } from '../../context/useAuth'
-import { getCurrentGroup } from '../../services/groups'
+import { getCurrentGroup, groupsService } from '../../services/groups'
 import {
   loadGoogleMaps,
   mapsService,
@@ -95,16 +95,19 @@ const RoutesTransportWeatherPage = () => {
   const state = location.state as { destino?: string; group?: Group } | null
   const group = state?.group ?? storedGroup
   const destino = state?.destino ?? group?.destino_formatted_address ?? group?.destino ?? ''
+  const fallbackStartLabel = destino || 'punto de partida del viaje'
   const [routeState, setRouteState] = useState<RouteState>('empty')
   const [transportMode, setTransportMode] = useState<TransportMode>('auto')
-  const [origin, setOrigin] = useState('')
-  const [destination, setDestination] = useState(destino)
+  const [origin, setOrigin] = useState(fallbackStartLabel)
+  const [destination, setDestination] = useState('')
   const [originSuggestions, setOriginSuggestions] = useState<PlaceAutocompleteResult[]>([])
   const [destinationSuggestions, setDestinationSuggestions] = useState<PlaceAutocompleteResult[]>([])
-  const [originCoords, setOriginCoords] = useState<{ lat: number; lng: number } | null>(null)
-  const [destinationCoords, setDestinationCoords] = useState<{ lat: number; lng: number } | null>(
+  const [originCoords, setOriginCoords] = useState<{ lat: number; lng: number } | null>(
     group?.destino_latitud && group.destino_longitud ? { lat: Number(group.destino_latitud), lng: Number(group.destino_longitud) } : null
   )
+  const [destinationCoords, setDestinationCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [startLocationLabel, setStartLocationLabel] = useState(fallbackStartLabel)
+  const [startLocationSource, setStartLocationSource] = useState<'hotel_reservado' | 'destino_viaje'>('destino_viaje')
   const [route, setRoute] = useState<ComputeRouteResult | null>(null)
   const [weather, setWeather] = useState<WeatherResult | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -120,7 +123,7 @@ const RoutesTransportWeatherPage = () => {
   const initMap = useCallback(async () => {
     if (!mapRef.current || !GOOGLE_MAPS_BROWSER_KEY) return
     await loadGoogleMaps(GOOGLE_MAPS_BROWSER_KEY)
-    const center = destinationCoords ?? { lat: 15.832, lng: -96.321 }
+    const center = originCoords ?? destinationCoords ?? { lat: 15.832, lng: -96.321 }
     if (!mapInstance.current) {
       mapInstance.current = new window.google.maps.Map(mapRef.current, { center, zoom: 13, mapTypeControl: false, streetViewControl: false, fullscreenControl: false })
       const renderer = new window.google.maps.DirectionsRenderer({ suppressMarkers: false })
@@ -129,46 +132,65 @@ const RoutesTransportWeatherPage = () => {
       return
     }
     mapInstance.current.setCenter(center)
-  }, [destinationCoords])
+  }, [originCoords, destinationCoords])
 
   useEffect(() => { initMap().catch(() => setMessage('No se pudo cargar Google Maps. Revisa VITE_GOOGLE_MAPS_BROWSER_KEY.')) }, [initMap])
 
   useEffect(() => {
-    const run = async () => {
-      if (!accessToken || destinationCoords || !destino) return
+    const loadTravelContext = async () => {
+      if (!accessToken || !group?.id) return
       try {
-        const response = await mapsService.searchDestination(destino, accessToken)
-        setDestinationCoords(toCoords(response.data))
-      } catch { setMessage('No se pudo geocodificar el destino del grupo.') }
+        const response = await groupsService.getTravelContext(String(group.id), accessToken)
+        const start = response.data?.startLocation
+        const coords = toCoords({ latitude: start?.latitude ?? null, longitude: start?.longitude ?? null })
+        const label = start?.formattedAddress || start?.label || fallbackStartLabel
+        setStartLocationLabel(label)
+        setStartLocationSource(start?.source ?? 'destino_viaje')
+        setOrigin(label)
+        if (coords) setOriginCoords(coords)
+      } catch {
+        setStartLocationLabel(fallbackStartLabel)
+      }
+    }
+    void loadTravelContext()
+  }, [accessToken, group?.id, fallbackStartLabel])
+
+  useEffect(() => {
+    const run = async () => {
+      if (!accessToken || originCoords || !fallbackStartLabel) return
+      try {
+        const response = await mapsService.searchDestination(fallbackStartLabel, accessToken)
+        setOriginCoords(toCoords(response.data))
+      } catch { setMessage('No se pudo geocodificar el punto de partida del viaje.') }
     }
     void run()
-  }, [accessToken, destino, destinationCoords])
+  }, [accessToken, fallbackStartLabel, originCoords])
 
   useEffect(() => {
     const loadWeather = async () => {
-      if (!accessToken || !destinationCoords) return
+      if (!accessToken || !originCoords) return
       try {
-        const response = await mapsService.getWeather(destinationCoords.lat, destinationCoords.lng, accessToken)
+        const response = await mapsService.getWeather(originCoords.lat, originCoords.lng, accessToken)
         setWeather(response.data)
       } catch { setMessage('No se pudo cargar el clima real.') }
     }
     void loadWeather()
-  }, [accessToken, destinationCoords])
+  }, [accessToken, originCoords])
 
   const loadSuggestions = useCallback((value: string, setter: (items: PlaceAutocompleteResult[]) => void) => {
     if (!accessToken || value.trim().length < 3) { setter([]); return undefined }
     const timeout = window.setTimeout(async () => {
       try {
         const response = await mapsService.autocompletePlaces(value, accessToken, {
-          latitude: destinationCoords?.lat,
-          longitude: destinationCoords?.lng,
+          latitude: originCoords?.lat ?? destinationCoords?.lat,
+          longitude: originCoords?.lng ?? destinationCoords?.lng,
           radius: 12000,
         })
         setter((response.data ?? []).slice(0, 5))
       } catch { setter([]) }
     }, 350)
     return () => window.clearTimeout(timeout)
-  }, [accessToken, destinationCoords])
+  }, [accessToken, originCoords, destinationCoords])
 
   useEffect(() => loadSuggestions(origin, setOriginSuggestions), [origin, loadSuggestions])
   useEffect(() => loadSuggestions(destination, setDestinationSuggestions), [destination, loadSuggestions])
@@ -273,14 +295,14 @@ const RoutesTransportWeatherPage = () => {
                 </button>
                 <div className="min-w-0">
                   <h1 className="font-heading text-2xl font-bold leading-tight text-[#1E0A4E]">Rutas y Transporte</h1>
-                  <p className="mt-0.5 truncate text-sm text-gray-500">Planifica tu ruta y consulta clima real para {destino || 'tu destino'}.</p>
+                  <p className="mt-0.5 truncate text-sm text-gray-500">La ruta inicia desde {startLocationSource === 'hotel_reservado' ? 'tu hotel reservado' : 'el destino configurado'}: {startLocationLabel}.</p>
                 </div>
               </div>
             </header>
 
             <section className="absolute left-4 right-4 top-28 z-10 max-h-[calc(100%-170px)] overflow-visible rounded-2xl border border-gray-100 bg-white p-5 shadow-lg sm:left-6 sm:right-auto sm:w-80">
               <h2 className="mb-4 font-heading text-lg font-bold text-[#1E0A4E]">Calcular ruta</h2>
-              <AutoInput label="Desde" value={origin} onChange={(value) => { setOrigin(value); setOriginCoords(null) }} placeholder="Aeropuerto, hotel, playa..." suggestions={originSuggestions} onSelect={(suggestion) => void selectSuggestion(suggestion, 'origin')} />
+              <AutoInput label="Desde" value={origin} onChange={(value) => { setOrigin(value); setOriginCoords(null) }} placeholder="Hotel reservado, aeropuerto, punto de salida..." suggestions={originSuggestions} onSelect={(suggestion) => void selectSuggestion(suggestion, 'origin')} />
               <div className="my-3 text-center text-gray-400">↕</div>
               <AutoInput label="Hasta" value={destination} onChange={(value) => { setDestination(value); setDestinationCoords(null) }} placeholder="Destino final" suggestions={destinationSuggestions} onSelect={(suggestion) => void selectSuggestion(suggestion, 'destination')} />
 
@@ -295,7 +317,7 @@ const RoutesTransportWeatherPage = () => {
               {message && <p className="mt-3 text-xs text-gray-500">{message}</p>}
             </section>
 
-            <WeatherPanel weather={weather} destination={destino} />
+            <WeatherPanel weather={weather} destination={startLocationLabel} />
 
             {routeState === 'result' && route && (
               <div className="absolute bottom-40 left-1/2 z-10 w-72 -translate-x-1/2 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-lg">
@@ -306,7 +328,7 @@ const RoutesTransportWeatherPage = () => {
             )}
 
             <div className="absolute bottom-24 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full bg-white px-5 py-3 text-sm text-[#1E0A4E] shadow-lg">
-              <button onClick={() => { if (mapInstance.current && destinationCoords) mapInstance.current.panTo(destinationCoords) }} className="font-semibold">Centrar mapa</button>
+              <button onClick={() => { if (mapInstance.current && originCoords) mapInstance.current.panTo(originCoords) }} className="font-semibold">Centrar en punto de partida</button>
               <span className="text-gray-400">Google Maps + WeatherAPI</span>
             </div>
           </main>

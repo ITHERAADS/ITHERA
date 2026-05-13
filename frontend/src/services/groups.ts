@@ -9,6 +9,7 @@ import type {
   UpdateGroupPayload,
   GroupInvitation,
   GroupJoinRequest,
+  GroupTravelContext,
 } from '../types/groups'
 import type { Activity } from '../components/ui/DayView/DayView'
 
@@ -38,6 +39,14 @@ export const groupsService = {
   getGroupDetails: async (groupId: string, token: string) => {
     return apiClient.get<{ ok: boolean; group: Group }>(
       `/groups/${groupId}`,
+      token
+    )
+  },
+
+
+  getTravelContext: async (groupId: string, token: string) => {
+    return apiClient.get<{ ok: boolean; data: GroupTravelContext }>(
+      `/groups/${groupId}/travel-context`,
       token
     )
   },

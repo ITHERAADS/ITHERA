@@ -7,6 +7,7 @@ import {
   CreateGroupInvitationsPayload,
   CreateGroupPayload,
   GroupInvitePreview,
+  GroupTravelContext,
   JoinGroupPayload,
   MemberRole,
   UpdateGroupPayload,
@@ -342,6 +343,104 @@ export const getGroupDetails = async (authUserId: string, groupId: string) => {
     ...grupo,
     memberCount,
     myRole: membership.rol,
+  };
+};
+
+
+const toNullableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const buildDestinationTravelLocation = (grupo: any) => ({
+  source: 'destino_viaje' as const,
+  label: grupo.destino_formatted_address ?? grupo.destino ?? null,
+  formattedAddress: grupo.destino_formatted_address ?? grupo.destino ?? null,
+  latitude: toNullableNumber(grupo.destino_latitud),
+  longitude: toNullableNumber(grupo.destino_longitud),
+  placeId: grupo.destino_place_id ?? null,
+  photoUrl: grupo.destino_photo_url ?? null,
+});
+
+const buildPersistedStartLocation = (grupo: any) => {
+  const latitude = toNullableNumber(grupo.punto_partida_latitud);
+  const longitude = toNullableNumber(grupo.punto_partida_longitud);
+
+  if (grupo.punto_partida_tipo !== 'hotel_reservado' || latitude === null || longitude === null) {
+    return null;
+  }
+
+  return {
+    source: 'hotel_reservado' as const,
+    label: grupo.punto_partida_nombre ?? 'Hotel reservado',
+    formattedAddress: grupo.punto_partida_direccion ?? grupo.punto_partida_nombre ?? null,
+    latitude,
+    longitude,
+    placeId: grupo.punto_partida_place_id ?? null,
+    photoUrl: null,
+    hotelId: grupo.punto_partida_hospedaje_id ? String(grupo.punto_partida_hospedaje_id) : null,
+    folioReserva: null,
+  };
+};
+
+const getConfirmedHotelStartLocation = async (groupId: string) => {
+  const { data: proposals, error: proposalsError } = await supabase
+    .from('propuestas')
+    .select('id_propuesta')
+    .eq('grupo_id', groupId)
+    .eq('tipo_item', 'hospedaje')
+    .in('estado', ['aprobada', 'guardada', 'en_votacion']);
+
+  if (proposalsError) throw new Error(proposalsError.message);
+
+  const proposalIds = (proposals ?? [])
+    .map((proposal: any) => Number(proposal.id_propuesta))
+    .filter((id) => Number.isFinite(id));
+
+  if (!proposalIds.length) return null;
+
+  const { data: hotels, error: hotelsError } = await supabase
+    .from('hospedajes')
+    .select('id_hospedaje, propuesta_id, nombre, direccion, latitud, longitud, google_place_id, foto_url, folio_reserva, reserva_estado, ultima_actualizacion, fecha_creacion')
+    .in('propuesta_id', proposalIds)
+    .eq('reserva_estado', 'confirmada_simulada')
+    .order('ultima_actualizacion', { ascending: false })
+    .order('fecha_creacion', { ascending: false })
+    .limit(1);
+
+  if (hotelsError) throw new Error(hotelsError.message);
+
+  const hotel = hotels?.[0];
+  const latitude = toNullableNumber((hotel as any)?.latitud);
+  const longitude = toNullableNumber((hotel as any)?.longitud);
+
+  if (!hotel || latitude === null || longitude === null) return null;
+
+  return {
+    source: 'hotel_reservado' as const,
+    label: (hotel as any).nombre ?? 'Hotel reservado',
+    formattedAddress: (hotel as any).direccion ?? (hotel as any).nombre ?? null,
+    latitude,
+    longitude,
+    placeId: (hotel as any).google_place_id ?? null,
+    photoUrl: (hotel as any).foto_url ?? null,
+    hotelId: String((hotel as any).id_hospedaje),
+    folioReserva: (hotel as any).folio_reserva ?? null,
+  };
+};
+
+export const getGroupTravelContext = async (authUserId: string, groupId: string): Promise<GroupTravelContext> => {
+  await ensureGroupMember(authUserId, groupId);
+  const grupo = await ensureDestinationPhotoCached(await getGroupById(groupId));
+  const destinationLocation = buildDestinationTravelLocation(grupo);
+  const persistedStartLocation = buildPersistedStartLocation(grupo);
+  const hotelStartLocation = persistedStartLocation ?? await getConfirmedHotelStartLocation(groupId);
+
+  return {
+    groupId: String(grupo.id),
+    startLocation: hotelStartLocation ?? destinationLocation,
+    destinationLocation,
   };
 };
 

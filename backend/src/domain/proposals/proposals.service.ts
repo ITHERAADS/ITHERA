@@ -892,19 +892,95 @@ export const castSingleVote = async (
 	await ensureUserBelongsToGroup(groupId, localUserId);
 	await ensureProposalBelongsToGroup(groupId, proposalId);
 
+	const { data: proposal, error: proposalError } = await supabase
+		.from('propuestas')
+		.select('estado, fecha_cierre')
+		.eq('id_propuesta', proposalId)
+		.eq('grupo_id', groupId)
+		.maybeSingle();
+
+	if (proposalError) throw createError(proposalError.message, 500);
+	if (!proposal) throw createError('La propuesta no existe en el viaje/grupo indicado', 404);
+
+	const proposalState = String((proposal as any).estado ?? '').toLowerCase();
+	if ((proposal as any).fecha_cierre || proposalState === 'aprobada' || proposalState === 'descartada') {
+		throw createError('La votacion ya cerro para esta propuesta', 409);
+	}
+
+	const desiredVoteType = normalizeVoteType(payload?.voto);
 	const { data: existingVote, error: existingVoteError } = await supabase
 		.from('voto')
-		.select('id_voto')
+		.select('id_voto, voto_tipo')
 		.eq('id_propuesta', proposalId)
 		.eq('id_usuario', localUserId)
 		.maybeSingle();
 
 	if (existingVoteError) throw createError(existingVoteError.message, 500);
 	if (existingVote) {
-		throw createError('Ya emitiste tu voto para esta propuesta', 409);
+		if (normalizeVoteType((existingVote as any).voto_tipo) === desiredVoteType) {
+			const outcome = await evaluateProposalOutcome(groupId, proposalId);
+			return {
+				vote: existingVote,
+				message: 'Tu voto se mantiene igual',
+				votesCount: outcome.votesFor,
+				votesRequired: outcome.votesRequired,
+				approved: outcome.approved,
+				rejected: outcome.rejected,
+				requiresAdminTieBreak: outcome.tied,
+				votesFor: outcome.votesFor,
+				votesAgainst: outcome.votesAgainst,
+				abstentions: outcome.abstentions,
+				pendingVotes: outcome.pendingVotes,
+			};
+		}
+
+		const { data: updatedVote, error: updateError } = await supabase
+			.from('voto')
+			.update({ voto_tipo: desiredVoteType })
+			.eq('id_voto', (existingVote as any).id_voto)
+			.select('id_voto, id_propuesta, id_usuario, voto_tipo, created_at')
+			.single();
+
+		if (updateError) {
+			if (isMissingVoteTypeColumnError(updateError)) {
+				throw createError('La base de datos aun no permite cambiar el tipo de voto', 409);
+			}
+			throw createError(updateError.message, 500);
+		}
+
+		await notifyProposalVote(groupId, proposalId, Number(localUserId), desiredVoteType);
+
+		const outcome = await evaluateProposalOutcome(groupId, proposalId);
+
+		if (outcome.approved) {
+			await applyProposalResolution(groupId, proposalId, 'aprobada', { decisionType: 'B', resolution: 'majority_for' });
+		}
+
+		if (outcome.rejected) {
+			await applyProposalResolution(groupId, proposalId, 'descartada', { decisionType: 'B', resolution: 'majority_against' });
+		}
+
+		return {
+			vote: updatedVote,
+			message: outcome.approved
+				? 'Voto actualizado y propuesta aprobada'
+				: outcome.rejected
+					? 'Voto actualizado y propuesta descartada'
+					: outcome.tied
+						? 'Votacion empatada: requiere desempate del organizador'
+						: 'Voto actualizado correctamente',
+			votesCount: outcome.votesFor,
+			votesRequired: outcome.votesRequired,
+			approved: outcome.approved,
+			rejected: outcome.rejected,
+			requiresAdminTieBreak: outcome.tied,
+			votesFor: outcome.votesFor,
+			votesAgainst: outcome.votesAgainst,
+			abstentions: outcome.abstentions,
+			pendingVotes: outcome.pendingVotes,
+		};
 	}
 
-	const desiredVoteType = normalizeVoteType(payload?.voto);
 	const { data: newVote, error: insertError } = await supabase
 		.from('voto')
 		.insert({

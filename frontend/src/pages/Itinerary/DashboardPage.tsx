@@ -23,6 +23,7 @@ import {
 } from '../../services/context-links'
 import { DocumentVaultPanel } from '../../components/documents/DocumentVaultPanel'
 import { SubgroupSchedulePanel } from '../../components/subgroups/SubgroupSchedulePanel'
+import { subgroupScheduleService, type SubgroupSlot } from '../../services/subgroups'
 import { useSocket } from '../../hooks/useSocket'
 import type { Group } from '../../types/groups'
 
@@ -346,6 +347,102 @@ function TimelineStrip({
   )
 }
 
+function toDateKey(value?: string | null): string | null {
+  if (!value) return null
+  const raw = String(value)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return raw.slice(0, 10)
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(parsed)
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${byType.year}-${byType.month}-${byType.day}`
+}
+
+function formatSlotTimeRange(startsAt: string, endsAt: string): string {
+  const format = (value: string) =>
+    new Date(value).toLocaleTimeString('es-MX', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'America/Mexico_City',
+    })
+  return `${format(startsAt)} - ${format(endsAt)}`
+}
+
+function subgroupSlotsByDay(
+  slots: SubgroupSlot[],
+  tripStartDate?: string | null,
+  currentUserId?: string | number | null,
+): Record<number, DayActivity[]> {
+  const startKey = toDateKey(tripStartDate)
+  if (!startKey) return {}
+
+  return slots.reduce<Record<number, DayActivity[]>>((acc, slot) => {
+    const slotDayKey = toDateKey(slot.starts_at)
+    if (!slotDayKey) return acc
+
+    const start = new Date(`${startKey}T00:00:00.000Z`).getTime()
+    const current = new Date(`${slotDayKey}T00:00:00.000Z`).getTime()
+    const diffDays = Math.floor((current - start) / 86_400_000)
+    if (!Number.isFinite(diffDays) || diffDays < 0) return acc
+
+    const dayNumber = diffDays + 1
+    const participantCount = new Set(slot.memberships.map((membership) => String(membership.user_id))).size
+    const currentMembership = slot.memberships.find((membership) =>
+      String(membership.user_id) === String(currentUserId ?? ''),
+    )
+    const targetSubgroupId =
+      currentMembership?.subgroup_id != null
+        ? Number(currentMembership.subgroup_id)
+        : (slot.subgroups[0]?.id ?? null)
+    const activity: DayActivity = {
+      id: `subgroup-slot-${slot.id}`,
+      kind: 'subgroup-slot',
+      title: slot.title || 'Horario de subgrupos',
+      description: slot.description || 'Bloque reservado para planes por subgrupo.',
+      category: 'actividad',
+      status: 'confirmada',
+      price: 0,
+      currency: 'MXN',
+      time: formatSlotTimeRange(slot.starts_at, slot.ends_at),
+      image: '',
+      startsAt: slot.starts_at,
+      endsAt: slot.ends_at,
+      createdBy: String(slot.created_by),
+      subgroupSlot: {
+        slotId: slot.id,
+        startsAt: slot.starts_at,
+        endsAt: slot.ends_at,
+        groupCount: slot.subgroups.length,
+        participantCount,
+        targetSubgroupId,
+      },
+    }
+    acc[dayNumber] = [...(acc[dayNumber] ?? []), activity]
+    return acc
+  }, {})
+}
+
+function mergeSubgroupSlotsIntoDays(
+  days: ItineraryDay[],
+  slots: SubgroupSlot[],
+  tripStartDate?: string | null,
+  currentUserId?: string | number | null,
+): ItineraryDay[] {
+  const byDay = subgroupSlotsByDay(slots, tripStartDate, currentUserId)
+  return days.map((day) => ({
+    ...day,
+    activities: [...day.activities, ...(byDay[day.dayNumber] ?? [])],
+  }))
+}
+
 function InfoBanner({ memberCount }: { memberCount: number }) {
   const isSoloTrip = memberCount <= 1
 
@@ -606,6 +703,23 @@ const otherEntityForActivity = (link: ContextLink, activityId: string): ContextE
 const isActivityContextType = (type: ContextEntityRef['type']): boolean =>
   type === 'expense' || type === 'document'
 
+const applyVoteResultsToDays = (
+  itineraryDays: ItineraryDay[],
+  voteResultsByProposal: Record<string, VoteResult>
+): ItineraryDay[] =>
+  itineraryDays.map((day) => ({
+    ...day,
+    activities: day.activities.map((activity) => {
+      const voteResult = activity.proposalId ? voteResultsByProposal[String(activity.proposalId)] : null
+      if (!voteResult) return activity
+      return {
+        ...activity,
+        hasVoted: Boolean(voteResult.mi_voto),
+        myVote: voteResult.mi_voto ?? null,
+      }
+    }),
+  }))
+
 export function DashboardPage() {
 
   const navigate = useNavigate()
@@ -637,6 +751,9 @@ export function DashboardPage() {
   const [dashboardView, setDashboardView] = useState<'general' | 'subgrupos'>('general')
   const [isLoading,   setIsLoading]   = useState(false)
   const [days,        setDays]        = useState<ItineraryDay[]>([])
+  const [, setSubgroupSlots] = useState<SubgroupSlot[]>([])
+  const [editSubgroupSlotRequest, setEditSubgroupSlotRequest] = useState<{ slotId: number; nonce: number } | null>(null)
+  const [focusSubgroupRequest, setFocusSubgroupRequest] = useState<{ slotId: number; subgroupId?: number | null; nonce: number } | null>(null)
   const [group, setGroup] = useState<typeof currentGroup>(currentGroup)
   const [members, setMembers] = useState<Parameters<typeof RightPanelDashboard>[0]['members']>([])
   const [budgetSummary, setBudgetSummary] = useState<BudgetSummary | null>(null)
@@ -645,9 +762,7 @@ export function DashboardPage() {
   const [showActivityModal, setShowActivityModal] = useState(false)
   const [selectedActivityDay, setSelectedActivityDay] = useState<number | null>(null)
   const [editingActivity, setEditingActivity] = useState<DayActivity | null>(null)
-  const [acceptingActivityId, setAcceptingActivityId] = useState<string | null>(null)
   const [, setAcceptErrorActivityIds] = useState<Record<string, boolean>>({})
-  const [votedActivityIds, setVotedActivityIds] = useState<Record<string, boolean>>({})
   const [, setLockedProposalIds] = useState<Record<string, boolean>>({})
   const [, setLockErrorActivityIds] = useState<Record<string, boolean>>({})
   const [voteResultByProposal, setVoteResultByProposal] = useState<Record<string, VoteResult>>({})
@@ -734,6 +849,9 @@ export function DashboardPage() {
   const groupBudgetValue = Number(groupBudgetRaw ?? 0)
   const effectiveBudgetValue = hasSummaryBudget ? budgetFromSummary : groupBudgetValue
   const requiresInitialBudget = !Number.isFinite(effectiveBudgetValue) || effectiveBudgetValue <= 0
+  const handleSubgroupScheduleChanged = useCallback((slots: SubgroupSlot[]) => {
+    setSubgroupSlots(slots)
+  }, [])
 
   const chatParticipants = useMemo(() => {
     const colors = ['#1E6FD9', '#35C56A', '#7A4FD6', '#F59E0B']
@@ -796,7 +914,7 @@ export function DashboardPage() {
         setIsLoading(true)
 
         const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-        const [groupResult, membersResult, votesResult, budgetResult, contextResult] = await Promise.allSettled([
+        const [groupResult, membersResult, votesResult, budgetResult, contextResult, subgroupResult] = await Promise.allSettled([
           groupsService.getGroupDetails(resolvedGroupId, accessToken),
           groupsService.getMembers(resolvedGroupId, accessToken),
           proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
@@ -805,6 +923,7 @@ export function DashboardPage() {
             contextLinksService.list(resolvedGroupId, accessToken),
             contextLinksService.options(resolvedGroupId, accessToken),
           ]),
+          subgroupScheduleService.getSchedule(String(resolvedGroupId), accessToken),
         ])
 
         const groupData =
@@ -826,7 +945,16 @@ export function DashboardPage() {
           if (membersResult.status === 'fulfilled') {
             setMembers(membersResult.value.members ?? [])
           }
-          setDays(daysWithRoutes)
+          const nextSubgroupSlots = subgroupResult.status === 'fulfilled' ? subgroupResult.value.slots ?? [] : []
+          setSubgroupSlots(nextSubgroupSlots)
+          setDays(
+            mergeSubgroupSlotsIntoDays(
+              applyVoteResultsToDays(daysWithRoutes, nextVotesMap),
+              nextSubgroupSlots,
+              groupData?.fecha_inicio ?? currentGroup?.fecha_inicio ?? null,
+              localUser?.id_usuario ?? null,
+            ),
+          )
           setVoteResultByProposal(nextVotesMap)
           if (budgetResult.status === 'fulfilled') {
             setBudgetSummary(budgetResult.value.summary)
@@ -834,7 +962,6 @@ export function DashboardPage() {
           if (contextResult.status === 'fulfilled') {
             setContextLinks(contextResult.value[0].links)
           }
-          setVotedActivityIds({})
         }
       } catch (error) {
         console.error('Error cargando dashboard:', error)
@@ -850,7 +977,7 @@ export function DashboardPage() {
   return () => {
       isMounted = false
     }
-  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, navigate])
+  }, [groupIdFromState, groupId, currentGroup?.id, currentGroup?.fecha_inicio, localUser?.id_usuario, accessToken, navigate])
 
   const reloadDashboard = useCallback(async () => {
     const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
@@ -858,7 +985,7 @@ export function DashboardPage() {
     if (!resolvedGroupId || !accessToken) return
 
     const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-    const [groupResult, membersResult, votesResult, budgetResult, contextResult] = await Promise.allSettled([
+    const [groupResult, membersResult, votesResult, budgetResult, contextResult, subgroupResult] = await Promise.allSettled([
       groupsService.getGroupDetails(resolvedGroupId, accessToken),
       groupsService.getMembers(resolvedGroupId, accessToken),
       proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
@@ -867,6 +994,7 @@ export function DashboardPage() {
         contextLinksService.list(resolvedGroupId, accessToken),
         contextLinksService.options(resolvedGroupId, accessToken),
       ]),
+      subgroupScheduleService.getSchedule(String(resolvedGroupId), accessToken),
     ])
 
     const groupData =
@@ -887,16 +1015,24 @@ export function DashboardPage() {
     if (membersResult.status === 'fulfilled') {
       setMembers(membersResult.value.members ?? [])
     }
-    setDays(daysWithRoutes)
+    const nextSubgroupSlots = subgroupResult.status === 'fulfilled' ? subgroupResult.value.slots ?? [] : []
+    setSubgroupSlots(nextSubgroupSlots)
+    setDays(
+      mergeSubgroupSlotsIntoDays(
+        applyVoteResultsToDays(daysWithRoutes, nextVotesMap),
+        nextSubgroupSlots,
+        groupData?.fecha_inicio ?? currentGroup?.fecha_inicio ?? null,
+        localUser?.id_usuario ?? null,
+      ),
+    )
     if (budgetResult.status === 'fulfilled') {
       setBudgetSummary(budgetResult.value.summary)
     }
     if (contextResult.status === 'fulfilled') {
       setContextLinks(contextResult.value[0].links)
     }
-    setVotedActivityIds({})
     setVoteResultByProposal(nextVotesMap)
-  }, [groupIdFromState, groupId, currentGroup?.id, accessToken])
+  }, [groupIdFromState, groupId, currentGroup?.id, currentGroup?.fecha_inicio, localUser?.id_usuario, accessToken])
 
   const refreshCommentsForProposal = useCallback(async (proposalId: string) => {
     if (!accessToken || !resolvedGroupId) return
@@ -974,6 +1110,26 @@ export function DashboardPage() {
     await reloadDashboard()
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard])
 
+  const handleOpenSubgroupSlot = useCallback((slotId: number, subgroupId?: number | null) => {
+    setActiveTab('inicio')
+    setDashboardView('subgrupos')
+    setFocusSubgroupRequest({ slotId, subgroupId: subgroupId ?? null, nonce: Date.now() })
+  }, [])
+
+  const handleEditSubgroupSlot = useCallback((slotId: number) => {
+    setActiveTab('inicio')
+    setDashboardView('subgrupos')
+    setEditSubgroupSlotRequest({ slotId, nonce: Date.now() })
+  }, [])
+
+  const handleDeleteSubgroupSlot = useCallback(async (slotId: number) => {
+    const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
+    if (!resolvedGroupId || !accessToken) return
+    if (!window.confirm('Eliminar este horario de subgrupos?')) return
+    await subgroupScheduleService.deleteSlot(String(resolvedGroupId), slotId, accessToken)
+    await reloadDashboard()
+  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard])
+
   const lockProposalForActivity = useCallback((activity: DayActivity | null) => {
     if (!socket || !activity?.proposalId) return
     socket.emit('item_lock', { propuestaId: activity.proposalId, tripId: groupId || currentGroup?.id })
@@ -998,22 +1154,16 @@ export function DashboardPage() {
     }
 
     try {
-      setAcceptingActivityId(activityId)
       setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: false }))
 
       await proposalsService.voteProposal(String(resolvedGroupId), proposalId, { voto: 'a_favor' }, accessToken)
-      setVotedActivityIds((prev) => ({ ...prev, [activityId]: true }))
       await reloadDashboard()
     } catch (error) {
       const message = error instanceof Error ? error.message : ''
-      if (message.toLowerCase().includes('ya emitiste tu voto')) {
-        setVotedActivityIds((prev) => ({ ...prev, [activityId]: true }))
-        setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: false }))
-      } else {
-        setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: true }))
-      }
-    } finally {
-      setAcceptingActivityId(null)
+      setAcceptErrorActivityIds((prev) => ({
+        ...prev,
+        [activityId]: !message.toLowerCase().includes('se mantiene igual'),
+      }))
     }
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, days, reloadDashboard])
 
@@ -1031,21 +1181,15 @@ export function DashboardPage() {
     }
 
     try {
-      setAcceptingActivityId(activityId)
       setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: false }))
       await proposalsService.voteProposal(String(resolvedGroupId), proposalId, { voto: 'en_contra' }, accessToken)
-      setVotedActivityIds((prev) => ({ ...prev, [activityId]: true }))
       await reloadDashboard()
     } catch (error) {
       const message = error instanceof Error ? error.message : ''
-      if (message.toLowerCase().includes('ya emitiste tu voto')) {
-        setVotedActivityIds((prev) => ({ ...prev, [activityId]: true }))
-        setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: false }))
-      } else {
-        setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: true }))
-      }
-    } finally {
-      setAcceptingActivityId(null)
+      setAcceptErrorActivityIds((prev) => ({
+        ...prev,
+        [activityId]: !message.toLowerCase().includes('se mantiene igual'),
+      }))
     }
   }, [groupIdFromState, groupId, currentGroup?.id, accessToken, days, reloadDashboard])
 
@@ -1338,8 +1482,51 @@ export function DashboardPage() {
     }
   }, [socket, days])
 
-  const renderProposalQuickActions = (activity: DayActivity) =>
-    activity.proposalId ? (
+  const renderProposalQuickActions = (activity: DayActivity) => {
+    if (activity.kind === 'subgroup-slot' && activity.subgroupSlot) {
+      const slotId = activity.subgroupSlot.slotId
+      const targetSubgroupId = activity.subgroupSlot.targetSubgroupId ?? null
+      return (
+        <>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              handleOpenSubgroupSlot(slotId, targetSubgroupId)
+            }}
+            className="inline-flex h-10 min-w-[104px] items-center justify-center rounded-xl bg-[#1E0A4E] px-3 font-body text-xs font-semibold text-white transition-colors hover:bg-[#2E1767]"
+          >
+            Subgrupos
+          </button>
+          {isCurrentUserAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  handleEditSubgroupSlot(slotId)
+                }}
+                className="inline-flex h-10 min-w-[84px] items-center justify-center rounded-xl border border-[#D8C8FF] bg-white px-3 font-body text-xs font-semibold text-[#6D45C0] transition-colors hover:bg-[#F7F2FF]"
+              >
+                Editar
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void handleDeleteSubgroupSlot(slotId)
+                }}
+                className="inline-flex h-10 min-w-[84px] items-center justify-center rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-3 font-body text-xs font-semibold text-[#C03535] transition-colors hover:bg-[#FFEAEA]"
+              >
+                Eliminar
+              </button>
+            </>
+          )}
+        </>
+      )
+    }
+
+    return activity.proposalId ? (
       <>
         <button
           type="button"
@@ -1349,8 +1536,32 @@ export function DashboardPage() {
           }}
           className="inline-flex h-9 min-w-[86px] items-center justify-center rounded-xl border border-[#D9E2F2] bg-white px-3 font-body text-xs font-semibold text-[#1E0A4E] transition-colors hover:bg-[#F8FAFF]"
         >
-          Votacion
+          Resumen
         </button>
+        {isCurrentUserAdmin && activity.status === 'pendiente' && (
+          <>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                void handleAdminDecision(activity.proposalId!, 'aprobar')
+              }}
+              className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-xl border border-[#A8E6BF] bg-[#EAFBF1] px-3 font-body text-xs font-semibold text-[#1E7A45] transition-colors hover:bg-[#DCFCE7]"
+            >
+              Admin aprobar
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                void handleAdminDecision(activity.proposalId!, 'rechazar')
+              }}
+              className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-3 font-body text-xs font-semibold text-[#C03535] transition-colors hover:bg-[#FFEAEA]"
+            >
+              Admin rechazar
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={(event) => {
@@ -1366,6 +1577,7 @@ export function DashboardPage() {
         </button>
       </>
     ) : null
+  }
 
   return (
     <AppLayout
@@ -1517,6 +1729,9 @@ export function DashboardPage() {
             isSocketConnected={isSocketConnected}
             currentUserId={localUser?.id_usuario != null ? String(localUser.id_usuario) : null}
             currentUserName={userName}
+            editSlotRequest={editSubgroupSlotRequest}
+            focusRequest={focusSubgroupRequest}
+            onScheduleChanged={handleSubgroupScheduleChanged}
           />
         </div>
       ) : activeTab === 'buscar' ? (
@@ -1650,6 +1865,7 @@ export function DashboardPage() {
               onOpenBudget={() => setActiveTab('pagar')}
               onOpenVault={() => setActiveTab('boveda')}
               onAccept={isReadOnly ? undefined : (id) => void handleAcceptActivity(id)}
+              onReject={isReadOnly ? undefined : (id) => void handleRejectActivity(id)}
               onDelete={isReadOnly ? undefined : (id) => void handleDeleteActivity(id)}
               onEdit={isReadOnly ? undefined : (id) => {
                 const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
@@ -1701,10 +1917,6 @@ export function DashboardPage() {
               const totalMembers = Math.max(uniqueMemberCount, 1)
               const pendingVotes = voteResult?.votos_pendientes ?? Math.max(totalMembers - (votesFor + votesAgainst), 0)
               const requiresAdminTieBreak = Boolean(voteResult?.requiere_desempate_admin)
-              const hasUserVoted =
-                Boolean(voteResult?.mi_voto) ||
-                Boolean(voteHistoryActivity.hasVoted) ||
-                Boolean(votedActivityIds[voteHistoryActivity.id])
               const progressWidth = Math.min((votesFor / totalMembers) * 100, 100)
 
               return (
@@ -1756,59 +1968,11 @@ export function DashboardPage() {
                         <div className="h-full bg-green-500" style={{ width: `${progressWidth}%` }} />
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        {voteHistoryActivity.status === 'pendiente' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => void handleAcceptActivity(voteHistoryActivity.id)}
-                              disabled={acceptingActivityId === voteHistoryActivity.id || hasUserVoted}
-                              className="inline-flex min-w-[132px] items-center justify-center rounded-full bg-[#1E6FD9] px-4 py-2 font-body text-xs font-semibold text-white shadow-sm transition-all hover:bg-[#145DC0] disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              Votar a favor
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleRejectActivity(voteHistoryActivity.id)}
-                              disabled={acceptingActivityId === voteHistoryActivity.id || hasUserVoted}
-                              className="inline-flex min-w-[132px] items-center justify-center rounded-full border border-[#F3B1B1] bg-[#FFF5F5] px-4 py-2 font-body text-xs font-semibold text-[#C03535] transition-all hover:border-[#E79292] hover:bg-[#FFEAEA] disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              Votar en contra
-                            </button>
-                          </>
-                        )}
-                        {hasUserVoted && (
-                          <span className="inline-flex items-center rounded-full bg-[#EEF2F7] px-3 py-1.5 font-body text-[11px] font-semibold text-[#475569]">
-                            Ya emitiste tu voto
+                        {voteResult?.mi_voto && (
+                          <span className="inline-flex min-w-[220px] items-center rounded-full bg-[#EEF2F7] px-4 py-2 font-body text-xs font-semibold text-[#475569]">
+                            Tu voto: {voteResult.mi_voto === 'a_favor' ? 'a favor' : voteResult.mi_voto === 'en_contra' ? 'en contra' : 'abstencion'}
                           </span>
                         )}
-                        {isCurrentUserAdmin && voteHistoryActivity.status === 'pendiente' && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => void handleAdminDecision(voteHistoryActivity.proposalId!, 'aprobar')}
-                              className="inline-flex items-center rounded-lg border border-[#A8E6BF] bg-[#EAFBF1] px-3 py-1.5 font-body text-xs font-semibold text-[#1E7A45]"
-                            >
-                              Decision admin: aprobar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleAdminDecision(voteHistoryActivity.proposalId!, 'rechazar')}
-                              className="inline-flex items-center rounded-lg border border-[#FBC7C7] bg-[#FFF5F5] px-3 py-1.5 font-body text-xs font-semibold text-[#C03535]"
-                            >
-                              Decision admin: rechazar
-                            </button>
-                          </>
-                        )}
-                        <button
-                        type="button"
-                        onClick={() => {
-                          setVoteHistoryActivity(null)
-                          void openChatModal(voteHistoryActivity)
-                        }}
-                        className="rounded-full border border-[#CFE0FF] bg-white px-3 py-2 font-body text-xs font-semibold text-bluePrimary hover:bg-[#EEF4FF]"
-                      >
-                        Abrir chat
-                      </button>
                       </div>
                     </div>
                   </div>
@@ -1820,60 +1984,67 @@ export function DashboardPage() {
       )}
 
       {chatProposalActivity?.proposalId && (
-        <div
-          className="fixed inset-0 z-[75] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+        <>
+          <div
+          className="fixed inset-0 z-[75] bg-black/30 backdrop-blur-sm"
           onClick={() => {
             setChatProposalActivity(null)
             setExpandedCommentsProposalId(null)
           }}
-        >
+          aria-hidden="true"
+        />
           <div
-            className="w-full max-w-3xl rounded-[28px] bg-white p-6 shadow-[0_28px_80px_rgba(15,23,42,0.28)]"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Chat de propuesta ${chatProposalActivity.title}`}
+            className="fixed right-0 top-0 z-[80] flex h-full w-[420px] max-w-full flex-col bg-[#FAF9FD] shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-4">
-              <div>
+            <div className="flex shrink-0 items-center justify-between gap-3 bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] px-5 py-4">
+              <div className="min-w-0">
                 <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
                   Chat de propuesta
                 </p>
-                <h3 className="mt-2 font-heading text-2xl font-bold text-[#1E0A4E]">
+                <h3 className="mt-1 truncate font-heading text-sm font-bold text-white">
                   {chatProposalActivity.title}
                 </h3>
-                <p className="mt-1 font-body text-sm text-[#64748B]">
-                  Comentarios del grupo sobre esta actividad.
+                <p className="mt-0.5 font-body text-[11px] text-white/70">
+                  {isSocketConnected ? 'Chat de propuesta' : 'Reconectando...'}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => {
-                    setVoteHistoryActivity(chatProposalActivity)
-                    setChatProposalActivity(null)
-                  }}
-                  className="rounded-full border border-[#D9E2F2] bg-white px-3 py-2 font-body text-xs font-semibold text-[#1E0A4E] hover:bg-[#F8FAFF]"
-                >
-                  Ver historial
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
                     setChatProposalActivity(null)
                     setExpandedCommentsProposalId(null)
                   }}
-                  className="rounded-full border border-[#E2E8F0] px-3 py-2 font-body text-xs font-semibold text-[#475569] hover:bg-[#F8FAFC]"
+                  className="rounded-lg p-1.5 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+                  aria-label="Cerrar chat"
                 >
-                  Cerrar
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
                 </button>
               </div>
             </div>
 
-            <div className="mt-5 rounded-[24px] border border-[#E2E8F0] bg-[#F8FAFC] p-4">
+            <div className="flex shrink-0 items-center gap-2.5 border-b border-[#E2E8F0] bg-white px-4 py-2.5">
+              <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-[11px] font-semibold text-bluePrimary">
+                {commentsByProposal[chatProposalActivity.proposalId]?.length ?? 0} comentarios
+              </span>
+              <span className="truncate font-body text-[11px] text-gray-500">
+                {chatProposalActivity.time} · {chatProposalActivity.location || 'Ubicacion pendiente'}
+              </span>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
               {loadingCommentsProposalId === chatProposalActivity.proposalId ? (
                 <p className="font-body text-sm text-[#64748B]">Cargando comentarios...</p>
               ) : (commentsByProposal[chatProposalActivity.proposalId] ?? []).length === 0 ? (
                 <p className="font-body text-sm text-[#64748B]">Aún no hay comentarios en esta propuesta.</p>
               ) : (
-                <div className="max-h-[360px] space-y-3 overflow-y-auto pr-2">
+                <div className="space-y-3">
                   {(commentsByProposal[chatProposalActivity.proposalId] ?? [])
                     .slice(0, visibleCommentsCountByProposal[chatProposalActivity.proposalId] ?? 6)
                     .map((comment) => (
@@ -1956,8 +2127,9 @@ export function DashboardPage() {
               )}
             </div>
 
-            <div className="mt-4 flex gap-2">
-              <input
+            <div className="shrink-0 border-t border-[#E2E8F0] bg-white px-4 py-3">
+              <div className="flex items-end gap-2">
+              <textarea
                 value={commentDraftByProposal[chatProposalActivity.proposalId] ?? ''}
                 onChange={(e) =>
                   setCommentDraftByProposal((prev) => ({
@@ -1965,19 +2137,32 @@ export function DashboardPage() {
                     [chatProposalActivity.proposalId!]: e.target.value,
                   }))
                 }
-                placeholder="Agregar comentario..."
-                className="flex-1 rounded-2xl border border-[#D9E2F2] px-4 py-3 font-body text-sm outline-none focus:border-bluePrimary"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    void handleCreateComment(chatProposalActivity.proposalId!)
+                  }
+                }}
+                placeholder="Escribe un comentario..."
+                rows={1}
+                className="max-h-24 flex-1 resize-none rounded-2xl border border-[#D9E2F2] bg-[#F8FAFC] px-4 py-3 font-body text-sm outline-none focus:border-bluePrimary"
               />
               <button
+                type="button"
                 onClick={() => void handleCreateComment(chatProposalActivity.proposalId!)}
                 disabled={sendingCommentProposalId === chatProposalActivity.proposalId}
-                className="rounded-2xl bg-bluePrimary px-4 py-3 font-body text-sm font-semibold text-white disabled:opacity-50"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-bluePrimary text-white transition-colors hover:bg-[#145DC0] disabled:opacity-50"
+                aria-label="Enviar comentario"
               >
-                {sendingCommentProposalId === chatProposalActivity.proposalId ? 'Enviando...' : 'Enviar'}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" strokeWidth="2" fill="currentColor" />
+                </svg>
               </button>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       <BottomNavbar activeTab={activeTab} onTabChange={setActiveTab} isReadOnly={isReadOnly} />

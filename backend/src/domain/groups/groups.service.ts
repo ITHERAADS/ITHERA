@@ -17,6 +17,7 @@ import * as NotificationsService from '../notifications/notifications.service';
 
 const GROUP_NAME_MAX_LENGTH = 60;
 const GROUP_DESCRIPTION_MAX_LENGTH = 300;
+const MAX_TRIP_DURATION_DAYS = 60;
 
 const normalizeRequiredText = (value: unknown, fieldLabel: string, maxLength: number): string => {
   if (typeof value !== 'string' || !value.trim()) {
@@ -52,6 +53,43 @@ const normalizeOptionalText = (value: unknown, fieldLabel: string, maxLength: nu
   }
 
   return normalized;
+};
+
+const isValidISODate = (value: unknown): value is string =>
+  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const daysBetweenISO = (startDate: string, endDate: string): number | null => {
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((end.getTime() - start.getTime()) / millisecondsPerDay);
+};
+
+const validateTripDateRange = (startDate?: string | null, endDate?: string | null) => {
+  if (!startDate || !endDate) return;
+
+  if (!isValidISODate(startDate) || !isValidISODate(endDate)) {
+    throw Object.assign(new Error('ERR-23-001: Las fechas del viaje tienen formato inválido'), { statusCode: 400 });
+  }
+
+  const durationDays = daysBetweenISO(startDate, endDate);
+
+  if (durationDays === null || durationDays < 1) {
+    throw Object.assign(
+      new Error('ERR-23-003: La fecha de regreso debe ser posterior a la de inicio del viaje'),
+      { statusCode: 400 }
+    );
+  }
+
+  if (durationDays > MAX_TRIP_DURATION_DAYS) {
+    throw Object.assign(
+      new Error(`ERR-23-003: La duración máxima del viaje es de ${MAX_TRIP_DURATION_DAYS} días`),
+      { statusCode: 400 }
+    );
+  }
 };
 
 const generateGroupCode = (length = 8): string => {
@@ -463,6 +501,8 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
       { statusCode: 400 }
     );
   }
+
+  validateTripDateRange(payload.fecha_inicio ?? null, payload.fecha_fin ?? null);
 
   const { data: grupo, error: groupError } = await supabase
     .from('grupos_viaje')
@@ -1427,6 +1467,12 @@ export const updateGroup = async (
     payload.descripcion !== undefined
       ? normalizeOptionalText(payload.descripcion, 'La descripción', GROUP_DESCRIPTION_MAX_LENGTH)
       : undefined;
+
+  const currentGroup = await getGroupById(groupId);
+  const nextStartDate = payload.fecha_inicio !== undefined ? payload.fecha_inicio || null : currentGroup.fecha_inicio ?? null;
+  const nextEndDate = payload.fecha_fin !== undefined ? payload.fecha_fin || null : currentGroup.fecha_fin ?? null;
+
+  validateTripDateRange(nextStartDate, nextEndDate);
 
   const updateData = {
     ...(payload.nombre !== undefined ? { nombre } : {}),

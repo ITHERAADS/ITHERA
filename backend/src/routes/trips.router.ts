@@ -13,6 +13,22 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const isValidISODate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 const GROUP_NAME_MAX_LENGTH = 60;
 const GROUP_DESCRIPTION_MAX_LENGTH = 300;
+const MAX_TRIP_DURATION_DAYS = 60;
+
+const daysBetweenISO = (startDate: string, endDate: string): number | null => {
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((end.getTime() - start.getTime()) / millisecondsPerDay);
+};
+
+const hasValidTripDuration = (startDate: string, endDate: string): boolean => {
+  const durationDays = daysBetweenISO(startDate, endDate);
+  return durationDays !== null && durationDays >= 1 && durationDays <= MAX_TRIP_DURATION_DAYS;
+};
 
 router.post('/', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -82,6 +98,14 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
 
     if (fecha_fin! <= fecha_inicio!) {
       res.status(400).json({ ok: false, error: 'ERR-23-003: La fecha de regreso debe ser posterior a la de inicio del viaje' });
+      return;
+    }
+
+    if (!hasValidTripDuration(fecha_inicio!, fecha_fin!)) {
+      res.status(400).json({
+        ok: false,
+        error: `ERR-23-003: La duración máxima del viaje es de ${MAX_TRIP_DURATION_DAYS} días`,
+      });
       return;
     }
 
@@ -421,6 +445,14 @@ router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Prom
 
     if (fecha_inicio && fecha_fin && fecha_fin <= fecha_inicio) {
       res.status(400).json({ ok: false, error: 'ERR-23-003: La fecha de regreso debe ser posterior a la de inicio del viaje' });
+      return;
+    }
+
+    if (fecha_inicio && fecha_fin && !hasValidTripDuration(fecha_inicio, fecha_fin)) {
+      res.status(400).json({
+        ok: false,
+        error: `ERR-23-003: La duración máxima del viaje es de ${MAX_TRIP_DURATION_DAYS} días`,
+      });
       return;
     }
 

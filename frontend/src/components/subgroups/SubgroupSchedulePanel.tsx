@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Socket } from 'socket.io-client'
 import { useAuth } from '../../context/useAuth'
 import { mapsService, type PlaceResult } from '../../services/maps'
@@ -34,6 +34,9 @@ interface Props {
   isSocketConnected?: boolean
   currentUserId?: string | null
   currentUserName?: string
+  editSlotRequest?: { slotId: number; nonce: number } | null
+  focusRequest?: { slotId: number; subgroupId?: number | null; nonce: number } | null
+  onScheduleChanged?: (slots: SubgroupSlot[]) => void
 }
 
 type ActivityDraft = {
@@ -158,6 +161,26 @@ const dt = (value?: string | null) => {
   return d.toLocaleString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
+const slotTimestamp = (value?: string | null): number => {
+  if (!value) return Number.MAX_SAFE_INTEGER
+  const parsed = new Date(value).getTime()
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER
+}
+
+const slotDayKey = (value?: string | null): string => toLocalInputValue(value).slice(0, 10) || 'sin-fecha'
+
+const slotDayLabel = (value?: string | null): string => {
+  if (!value) return 'Sin fecha'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Sin fecha'
+  return parsed.toLocaleDateString('es-MX', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
 const toLocalInputValue = (value?: string | null) => {
   if (!value) return ''
   const date = new Date(value)
@@ -171,6 +194,23 @@ const toLocalTimeValue = (value?: string | null) => toLocalInputValue(value).sli
 const isSameLocalDay = (first?: string | null, second?: string | null) =>
   toLocalInputValue(first).slice(0, 10) !== '' &&
   toLocalInputValue(first).slice(0, 10) === toLocalInputValue(second).slice(0, 10)
+
+const addDaysToDateKey = (dateKey: string, days: number): string => {
+  const date = new Date(`${dateKey}T00:00:00.000Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+const dateKeyLabel = (dateKey: string): string => {
+  const date = new Date(`${dateKey}T00:00:00.000Z`)
+  if (Number.isNaN(date.getTime())) return dateKey
+  return date.toLocaleDateString('es-MX', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
 
 const subtractThirtyMinutes = (value: string) => {
   const [hoursRaw, minutesRaw] = value.split(':')
@@ -239,6 +279,9 @@ export function SubgroupSchedulePanel({
   isSocketConnected = false,
   currentUserId = null,
   currentUserName = 'Usuario',
+  editSlotRequest = null,
+  focusRequest = null,
+  onScheduleChanged,
 }: Props) {
   const { accessToken } = useAuth()
   const [slots, setSlots] = useState<SubgroupSlot[]>([])
@@ -268,6 +311,11 @@ export function SubgroupSchedulePanel({
   const [draftDocumentTab, setDraftDocumentTab] = useState<DraftActionTab>('associate')
   const [subgroupPhotoByActivityId, setSubgroupPhotoByActivityId] = useState<Record<number, string>>({})
   const [linkOptionsLoaded, setLinkOptionsLoaded] = useState(false)
+  const [handledEditSlotRequestNonce, setHandledEditSlotRequestNonce] = useState<number | null>(null)
+  const [expandedSubgroupDay, setExpandedSubgroupDay] = useState<string | null>(null)
+  const [focusedSubgroupTarget, setFocusedSubgroupTarget] = useState<{ slotId: number; subgroupId?: number | null } | null>(null)
+  const didInitializeExpandedDayRef = useRef(false)
+  const focusedTargetRef = useRef<HTMLElement | null>(null)
 
   const memberOptions = useMemo(
     () =>
@@ -338,13 +386,14 @@ export function SubgroupSchedulePanel({
         loadContextLinks(),
       ])
       setSlots(response.slots ?? [])
+      onScheduleChanged?.(response.slots ?? [])
       setMyUserId(response.myUserId ?? null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cargar el horario de subgrupos')
     } finally {
       setLoading(false)
     }
-  }, [accessToken, groupId, loadContextLinks])
+  }, [accessToken, groupId, loadContextLinks, onScheduleChanged])
 
   useEffect(() => { void load() }, [load])
 
@@ -560,6 +609,15 @@ export function SubgroupSchedulePanel({
     setNewSlotEnd(toLocalInputValue(slot.ends_at))
     setSlotModal({ mode: 'edit', slotId: slot.id })
   }
+
+  useEffect(() => {
+    if (!editSlotRequest) return
+    if (handledEditSlotRequestNonce === editSlotRequest.nonce) return
+    const slot = slots.find((item) => item.id === editSlotRequest.slotId)
+    if (!slot) return
+    openEditSlotModal(slot)
+    setHandledEditSlotRequestNonce(editSlotRequest.nonce)
+  }, [editSlotRequest, handledEditSlotRequestNonce, slots])
 
   const closeSlotModal = () => setSlotModal(null)
 
@@ -1119,6 +1177,61 @@ export function SubgroupSchedulePanel({
   const subgroupModalEditLinks = subgroupModalEditActivity?.id != null
     ? getLinksForSubgroupActivity(subgroupModalEditActivity.id)
     : []
+  const subgroupDayGroups = useMemo(() => {
+    const sorted = [...slots].sort((left, right) => {
+      const diff = slotTimestamp(left.starts_at) - slotTimestamp(right.starts_at)
+      if (diff !== 0) return diff
+      return left.title.localeCompare(right.title, 'es')
+    })
+
+    const slotsByDay = sorted.reduce<Record<string, SubgroupSlot[]>>((acc, slot) => {
+      const key = slotDayKey(slot.starts_at)
+      acc[key] = [...(acc[key] ?? []), slot]
+      return acc
+    }, {})
+
+    const startKey = tripStartDate ? String(tripStartDate).slice(0, 10) : null
+    const endKey = tripEndDate ? String(tripEndDate).slice(0, 10) : startKey
+    if (startKey && endKey && startKey <= endKey) {
+      const days: Array<{ key: string; dayNumber: number; label: string; slots: SubgroupSlot[] }> = []
+      let currentKey = startKey
+      let dayNumber = 1
+      while (currentKey <= endKey && dayNumber <= 60) {
+        days.push({
+          key: currentKey,
+          dayNumber,
+          label: dateKeyLabel(currentKey),
+          slots: slotsByDay[currentKey] ?? [],
+        })
+        currentKey = addDaysToDateKey(currentKey, 1)
+        dayNumber += 1
+      }
+      return days
+    }
+
+    return Object.entries(slotsByDay)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, groupSlots], index) => ({
+        key,
+        dayNumber: index + 1,
+        label: key === 'sin-fecha' ? 'Sin fecha' : slotDayLabel(groupSlots[0]?.starts_at),
+        slots: groupSlots,
+      }))
+  }, [slots, tripEndDate, tripStartDate])
+
+  useEffect(() => {
+    if (subgroupDayGroups.length === 0) {
+      setExpandedSubgroupDay(null)
+      didInitializeExpandedDayRef.current = false
+      return
+    }
+    if (expandedSubgroupDay && subgroupDayGroups.some((day) => day.key === expandedSubgroupDay)) return
+    if (didInitializeExpandedDayRef.current) return
+
+    const firstWithSlots = subgroupDayGroups.find((day) => day.slots.length > 0)
+    setExpandedSubgroupDay((firstWithSlots ?? subgroupDayGroups[0]).key)
+    didInitializeExpandedDayRef.current = true
+  }, [expandedSubgroupDay, subgroupDayGroups])
 
   return (
     <>
@@ -1188,8 +1301,48 @@ export function SubgroupSchedulePanel({
           </section>
         )}
 
-        <div className="space-y-5">
-          {slots.map((slot) => {
+        <div className="space-y-3">
+          {subgroupDayGroups.map((dayGroup) => {
+            const expanded = expandedSubgroupDay === dayGroup.key
+            const optionCount = dayGroup.slots.reduce((sum, slot) => sum + slot.subgroups.length, 0)
+
+            return (
+            <section key={dayGroup.key} className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-sm">
+              <button
+                type="button"
+                onClick={() => setExpandedSubgroupDay((current) => (current === dayGroup.key ? null : dayGroup.key))}
+                className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-[#F8FAFC]"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="shrink-0 rounded-full bg-[#EEF4FF] px-3 py-1 text-[11px] font-bold text-[#1E6FD9]">
+                    DIA {dayGroup.dayNumber}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-body text-sm font-bold leading-tight text-[#1E0A4E]">{dayGroup.label}</p>
+                    <p className="mt-0.5 font-body text-xs leading-tight text-[#64748B]">
+                      {dayGroup.slots.length === 0
+                        ? 'Sin horarios de subgrupos'
+                        : `${dayGroup.slots.length} horario${dayGroup.slots.length === 1 ? '' : 's'} · ${optionCount} opcion${optionCount === 1 ? '' : 'es'}`}
+                    </p>
+                  </div>
+                </div>
+                <span className={`text-[#64748B] transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              </button>
+
+              {expanded && (
+              <div className="space-y-5 border-t border-[#E2E8F0] bg-[#FBFCFF] px-5 py-5">
+                {dayGroup.slots.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-5 py-8 text-center">
+                    <p className="font-semibold text-[#1E0A4E]">Sin horarios para este dia.</p>
+                    <p className="mt-1 text-sm text-[#64748B]">Crea un horario de subgrupos cuando necesiten dividirse.</p>
+                  </div>
+                ) : (
+                  <>
+          {dayGroup.slots.map((slot) => {
             const myMembership = slot.memberships.find((membership) => {
               const mUid = membership.user_id != null ? String(membership.user_id) : String(membership.usuarios?.id_usuario)
               return String(mUid) === String(myUserId)
@@ -1434,24 +1587,6 @@ export function SubgroupSchedulePanel({
                                       Relaciona este plan con gastos o documentos para darle mas contexto al viaje.
                                     </p>
                                   </div>
-                                  {details?.id != null && (
-                                    <div className="flex flex-wrap gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => openDraftActionModal(slot.id, 'expense', details.id)}
-                                        className="rounded-xl border border-[#CFE0FF] bg-[#EEF4FF] px-3 py-2 text-sm font-semibold text-[#1E6FD9]"
-                                      >
-                                        Gestionar gasto
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => openDraftActionModal(slot.id, 'document', details.id)}
-                                        className="rounded-xl border border-[#D8C8FF] bg-[#F3EEFF] px-3 py-2 text-sm font-semibold text-[#6D45C0]"
-                                      >
-                                        Gestionar documento
-                                      </button>
-                                    </div>
-                                  )}
                                 </div>
 
                                 {linkedContext.length === 0 ? (
@@ -1531,6 +1666,13 @@ export function SubgroupSchedulePanel({
                   )}
                 </div>
               </section>
+            )
+          })}
+                  </>
+                )}
+              </div>
+              )}
+            </section>
             )
           })}
         </div>

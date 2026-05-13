@@ -20,6 +20,36 @@ const getMexicoDateOnly = (date: Date): string => {
   return `${byType.year}-${byType.month}-${byType.day}`;
 };
 
+const toScheduleRange = (startsAt?: string | null, endsAt?: string | null) => {
+  if (!startsAt) return null;
+
+  const startMs = new Date(startsAt).getTime();
+  if (!Number.isFinite(startMs)) return null;
+
+  const endCandidateMs = endsAt ? new Date(endsAt).getTime() : NaN;
+  const endMs = Number.isFinite(endCandidateMs) && endCandidateMs > startMs
+    ? endCandidateMs
+    : startMs;
+
+  return {
+    day: String(startsAt).slice(0, 10),
+    startMs,
+    endMs,
+  };
+};
+
+const scheduleRangesOverlap = (
+  left: NonNullable<ReturnType<typeof toScheduleRange>>,
+  right: NonNullable<ReturnType<typeof toScheduleRange>>,
+): boolean => {
+  if (left.day !== right.day) return false;
+
+  const leftEndExclusive = left.endMs > left.startMs ? left.endMs : left.startMs + 1;
+  const rightEndExclusive = right.endMs > right.startMs ? right.endMs : right.startMs + 1;
+
+  return left.startMs < rightEndExclusive && right.startMs < leftEndExclusive;
+};
+
 const validateSlotDateRules = async (
   groupId: string,
   startsAt: string,
@@ -54,6 +84,68 @@ const validateSlotDateRules = async (
     throw Object.assign(
       new Error(`El horario debe estar dentro del rango del viaje (${group.fecha_inicio} a ${group.fecha_fin})`),
       { statusCode: 400 },
+    );
+  }
+};
+
+const ensureSlotHasNoScheduleCollision = async (
+  groupId: string,
+  startsAt: string,
+  endsAt: string,
+  excludeSlotId?: string | null,
+) => {
+  const candidateRange = toScheduleRange(startsAt, endsAt);
+  if (!candidateRange) return;
+
+  const { data: slots, error: slotsError } = await supabase
+    .from('subgroup_slots')
+    .select('id, title, starts_at, ends_at')
+    .eq('group_id', groupId);
+  if (slotsError) throw new Error(slotsError.message);
+
+  const conflictingSlot = (slots ?? []).find((slot: any) => {
+    if (excludeSlotId && String(slot.id) === String(excludeSlotId)) return false;
+    const slotRange = toScheduleRange(
+      slot.starts_at ? String(slot.starts_at) : null,
+      slot.ends_at ? String(slot.ends_at) : null,
+    );
+    return slotRange ? scheduleRangesOverlap(candidateRange, slotRange) : false;
+  });
+
+  if (conflictingSlot) {
+    throw Object.assign(
+      new Error(`Este horario de subgrupos se empalma con "${String((conflictingSlot as any).title ?? 'otro horario de subgrupos')}"`),
+      { statusCode: 409 },
+    );
+  }
+
+  const { data: itinerary, error: itineraryError } = await supabase
+    .from('itinerarios')
+    .select('id_itinerario')
+    .eq('grupo_id', groupId)
+    .maybeSingle();
+  if (itineraryError) throw new Error(itineraryError.message);
+  if (!itinerary) return;
+
+  const { data: activities, error: activitiesError } = await supabase
+    .from('actividades')
+    .select('id_actividad, titulo, fecha_inicio, fecha_fin, estado')
+    .eq('itinerario_id', (itinerary as any).id_itinerario);
+  if (activitiesError) throw new Error(activitiesError.message);
+
+  const conflictingActivity = (activities ?? []).find((activity: any) => {
+    if (String(activity.estado ?? '') === 'cancelada') return false;
+    const activityRange = toScheduleRange(
+      activity.fecha_inicio ? String(activity.fecha_inicio) : null,
+      activity.fecha_fin ? String(activity.fecha_fin) : null,
+    );
+    return activityRange ? scheduleRangesOverlap(candidateRange, activityRange) : false;
+  });
+
+  if (conflictingActivity) {
+    throw Object.assign(
+      new Error(`Este horario de subgrupos se empalma con la actividad "${String((conflictingActivity as any).titulo ?? 'Actividad existente')}"`),
+      { statusCode: 409 },
     );
   }
 };
@@ -200,6 +292,7 @@ export const createSlot = async (
 ) => {
   const admin = await ensureGroupAdmin(authUserId, groupId);
   await validateSlotDateRules(groupId, payload.starts_at, payload.ends_at);
+  await ensureSlotHasNoScheduleCollision(groupId, payload.starts_at, payload.ends_at);
 
   const { data, error } = await supabase
     .from('subgroup_slots')
@@ -228,6 +321,7 @@ export const updateSlot = async (
   const nextStartsAt = payload.starts_at ?? String((current as any).starts_at);
   const nextEndsAt = payload.ends_at ?? String((current as any).ends_at);
   await validateSlotDateRules(groupId, nextStartsAt, nextEndsAt);
+  await ensureSlotHasNoScheduleCollision(groupId, nextStartsAt, nextEndsAt, slotId);
 
   const { data, error } = await supabase
     .from('subgroup_slots')

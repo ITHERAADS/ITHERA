@@ -159,11 +159,13 @@ const rangesOverlap = (
 
 const ensureNoGroupActivityCollision = async ({
   itineraryId,
+  groupId,
   nextStartsAt,
   nextEndsAt,
   excludeActivityId,
 }: {
   itineraryId: string | number;
+  groupId?: string | number | null;
   nextStartsAt?: string | null;
   nextEndsAt?: string | null;
   excludeActivityId?: string | null;
@@ -190,12 +192,35 @@ const ensureNoGroupActivityCollision = async ({
     return siblingRange ? rangesOverlap(candidateRange, siblingRange) : false;
   });
 
-  if (!conflictingActivity) return;
+  if (conflictingActivity) {
+    throw Object.assign(
+      new Error(`Ya existe una actividad grupal que se empalma con este horario: "${String(conflictingActivity.titulo ?? 'Actividad existente')}"`),
+      { statusCode: 409 },
+    );
+  }
 
-  throw Object.assign(
-    new Error(`Ya existe una actividad grupal que se empalma con este horario: "${String(conflictingActivity.titulo ?? 'Actividad existente')}"`),
-    { statusCode: 409 },
-  );
+  if (!groupId) return;
+
+  const { data: subgroupSlots, error: subgroupSlotsError } = await supabase
+    .from('subgroup_slots')
+    .select('id, title, starts_at, ends_at')
+    .eq('group_id', groupId);
+  if (subgroupSlotsError) throw new Error(subgroupSlotsError.message);
+
+  const conflictingSlot = (subgroupSlots ?? []).find((slot: any) => {
+    const slotRange = toActivityRange(
+      slot.starts_at ? String(slot.starts_at) : null,
+      slot.ends_at ? String(slot.ends_at) : null,
+    );
+    return slotRange ? rangesOverlap(candidateRange, slotRange) : false;
+  });
+
+  if (conflictingSlot) {
+    throw Object.assign(
+      new Error(`Este horario se empalma con el bloque de subgrupos "${String((conflictingSlot as any).title ?? 'Horario de subgrupos')}"`),
+      { statusCode: 409 },
+    );
+  }
 };
 
 const addDays = (dateValue: string, days: number): string => {
@@ -535,6 +560,7 @@ export const createGroupActivity = async (
 
   await ensureNoGroupActivityCollision({
     itineraryId: itinerary.id_itinerario,
+    groupId,
     nextStartsAt: payload.fecha_inicio ?? null,
     nextEndsAt: payload.fecha_fin ?? payload.fecha_inicio ?? null,
   });
@@ -704,6 +730,7 @@ export const updateGroupActivity = async (
 
   await ensureNoGroupActivityCollision({
     itineraryId: itinerary.id_itinerario,
+    groupId,
     nextStartsAt,
     nextEndsAt,
     excludeActivityId: activityId,

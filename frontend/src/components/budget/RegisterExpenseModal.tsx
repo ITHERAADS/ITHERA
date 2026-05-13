@@ -359,7 +359,7 @@ export const RegisterExpenseModal: FC<Props> = ({
             </div>
 
             <div>
-              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Pagador</label>
+              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">¿Quién pagó?</label>
               <select
                 value={paidBy}
                 onChange={(e) => setPaidBy(e.target.value)}
@@ -372,7 +372,7 @@ export const RegisterExpenseModal: FC<Props> = ({
             </div>
 
             <div>
-              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Personas del gasto</label>
+              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Participantes</label>
               <div className="flex flex-wrap gap-2 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-3">
                 {members.map((member) => {
                   const selected = selectedMemberIds.includes(member.usuario_id)
@@ -396,7 +396,7 @@ export const RegisterExpenseModal: FC<Props> = ({
             </div>
 
             <div>
-              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Tipo de División</label>
+              <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">¿Cómo dividir la cuenta?</label>
               <div className="flex gap-2">
                 {(['equitativa', 'personalizada'] as const).map((type) => (
                   <button
@@ -443,7 +443,7 @@ export const RegisterExpenseModal: FC<Props> = ({
 
             {(activityOptions.length > 0 || documentOptions.length > 0) && (
               <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3">
-                <p className="font-body text-sm font-semibold text-[#3D4A5C]">Contexto relacionado</p>
+                <p className="font-body text-sm font-semibold text-[#3D4A5C]">Vincular con el viaje</p>
                 <p className="mt-1 font-body text-xs text-[#7A8799]">
                   Relaciona esta salida con acciones separadas para que el formulario principal no se vuelva confuso.
                 </p>

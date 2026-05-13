@@ -13,7 +13,10 @@ import proposalsRouter from './routes/proposals.router';
 import votesCommentsRouter from './routes/votesComments.router';
 import budgetRouter from './routes/budget.router';
 import notificationsRouter from './routes/notifications.router';
+import { searchHistoryRouter } from './routes/search-history.router';
+import { exportRouter } from './routes/export.router';
 import { initSocketServer } from './infrastructure/sockets/socket.server';
+import { startSearchHistoryCleanupJob } from './infrastructure/jobs/search-history-cleanup.job';
 import { startLockScheduler } from './infrastructure/sockets/lock.scheduler';
 
 const app = express();
@@ -62,6 +65,8 @@ app.use('/api/proposals', proposalsRouter);
 app.use('/api/proposals', votesCommentsRouter);
 app.use('/api/budget', budgetRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/search-history', searchHistoryRouter);
+app.use('/api/export', exportRouter);
 app.use(errorHandler);
 
 // ── Socket.IO + Scheduler ─────────────────────────────────────────
@@ -73,6 +78,7 @@ httpServer.listen(env.PORT, () => {
   console.log(`ITHERA backend corriendo en http://localhost:${env.PORT}`);
   console.log(`Entorno: ${env.NODE_ENV}`);
   console.log(`Socket.IO corriendo en el mismo puerto (${env.PORT})`);
+  startSearchHistoryCleanupJob();
 });
 
 export default app;

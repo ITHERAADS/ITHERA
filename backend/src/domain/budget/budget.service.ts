@@ -36,6 +36,32 @@ export const createExpense = async (data: {
 
   if (splitError) throw splitError;
 
+  try {
+    const { createNotificationForGroupMembers } = await import(
+      '../notifications/notifications.service.js'
+    );
+    await createNotificationForGroupMembers(
+      Number(data.group_id),
+      null,
+      {
+        tipo: 'gasto_nuevo',
+        titulo: 'Nuevo gasto registrado',
+        mensaje: `Se registró un gasto de $${Number(data.amount).toFixed(2)} MXN en ${data.category}: "${data.description}".`,
+        entidadTipo: 'gasto',
+        entidadId: Number(expense.id),
+        metadata: {
+          gastoId: expense.id,
+          monto: data.amount,
+          categoria: data.category,
+          descripcion: data.description,
+          pagadorId: data.paid_by_user_id,
+        },
+      }
+    );
+  } catch (notifError) {
+    console.error('[budget] Error enviando notificación de gasto:', notifError);
+  }
+
   return expense;
 };
 

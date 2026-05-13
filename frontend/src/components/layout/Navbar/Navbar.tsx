@@ -111,6 +111,110 @@ function IconGlobe() {
   )
 }
 
+// ── Notification helpers ──────────────────────────────────────────────────────
+
+const NOTIF_FILTER_TYPES: Record<string, string[]> = {
+  propuestas:  ['propuesta', 'voto'],
+  presupuesto: ['gasto_nuevo'],
+  miembros:    ['cambio_rol'],
+  sistema:     ['bloqueo', 'sistema'],
+}
+
+function IconFileText() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <polyline points="14 2 14 8 20 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function IconThumbUp() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function IconWallet() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M20 12V8H6a2 2 0 01-2-2c0-1.1.9-2 2-2h12v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4 6v12c0 1.1.9 2 2 2h14v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M18 12a2 2 0 00-2 2c0 1.1.9 2 2 2h4v-4h-4z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function IconLockSmall() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function IconBellSmall() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function IconUserSmall() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function getNotifIcon(tipo: string) {
+  if (tipo.includes('propuesta'))  return <IconFileText />
+  if (tipo.includes('voto'))       return <IconThumbUp />
+  if (tipo.includes('gasto'))      return <IconWallet />
+  if (tipo.includes('bloqueo'))    return <IconLockSmall />
+  if (tipo.includes('cambio_rol') || tipo.includes('miembro')) return <IconUserSmall />
+  return <IconBellSmall />
+}
+
+function NotifActorAvatar({ avatarUrl, actorName, tipo }: {
+  avatarUrl?: string
+  actorName?: string
+  tipo: string
+}) {
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={actorName ?? 'Actor'}
+        className="w-8 h-8 rounded-full object-cover shrink-0"
+      />
+    )
+  }
+  if (actorName) {
+    const initials = actorName.split(' ').map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase()
+    return (
+      <div className="w-8 h-8 rounded-full bg-[#1E6FD9]/10 text-[#1E6FD9] flex items-center justify-center font-body text-[11px] font-bold shrink-0">
+        {initials}
+      </div>
+    )
+  }
+  return (
+    <div className="w-8 h-8 rounded-full bg-[#F4F1FF] text-purpleMedium flex items-center justify-center shrink-0">
+      {getNotifIcon(tipo)}
+    </div>
+  )
+}
+
 // ── Landing variant ───────────────────────────────────────────────────────────
 
 const DEFAULT_LANDING_LINKS: NavLink[] = [
@@ -366,8 +470,9 @@ function DashboardNavContent({
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const [notifOpen,   setNotifOpen]   = useState(false)
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
+  const [notifOpen,     setNotifOpen]     = useState(false)
+  const [activeFilter,  setActiveFilter]  = useState<'todos' | 'propuestas' | 'presupuesto' | 'miembros' | 'sistema'>('todos')
+  const { notifications, unreadCount, loading: notifLoading, error: notifError, markAsRead, markAllAsRead, refresh } = useNotifications()
   const notifRef = useRef<HTMLDivElement>(null)
   const avatarUrl = localUser?.avatar_url
   const [tripMenuOpen, setTripMenuOpen] = useState(false)
@@ -443,6 +548,16 @@ function DashboardNavContent({
 
   function handleToggleNotif() {
     setNotifOpen((o) => !o)
+  }
+
+  const filteredNotifications = activeFilter === 'todos'
+    ? notifications
+    : notifications.filter((n) =>
+        (NOTIF_FILTER_TYPES[activeFilter] ?? []).some((t) => n.tipo.includes(t))
+      )
+
+  const handleRefresh = async () => {
+    await refresh()
   }
 
   async function handleLogout() {
@@ -592,14 +707,15 @@ function DashboardNavContent({
             <IconBell />
             {unreadCount > 0 && (
               <span className="absolute top-1 right-1 w-4 h-4 bg-redError text-white rounded-full text-[10px] font-bold flex items-center justify-center leading-none">
-                {unreadCount > 9 ? '9+' : unreadCount}
+                {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-[#E2E8F0] rounded-xl shadow-lg overflow-hidden z-50 max-h-96 overflow-y-auto">
-              <div className="px-4 py-3 border-b border-[#E2E8F0] flex items-center justify-between sticky top-0 bg-white">
+            <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-[#E2E8F0] rounded-xl shadow-lg overflow-hidden z-50">
+              {/* Header */}
+              <div className="px-4 py-3 border-b border-[#E2E8F0] flex items-center justify-between sticky top-0 bg-white z-10">
                 <span className="font-heading font-bold text-[#1E0A4E] text-sm">Notificaciones</span>
                 <div className="flex items-center gap-2">
                   {unreadCount > 0 && (
@@ -615,26 +731,86 @@ function DashboardNavContent({
                   )}
                 </div>
               </div>
-              {notifications.length === 0 ? (
-                <div className="px-4 py-6 text-center text-gray500 text-sm">
-                  No tienes notificaciones
-                </div>
-              ) : (
-                notifications.map((n) => (
+
+              {/* Filter tabs */}
+              <div className="flex border-b border-[#E2E8F0] overflow-x-auto scrollbar-hide">
+                {(['todos', 'propuestas', 'presupuesto', 'miembros', 'sistema'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveFilter(tab)}
+                    className={`shrink-0 px-3 py-2 font-body text-[11px] font-medium capitalize transition-colors border-b-2 ${
+                      activeFilter === tab
+                        ? 'border-[#1E6FD9] text-[#1E6FD9]'
+                        : 'border-transparent text-gray500 hover:text-[#1E0A4E]'
+                    }`}
+                  >
+                    {tab === 'todos' ? 'Todos' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              {/* Content */}
+              <div className="max-h-72 overflow-y-auto">
+                {/* Skeletons */}
+                {notifLoading && (
+                  <div className="px-4 py-2 flex flex-col gap-3">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="flex items-start gap-3 py-2">
+                        <div className="w-8 h-8 rounded-full animate-pulse bg-gray-200 shrink-0" />
+                        <div className="flex-1 flex flex-col gap-1.5">
+                          <div className="h-3 w-3/4 rounded animate-pulse bg-gray-200" />
+                          <div className="h-2.5 w-full rounded animate-pulse bg-gray-200" />
+                          <div className="h-2.5 w-1/2 rounded animate-pulse bg-gray-200" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Error — ERR-71-002 */}
+                {!notifLoading && notifError && (
+                  <div className="px-4 py-5 text-center">
+                    <p className="font-body text-sm text-gray500 mb-3">
+                      No pudimos cargar tus notificaciones. Inténtalo más tarde.
+                    </p>
+                    <button
+                      onClick={handleRefresh}
+                      className="font-body text-xs font-semibold text-[#1E6FD9] border border-[#1E6FD9] rounded-lg px-3 py-1.5 hover:bg-[#1E6FD9]/5 transition-colors"
+                    >
+                      Reintentar
+                    </button>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {!notifLoading && !notifError && filteredNotifications.length === 0 && (
+                  <div className="px-4 py-6 text-center text-gray500 text-sm">
+                    {activeFilter === 'todos'
+                      ? 'No tienes notificaciones'
+                      : 'Sin notificaciones en esta categoría'}
+                  </div>
+                )}
+
+                {/* Notification list */}
+                {!notifLoading && !notifError && filteredNotifications.map((n) => (
                   <div
                     key={n.id}
                     onClick={() => { if (!n.leida) markAsRead(n.id); }}
-                    className={`flex items-start gap-3 px-4 py-3 hover:bg-[#F8FAFC] transition-colors border-b border-[#E2E8F0] last:border-none ${!n.leida ? 'cursor-pointer bg-[#F8FAFC]/50' : 'cursor-default opacity-70'}`}
+                    className={`animate-slide-in flex items-start gap-3 px-4 py-3 hover:bg-[#F8FAFC] transition-colors border-b border-[#E2E8F0] last:border-none ${!n.leida ? 'cursor-pointer bg-[#F8FAFC]/50' : 'cursor-default opacity-70'}`}
                   >
-                    <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${!n.leida ? 'bg-[#1E6FD9]' : 'bg-transparent'}`} />
+                    <NotifActorAvatar
+                      avatarUrl={typeof n.metadata['actorAvatarUrl'] === 'string' ? n.metadata['actorAvatarUrl'] : undefined}
+                      actorName={typeof n.metadata['actorName'] === 'string' ? n.metadata['actorName'] : undefined}
+                      tipo={n.tipo}
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-3">
-                        <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-snug">{n.titulo}</p>
+                        <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-snug line-clamp-2">{n.titulo}</p>
                         <span className="font-body text-[10px] text-[#1E0A4E]/40 whitespace-nowrap mt-0.5">
                           {formatRelativeTime(n.created_at)}
                         </span>
                       </div>
-                      <p className="font-body text-xs text-gray600 leading-snug mt-1">{n.mensaje}</p>
+                      <p className="font-body text-xs text-gray500 leading-snug mt-1 line-clamp-2">{n.mensaje}</p>
                       {formatScheduledInfo(n.metadata) && (
                         <p className="font-body text-[11px] text-[#1E6FD9] bg-[#1E6FD9]/10 rounded-md px-2 py-1 mt-2 line-clamp-2">
                           {formatScheduledInfo(n.metadata)}
@@ -642,8 +818,18 @@ function DashboardNavContent({
                       )}
                     </div>
                   </div>
-                ))
-              )}
+                ))}
+              </div>
+
+              {/* Footer — Ver historial completo */}
+              <div className="border-t border-[#E2E8F0] bg-[#F8FAFC] px-4 py-2.5 text-center">
+                <button
+                  onClick={() => { setNotifOpen(false); navigate('/historial'); }}
+                  className="font-body text-xs font-semibold text-[#1E6FD9] hover:underline"
+                >
+                  Ver historial completo →
+                </button>
+              </div>
             </div>
           )}
         </div>

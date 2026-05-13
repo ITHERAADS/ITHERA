@@ -14,6 +14,8 @@ const DEFAULT_PREFERENCES = {
   notificaciones_votos: true,
   notificaciones_comentarios: true,
   notificaciones_invitaciones: true,
+  notificaciones_finanzas: true,
+  notificaciones_alertas: true,
 };
 
 const getLocalUserId = async (authUserId: string): Promise<number> => {
@@ -90,6 +92,8 @@ export const updatePreferences = async (
   if (payload.notificaciones_votos !== undefined) updateData.notificaciones_votos = payload.notificaciones_votos;
   if (payload.notificaciones_comentarios !== undefined) updateData.notificaciones_comentarios = payload.notificaciones_comentarios;
   if (payload.notificaciones_invitaciones !== undefined) updateData.notificaciones_invitaciones = payload.notificaciones_invitaciones;
+  if (payload.notificaciones_finanzas !== undefined) updateData.notificaciones_finanzas = payload.notificaciones_finanzas;
+  if (payload.notificaciones_alertas !== undefined) updateData.notificaciones_alertas = payload.notificaciones_alertas;
 
   const { data, error } = await supabase
     .from('usuario_preferencias_notificacion')
@@ -167,6 +171,12 @@ const shouldNotifyByPreferences = (
     tipo.includes('actividad')
   ) {
     return preferences.notificaciones_grupo;
+  }
+  if (tipo === 'gasto_nuevo') {
+    return (preferences as any).notificaciones_finanzas ?? true;
+  }
+  if (tipo === 'sistema') {
+    return (preferences as any).notificaciones_alertas ?? true;
   }
 
   return true;

@@ -18,7 +18,7 @@ const isPresent = (value: unknown): boolean => value !== undefined;
 const getVoteLabel = (voteType: ProposalVoteType): string => {
   if (voteType === 'a_favor') return 'a favor';
   if (voteType === 'en_contra') return 'en contra';
-  return 'en abstención';
+return 'en abstención';
 };
 
 const buildProposalResponse = async (proposalId: number) => {

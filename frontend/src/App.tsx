@@ -13,6 +13,8 @@ import { NotFoundPage } from './pages/NotFound';
 import { MyTripsPage } from './pages/MyTrips/MyTripsPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { JoinGroupPage } from './pages/JoinGroup'
+import { SearchHistoryPage } from './pages/SearchHistory/SearchHistoryPage'
+import { ExportPage } from './pages/Export/ExportPage'
 
 function App() {
   return (
@@ -70,6 +72,22 @@ function App() {
           element={
             <ProtectedRoute>
               <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/historial"
+          element={
+            <ProtectedRoute>
+              <SearchHistoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/export"
+          element={
+            <ProtectedRoute>
+              <ExportPage />
             </ProtectedRoute>
           }
         />

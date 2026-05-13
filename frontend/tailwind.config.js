@@ -41,6 +41,15 @@ export default {
         body:    ['"DM Sans"', 'sans-serif'],
         sans:    ['"DM Sans"', 'sans-serif'],
       },
+      animation: {
+        'slide-in': 'slideIn 0.2s ease-out',
+      },
+      keyframes: {
+        slideIn: {
+          from: { opacity: '0', transform: 'translateY(-8px)' },
+          to:   { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
     },
   },
   plugins: [],

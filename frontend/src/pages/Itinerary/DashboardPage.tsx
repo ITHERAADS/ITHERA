@@ -25,7 +25,7 @@ import { DocumentVaultPanel } from '../../components/documents/DocumentVaultPane
 import { SubgroupSchedulePanel } from '../../components/subgroups/SubgroupSchedulePanel'
 import { subgroupScheduleService, type SubgroupSlot } from '../../services/subgroups'
 import { useSocket } from '../../hooks/useSocket'
-import type { Group } from '../../types/groups'
+import type { Group, TravelStartLocation } from '../../types/groups'
 
 
 function IconDownload({ size = 14 }: { size?: number }) {
@@ -619,15 +619,43 @@ function MapsTabView({
 
 const ROUTE_TRAVEL_MODE = 'DRIVE' as const
 
+function resolveRouteOrigin(group: Group | null, startLocation?: TravelStartLocation | null) {
+  const startLat = startLocation?.latitude
+  const startLng = startLocation?.longitude
+
+  if (startLat != null && startLng != null) {
+    return {
+      lat: Number(startLat),
+      lng: Number(startLng),
+    }
+  }
+
+  if (group?.punto_partida_tipo === 'hotel_reservado' && group.punto_partida_latitud != null && group.punto_partida_longitud != null) {
+    return {
+      lat: Number(group.punto_partida_latitud),
+      lng: Number(group.punto_partida_longitud),
+    }
+  }
+
+  if (group?.destino_latitud != null && group.destino_longitud != null) {
+    return {
+      lat: Number(group.destino_latitud),
+      lng: Number(group.destino_longitud),
+    }
+  }
+
+  return null
+}
+
 async function enrichDaysWithRoutes(
   itineraryDays: ItineraryDay[],
   group: Group | null,
-  token: string
+  token: string,
+  startLocation?: TravelStartLocation | null
 ): Promise<ItineraryDay[]> {
-  const originLat = group?.destino_latitud
-  const originLng = group?.destino_longitud
+  const origin = resolveRouteOrigin(group, startLocation)
 
-  if (originLat == null || originLng == null) {
+  if (!origin || !Number.isFinite(origin.lat) || !Number.isFinite(origin.lng)) {
     return itineraryDays
   }
 
@@ -638,8 +666,8 @@ async function enrichDaysWithRoutes(
         try {
           const response = await mapsService.computeRoute(
             {
-              originLat,
-              originLng,
+              originLat: origin.lat,
+              originLng: origin.lng,
               destinationLat: Number(activity.latitude),
               destinationLng: Number(activity.longitude),
               travelMode: ROUTE_TRAVEL_MODE,
@@ -914,7 +942,15 @@ export function DashboardPage() {
         setIsLoading(true)
 
         const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-        const [groupResult, membersResult, votesResult, budgetResult, contextResult, subgroupResult] = await Promise.allSettled([
+        const [
+          groupResult,
+          membersResult,
+          votesResult,
+          budgetResult,
+          contextResult,
+          travelContextResult,
+          subgroupResult,
+        ] = await Promise.allSettled([
           groupsService.getGroupDetails(resolvedGroupId, accessToken),
           groupsService.getMembers(resolvedGroupId, accessToken),
           proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
@@ -923,6 +959,7 @@ export function DashboardPage() {
             contextLinksService.list(resolvedGroupId, accessToken),
             contextLinksService.options(resolvedGroupId, accessToken),
           ]),
+          groupsService.getTravelContext(resolvedGroupId, accessToken),
           subgroupScheduleService.getSchedule(String(resolvedGroupId), accessToken),
         ])
 
@@ -931,7 +968,8 @@ export function DashboardPage() {
             ? groupResult.value.group
             : null
 
-        const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupData, accessToken)
+        const startLocation = travelContextResult.status === 'fulfilled' ? travelContextResult.value.data?.startLocation : null
+        const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupData, accessToken, startLocation)
         const nextVotesMap = (votesResult.status === 'fulfilled' ? votesResult.value.results : []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
           acc[String(item.id_propuesta)] = item
           return acc
@@ -985,7 +1023,15 @@ export function DashboardPage() {
     if (!resolvedGroupId || !accessToken) return
 
     const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
-    const [groupResult, membersResult, votesResult, budgetResult, contextResult, subgroupResult] = await Promise.allSettled([
+    const [
+      groupResult,
+      membersResult,
+      votesResult,
+      budgetResult,
+      contextResult,
+      travelContextResult,
+      subgroupResult,
+    ] = await Promise.allSettled([
       groupsService.getGroupDetails(resolvedGroupId, accessToken),
       groupsService.getMembers(resolvedGroupId, accessToken),
       proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
@@ -994,6 +1040,7 @@ export function DashboardPage() {
         contextLinksService.list(resolvedGroupId, accessToken),
         contextLinksService.options(resolvedGroupId, accessToken),
       ]),
+      groupsService.getTravelContext(resolvedGroupId, accessToken),
       subgroupScheduleService.getSchedule(String(resolvedGroupId), accessToken),
     ])
 
@@ -1002,7 +1049,8 @@ export function DashboardPage() {
         ? groupResult.value.group
         : null
 
-    const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupData, accessToken)
+    const startLocation = travelContextResult.status === 'fulfilled' ? travelContextResult.value.data?.startLocation : null
+    const daysWithRoutes = await enrichDaysWithRoutes(itineraryRes.days, groupData, accessToken, startLocation)
     const nextVotesMap = (votesResult.status === 'fulfilled' ? votesResult.value.results : []).reduce<Record<string, VoteResult>>((acc, item: VoteResult) => {
       acc[String(item.id_propuesta)] = item
       return acc

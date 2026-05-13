@@ -118,6 +118,7 @@ const MapPlacesPage = () => {
   const state = location.state as { destino?: string; group?: Group } | null
   const group = state?.group ?? storedGroup
   const destino = state?.destino ?? group?.destino_formatted_address ?? group?.destino ?? ''
+  const fallbackStartLabel = destino || 'el destino del viaje'
   const [query, setQuery] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('empty')
   const [places, setPlaces] = useState<PlaceResult[]>([])
@@ -129,6 +130,8 @@ const MapPlacesPage = () => {
       ? { lat: Number(group.destino_latitud), lng: Number(group.destino_longitud) }
       : null
   )
+  const [startLocationLabel, setStartLocationLabel] = useState(fallbackStartLabel)
+  const [startLocationSource, setStartLocationSource] = useState<'hotel_reservado' | 'destino_viaje'>('destino_viaje')
   const [routeInfo, setRouteInfo] = useState<{ distanceText?: string | null; durationText?: string | null } | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -184,6 +187,24 @@ const MapPlacesPage = () => {
   }, [initMap])
 
   useEffect(() => {
+    const loadTravelContext = async () => {
+      if (!accessToken || !group?.id) return
+      try {
+        const response = await groupsService.getTravelContext(String(group.id), accessToken)
+        const start = response.data?.startLocation
+        if (start?.latitude != null && start.longitude != null) {
+          setDestinationCoords({ lat: Number(start.latitude), lng: Number(start.longitude) })
+        }
+        setStartLocationLabel(start?.formattedAddress || start?.label || fallbackStartLabel)
+        setStartLocationSource(start?.source ?? 'destino_viaje')
+      } catch {
+        setStartLocationLabel(fallbackStartLabel)
+      }
+    }
+    void loadTravelContext()
+  }, [accessToken, group?.id, fallbackStartLabel])
+
+  useEffect(() => {
     const loadDestination = async () => {
       if (destinationCoords || !destino || !accessToken) return
       try {
@@ -192,7 +213,7 @@ const MapPlacesPage = () => {
           setDestinationCoords({ lat: response.data.latitude, lng: response.data.longitude })
         }
       } catch {
-        setMessage('No se pudieron resolver las coordenadas del destino.')
+        setMessage('No se pudieron resolver las coordenadas del punto de partida.')
       }
     }
     void loadDestination()
@@ -207,7 +228,7 @@ const MapPlacesPage = () => {
       const marker = new window.google.maps.Marker({
         map,
         position: destinationCoords,
-        title: destino,
+        title: startLocationLabel,
         icon: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
       })
       markers.current.push({ marker, placeId: 'destination' })
@@ -232,7 +253,7 @@ const MapPlacesPage = () => {
     } else if (destinationCoords) {
       map.panTo(destinationCoords)
     }
-  }, [places, destinationCoords, destino, clearMarkers])
+  }, [places, destinationCoords, startLocationLabel, clearMarkers])
 
   useEffect(() => {
     if (!accessToken || query.trim().length < 3) {
@@ -305,7 +326,7 @@ const MapPlacesPage = () => {
       setPlaces(nextPlaces)
       setSelectedPlaceId(nextPlaces[0]?.id ?? null)
       setViewMode(nextPlaces.length ? 'results' : 'empty')
-      if (!nextPlaces.length) setMessage('No encontramos resultados cercanos al destino. Prueba con una búsqueda más general, por ejemplo: restaurantes, playas, museos o parques.')
+      if (!nextPlaces.length) setMessage('No encontramos resultados cercanos al punto de partida. Prueba con una búsqueda más general, por ejemplo: restaurantes, playas, museos o parques.')
     } catch (error) {
       setViewMode('error')
       setMessage(error instanceof Error ? error.message : 'Error al buscar lugares')
@@ -410,7 +431,8 @@ const MapPlacesPage = () => {
               <aside className="absolute left-6 top-6 z-10 w-72 rounded-2xl border border-gray-100 bg-white p-6 shadow-lg">
                 <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-[#E8F0FF] text-[#1E6FD9]"><IconSearch /></div>
                 <h1 className="font-heading text-xl font-bold text-[#1E0A4E]">Busca lugares para comenzar</h1>
-                <p className="mt-2 text-sm leading-relaxed text-gray-500">Encuentra actividades, restaurantes y sitios de interés cerca de {destino || 'tu destino'}.</p>
+                <p className="mt-2 text-sm leading-relaxed text-gray-500">Encuentra actividades, restaurantes y sitios de interés cerca de {startLocationLabel}.</p>
+                <p className="mt-3 rounded-xl bg-[#E8F0FF] px-3 py-2 text-xs font-semibold text-[#1E6FD9]">Punto de partida: {startLocationSource === 'hotel_reservado' ? 'hotel reservado' : 'destino del viaje'}</p>
                 <div className="mt-5 border-t border-gray-100 pt-5">
                   <p className="mb-3 text-xs font-bold uppercase text-[#1E0A4E]">Categorías sugeridas</p>
                   <div className="grid grid-cols-2 gap-3">

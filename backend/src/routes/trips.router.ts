@@ -176,6 +176,18 @@ router.get('/invite-preview/:code', async (req: Request, res: Response): Promise
 router.use('/:groupId/itinerary', itineraryRouter);
 router.use('/:groupId/chat', chatRouter);
 
+
+router.get('/:groupId/travel-context', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const context = await GroupsService.getGroupTravelContext(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, data: context });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: status === 500 ? 'No se pudo cargar el punto de partida del viaje' : msg });
+  }
+});
+
 router.get('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const group = await GroupsService.getGroupDetails(req.user!.id, req.params.groupId);

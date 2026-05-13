@@ -22,6 +22,15 @@ export interface GrupoViaje {
   destino_formatted_address?: string | null;
   destino_photo_name?: string | null;
   destino_photo_url?: string | null;
+  punto_partida_tipo?: 'destino_viaje' | 'hotel_reservado' | null;
+  punto_partida_nombre?: string | null;
+  punto_partida_direccion?: string | null;
+  punto_partida_latitud?: number | null;
+  punto_partida_longitud?: number | null;
+  punto_partida_place_id?: string | null;
+  punto_partida_hospedaje_id?: number | null;
+  punto_partida_propuesta_id?: number | null;
+  punto_partida_actualizado_at?: string | null;
 }
 
 export interface GrupoMiembro {
@@ -46,6 +55,15 @@ export interface CreateGroupPayload {
   destino_formatted_address?: string | null;
   destino_photo_name?: string | null;
   destino_photo_url?: string | null;
+  punto_partida_tipo?: 'destino_viaje' | 'hotel_reservado' | null;
+  punto_partida_nombre?: string | null;
+  punto_partida_direccion?: string | null;
+  punto_partida_latitud?: number | null;
+  punto_partida_longitud?: number | null;
+  punto_partida_place_id?: string | null;
+  punto_partida_hospedaje_id?: number | null;
+  punto_partida_propuesta_id?: number | null;
+  punto_partida_actualizado_at?: string | null;
 }
 
 export interface UpdateGroupPayload {
@@ -62,6 +80,15 @@ export interface UpdateGroupPayload {
   destino_formatted_address?: string | null;
   destino_photo_name?: string | null;
   destino_photo_url?: string | null;
+  punto_partida_tipo?: 'destino_viaje' | 'hotel_reservado' | null;
+  punto_partida_nombre?: string | null;
+  punto_partida_direccion?: string | null;
+  punto_partida_latitud?: number | null;
+  punto_partida_longitud?: number | null;
+  punto_partida_place_id?: string | null;
+  punto_partida_hospedaje_id?: number | null;
+  punto_partida_propuesta_id?: number | null;
+  punto_partida_actualizado_at?: string | null;
 }
 
 export interface JoinGroupPayload {
@@ -110,4 +137,24 @@ export interface GroupJoinRequest {
   nombre?: string | null;
   email?: string | null;
   avatar_url?: string | null;
+}
+
+export type TravelStartLocationSource = 'hotel_reservado' | 'destino_viaje';
+
+export interface TravelStartLocation {
+  source: TravelStartLocationSource;
+  label: string | null;
+  formattedAddress: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  placeId: string | null;
+  photoUrl: string | null;
+  hotelId?: string | null;
+  folioReserva?: string | null;
+}
+
+export interface GroupTravelContext {
+  groupId: string;
+  startLocation: TravelStartLocation;
+  destinationLocation: TravelStartLocation;
 }

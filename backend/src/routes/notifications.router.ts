@@ -79,6 +79,7 @@ router.patch('/preferences', requireAuth, async (req: Request, res: Response, ne
       'notificaciones_comentarios',
       'notificaciones_invitaciones',
       'notificaciones_finanzas',
+      'notificaciones_alertas',
       'notificaciones_vuelos',
       'notificaciones_hospedajes'
     ];

@@ -111,6 +111,105 @@ function IconGlobe() {
   )
 }
 
+// ── Notification icons ────────────────────────────────────────────────────────
+
+function IconFileText() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <polyline points="14 2 14 8 20 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function IconThumbUp() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function IconWallet() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M21 12V7H5a2 2 0 010-4h14v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M3 5v14a2 2 0 002 2h16v-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M18 12a2 2 0 000 4h4v-4h-4z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function IconLockSmall() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function IconBellSmall() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function IconUserSmall() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function getNotifIcon(tipo: string) {
+  switch (tipo) {
+    case 'propuestas':  return <IconFileText />
+    case 'presupuesto': return <IconWallet />
+    case 'miembros':    return <IconUserSmall />
+    case 'sistema':     return <IconLockSmall />
+    default:            return <IconBellSmall />
+  }
+}
+
+function NotifActorAvatar({ tipo, metadata }: { tipo: string; metadata: Record<string, unknown> }) {
+  const avatarUrl = typeof metadata.actorAvatarUrl === 'string' ? metadata.actorAvatarUrl : null
+  const actorName = typeof metadata.actorName === 'string' ? metadata.actorName.trim() : null
+
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={actorName ?? 'Actor'}
+        className="w-8 h-8 rounded-full object-cover shrink-0"
+      />
+    )
+  }
+
+  if (actorName) {
+    const initials = actorName.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
+    return (
+      <div className="w-8 h-8 rounded-full bg-[#1E6FD9]/10 text-[#1E6FD9] flex items-center justify-center font-body text-xs font-bold shrink-0">
+        {initials}
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-8 h-8 rounded-full bg-[#7A4FD6]/10 text-[#7A4FD6] flex items-center justify-center shrink-0">
+      {getNotifIcon(tipo)}
+    </div>
+  )
+}
+
 // ── Landing variant ───────────────────────────────────────────────────────────
 
 const DEFAULT_LANDING_LINKS: NavLink[] = [
@@ -295,6 +394,9 @@ function formatScheduledInfo(metadata: Record<string, unknown>): string | null {
 
 // ── Dashboard variant ─────────────────────────────────────────────────────────
 
+type NotifFilter = 'todos' | 'propuestas' | 'presupuesto' | 'miembros' | 'sistema'
+const NOTIF_FILTER_TYPES: NotifFilter[] = ['todos', 'propuestas', 'presupuesto', 'miembros', 'sistema']
+
 const DEFAULT_TRIP: TripInfo    = { name: 'Cancún 2025', subtitle: 'Riviera Maya, México' }
 const DEFAULT_USER: NavUserInfo = {
   name: 'Cargando...',
@@ -400,7 +502,7 @@ function DashboardNavContent({
   const menuRef = useRef<HTMLDivElement>(null)
 
   const [notifOpen,   setNotifOpen]   = useState(false)
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications()
+  const { notifications, unreadCount, markAsRead, markAllAsRead, loading: notifLoading, error: notifError, refresh } = useNotifications()
   const notifRef = useRef<HTMLDivElement>(null)
   const avatarUrl = localUser?.avatar_url
   const [tripMenuOpen, setTripMenuOpen] = useState(false)
@@ -409,6 +511,12 @@ function DashboardNavContent({
   const [tripMenuError, setTripMenuError] = useState<string | null>(null)
   const [tripSwitchingId, setTripSwitchingId] = useState<string | null>(null)
   const tripMenuRef = useRef<HTMLDivElement>(null)
+
+  const [activeFilter, setActiveFilter] = useState<NotifFilter>('todos')
+
+  const filteredNotifications = activeFilter === 'todos'
+    ? notifications
+    : notifications.filter((n) => (n as Record<string, unknown>).tipo === activeFilter)
 
   useEffect(() => {
     setTripSwitchingId(null)
@@ -473,6 +581,10 @@ function DashboardNavContent({
       isMounted = false
     }
   }, [tripMenuOpen, accessToken])
+
+  async function handleRefresh() {
+    await refresh()
+  }
 
   function handleToggleNotif() {
     setNotifOpen((o) => !o)
@@ -625,14 +737,15 @@ function DashboardNavContent({
             <IconBell />
             {unreadCount > 0 && (
               <span className="absolute top-1 right-1 w-4 h-4 bg-redError text-white rounded-full text-[10px] font-bold flex items-center justify-center leading-none">
-                {unreadCount > 9 ? '9+' : unreadCount}
+                {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-[#E2E8F0] rounded-xl shadow-lg overflow-hidden z-50 max-h-96 overflow-y-auto">
-              <div className="px-4 py-3 border-b border-[#E2E8F0] flex items-center justify-between sticky top-0 bg-white">
+            <div className="absolute right-0 top-full mt-2 w-80 bg-white border border-[#E2E8F0] rounded-xl shadow-lg z-50 flex flex-col" style={{ maxHeight: '28rem' }}>
+              {/* Header */}
+              <div className="px-4 py-3 border-b border-[#E2E8F0] flex items-center justify-between shrink-0">
                 <span className="font-heading font-bold text-[#1E0A4E] text-sm">Notificaciones</span>
                 <div className="flex items-center gap-2">
                   {unreadCount > 0 && (
@@ -648,53 +761,108 @@ function DashboardNavContent({
                   )}
                 </div>
               </div>
-              {notifications.length === 0 ? (
-                <div className="px-4 py-6 text-center text-gray500 text-sm">
-                  No tienes notificaciones
-                </div>
-              ) : (
-                notifications.map((n) => {
-                  const action = getNotificationAction(n.metadata)
 
-                  return (
-                    <div
-                      key={n.id}
-                      onClick={() => { if (!n.leida) markAsRead(n.id); }}
-                      className={`flex items-start gap-3 px-4 py-3 hover:bg-[#F8FAFC] transition-colors border-b border-[#E2E8F0] last:border-none ${!n.leida ? 'cursor-pointer bg-[#F8FAFC]/50' : 'cursor-default opacity-70'}`}
-                    >
-                      <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${!n.leida ? 'bg-[#1E6FD9]' : 'bg-transparent'}`} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-snug">{n.titulo}</p>
-                          <span className="font-body text-[10px] text-[#1E0A4E]/40 whitespace-nowrap mt-0.5">
-                            {formatRelativeTime(n.created_at)}
-                          </span>
+              {/* Filter tabs */}
+              <div className="flex gap-1 px-3 pt-2 pb-1 border-b border-[#E2E8F0] shrink-0 overflow-x-auto">
+                {NOTIF_FILTER_TYPES.map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setActiveFilter(filter)}
+                    className={`shrink-0 px-2 py-1 rounded-md font-body text-[11px] font-semibold capitalize transition-colors ${
+                      activeFilter === filter
+                        ? 'bg-[#1E6FD9] text-white'
+                        : 'text-gray500 hover:text-[#1E0A4E] hover:bg-[#F4F6F8]'
+                    }`}
+                  >
+                    {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              {/* Body */}
+              <div className="overflow-y-auto flex-1">
+                {notifLoading ? (
+                  <>
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="flex items-start gap-3 px-4 py-3 border-b border-[#E2E8F0]">
+                        <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse shrink-0" />
+                        <div className="flex-1 space-y-2 pt-1">
+                          <div className="h-3 bg-gray-200 animate-pulse rounded w-3/4" />
+                          <div className="h-2 bg-gray-200 animate-pulse rounded w-full" />
+                          <div className="h-2 bg-gray-200 animate-pulse rounded w-1/2" />
                         </div>
-                        <p className="font-body text-xs text-gray600 leading-snug mt-1">{n.mensaje}</p>
-                        {formatScheduledInfo(n.metadata) && (
-                          <p className="font-body text-[11px] text-[#1E6FD9] bg-[#1E6FD9]/10 rounded-md px-2 py-1 mt-2 line-clamp-2">
-                            {formatScheduledInfo(n.metadata)}
-                          </p>
-                        )}
-                        {action && (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              if (!n.leida) markAsRead(n.id)
-                              setNotifOpen(false)
-                              navigate(action.url)
-                            }}
-                            className="mt-2 inline-flex rounded-lg bg-[#1E6FD9] px-3 py-1.5 font-body text-[11px] font-semibold text-white hover:bg-[#2C8BE6]"
-                          >
-                            {action.label}
-                          </button>
-                        )}
                       </div>
-                    </div>
-                  )
-                })
-              )}
+                    ))}
+                  </>
+                ) : notifError ? (
+                  <div className="px-4 py-6 flex flex-col items-center gap-3 text-center">
+                    <p className="font-body text-sm text-gray500">No pudimos cargar tus notificaciones. Inténtalo más tarde.</p>
+                    <button
+                      onClick={handleRefresh}
+                      className="bg-[#1E6FD9] text-white rounded-lg px-4 py-2 font-body text-xs font-semibold hover:bg-[#2C8BE6] transition-colors"
+                    >
+                      Reintentar
+                    </button>
+                  </div>
+                ) : filteredNotifications.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-gray500 text-sm font-body">
+                    No tienes notificaciones
+                  </div>
+                ) : (
+                  filteredNotifications.map((n) => {
+                    const action = getNotificationAction(n.metadata)
+                    const nTipo = String((n as Record<string, unknown>).tipo ?? '')
+
+                    return (
+                      <div
+                        key={n.id}
+                        onClick={() => { if (!n.leida) markAsRead(n.id); }}
+                        className={`animate-slide-in flex items-start gap-3 px-4 py-3 hover:bg-[#F8FAFC] transition-colors border-b border-[#E2E8F0] last:border-none ${!n.leida ? 'cursor-pointer bg-[#F8FAFC]/50' : 'cursor-default opacity-70'}`}
+                      >
+                        <NotifActorAvatar tipo={nTipo} metadata={n.metadata} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-snug">{n.titulo}</p>
+                            <span className="font-body text-[10px] text-[#1E0A4E]/40 whitespace-nowrap mt-0.5">
+                              {formatRelativeTime(n.created_at)}
+                            </span>
+                          </div>
+                          <p className="font-body text-xs text-gray-500 leading-snug mt-1">{n.mensaje}</p>
+                          {formatScheduledInfo(n.metadata) && (
+                            <p className="font-body text-[11px] text-[#1E6FD9] bg-[#1E6FD9]/10 rounded-md px-2 py-1 mt-2 line-clamp-2">
+                              {formatScheduledInfo(n.metadata)}
+                            </p>
+                          )}
+                          {action && (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                if (!n.leida) markAsRead(n.id)
+                                setNotifOpen(false)
+                                navigate(action.url)
+                              }}
+                              className="mt-2 inline-flex rounded-lg bg-[#1E6FD9] px-3 py-1.5 font-body text-[11px] font-semibold text-white hover:bg-[#2C8BE6]"
+                            >
+                              {action.label}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="shrink-0 border-t border-[#E2E8F0] px-4 py-2.5">
+                <button
+                  onClick={() => { setNotifOpen(false); navigate('/historial') }}
+                  className="font-body text-xs font-semibold text-[#1E6FD9] hover:underline w-full text-center"
+                >
+                  Ver historial completo →
+                </button>
+              </div>
             </div>
           )}
         </div>

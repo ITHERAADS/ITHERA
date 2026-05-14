@@ -432,6 +432,26 @@ export const createExpense = async (
   const { error: splitError } = await supabaseAdmin.from('expense_splits').insert(splits);
   if (splitError) throw createError(splitError.message, 500);
 
+  try {
+    const { createNotificationForGroupMembers } = await import('../notifications/notifications.service.js')
+    await createNotificationForGroupMembers(
+      Number(expense.group_id),
+      null,
+      {
+        tipo: 'gasto_nuevo',
+        titulo: 'Nuevo gasto registrado',
+        mensaje: `Se registró un gasto de $${Number(expense.amount).toFixed(2)} en ${expense.category}: ${String(expense.description)}`,
+        metadata: {
+          monto: Number(expense.amount).toFixed(2),
+          categoria: expense.category,
+          descripcion: expense.description,
+        },
+      }
+    )
+  } catch (err) {
+    console.error('[budget.service] Error enviando notificación de gasto:', err)
+  }
+
   return getBudgetDashboard(authUserId, groupId);
 };
 

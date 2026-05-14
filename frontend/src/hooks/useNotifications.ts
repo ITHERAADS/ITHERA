@@ -9,6 +9,7 @@ export const useNotifications = () => {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
   const localUserId = localUser?.id_usuario ? Number(localUser.id_usuario) : null;
 
@@ -32,6 +33,7 @@ export const useNotifications = () => {
   const fetchNotifications = useCallback(async () => {
     if (!accessToken) return;
 
+    setError(false);
     try {
       setLoading(true);
       const [listRes, countRes] = await Promise.all([
@@ -47,6 +49,7 @@ export const useNotifications = () => {
       }
     } catch (error) {
       console.error('Error fetching notifications:', error);
+      setError(true);
     } finally {
       setLoading(false);
     }
@@ -133,6 +136,7 @@ export const useNotifications = () => {
     notifications,
     unreadCount,
     loading,
+    error,
     markAsRead,
     markAllAsRead,
     refresh: fetchNotifications,

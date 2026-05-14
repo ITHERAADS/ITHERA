@@ -15,6 +15,7 @@ const DEFAULT_PREFERENCES = {
   notificaciones_comentarios: true,
   notificaciones_invitaciones: true,
   notificaciones_finanzas: true,
+  notificaciones_alertas: true,
   notificaciones_vuelos: true,
   notificaciones_hospedajes: true,
 };
@@ -94,6 +95,7 @@ export const updatePreferences = async (
   if (payload.notificaciones_comentarios !== undefined) updateData.notificaciones_comentarios = payload.notificaciones_comentarios;
   if (payload.notificaciones_invitaciones !== undefined) updateData.notificaciones_invitaciones = payload.notificaciones_invitaciones;
   if (payload.notificaciones_finanzas !== undefined) updateData.notificaciones_finanzas = payload.notificaciones_finanzas;
+  if (payload.notificaciones_alertas !== undefined) updateData.notificaciones_alertas = payload.notificaciones_alertas;
   if (payload.notificaciones_vuelos !== undefined) updateData.notificaciones_vuelos = payload.notificaciones_vuelos;
   if (payload.notificaciones_hospedajes !== undefined) updateData.notificaciones_hospedajes = payload.notificaciones_hospedajes;
 
@@ -178,6 +180,8 @@ const shouldNotifyByPreferences = (
     return preferences.notificaciones_grupo;
   }
 
+  if (tipo === 'gasto_nuevo') return (preferences as any).notificaciones_finanzas ?? true;
+  if (tipo === 'sistema') return (preferences as any).notificaciones_alertas ?? true;
   return true;
 };
 

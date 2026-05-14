@@ -19,6 +19,8 @@ import FlightHotelSearchPage from './pages/Search/FlightHotelSearchPage'
 import MapPlacesPage from './pages/Search/MapPlacesPage'
 import RoutesTransportWeatherPage from './pages/Search/RoutesTransportWeatherPage'
 import { CheckoutPage } from './pages/Checkout'
+import { SearchHistoryPage } from './pages/SearchHistoryPage'
+import { ExportPage } from './pages/ExportPage'
 
 function App() {
   return (
@@ -113,6 +115,22 @@ function App() {
           element={
             <ProtectedRoute>
               <CheckoutPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/historial"
+          element={
+            <ProtectedRoute>
+              <SearchHistoryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/viaje/:groupId/exportar"
+          element={
+            <ProtectedRoute>
+              <ExportPage />
             </ProtectedRoute>
           }
         />

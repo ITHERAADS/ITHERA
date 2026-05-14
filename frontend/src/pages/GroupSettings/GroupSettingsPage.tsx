@@ -105,9 +105,33 @@ export function GroupSettingsPage() {
   const [destinationData, setDestinationData] = useState<GeocodingResult | null>(null)
 
   const groupId = searchParams.get('groupId') || group?.id || ''
+  const currentGroupFallback = getCurrentGroup()
+  const effectiveGroup = group ?? currentGroupFallback
+  const effectiveGroupId = String(group?.id ?? currentGroupFallback?.id ?? groupId ?? '')
   const formError = getValidationError(form)
   const minEndDate = form.startDate ? addDaysISO(form.startDate, 1) : todayISO()
   const isReadOnly = isClosedGroup(group)
+
+  const goToGroupPanel = () => {
+    if (!effectiveGroupId) {
+      navigate('/my-trips')
+      return
+    }
+    navigate(`/grouppanel?groupId=${encodeURIComponent(effectiveGroupId)}`)
+  }
+
+  const goToItinerary = () => {
+    if (!effectiveGroupId) {
+      navigate('/my-trips')
+      return
+    }
+    navigate(`/dashboard?groupId=${encodeURIComponent(effectiveGroupId)}`, {
+      state: {
+        groupId: effectiveGroupId,
+        switchingGroup: effectiveGroup ?? undefined,
+      },
+    })
+  }
 
   useEffect(() => {
     if (!accessToken || !groupId) {
@@ -245,10 +269,10 @@ export function GroupSettingsPage() {
             <h2 className="font-heading text-xl text-[#1E0A4E] mb-2">No se pudo abrir configuración</h2>
             <p className="font-body text-sm text-red-500">{error}</p>
             <button
-              onClick={() => navigate('/my-trips')}
+              onClick={effectiveGroupId ? goToItinerary : () => navigate('/my-trips')}
               className="mt-4 bg-[#1E6FD9] text-white rounded-xl px-4 py-3 text-sm"
             >
-              Volver a mis viajes
+              {effectiveGroupId ? 'Volver al itinerario' : 'Volver a mis viajes'}
             </button>
           </div>
         </div>
@@ -281,12 +305,20 @@ export function GroupSettingsPage() {
                 <h1 className="font-heading font-bold text-[#1E0A4E] text-2xl">Configuración del grupo</h1>
                 <p className="font-body text-sm text-[#7A8799]">{isReadOnly ? 'Consulta la información del viaje cerrado' : 'Edita la información principal del viaje'}</p>
               </div>
-              <button
-                onClick={() => navigate(`/grouppanel?groupId=${encodeURIComponent(group?.id || '')}`)}
-                className="border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm text-[#1E0A4E]"
-              >
-                Volver al panel
-              </button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  onClick={goToGroupPanel}
+                  className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-sm font-semibold text-[#1E0A4E] shadow-sm transition hover:bg-[#F8FAFC]"
+                >
+                  Volver al panel
+                </button>
+                <button
+                  onClick={goToItinerary}
+                  className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-sm font-semibold text-[#1E0A4E] shadow-sm transition hover:bg-[#F8FAFC]"
+                >
+                  Ir al itinerario
+                </button>
+              </div>
             </div>
 
             {isReadOnly && (
@@ -327,6 +359,7 @@ export function GroupSettingsPage() {
                   }}
                   token={accessToken}
                   disabled={isReadOnly}
+                  lockedValue
                 />
               </div>
 

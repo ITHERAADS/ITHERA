@@ -5,6 +5,7 @@ import { mapsService, type PlaceAutocompleteResult, type PlaceResult } from '../
 import { budgetService, type BudgetCategory, type BudgetSplitType } from '../../services/budget'
 import { documentsService, type TripDocumentCategory } from '../../services/documents'
 import { subgroupScheduleService, type SubgroupMembership, type SubgroupSlot } from '../../services/subgroups'
+import { ApiError } from '../../services/apiClient'
 import {
   contextLinksService,
   type ContextEntityRef,
@@ -209,6 +210,8 @@ const toLocalInputValue = (value?: string | null) => {
 
 const toLocalTimeValue = (value?: string | null) => toLocalInputValue(value).slice(11, 16) || '12:00'
 
+const toLocalMinuteKey = (value?: string | null) => toLocalInputValue(value).slice(0, 16)
+
 const isSameLocalDay = (first?: string | null, second?: string | null) =>
   toLocalInputValue(first).slice(0, 10) !== '' &&
   toLocalInputValue(first).slice(0, 10) === toLocalInputValue(second).slice(0, 10)
@@ -333,6 +336,7 @@ export function SubgroupSchedulePanel({
   const [handledFocusRequestNonce, setHandledFocusRequestNonce] = useState<number | null>(null)
   const [expandedSubgroupDay, setExpandedSubgroupDay] = useState<string | null>(null)
   const [longRouteConfirmation, setLongRouteConfirmation] = useState<{ slotId: number } | null>(null)
+  const [scheduleConflictMessage, setScheduleConflictMessage] = useState<string | null>(null)
   const didInitializeExpandedDayRef = useRef(false)
   const autocompleteBoxRef = useRef<HTMLDivElement | null>(null)
   const slotCardRefs = useRef<Record<number, HTMLElement | null>>({})
@@ -488,6 +492,13 @@ export function SubgroupSchedulePanel({
       setError(null)
       await action()
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setScheduleConflictMessage(
+          'Ya hay una actividad en ese horario. Necesitas cambiar el horario de la otra actividad o el de esta para poder continuar.'
+        )
+        setError(null)
+        return
+      }
       setError(err instanceof Error ? err.message : 'No se pudo completar la accion')
     }
   }
@@ -646,6 +657,24 @@ export function SubgroupSchedulePanel({
     return Math.abs(splitSum - totalAmount) > 0.01
       ? 'La division personalizada debe sumar el monto total.'
       : null
+  }
+
+  const findSubgroupActivityTimeConflict = (
+    slot: SubgroupSlot,
+    startsAt: string | Date | null,
+    excludeActivityId?: number | string | null,
+  ) => {
+    const candidateKey = startsAt ? toLocalMinuteKey(startsAt instanceof Date ? startsAt.toISOString() : startsAt) : ''
+    if (!candidateKey) return null
+
+    for (const subgroup of slot.subgroups) {
+      for (const activity of subgroup.activities) {
+        if (excludeActivityId != null && String(activity.id) === String(excludeActivityId)) continue
+        if (toLocalMinuteKey(activity.starts_at) === candidateKey) return activity
+      }
+    }
+
+    return null
   }
 
   const closeDraftActionModal = () => setDraftActionModal(null)
@@ -1058,6 +1087,14 @@ export function SubgroupSchedulePanel({
       setError('La hora estimada debe estar dentro del horario del admin y antes de la hora de termino')
       return
     }
+    const timeConflict = findSubgroupActivityTimeConflict(slot, startsAt)
+    if (timeConflict) {
+      setScheduleConflictMessage(
+        'Ya hay una actividad en ese horario. Necesitas cambiar el horario de la otra actividad o el de esta para poder continuar.'
+      )
+      setError(null)
+      return
+    }
     if (draft.quickDocumentFile && !draft.quickDocumentNotes.trim()) {
       setError('La nota del documento es obligatoria para subirlo a la boveda.')
       return
@@ -1226,9 +1263,9 @@ export function SubgroupSchedulePanel({
         },
         accessToken,
       )
-      const results = routeOrigin
+      const results: EnrichedPlaceResult[] = routeOrigin
         ? await Promise.all((response.data ?? []).map((place) => enrichPlaceWithRoute(place)))
-        : response.data ?? []
+        : (response.data ?? [])
       results.sort((left, right) => (left.routeDistanceMeters ?? Infinity) - (right.routeDistanceMeters ?? Infinity))
       setActivityDraft(slotId, { results, loading: false })
     } catch (err) {
@@ -1310,6 +1347,16 @@ export function SubgroupSchedulePanel({
     const details = subgroup ? primaryActivity(subgroup) : null
     const slotDate = slot ? toLocalInputValue(slot.starts_at).slice(0, 10) : ''
     const startsAt = slotDate ? new Date(`${slotDate}T${subgroupFormTime || '12:00'}:00`) : null
+    if (slot && startsAt) {
+      const timeConflict = findSubgroupActivityTimeConflict(slot, startsAt, details?.id ?? null)
+      if (timeConflict) {
+        setScheduleConflictMessage(
+          'Ya hay una actividad en ese horario. Necesitas cambiar el horario de la otra actividad o el de esta para poder continuar.'
+        )
+        setError(null)
+        return
+      }
+    }
 
     await runAction(async () => {
       await subgroupScheduleService.updateSubgroup(groupId, subgroupModal.slotId, subgroupModal.subgroupId!, {
@@ -1921,6 +1968,19 @@ export function SubgroupSchedulePanel({
         </div>
       </div>
 
+
+      <ActionModal
+        open={scheduleConflictMessage !== null}
+        title="Conflicto de horario"
+        subtitle="No se puede guardar la actividad con esa hora."
+        confirmLabel="Cambiar horario"
+        onClose={() => setScheduleConflictMessage(null)}
+        onConfirm={() => setScheduleConflictMessage(null)}
+      >
+        <p className="text-sm leading-relaxed text-[#475569]">
+          {scheduleConflictMessage}
+        </p>
+      </ActionModal>
 
       <ActionModal
         open={slotModal !== null}

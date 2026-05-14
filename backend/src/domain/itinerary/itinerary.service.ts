@@ -145,6 +145,24 @@ const toActivityRange = (startsAt?: string | null, endsAt?: string | null) => {
   };
 };
 
+const getScheduleMinuteKey = (value?: string | null): string | null => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}T${byType.hour}:${byType.minute}`;
+};
+
 const rangesOverlap = (
   left: NonNullable<ReturnType<typeof toActivityRange>>,
   right: NonNullable<ReturnType<typeof toActivityRange>>,
@@ -171,7 +189,8 @@ const ensureNoGroupActivityCollision = async ({
   excludeActivityId?: string | null;
 }) => {
   const candidateRange = toActivityRange(nextStartsAt, nextEndsAt);
-  if (!candidateRange) return;
+  const candidateMinuteKey = getScheduleMinuteKey(nextStartsAt);
+  if (!candidateRange && !candidateMinuteKey) return;
 
   const { data: siblingActivities, error } = await supabase
     .from('actividades')
@@ -189,7 +208,10 @@ const ensureNoGroupActivityCollision = async ({
       activity.fecha_fin ? String(activity.fecha_fin) : null,
     );
 
-    return siblingRange ? rangesOverlap(candidateRange, siblingRange) : false;
+    const siblingMinuteKey = getScheduleMinuteKey(activity.fecha_inicio ? String(activity.fecha_inicio) : null);
+    if (candidateMinuteKey && siblingMinuteKey === candidateMinuteKey) return true;
+
+    return candidateRange && siblingRange ? rangesOverlap(candidateRange, siblingRange) : false;
   });
 
   if (conflictingActivity) {
@@ -212,7 +234,7 @@ const ensureNoGroupActivityCollision = async ({
       slot.starts_at ? String(slot.starts_at) : null,
       slot.ends_at ? String(slot.ends_at) : null,
     );
-    return slotRange ? rangesOverlap(candidateRange, slotRange) : false;
+    return candidateRange && slotRange ? rangesOverlap(candidateRange, slotRange) : false;
   });
 
   if (conflictingSlot) {

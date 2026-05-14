@@ -4,6 +4,7 @@ import { groupsService } from '../../services/groups'
 import { proposalsService } from '../../services/proposals'
 import { budgetService, type BudgetCategory, type BudgetSplitType } from '../../services/budget'
 import { documentsService, type TripDocumentCategory } from '../../services/documents'
+import { ApiError } from '../../services/apiClient'
 import {
   contextLinksService,
   type ContextEntitySummary,
@@ -180,6 +181,7 @@ export function ActivityProposalModal({
   const [expenseModalTab, setExpenseModalTab] = useState<ContextModalTab>('associate')
   const [documentModalTab, setDocumentModalTab] = useState<ContextModalTab>('associate')
   const [longRouteConfirmation, setLongRouteConfirmation] = useState<{ asAdminDirect: boolean } | null>(null)
+  const [scheduleConflictMessage, setScheduleConflictMessage] = useState<string | null>(null)
   const autocompleteBoxRef = useRef<HTMLDivElement | null>(null)
 
   const memberOptions = useMemo(
@@ -757,6 +759,13 @@ export function ActivityProposalModal({
       onCreated()
       onClose()
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setScheduleConflictMessage(
+          'Ya hay una actividad en ese horario. Necesitas cambiar el horario de la otra actividad o el de esta para poder continuar.'
+        )
+        setError('')
+        return
+      }
       setError(
         err instanceof Error
           ? err.message
@@ -777,6 +786,7 @@ export function ActivityProposalModal({
     setResults([])
     setSelectedPlace(null)
     setLongRouteConfirmation(null)
+    setScheduleConflictMessage(null)
     resetContextDraft()
     setError('')
     onClose()
@@ -1127,6 +1137,19 @@ export function ActivityProposalModal({
           </button>
         </div>
       </div>
+
+      <ActionModal
+        open={scheduleConflictMessage !== null}
+        title="Conflicto de horario"
+        subtitle="No se puede guardar la actividad con esa hora."
+        confirmLabel="Cambiar horario"
+        onClose={() => setScheduleConflictMessage(null)}
+        onConfirm={() => setScheduleConflictMessage(null)}
+      >
+        <p className="font-body text-sm leading-relaxed text-[#475569]">
+          {scheduleConflictMessage}
+        </p>
+      </ActionModal>
 
       <ActionModal
         open={activeContextModal === 'expense'}

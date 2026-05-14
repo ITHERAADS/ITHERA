@@ -664,6 +664,22 @@ function MapsTabView({
 }
 
 const ROUTE_TRAVEL_MODE = 'DRIVE' as const
+const ROUTE_REQUEST_TIMEOUT_MS = 4500
+const DASHBOARD_AUX_REQUEST_TIMEOUT_MS = 6500
+const DASHBOARD_MAIN_REQUEST_TIMEOUT_MS = 8500
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error('La peticion tardo demasiado en responder'))
+    }, timeoutMs)
+
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => window.clearTimeout(timeoutId))
+  })
+}
 
 function resolveRouteOrigin(group: Group | null, startLocation?: TravelStartLocation | null) {
   const startLat = startLocation?.latitude
@@ -710,15 +726,18 @@ async function enrichDaysWithRoutes(
       .filter((activity) => activity.latitude != null && activity.longitude != null)
       .map(async (activity) => {
         try {
-          const response = await mapsService.computeRoute(
-            {
-              originLat: origin.lat,
-              originLng: origin.lng,
-              destinationLat: Number(activity.latitude),
-              destinationLng: Number(activity.longitude),
-              travelMode: ROUTE_TRAVEL_MODE,
-            },
-            token
+          const response = await withTimeout(
+            mapsService.computeRoute(
+              {
+                originLat: origin.lat,
+                originLng: origin.lng,
+                destinationLat: Number(activity.latitude),
+                destinationLng: Number(activity.longitude),
+                travelMode: ROUTE_TRAVEL_MODE,
+              },
+              token
+            ),
+            ROUTE_REQUEST_TIMEOUT_MS
           )
 
           return {
@@ -829,6 +848,17 @@ export function DashboardPage() {
   const [editSubgroupSlotRequest, setEditSubgroupSlotRequest] = useState<{ slotId: number; nonce: number } | null>(null)
   const [focusSubgroupRequest, setFocusSubgroupRequest] = useState<{ slotId: number; subgroupId?: number | null; nonce: number } | null>(null)
   const [group, setGroup] = useState<typeof currentGroup>(currentGroup)
+  const loadingGroupSnapshot = useMemo(() => {
+    const current = currentGroup ?? null
+    const loaded = group ?? null
+    const switching = switchingGroupFromState ?? null
+    if (!current && !loaded && !switching) return null
+    return {
+      ...(current ?? {}),
+      ...(loaded ?? {}),
+      ...(switching ?? {}),
+    } as Group & SwitchingGroupState
+  }, [currentGroup, group, switchingGroupFromState])
   const [members, setMembers] = useState<Parameters<typeof RightPanelDashboard>[0]['members']>([])
   const [budgetSummary, setBudgetSummary] = useState<BudgetSummary | null>(null)
   const dayRefs = useRef<Record<number, DayViewHandle | null>>({})
@@ -987,7 +1017,10 @@ export function DashboardPage() {
       try {
         setIsLoading(true)
 
-        const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
+        const itineraryRes = await withTimeout(
+          groupsService.getItinerary(resolvedGroupId, accessToken),
+          DASHBOARD_MAIN_REQUEST_TIMEOUT_MS
+        )
         const [
           groupResult,
           membersResult,
@@ -997,16 +1030,16 @@ export function DashboardPage() {
           travelContextResult,
           subgroupResult,
         ] = await Promise.allSettled([
-          groupsService.getGroupDetails(resolvedGroupId, accessToken),
-          groupsService.getMembers(resolvedGroupId, accessToken),
-          proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
-          budgetService.getDashboard(String(resolvedGroupId), accessToken),
-          Promise.all([
+          withTimeout(groupsService.getGroupDetails(resolvedGroupId, accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+          withTimeout(groupsService.getMembers(resolvedGroupId, accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+          withTimeout(proposalsService.getVoteResults(String(resolvedGroupId), accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+          withTimeout(budgetService.getDashboard(String(resolvedGroupId), accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+          withTimeout(Promise.all([
             contextLinksService.list(resolvedGroupId, accessToken),
             contextLinksService.options(resolvedGroupId, accessToken),
-          ]),
-          groupsService.getTravelContext(resolvedGroupId, accessToken),
-          subgroupScheduleService.getSchedule(String(resolvedGroupId), accessToken),
+          ]), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+          withTimeout(groupsService.getTravelContext(resolvedGroupId, accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+          withTimeout(subgroupScheduleService.getSchedule(String(resolvedGroupId), accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
         ])
 
         const groupData =
@@ -1068,7 +1101,10 @@ export function DashboardPage() {
 
     if (!resolvedGroupId || !accessToken) return
 
-    const itineraryRes = await groupsService.getItinerary(resolvedGroupId, accessToken)
+    const itineraryRes = await withTimeout(
+      groupsService.getItinerary(resolvedGroupId, accessToken),
+      DASHBOARD_MAIN_REQUEST_TIMEOUT_MS
+    )
     const [
       groupResult,
       membersResult,
@@ -1078,16 +1114,16 @@ export function DashboardPage() {
       travelContextResult,
       subgroupResult,
     ] = await Promise.allSettled([
-      groupsService.getGroupDetails(resolvedGroupId, accessToken),
-      groupsService.getMembers(resolvedGroupId, accessToken),
-      proposalsService.getVoteResults(String(resolvedGroupId), accessToken),
-      budgetService.getDashboard(String(resolvedGroupId), accessToken),
-      Promise.all([
+      withTimeout(groupsService.getGroupDetails(resolvedGroupId, accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+      withTimeout(groupsService.getMembers(resolvedGroupId, accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+      withTimeout(proposalsService.getVoteResults(String(resolvedGroupId), accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+      withTimeout(budgetService.getDashboard(String(resolvedGroupId), accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+      withTimeout(Promise.all([
         contextLinksService.list(resolvedGroupId, accessToken),
         contextLinksService.options(resolvedGroupId, accessToken),
-      ]),
-      groupsService.getTravelContext(resolvedGroupId, accessToken),
-      subgroupScheduleService.getSchedule(String(resolvedGroupId), accessToken),
+      ]), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+      withTimeout(groupsService.getTravelContext(resolvedGroupId, accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
+      withTimeout(subgroupScheduleService.getSchedule(String(resolvedGroupId), accessToken), DASHBOARD_AUX_REQUEST_TIMEOUT_MS),
     ])
 
     const groupData =
@@ -1812,7 +1848,7 @@ export function DashboardPage() {
       }
     >
       {isLoading ? (
-        <DashboardSwitchLoading group={switchingGroupFromState ?? group ?? currentGroup} />
+        <DashboardSwitchLoading group={loadingGroupSnapshot} />
       ) : requiresInitialBudget && activeTab !== 'pagar' ? (
         <div className="flex flex-1 items-center justify-center bg-surface px-6 py-8">
           <div className="w-full max-w-2xl rounded-2xl border border-[#E2E8F0] bg-white p-6 text-center">

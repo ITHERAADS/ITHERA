@@ -67,6 +67,20 @@ export function GroupPanelPage() {
   const isReadOnly = isClosedGroup(group)
   const canManageGroup = isAdmin && !isReadOnly
   const isPrivateGroup = group?.es_publico !== true
+  const goToItinerary = () => {
+    const targetGroup = group ?? getCurrentGroup()
+    const targetGroupId = String(targetGroup?.id ?? groupId ?? '')
+    if (!targetGroupId) {
+      navigate('/my-trips')
+      return
+    }
+    navigate(`/dashboard?groupId=${encodeURIComponent(targetGroupId)}`, {
+      state: {
+        groupId: targetGroupId,
+        switchingGroup: targetGroup ?? undefined,
+      },
+    })
+  }
 
   useEffect(() => {
     if (!accessToken || !groupId) {
@@ -370,9 +384,7 @@ export function GroupPanelPage() {
 
                 <button
                   type="button"
-                  onClick={() =>
-                    navigate(`/dashboard?groupId=${encodeURIComponent(group.id)}`)
-                  }
+                  onClick={goToItinerary}
                   className={`${isAdmin ? '' : 'sm:col-start-3'} min-h-10 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-center text-xs font-semibold text-[#1E0A4E] shadow-sm transition hover:bg-[#F8FAFC]`}
                 >
                   Itinerario

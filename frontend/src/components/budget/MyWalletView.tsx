@@ -32,6 +32,29 @@ function StatusBadge() {
   )
 }
 
+function EmptyCard({
+  title,
+  subtitle,
+  tone = 'neutral',
+}: {
+  title: string
+  subtitle: string
+  tone?: 'success' | 'danger' | 'neutral'
+}) {
+  const toneStyles = tone === 'success'
+    ? 'border-[#BBF7D0] bg-[#F0FDF4]'
+    : tone === 'danger'
+      ? 'border-[#FECACA] bg-[#FEF2F2]'
+      : 'border-[#E2E8F0] bg-[#F8FAFC]'
+
+  return (
+    <div className={`rounded-2xl border px-4 py-5 text-center ${toneStyles}`}>
+      <p className="font-body text-sm font-semibold text-[#334155]">{title}</p>
+      <p className="mt-1 font-body text-xs text-[#64748B]">{subtitle}</p>
+    </div>
+  )
+}
+
 interface Props {
   onBack: () => void
   settlements?: BudgetSettlement[]
@@ -109,9 +132,16 @@ export const MyWalletView: FC<Props> = ({
         <h1 className="mb-4 font-heading text-2xl font-bold text-white">Mi Cartera</h1>
 
         {isAlDia ? (
-          <div className="rounded-2xl border border-[#35C56A]/30 bg-[#35C56A]/20 px-4 py-4">
-            <p className="font-heading text-lg font-bold text-[#35C56A]">Al dia</p>
-            <p className="font-body text-xs text-white/70">Estas al corriente con la liquidacion actual</p>
+          <div className="rounded-2xl border border-[#35C56A]/40 bg-gradient-to-r from-[#1E6FD9]/30 to-[#35C56A]/20 px-4 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-heading text-lg font-bold text-[#86EFAC]">Al dia</p>
+                <p className="font-body text-xs text-white/80">Estas al corriente con la liquidacion actual.</p>
+              </div>
+              <span className="rounded-full border border-[#86EFAC]/50 bg-[#86EFAC]/10 px-3 py-1 font-body text-xs font-semibold text-[#DCFCE7]">
+                Balance estable
+              </span>
+            </div>
           </div>
         ) : (
           <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-4">
@@ -127,73 +157,83 @@ export const MyWalletView: FC<Props> = ({
       </div>
 
       <div className="flex flex-1 flex-col gap-5 px-6 py-5">
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#35C56A]" />
-            <h2 className="font-heading text-sm font-bold text-[#3D4A5C]">Te deben</h2>
-            <span className="ml-auto font-body text-sm font-semibold text-[#35C56A]">{formatMXN(totalOweMe)}</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            {meDeben.length === 0 ? (
-              <p className="py-4 text-center font-body text-sm text-[#7A8799]">Nadie te debe nada</p>
-            ) : meDeben.map((entry) => (
-              <div key={entry.id} className="flex items-center justify-between rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
-                <div>
-                  <p className="font-body text-sm font-semibold text-[#3D4A5C]">{entry.persona}</p>
-                  <p className="font-body text-xs text-[#7A8799]">Liquidacion minima</p>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="font-heading text-sm font-bold text-[#35C56A]">+{formatMXN(entry.monto)}</span>
-                  <StatusBadge />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#EF4444]" />
-            <h2 className="font-heading text-sm font-bold text-[#3D4A5C]">Tu debes</h2>
-            <span className="ml-auto font-body text-sm font-semibold text-[#EF4444]">{formatMXN(totalIOwe)}</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            {leDebo.length === 0 ? (
-              <p className="py-4 text-center font-body text-sm text-[#7A8799]">No debes nada</p>
-            ) : leDebo.map((entry) => (
-              <div key={entry.id} className="flex items-center justify-between rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
-                <div>
-                  <p className="font-body text-sm font-semibold text-[#3D4A5C]">{entry.persona}</p>
-                  <p className="font-body text-xs text-[#7A8799]">Liquidacion minima</p>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="font-heading text-sm font-bold text-[#EF4444]">-{formatMXN(entry.monto)}</span>
-                  <div className="flex items-center gap-2">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-[#35C56A]" />
+              <h2 className="font-heading text-sm font-bold text-[#3D4A5C]">Te deben</h2>
+              <span className="ml-auto font-body text-sm font-semibold text-[#35C56A]">{formatMXN(totalOweMe)}</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {meDeben.length === 0 ? (
+                <EmptyCard
+                  tone="success"
+                  title="Nadie te debe por ahora"
+                  subtitle="Cuando alguien te deba, lo veras aqui para darle seguimiento."
+                />
+              ) : meDeben.map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
+                  <div>
+                    <p className="font-body text-sm font-semibold text-[#3D4A5C]">{entry.persona}</p>
+                    <p className="font-body text-xs text-[#7A8799]">Liquidacion minima</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="font-heading text-sm font-bold text-[#35C56A]">+{formatMXN(entry.monto)}</span>
                     <StatusBadge />
-                    {(isAdmin || String(currentUserId) === entry.fromUserId) && onMarkPaid && (
-                      <button
-                        onClick={async () => {
-                          setMarkingId(entry.id)
-                          try {
-                            await onMarkPaid({
-                              from_user_id: entry.fromUserId,
-                              to_user_id: entry.toUserId,
-                              amount: entry.monto,
-                            })
-                          } finally {
-                            setMarkingId(null)
-                          }
-                        }}
-                        disabled={markingId === entry.id}
-                        className="rounded-lg border border-[#EF4444]/20 px-2 py-0.5 font-body text-[11px] font-semibold text-[#EF4444] transition-colors hover:bg-[#FEF2F2] disabled:opacity-50"
-                      >
-                        {markingId === entry.id ? 'Guardando...' : 'Marcar pagado'}
-                      </button>
-                    )}
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-[#EF4444]" />
+              <h2 className="font-heading text-sm font-bold text-[#3D4A5C]">Tu debes</h2>
+              <span className="ml-auto font-body text-sm font-semibold text-[#EF4444]">{formatMXN(totalIOwe)}</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {leDebo.length === 0 ? (
+                <EmptyCard
+                  tone="neutral"
+                  title="No debes nada"
+                  subtitle="Estas al corriente con tu parte del viaje."
+                />
+              ) : leDebo.map((entry) => (
+                <div key={entry.id} className="flex items-center justify-between rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3">
+                  <div>
+                    <p className="font-body text-sm font-semibold text-[#3D4A5C]">{entry.persona}</p>
+                    <p className="font-body text-xs text-[#7A8799]">Liquidacion minima</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="font-heading text-sm font-bold text-[#EF4444]">-{formatMXN(entry.monto)}</span>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge />
+                      {(isAdmin || String(currentUserId) === entry.fromUserId) && onMarkPaid && (
+                        <button
+                          onClick={async () => {
+                            setMarkingId(entry.id)
+                            try {
+                              await onMarkPaid({
+                                from_user_id: entry.fromUserId,
+                                to_user_id: entry.toUserId,
+                                amount: entry.monto,
+                              })
+                            } finally {
+                              setMarkingId(null)
+                            }
+                          }}
+                          disabled={markingId === entry.id}
+                          className="rounded-lg border border-[#EF4444]/20 px-2 py-0.5 font-body text-[11px] font-semibold text-[#EF4444] transition-colors hover:bg-[#FEF2F2] disabled:opacity-50"
+                        >
+                          {markingId === entry.id ? 'Guardando...' : 'Marcar pagado'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -208,7 +248,10 @@ export const MyWalletView: FC<Props> = ({
           {historialOpen && (
             <div className="border-t border-[#E2E8F0] px-4 pb-4 pt-3">
               {historyRows.length === 0 ? (
-                <p className="font-body text-xs text-[#7A8799]">Aun no hay pagos marcados.</p>
+                <EmptyCard
+                  title="Aun no hay pagos marcados"
+                  subtitle="Cuando alguien marque un pago como completado, aparecera aqui."
+                />
               ) : (
                 <div className="flex flex-col gap-2">
                   {historyRows.map((row) => (

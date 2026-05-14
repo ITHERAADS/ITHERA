@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { groupsService, saveCurrentGroup } from '../../services/groups'
@@ -441,6 +441,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 export function MyTripsPage() {
   const { accessToken, localUser } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [activos, setActivos] = useState<GroupHistoryItem[]>([])
   const [pasados, setPasados] = useState<GroupHistoryItem[]>([])
@@ -471,6 +472,18 @@ export function MyTripsPage() {
     fetchTrips()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken])
+
+  const isPastTripsMode = location.hash === '#viajes-pasados'
+
+  useEffect(() => {
+    if (location.hash !== '#viajes-pasados') return
+    setShowHistory(true)
+    const timeoutId = window.setTimeout(() => {
+      const target = document.getElementById('viajes-pasados')
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
+    return () => window.clearTimeout(timeoutId)
+  }, [location.hash])
 
 
   function openTrip(item: GroupHistoryItem) {
@@ -594,7 +607,7 @@ export function MyTripsPage() {
             )}
 
             {/* ── Viaje activo destacado ── */}
-            {featured && (
+            {!isPastTripsMode && featured && (
               <section>
                 <p className="mb-2 font-body text-[11px] font-semibold uppercase tracking-wider text-[#6B7280]">
                   {featured.rol === 'admin' ? 'Viaje que organizas' : 'Viaje activo'}
@@ -604,7 +617,7 @@ export function MyTripsPage() {
             )}
 
             {/* ── Activos adicionales ── */}
-            {extraActivos.length > 0 && (
+            {!isPastTripsMode && extraActivos.length > 0 && (
               <div className="flex flex-col gap-3">
                 {extraActivos.map((item) => (
                   <TripCard
@@ -616,29 +629,34 @@ export function MyTripsPage() {
               </div>
             )}
 
-            {/* ── Historial (viajes cerrados / archivados / finalizados) ── */}
-            {pasados.length > 0 && (
-              <section className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-sm">
+            {/* ── Viajes pasados (cerrados / archivados / finalizados) ── */}
+            {isPastTripsMode && pasados.length > 0 && (
+              <section id="viajes-pasados" className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-sm">
                 <button
                   type="button"
-                  onClick={() => setShowHistory((value) => !value)}
+                  onClick={() => {
+                    if (isPastTripsMode) return
+                    setShowHistory((value) => !value)
+                  }}
                   className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[#F8FAFC]"
-                  aria-expanded={showHistory}
+                  aria-expanded={isPastTripsMode ? true : showHistory}
                 >
                   <div>
                     <p className="font-body text-[11px] font-semibold uppercase tracking-wider text-[#6B7280]">
-                      Historial
+                      Viajes pasados
                     </p>
                     <p className="mt-1 font-body text-sm text-[#1E0A4E]">
                       {pasados.length} viaje{pasados.length !== 1 ? 's' : ''} cerrado{pasados.length !== 1 ? 's' : ''} disponible{pasados.length !== 1 ? 's' : ''} para consulta.
                     </p>
                   </div>
-                  <span className={`flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F5F9] text-[#64748B] transition-transform ${showHistory ? 'rotate-180' : ''}`}>
-                    <IconChevronDown />
-                  </span>
+                  {!isPastTripsMode && (
+                    <span className={`flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F5F9] text-[#64748B] transition-transform ${showHistory ? 'rotate-180' : ''}`}>
+                      <IconChevronDown />
+                    </span>
+                  )}
                 </button>
 
-                {showHistory && (
+                {(isPastTripsMode || showHistory) && (
                   <div className="flex flex-col gap-3 border-t border-[#E2E8F0] bg-[#F8FAFC] p-4">
                     {pasados.map((item) => (
                       <PastTripCard

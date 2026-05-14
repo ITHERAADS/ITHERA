@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Socket } from 'socket.io-client'
 import { useAuth } from '../../context/useAuth'
-import { mapsService, type PlaceResult } from '../../services/maps'
+import { mapsService, type PlaceAutocompleteResult, type PlaceResult } from '../../services/maps'
 import { budgetService, type BudgetCategory, type BudgetSplitType } from '../../services/budget'
 import { documentsService, type TripDocumentCategory } from '../../services/documents'
 import { subgroupScheduleService, type SubgroupMembership, type SubgroupSlot } from '../../services/subgroups'
+import { ApiError } from '../../services/apiClient'
 import {
   contextLinksService,
   type ContextEntityRef,
@@ -39,12 +40,22 @@ interface Props {
   onScheduleChanged?: (slots: SubgroupSlot[]) => void
 }
 
+type EnrichedPlaceResult = PlaceResult & {
+  routeDistanceText?: string | null
+  routeDurationText?: string | null
+  routeDistanceMeters?: number | null
+  routeDurationSeconds?: number | null
+}
+
 type ActivityDraft = {
   query: string
   description: string
   timeValue: string
-  results: PlaceResult[]
-  selectedPlace: PlaceResult | null
+  results: EnrichedPlaceResult[]
+  suggestions: PlaceAutocompleteResult[]
+  showSuggestions: boolean
+  suggestionsLoading: boolean
+  selectedPlace: EnrichedPlaceResult | null
   loading: boolean
   selectedExpenseIds: string[]
   selectedDocumentIds: string[]
@@ -87,6 +98,14 @@ const documentCategoryLabels: Record<TripDocumentCategory, string> = {
 
 const todayValue = () => new Date().toISOString().split('T')[0]
 const fallbackSubgroupImage = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80'
+const PLACE_SEARCH_RADIUS_METERS = 50000
+const LONG_ROUTE_THRESHOLD_SECONDS = 60 * 60
+
+function parseGoogleDurationSeconds(raw?: string | null): number | null {
+  if (!raw) return null
+  const match = raw.match(/^(\d+(?:\.\d+)?)s$/)
+  return match ? Number(match[1]) : null
+}
 
 function ActionModal({
   open,
@@ -191,6 +210,8 @@ const toLocalInputValue = (value?: string | null) => {
 
 const toLocalTimeValue = (value?: string | null) => toLocalInputValue(value).slice(11, 16) || '12:00'
 
+const toLocalMinuteKey = (value?: string | null) => toLocalInputValue(value).slice(0, 16)
+
 const isSameLocalDay = (first?: string | null, second?: string | null) =>
   toLocalInputValue(first).slice(0, 10) !== '' &&
   toLocalInputValue(first).slice(0, 10) === toLocalInputValue(second).slice(0, 10)
@@ -280,6 +301,7 @@ export function SubgroupSchedulePanel({
   currentUserId = null,
   currentUserName = 'Usuario',
   editSlotRequest = null,
+  focusRequest = null,
   onScheduleChanged,
 }: Props) {
   const { accessToken } = useAuth()
@@ -311,8 +333,14 @@ export function SubgroupSchedulePanel({
   const [subgroupPhotoByActivityId, setSubgroupPhotoByActivityId] = useState<Record<number, string>>({})
   const [linkOptionsLoaded, setLinkOptionsLoaded] = useState(false)
   const [handledEditSlotRequestNonce, setHandledEditSlotRequestNonce] = useState<number | null>(null)
+  const [handledFocusRequestNonce, setHandledFocusRequestNonce] = useState<number | null>(null)
   const [expandedSubgroupDay, setExpandedSubgroupDay] = useState<string | null>(null)
+  const [longRouteConfirmation, setLongRouteConfirmation] = useState<{ slotId: number } | null>(null)
+  const [scheduleConflictMessage, setScheduleConflictMessage] = useState<string | null>(null)
   const didInitializeExpandedDayRef = useRef(false)
+  const autocompleteBoxRef = useRef<HTMLDivElement | null>(null)
+  const slotCardRefs = useRef<Record<number, HTMLElement | null>>({})
+  const subgroupCardRefs = useRef<Record<string, HTMLElement | null>>({})
 
   const memberOptions = useMemo(
     () =>
@@ -341,6 +369,33 @@ export function SubgroupSchedulePanel({
     }
     return safeMemberOptions[0]?.id ?? ''
   }, [currentUserId, safeMemberOptions])
+
+  const routeOrigin = useMemo(() => {
+    if (group?.punto_partida_latitud != null && group.punto_partida_longitud != null) {
+      return {
+        lat: Number(group.punto_partida_latitud),
+        lng: Number(group.punto_partida_longitud),
+      }
+    }
+
+    if (group?.destino_latitud != null && group.destino_longitud != null) {
+      return {
+        lat: Number(group.destino_latitud),
+        lng: Number(group.destino_longitud),
+      }
+    }
+
+    return null
+  }, [
+    group?.destino_latitud,
+    group?.destino_longitud,
+    group?.punto_partida_latitud,
+    group?.punto_partida_longitud,
+  ])
+
+  const routeOriginLabel = group?.punto_partida_tipo === 'hotel_reservado'
+    ? 'tu hospedaje'
+    : 'el destino del viaje'
 
   // Chat drawer state
   const [chatSubgroup, setChatSubgroup] = useState<{ slotId: number; subgroupId: number; name: string } | null>(null)
@@ -437,11 +492,18 @@ export function SubgroupSchedulePanel({
       setError(null)
       await action()
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setScheduleConflictMessage(
+          'Ya hay una actividad en ese horario. Necesitas cambiar el horario de la otra actividad o el de esta para poder continuar.'
+        )
+        setError(null)
+        return
+      }
       setError(err instanceof Error ? err.message : 'No se pudo completar la accion')
     }
   }
 
-  const setActivityDraft = (slotId: number, patch: Partial<ActivityDraft>) => {
+  const setActivityDraft = useCallback((slotId: number, patch: Partial<ActivityDraft>) => {
     setActivityDraftBySlot((prev) => ({
       ...prev,
       [slotId]: {
@@ -449,6 +511,9 @@ export function SubgroupSchedulePanel({
         description: prev[slotId]?.description ?? '',
         timeValue: prev[slotId]?.timeValue ?? '12:00',
         results: prev[slotId]?.results ?? [],
+        suggestions: prev[slotId]?.suggestions ?? [],
+        showSuggestions: prev[slotId]?.showSuggestions ?? false,
+        suggestionsLoading: prev[slotId]?.suggestionsLoading ?? false,
         selectedPlace: prev[slotId]?.selectedPlace ?? null,
         loading: prev[slotId]?.loading ?? false,
         selectedExpenseIds: prev[slotId]?.selectedExpenseIds ?? [],
@@ -469,13 +534,48 @@ export function SubgroupSchedulePanel({
         ...patch,
       },
     }))
-  }
+  }, [defaultExpensePayer, safeMemberOptions])
 
-  const buildEmptyDraft = (slot?: SubgroupSlot): ActivityDraft => ({
+  const enrichPlaceWithRoute = useCallback(async (place: EnrichedPlaceResult): Promise<EnrichedPlaceResult> => {
+    const enrichedPlace = { ...place }
+
+    if (!accessToken || !routeOrigin || place.latitude == null || place.longitude == null) {
+      return enrichedPlace
+    }
+
+    try {
+      const routeResponse = await mapsService.computeRoute(
+        {
+          originLat: routeOrigin.lat,
+          originLng: routeOrigin.lng,
+          destinationLat: place.latitude,
+          destinationLng: place.longitude,
+          travelMode: 'DRIVE',
+        },
+        accessToken,
+      )
+
+      enrichedPlace.routeDistanceText = routeResponse.data?.distanceText ?? null
+      enrichedPlace.routeDurationText = routeResponse.data?.durationText ?? routeResponse.data?.staticDurationText ?? null
+      enrichedPlace.routeDistanceMeters = routeResponse.data?.distanceMeters ?? null
+      enrichedPlace.routeDurationSeconds = parseGoogleDurationSeconds(
+        routeResponse.data?.duration ?? routeResponse.data?.staticDuration,
+      )
+    } catch {
+      // La opcion puede continuar aunque la ruta no este disponible.
+    }
+
+    return enrichedPlace
+  }, [accessToken, routeOrigin])
+
+  const buildEmptyDraft = useCallback((slot?: SubgroupSlot): ActivityDraft => ({
     query: '',
     description: '',
     timeValue: toLocalTimeValue(slot?.starts_at),
     results: [],
+    suggestions: [],
+    showSuggestions: false,
+    suggestionsLoading: false,
     selectedPlace: null,
     loading: false,
     selectedExpenseIds: [],
@@ -493,7 +593,7 @@ export function SubgroupSchedulePanel({
     quickDocumentFile: null,
     quickDocumentCategory: 'actividad',
     quickDocumentNotes: '',
-  })
+  }), [defaultExpensePayer, safeMemberOptions])
 
   const getLinksForSubgroupActivity = (activityId?: number | string | null) => {
     if (activityId == null) return []
@@ -559,6 +659,24 @@ export function SubgroupSchedulePanel({
       : null
   }
 
+  const findSubgroupActivityTimeConflict = (
+    slot: SubgroupSlot,
+    startsAt: string | Date | null,
+    excludeActivityId?: number | string | null,
+  ) => {
+    const candidateKey = startsAt ? toLocalMinuteKey(startsAt instanceof Date ? startsAt.toISOString() : startsAt) : ''
+    if (!candidateKey) return null
+
+    for (const subgroup of slot.subgroups) {
+      for (const activity of subgroup.activities) {
+        if (excludeActivityId != null && String(activity.id) === String(excludeActivityId)) continue
+        if (toLocalMinuteKey(activity.starts_at) === candidateKey) return activity
+      }
+    }
+
+    return null
+  }
+
   const closeDraftActionModal = () => setDraftActionModal(null)
 
   const openDraftActionModal = (
@@ -616,6 +734,44 @@ export function SubgroupSchedulePanel({
     setHandledEditSlotRequestNonce(editSlotRequest.nonce)
   }, [editSlotRequest, handledEditSlotRequestNonce, slots])
 
+  useEffect(() => {
+    if (!focusRequest) return
+    if (handledFocusRequestNonce === focusRequest.nonce) return
+
+    const slot = slots.find((item) => item.id === focusRequest.slotId)
+    if (!slot) return
+
+    const dayKey = slotDayKey(slot.starts_at)
+    setExpandedSubgroupDay(dayKey)
+    setHandledFocusRequestNonce(focusRequest.nonce)
+
+    const highlightElement = (element: HTMLElement) => {
+      const originalOutline = element.style.outline
+      const originalOutlineOffset = element.style.outlineOffset
+      const originalTransition = element.style.transition
+      element.style.transition = 'outline-color 220ms ease'
+      element.style.outline = '2px solid #1E6FD9'
+      element.style.outlineOffset = '3px'
+      window.setTimeout(() => {
+        element.style.outline = originalOutline
+        element.style.outlineOffset = originalOutlineOffset
+        element.style.transition = originalTransition
+      }, 1200)
+    }
+
+    const subgroupId = focusRequest.subgroupId ?? null
+    window.setTimeout(() => {
+      const subgroupKey = subgroupId != null ? `${slot.id}:${subgroupId}` : null
+      const target =
+        (subgroupKey ? subgroupCardRefs.current[subgroupKey] : null) ??
+        slotCardRefs.current[slot.id] ??
+        null
+      if (!target) return
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      highlightElement(target)
+    }, 120)
+  }, [focusRequest, handledFocusRequestNonce, slots])
+
   const closeSlotModal = () => setSlotModal(null)
 
   const openCreateSubgroupModal = (slot: SubgroupSlot) => {
@@ -633,7 +789,10 @@ export function SubgroupSchedulePanel({
     setSubgroupFormTime(toLocalTimeValue(details?.starts_at ?? slot.starts_at))
   }
 
-  const closeSubgroupModal = () => setSubgroupModal(null)
+  const closeSubgroupModal = () => {
+    setLongRouteConfirmation(null)
+    setSubgroupModal(null)
+  }
 
   const syncDraftLinksForActivity = async (
     activityId: number,
@@ -877,7 +1036,7 @@ export function SubgroupSchedulePanel({
     await onCreateSlot()
   }
 
-  const onCreateSubgroup = async (slot: SubgroupSlot) => {
+  const onCreateSubgroup = async (slot: SubgroupSlot, skipLongRouteConfirmation = false) => {
     if (!groupId || !accessToken) return
     const slotDate = toLocalInputValue(slot.starts_at).slice(0, 10)
     const draft = activityDraftBySlot[slot.id] ?? {
@@ -885,6 +1044,9 @@ export function SubgroupSchedulePanel({
       description: '',
       timeValue: toLocalTimeValue(slot.starts_at),
       results: [],
+      suggestions: [],
+      showSuggestions: false,
+      suggestionsLoading: false,
       selectedPlace: null,
       loading: false,
       selectedExpenseIds: [],
@@ -908,6 +1070,14 @@ export function SubgroupSchedulePanel({
       setError('Selecciona un lugar para crear la actividad.')
       return
     }
+    if (
+      selectedPlace.routeDurationSeconds != null &&
+      selectedPlace.routeDurationSeconds > LONG_ROUTE_THRESHOLD_SECONDS &&
+      !skipLongRouteConfirmation
+    ) {
+      setLongRouteConfirmation({ slotId: slot.id })
+      return
+    }
     const title = selectedPlace.name || draft.query.trim()
     if (!title) return
     const startsAt = new Date(`${slotDate}T${draft.timeValue}:00`)
@@ -915,6 +1085,14 @@ export function SubgroupSchedulePanel({
     const slotEnd = new Date(slot.ends_at)
     if (Number.isNaN(startsAt.getTime()) || startsAt < slotStart || startsAt >= slotEnd) {
       setError('La hora estimada debe estar dentro del horario del admin y antes de la hora de termino')
+      return
+    }
+    const timeConflict = findSubgroupActivityTimeConflict(slot, startsAt)
+    if (timeConflict) {
+      setScheduleConflictMessage(
+        'Ya hay una actividad en ese horario. Necesitas cambiar el horario de la otra actividad o el de esta para poder continuar.'
+      )
+      setError(null)
       return
     }
     if (draft.quickDocumentFile && !draft.quickDocumentNotes.trim()) {
@@ -1014,6 +1192,9 @@ export function SubgroupSchedulePanel({
           description: '',
           timeValue: toLocalTimeValue(slot.starts_at),
           results: [],
+          suggestions: [],
+          showSuggestions: false,
+          suggestionsLoading: false,
           selectedPlace: null,
           loading: false,
           selectedExpenseIds: [],
@@ -1033,6 +1214,7 @@ export function SubgroupSchedulePanel({
           quickDocumentNotes: '',
         },
       }))
+      setLongRouteConfirmation(null)
       setSubgroupModal(null)
       await load()
     })
@@ -1048,6 +1230,9 @@ export function SubgroupSchedulePanel({
       description: '',
       timeValue: '12:00',
       results: [],
+      suggestions: [],
+      showSuggestions: false,
+      suggestionsLoading: false,
       selectedPlace: null,
       loading: false,
       selectedExpenseIds: [],
@@ -1067,21 +1252,61 @@ export function SubgroupSchedulePanel({
 
     try {
       setError(null)
-      setActivityDraft(slotId, { loading: true, selectedPlace: null, results: [] })
+      setActivityDraft(slotId, { loading: true, selectedPlace: null, results: [], suggestions: [], showSuggestions: false })
       const response = await mapsService.searchPlacesByText(
         {
           textQuery: draft.query.trim(),
-          latitude: group?.destino_latitud ?? undefined,
-          longitude: group?.destino_longitud ?? undefined,
-          radius: 7000,
+          latitude: routeOrigin?.lat,
+          longitude: routeOrigin?.lng,
+          radius: PLACE_SEARCH_RADIUS_METERS,
           maxResultCount: 10,
         },
         accessToken,
       )
-      setActivityDraft(slotId, { results: response.data ?? [], loading: false })
+      const results: EnrichedPlaceResult[] = routeOrigin
+        ? await Promise.all((response.data ?? []).map((place) => enrichPlaceWithRoute(place)))
+        : (response.data ?? [])
+      results.sort((left, right) => (left.routeDistanceMeters ?? Infinity) - (right.routeDistanceMeters ?? Infinity))
+      setActivityDraft(slotId, { results, loading: false })
     } catch (err) {
       setActivityDraft(slotId, { loading: false })
       setError(err instanceof Error ? err.message : 'No se pudieron buscar lugares.')
+    }
+  }
+
+  const onSelectSuggestion = async (slotId: number, suggestion: PlaceAutocompleteResult) => {
+    if (!accessToken) {
+      setError('Tu sesion expiro. Vuelve a iniciar sesion.')
+      return
+    }
+
+    try {
+      setError(null)
+      setActivityDraft(slotId, {
+        loading: true,
+        suggestions: [],
+        showSuggestions: false,
+        results: [],
+        selectedPlace: null,
+      })
+
+      const response = await mapsService.getPlaceDetails(suggestion.placeId, accessToken)
+      const place = response.data
+      if (!place) {
+        setError('No se pudo cargar el detalle de ese lugar.')
+        setActivityDraft(slotId, { loading: false })
+        return
+      }
+
+      const enrichedPlace = await enrichPlaceWithRoute(place)
+      setActivityDraft(slotId, {
+        query: enrichedPlace.name || suggestion.mainText || suggestion.description,
+        selectedPlace: enrichedPlace,
+        loading: false,
+      })
+    } catch (err) {
+      setActivityDraft(slotId, { loading: false })
+      setError(err instanceof Error ? err.message : 'No se pudo seleccionar el lugar.')
     }
   }
 
@@ -1122,6 +1347,16 @@ export function SubgroupSchedulePanel({
     const details = subgroup ? primaryActivity(subgroup) : null
     const slotDate = slot ? toLocalInputValue(slot.starts_at).slice(0, 10) : ''
     const startsAt = slotDate ? new Date(`${slotDate}T${subgroupFormTime || '12:00'}:00`) : null
+    if (slot && startsAt) {
+      const timeConflict = findSubgroupActivityTimeConflict(slot, startsAt, details?.id ?? null)
+      if (timeConflict) {
+        setScheduleConflictMessage(
+          'Ya hay una actividad en ese horario. Necesitas cambiar el horario de la otra actividad o el de esta para poder continuar.'
+        )
+        setError(null)
+        return
+      }
+    }
 
     await runAction(async () => {
       await subgroupScheduleService.updateSubgroup(groupId, subgroupModal.slotId, subgroupModal.subgroupId!, {
@@ -1174,6 +1409,58 @@ export function SubgroupSchedulePanel({
   const subgroupModalEditLinks = subgroupModalEditActivity?.id != null
     ? getLinksForSubgroupActivity(subgroupModalEditActivity.id)
     : []
+
+  useEffect(() => {
+    if (subgroupModal?.mode !== 'create' || !subgroupModalSlot || !accessToken) return
+
+    const slotId = subgroupModal.slotId
+    const draft = subgroupModalDraft ?? buildEmptyDraft(subgroupModalSlot)
+    const trimmedQuery = draft.query.trim()
+    const selectedName = draft.selectedPlace?.name?.trim()
+
+    if (trimmedQuery.length < 3 || (selectedName && trimmedQuery === selectedName)) {
+      setActivityDraft(slotId, { suggestions: [], showSuggestions: false, suggestionsLoading: false })
+      return
+    }
+
+    let cancelled = false
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setActivityDraft(slotId, { suggestionsLoading: true })
+        const response = await mapsService.autocompletePlaces(trimmedQuery, accessToken, {
+          latitude: routeOrigin?.lat,
+          longitude: routeOrigin?.lng,
+          radius: PLACE_SEARCH_RADIUS_METERS,
+        })
+        if (cancelled) return
+        const nextSuggestions = response.data ?? []
+        setActivityDraft(slotId, {
+          suggestions: nextSuggestions,
+          showSuggestions: nextSuggestions.length > 0,
+          suggestionsLoading: false,
+        })
+      } catch {
+        if (cancelled) return
+        setActivityDraft(slotId, { suggestions: [], showSuggestions: false, suggestionsLoading: false })
+      }
+    }, 300)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [
+    accessToken,
+    buildEmptyDraft,
+    routeOrigin,
+    setActivityDraft,
+    subgroupModal?.mode,
+    subgroupModal?.slotId,
+    subgroupModalDraft?.query,
+    subgroupModalDraft?.selectedPlace?.name,
+    subgroupModalSlot,
+  ])
+
   const subgroupDayGroups = useMemo(() => {
     const sorted = [...slots].sort((left, right) => {
       const diff = slotTimestamp(left.starts_at) - slotTimestamp(right.starts_at)
@@ -1350,6 +1637,9 @@ export function SubgroupSchedulePanel({
             return (
               <section
                 key={slot.id}
+                ref={(element) => {
+                  slotCardRefs.current[slot.id] = element
+                }}
                 className="overflow-hidden rounded-[28px] border border-[#E2E8F0] bg-white shadow-[0_18px_52px_rgba(30,10,78,0.06)]"
               >
                 <div className="border-b border-[#EEF2F7] bg-[linear-gradient(135deg,rgba(248,250,252,0.98),rgba(244,241,255,0.92))] px-6 py-5">
@@ -1456,6 +1746,9 @@ export function SubgroupSchedulePanel({
                         return (
                           <article
                             key={subgroup.id}
+                            ref={(element) => {
+                              subgroupCardRefs.current[`${slot.id}:${subgroup.id}`] = element
+                            }}
                             className={`overflow-hidden rounded-[24px] border bg-white shadow-[0_16px_40px_rgba(15,23,42,0.08)] ${
                               isMine ? 'border-[#1E6FD9]' : 'border-[#E2E8F0]'
                             }`}
@@ -1556,14 +1849,14 @@ export function SubgroupSchedulePanel({
                                   onClick={details?.id != null ? openExpenseAssociationModal : openEditWithContext}
                                   className="rounded-2xl border border-[#CFE0FF] bg-[#EEF4FF] px-4 py-3 text-sm font-semibold text-[#1E6FD9]"
                                 >
-                                  {linkedExpenses.length > 0 ? 'Gestionar gasto' : 'Asociar gasto'}
+                                  {linkedExpenses.length > 0 ? 'Elegir gasto' : 'Agregar gasto'}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={details?.id != null ? openDocumentAssociationModal : openEditWithContext}
                                   className="rounded-2xl border border-[#D8C8FF] bg-[#F3EEFF] px-4 py-3 text-sm font-semibold text-[#6D45C0]"
                                 >
-                                  {linkedDocuments.length > 0 ? 'Gestionar documento' : 'Asociar documento'}
+                                  {linkedDocuments.length > 0 ? 'Elegir comprobante' : 'Agregar comprobante'}
                                 </button>
                                 <button
                                   type="button"
@@ -1578,17 +1871,17 @@ export function SubgroupSchedulePanel({
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <div>
                                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">
-                                      Contexto asociado
+                                      Asociaciones confirmadas
                                     </p>
                                     <p className="mt-1 text-sm text-[#64748B]">
-                                      Relaciona este plan con gastos o documentos para darle mas contexto al viaje.
+                                      Estos gastos y comprobantes ya estan vinculados a este elemento.
                                     </p>
                                   </div>
                                 </div>
 
                                 {linkedContext.length === 0 ? (
                                   <p className="mt-4 rounded-xl bg-[#F8FAFC] px-3 py-3 text-sm text-[#64748B]">
-                                    Sin gastos ni documentos asociados por ahora.
+                                    Aun no hay asociaciones confirmadas.
                                   </p>
                                 ) : (
                                   <div className="mt-4 flex flex-wrap gap-2">
@@ -1677,6 +1970,19 @@ export function SubgroupSchedulePanel({
 
 
       <ActionModal
+        open={scheduleConflictMessage !== null}
+        title="Conflicto de horario"
+        subtitle="No se puede guardar la actividad con esa hora."
+        confirmLabel="Cambiar horario"
+        onClose={() => setScheduleConflictMessage(null)}
+        onConfirm={() => setScheduleConflictMessage(null)}
+      >
+        <p className="text-sm leading-relaxed text-[#475569]">
+          {scheduleConflictMessage}
+        </p>
+      </ActionModal>
+
+      <ActionModal
         open={slotModal !== null}
         title={slotModal?.mode === 'edit' ? 'Editar horario' : 'Crear horario'}
         subtitle="Define el bloque de tiempo donde las personas podran separarse y elegir un plan."
@@ -1745,29 +2051,67 @@ export function SubgroupSchedulePanel({
                 <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">
                   Buscar lugar o actividad
                 </label>
-                <div className="flex gap-2">
+                <div
+                  ref={autocompleteBoxRef}
+                  className="relative"
+                  onBlur={(event) => {
+                    if (!autocompleteBoxRef.current?.contains(event.relatedTarget as Node | null)) {
+                      setActivityDraft(subgroupModalSlot.id, { showSuggestions: false })
+                    }
+                  }}
+                >
                   <input
-                    className="flex-1 rounded-2xl border border-[#D7DEEA] px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
+                    className="w-full rounded-2xl border border-[#D7DEEA] px-4 py-3 pr-10 text-sm outline-none focus:border-[#1E6FD9]"
                     placeholder="Ej: restaurante, playa, museo..."
                     value={subgroupModalDraft.query}
-                    onChange={(event) =>
-                      setActivityDraft(subgroupModalSlot.id, { query: event.target.value, selectedPlace: null })
-                    }
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setActivityDraft(subgroupModalSlot.id, {
+                        query: value,
+                        selectedPlace: null,
+                        results: [],
+                        showSuggestions: value.trim().length >= 3,
+                      })
+                    }}
+                    onFocus={() => {
+                      setActivityDraft(subgroupModalSlot.id, {
+                        showSuggestions: subgroupModalDraft.query.trim().length >= 3 && subgroupModalDraft.suggestions.length > 0,
+                      })
+                    }}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') {
                         event.preventDefault()
-                        void onSearchPlace(subgroupModalSlot.id)
+                        if (subgroupModalDraft.suggestions[0]) {
+                          void onSelectSuggestion(subgroupModalSlot.id, subgroupModalDraft.suggestions[0])
+                        } else {
+                          void onSearchPlace(subgroupModalSlot.id)
+                        }
                       }
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => void onSearchPlace(subgroupModalSlot.id)}
-                    disabled={subgroupModalDraft.loading}
-                    className="rounded-2xl bg-[#1E0A4E] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-                  >
-                    {subgroupModalDraft.loading ? 'Buscando...' : 'Buscar'}
-                  </button>
+                  {(subgroupModalDraft.suggestionsLoading || subgroupModalDraft.loading) && (
+                    <span className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-[#D7DEEA] border-t-[#1E6FD9]" />
+                  )}
+                  {subgroupModalDraft.showSuggestions && subgroupModalDraft.suggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-72 overflow-y-auto rounded-2xl border border-[#E2E8F0] bg-white p-1 shadow-xl">
+                      {subgroupModalDraft.suggestions.map((suggestion) => (
+                        <button
+                          key={suggestion.placeId || suggestion.description}
+                          type="button"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => void onSelectSuggestion(subgroupModalSlot.id, suggestion)}
+                          className="block w-full rounded-xl px-4 py-3 text-left transition hover:bg-[#F8FAFC]"
+                        >
+                          <p className="text-sm font-semibold text-[#1E0A4E]">
+                            {suggestion.mainText || suggestion.description}
+                          </p>
+                          <p className="mt-0.5 text-xs text-[#64748B]">
+                            {suggestion.secondaryText || suggestion.description}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1779,6 +2123,25 @@ export function SubgroupSchedulePanel({
                   <p className="mt-1 text-sm text-[#64748B]">
                     {subgroupModalDraft.selectedPlace.formattedAddress || 'Direccion no disponible'}
                   </p>
+                  {subgroupModalDraft.selectedPlace.routeDurationSeconds != null &&
+                    subgroupModalDraft.selectedPlace.routeDurationSeconds > LONG_ROUTE_THRESHOLD_SECONDS && (
+                      <div className="mt-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-red-800">
+                        <span className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full bg-red-100 text-red-700">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M12 8v5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                            <path d="M12 17h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                            <path d="M10.3 4.1 2.6 17.4A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.6L13.7 4.1a2 2 0 0 0-3.4 0Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                          </svg>
+                        </span>
+                        <div>
+                          <p className="text-xs font-bold">Traslado largo</p>
+                          <p className="mt-0.5 text-xs">
+                            Este lugar queda a mas de 1 hora desde {routeOriginLabel}
+                            {subgroupModalDraft.selectedPlace.routeDurationText ? ` (${subgroupModalDraft.selectedPlace.routeDurationText})` : ''}. Te pediremos confirmar antes de crear la opcion.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                 </div>
               )}
 
@@ -1834,6 +2197,18 @@ export function SubgroupSchedulePanel({
                           <p className="mt-1 text-sm text-[#64748B]">
                             {place.formattedAddress || 'Direccion no disponible'}
                           </p>
+                          {place.routeDurationSeconds != null && place.routeDurationSeconds > LONG_ROUTE_THRESHOLD_SECONDS && (
+                            <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-red-700">
+                              <span className="text-red-600">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                  <path d="M12 8v5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                                  <path d="M12 17h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                                  <path d="M10.3 4.1 2.6 17.4A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.6L13.7 4.1a2 2 0 0 0-3.4 0Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                                </svg>
+                              </span>
+                              A mas de 1 hora{place.routeDurationText ? ` (${place.routeDurationText})` : ''}
+                            </p>
+                          )}
                           {place.primaryCategory && (
                             <p className="mt-2 text-xs font-semibold text-[#1E6FD9]">{place.primaryCategory}</p>
                           )}
@@ -1847,9 +2222,9 @@ export function SubgroupSchedulePanel({
 
             <div className="space-y-4">
               <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
-                <p className="text-sm font-semibold text-[#1E0A4E]">Contexto opcional</p>
+                <p className="text-sm font-semibold text-[#1E0A4E]">Agregar gasto o comprobante</p>
                 <p className="mt-1 text-sm leading-6 text-[#64748B]">
-                  Si ya existe un gasto o un documento para este plan, puedes dejarlo relacionado desde ahora.
+                  Relaciona gastos (taxi, entradas, comida) y comprobantes (tickets, reservaciones, recibos) para esta opcion.
                 </p>
                 <div className="mt-4 grid gap-2">
                   <button
@@ -1860,7 +2235,7 @@ export function SubgroupSchedulePanel({
                     }}
                     className="rounded-2xl border border-[#CFE0FF] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E6FD9]"
                   >
-                    Gestionar gasto
+                    Agregar o elegir gasto
                   </button>
                   <button
                     type="button"
@@ -1870,7 +2245,7 @@ export function SubgroupSchedulePanel({
                     }}
                     className="rounded-2xl border border-[#D8C8FF] bg-white px-4 py-3 text-left text-sm font-semibold text-[#6D45C0]"
                   >
-                    Gestionar documento
+                    Agregar o elegir comprobante
                   </button>
                 </div>
               </div>
@@ -2015,7 +2390,7 @@ export function SubgroupSchedulePanel({
                   }}
                   className="rounded-2xl border border-[#CFE0FF] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E6FD9] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Gestionar gasto
+                  Agregar o elegir gasto
                 </button>
                 <button
                   type="button"
@@ -2027,13 +2402,13 @@ export function SubgroupSchedulePanel({
                   }}
                   className="rounded-2xl border border-[#D8C8FF] bg-white px-4 py-3 text-left text-sm font-semibold text-[#6D45C0] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Gestionar documento
+                  Agregar o elegir comprobante
                 </button>
               </div>
             </div>
 
             <div className="rounded-2xl border border-[#E2E8F0] bg-white px-4 py-4">
-              <p className="text-sm font-semibold text-[#1E0A4E]">Relaciones actuales</p>
+              <p className="text-sm font-semibold text-[#1E0A4E]">Asociaciones confirmadas</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {subgroupModalEditLinks.map((entity) => (
                   <span
@@ -2060,11 +2435,11 @@ export function SubgroupSchedulePanel({
 
       <ActionModal
       open={draftActionModal?.mode === 'expense' && modalDraft != null}
-      title={draftActionModal?.activityId != null ? 'Gestionar gasto del plan' : 'Gestionar gasto'}
+      title={draftActionModal?.activityId != null ? 'Agregar gasto o comprobante' : 'Agregar gasto o comprobante'}
       subtitle={
         draftActionModal?.activityId != null
-          ? 'Relaciona un gasto existente o crea uno nuevo para esta opcion ya creada.'
-          : 'Asocia un gasto existente o crea uno nuevo desde este mismo modal.'
+          ? 'Relaciona un gasto existente o crea uno nuevo para esta opcion, por ejemplo taxi, entradas o comida.'
+          : 'Relaciona un gasto existente o crea uno nuevo, por ejemplo taxi, entradas o comida.'
       }
       confirmLabel={draftExpenseTab === 'associate' ? 'Guardar seleccion' : 'Guardar gasto'}
       onClose={closeDraftActionModal}
@@ -2164,11 +2539,11 @@ export function SubgroupSchedulePanel({
 
       <ActionModal
       open={draftActionModal?.mode === 'document' && modalDraft != null}
-      title={draftActionModal?.activityId != null ? 'Gestionar documento del plan' : 'Gestionar documento'}
+      title={draftActionModal?.activityId != null ? 'Agregar gasto o comprobante' : 'Agregar gasto o comprobante'}
       subtitle={
         draftActionModal?.activityId != null
-          ? 'Relaciona un documento existente o sube uno nuevo para esta opcion ya creada.'
-          : 'Asocia un documento existente o sube uno nuevo desde este mismo modal.'
+          ? 'Relaciona un comprobante existente o sube uno nuevo para esta opcion, por ejemplo ticket, reservacion o recibo.'
+          : 'Relaciona un comprobante existente o sube uno nuevo, por ejemplo ticket, reservacion o recibo.'
       }
       confirmLabel={draftDocumentTab === 'associate' ? 'Guardar seleccion' : 'Guardar documento'}
       onClose={closeDraftActionModal}
@@ -2268,6 +2643,43 @@ export function SubgroupSchedulePanel({
           />
         </div>
       )}
+    </ActionModal>
+
+    <ActionModal
+      open={longRouteConfirmation !== null}
+      title="Confirmar traslado largo"
+      subtitle="La opcion seleccionada puede quedar demasiado lejos para el grupo."
+      confirmLabel="Si, crear de todos modos"
+      onClose={() => setLongRouteConfirmation(null)}
+      onConfirm={() => {
+        const pending = longRouteConfirmation
+        setLongRouteConfirmation(null)
+        const slot = pending ? slots.find((item) => item.id === pending.slotId) : null
+        if (slot) void onCreateSubgroup(slot, true)
+      }}
+    >
+      <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-800">
+        <span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-red-100 text-red-700">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 8v5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+            <path d="M12 17h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+            <path d="M10.3 4.1 2.6 17.4A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.6L13.7 4.1a2 2 0 0 0-3.4 0Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          </svg>
+        </span>
+        <div>
+          <p className="text-sm font-bold">
+            {longRouteConfirmation
+              ? activityDraftBySlot[longRouteConfirmation.slotId]?.selectedPlace?.name || 'Este lugar'
+              : 'Este lugar'} esta a mas de 1 hora desde {routeOriginLabel}.
+          </p>
+          <p className="mt-1 text-sm">
+            {longRouteConfirmation && activityDraftBySlot[longRouteConfirmation.slotId]?.selectedPlace?.routeDurationText
+              ? `Google estima aproximadamente ${activityDraftBySlot[longRouteConfirmation.slotId]?.selectedPlace?.routeDurationText} de traslado.`
+              : 'El traslado estimado supera el limite recomendado.'}
+            {' '}Confirma solo si esta distancia tiene sentido para este bloque de subgrupo.
+          </p>
+        </div>
+      </div>
     </ActionModal>
 
     {chatSubgroup && (

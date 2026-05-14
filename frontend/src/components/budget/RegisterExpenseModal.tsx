@@ -443,9 +443,9 @@ export const RegisterExpenseModal: FC<Props> = ({
 
             {(activityOptions.length > 0 || documentOptions.length > 0) && (
               <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3">
-                <p className="font-body text-sm font-semibold text-[#3D4A5C]">Vincular con el viaje</p>
+                <p className="font-body text-sm font-semibold text-[#3D4A5C]">Vincular este gasto con una actividad o comprobante</p>
                 <p className="mt-1 font-body text-xs text-[#7A8799]">
-                  Relaciona esta salida con acciones separadas para que el formulario principal no se vuelva confuso.
+                  Relaciona este gasto con una actividad (tour, cena, traslado) o con un comprobante (ticket, reservacion, recibo).
                 </p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <button
@@ -453,7 +453,7 @@ export const RegisterExpenseModal: FC<Props> = ({
                     onClick={() => setActiveContextModal('activity')}
                     className="rounded-xl border border-[#D7DEEA] bg-[#F8FAFC] px-3 py-2.5 text-left font-body text-sm font-semibold text-[#1E6FD9]"
                   >
-                    Relacionar actividad
+                    Elegir actividad
                   </button>
                   <button
                     type="button"
@@ -463,7 +463,7 @@ export const RegisterExpenseModal: FC<Props> = ({
                     }}
                     className="rounded-xl border border-[#D7DEEA] bg-[#F8FAFC] px-3 py-2.5 text-left font-body text-sm font-semibold text-[#7A4FD6]"
                   >
-                    Gestionar documento
+                    Elegir comprobante
                   </button>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -520,8 +520,8 @@ export const RegisterExpenseModal: FC<Props> = ({
 
       <ActionModal
         open={activeContextModal === 'activity'}
-        title="Relacionar actividad"
-        subtitle="Selecciona una actividad ya existente del viaje para dejarla asociada al gasto."
+        title="Vincular este gasto con una actividad o comprobante"
+        subtitle="Elige la actividad que corresponde a este gasto, por ejemplo tour, cena o traslado."
         confirmLabel="Guardar seleccion"
         onClose={() => setActiveContextModal(null)}
         onConfirm={() => setActiveContextModal(null)}
@@ -572,8 +572,8 @@ export const RegisterExpenseModal: FC<Props> = ({
 
       <ActionModal
         open={activeContextModal === 'document'}
-        title="Gestionar documento"
-        subtitle="Asocia un documento existente o sube uno nuevo desde este mismo modal."
+        title="Vincular este gasto con una actividad o comprobante"
+        subtitle="Elige o sube un comprobante para este gasto, por ejemplo ticket, reservacion o recibo."
         confirmLabel={documentModalTab === 'associate' ? 'Guardar seleccion' : 'Guardar documento'}
         onClose={() => setActiveContextModal(null)}
         onConfirm={() => {

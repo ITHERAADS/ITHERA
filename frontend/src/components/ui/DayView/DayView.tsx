@@ -445,13 +445,13 @@ function ActivityContextBlock({
     <div className="mt-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-3">
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-          Contexto asociado
+          Asociaciones confirmadas
         </p>
       </div>
 
       {linked.length === 0 ? (
         <p className="font-body text-xs text-[#7A8799]">
-          Sin gastos ni documentos asociados.
+          Aun no hay asociaciones confirmadas.
         </p>
       ) : (
         <div className="flex flex-wrap gap-1.5">

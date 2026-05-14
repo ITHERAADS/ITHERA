@@ -13,6 +13,7 @@ type DestinationSearchProps = {
   label?: string
   placeholder?: string
   disabled?: boolean
+  lockedValue?: boolean
 }
 
 export function DestinationSearch({
@@ -23,6 +24,7 @@ export function DestinationSearch({
   label = 'Destino',
   placeholder = 'Ej: Cancún, México',
   disabled = false,
+  lockedValue = false,
 }: DestinationSearchProps) {
   const [search, setSearch] = useState(value)
   const [suggestions, setSuggestions] = useState<PlaceAutocompleteResult[]>([])
@@ -34,12 +36,16 @@ export function DestinationSearch({
 
   useEffect(() => {
     setSearch(value)
-  }, [value])
+    if (lockedValue && value.trim()) {
+      setSelected(true)
+      setSuggestions([])
+    }
+  }, [lockedValue, value])
 
   useEffect(() => {
     if (debounceRef.current) window.clearTimeout(debounceRef.current)
 
-    if (disabled || !search.trim() || search.trim().length < 3 || selected) {
+    if (disabled || lockedValue || !search.trim() || search.trim().length < 3 || selected) {
       setSuggestions([])
       return
     }
@@ -68,10 +74,10 @@ export function DestinationSearch({
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current)
     }
-  }, [search, selected, token, disabled])
+  }, [search, selected, token, disabled, lockedValue])
 
   const handleSelectSuggestion = async (suggestion: PlaceAutocompleteResult) => {
-    if (disabled) return
+    if (disabled || lockedValue) return
     if (!token) {
       setLocalError('Tu sesión expiró. Vuelve a iniciar sesión.')
       return
@@ -117,11 +123,17 @@ export function DestinationSearch({
         placeholder={placeholder}
         value={search}
         disabled={disabled}
+        readOnly={lockedValue}
         onChange={(e) => {
+          if (lockedValue) return
           setSearch(e.target.value)
           setSelected(false)
           setLocalError('')
           onChange(e.target.value, undefined)
+        }}
+        onBlur={() => window.setTimeout(() => setSuggestions([]), 120)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setSuggestions([])
         }}
         className={`w-full border rounded-xl px-4 py-3 text-sm outline-none transition bg-white disabled:cursor-not-allowed disabled:bg-[#F8FAFC] disabled:text-[#64748B] ${
           error || localError
@@ -138,7 +150,7 @@ export function DestinationSearch({
         </p>
       )}
 
-      {!disabled && suggestions.length > 0 && (
+      {!disabled && !lockedValue && suggestions.length > 0 && (
         <div className="absolute left-0 right-0 top-[76px] z-30 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-lg">
           {suggestions.map((suggestion) => (
             <button

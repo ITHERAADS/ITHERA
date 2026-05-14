@@ -1,7 +1,7 @@
 {
   "name": "ithera-backend",
   "version": "1.0.0",
-  "description": "ITHERA – Plataforma colaborativa para planificación de viajes grupales",
+  "description": "ITHERA - Plataforma colaborativa para planificacion de viajes grupales",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",

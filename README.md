@@ -1,305 +1,372 @@
-#  Ithera
+# ITHERA
 
-> Ecosistema digital colaborativo para la planificación de viajes grupales en tiempo real.
+> Ecosistema digital colaborativo para planificar viajes grupales en tiempo real.
 
-**IPN ESCOM · Análisis y Diseño de Sistemas · 5CM3 · Equipo 3**
-
----
-
-##  Descripción
-
-Ithera centraliza en una sola interfaz todos los flujos de trabajo de un viaje grupal: itinerario colaborativo, presupuesto compartido, logística de transporte, bóveda de documentos y comunicación en tiempo real.
-
-El núcleo del sistema es la sincronización multiusuario mediante WebSockets — cualquier propuesta, cambio de presupuesto o bloqueo de itinerario se refleja instantáneamente en todos los dispositivos conectados.
-
----
-
-##  Stack Tecnológico
-
-| Capa | Tecnología |
-|------|-----------|
-| Backend | Node.js + TypeScript + Express.js |
-| Real-time | Socket.io + Redis (adaptador) |
-| Frontend | React.js + TypeScript + Tailwind CSS |
-| Base de datos | PostgreSQL (principal) + Redis (sesiones/caché) |
-| ORM | TypeORM |
-| HTTP Client | Axios + React Query |
-| APIs externas | Amadeus, Google Maps Platform, OpenWeatherMap, ExchangeRate-API, Navitia |
-
----
-
-##  Estructura del proyecto
-
+```text
+Instituto Politecnico Nacional
+Escuela Superior de Computo
+Ingenieria en Sistemas Computacionales
+Unidad de aprendizaje: Analisis y Diseno de Sistemas
+Ciclo escolar: 2026/2
+Grupo: 5CM3
+Profesora: Idalia Maldonado
+Equipo: Ithera
 ```
+
+## Vision del proyecto
+
+ITHERA es una plataforma web para organizar viajes grupales de forma colaborativa. El sistema concentra en una sola experiencia los procesos de autenticacion, creacion de grupos, invitaciones, busqueda de servicios, itinerario colaborativo, propuestas, votaciones, presupuesto, documentos, checkout simulado, notificaciones y comunicacion en tiempo real.
+
+El objetivo academico del proyecto es aplicar el analisis, diseno, documentacion, construccion y control de cambios de un sistema realista dentro de la materia de Analisis y Diseno de Sistemas.
+
+## Que problema resuelve
+
+Organizar un viaje entre varias personas suele dispersarse entre chats, hojas de calculo, links, notas, capturas y acuerdos verbales. ITHERA propone un espacio centralizado donde el grupo puede:
+
+- Crear y administrar viajes.
+- Invitar integrantes.
+- Proponer actividades, vuelos, hoteles y rutas.
+- Votar y comentar propuestas.
+- Mantener un itinerario comun.
+- Registrar presupuesto y gastos.
+- Consultar mapas, clima y servicios externos.
+- Guardar documentos del viaje.
+- Recibir notificaciones.
+- Sincronizar cambios en tiempo real.
+
+## Stack actualizado
+
+| Capa | Tecnologia actual |
+| --- | --- |
+| Backend | Node.js, TypeScript, Express |
+| Frontend | React, TypeScript, Vite, Tailwind CSS |
+| Base de datos y auth | Supabase |
+| Tiempo real | Socket.IO |
+| Email | Resend |
+| Mapas, rutas y lugares | Google Maps Platform |
+| Vuelos | Amadeus, Duffel |
+| Hoteles | LiteAPI |
+| Clima | Open-Meteo, WeatherAPI |
+| CI/CD | GitHub Actions, Vercel |
+| Testing backend | Jest, ts-jest |
+| Build frontend | Vite |
+
+## Vista rapida de arquitectura
+
+```text
+Frontend React/Vite
+  -> services/apiClient
+  -> Backend Express /api
+  -> Servicios de dominio
+  -> Supabase o APIs externas
+
+Socket.IO
+  -> Backend HTTP server
+  -> socket handlers
+  -> Hooks frontend de realtime
+```
+
+## Distribucion completa del repositorio
+
+```text
 ithera/
-├── .github/                   ← CI, templates de PR e issues, CODEOWNERS
-│   ├── ISSUE_TEMPLATE/
-│   │   ├── bug_report.md
-│   │   ├── feature_request.md
-│   │   └── task.md
-│   ├── workflows/
-│   │   ├── ci-backend.yml     ← lint + typecheck + tests + Copilot review
-│   │   └── ci-frontend.yml    ← lint + typecheck + build + Copilot review
-│   ├── CODEOWNERS             ← Demian asignado como reviewer automático
-│   └── PULL_REQUEST_TEMPLATE.md
-│
-├── backend/
-│   └── src/
-│       ├── config/            ← db, redis, env
-│       ├── domain/            ← lógica de negocio por módulo
-│       │   ├── auth/
-│       │   ├── groups/
-│       │   ├── itinerary/
-│       │   ├── proposals/
-│       │   ├── budget/
-│       │   └── notifications/
-│       ├── infrastructure/    ← adaptadores externos
-│       │   ├── db/
-│       │   ├── redis/
-│       │   ├── sockets/
-│       │   └── external-apis/
-│       ├── routes/            ← Express routers por módulo
-│       └── middlewares/       ← JWT, error handler, rate limit
-│
-├── frontend/
-│   └── src/
-│       ├── components/        ← componentes React reutilizables
-│       ├── pages/             ← vistas por módulo
-│       ├── hooks/             ← custom hooks (socket, network)
-│       ├── context/           ← AuthContext, TripContext
-│       ├── services/          ← llamadas HTTP (Axios)
-│       └── types/             ← TypeScript interfaces globales
-│
-└── docs/                      ← Documentación oficial del proyecto
-    ├── requerimientos/
-    ├── diagramas/
-    ├── casos-de-uso/
-    ├── api/
-    └── ADS/
+|-- .github/
+|   |-- ISSUE_TEMPLATE/
+|   |   |-- bug_report.md           # Plantilla para reportar bugs
+|   |   |-- feature_request.md      # Plantilla para nuevas funcionalidades
+|   |   |-- task.md                 # Plantilla para tareas tecnicas
+|   |   `-- config.yml             # Configuracion de templates
+|   |-- workflows/
+|   |   |-- README.md               # Resumen rapido de workflows
+|   |   |-- ci-backend.yml          # CI de backend
+|   |   |-- ci-frontend.yml         # CI de frontend
+|   |   |-- vercel-frontend-preview.yml
+|   |   `-- vercel-frontend-production.yml
+|   |-- CODEOWNERS                 # Revisores automaticos
+|   `-- PULL_REQUEST_TEMPLATE.md   # Template obligatorio de PR
+|
+|-- backend/
+|   |-- src/
+|   |   |-- config/                 # Variables, env y configuracion base
+|   |   |-- domain/                 # Logica de negocio por modulo
+|   |   |   |-- auth/
+|   |   |   |-- budget/
+|   |   |   |-- checkout/
+|   |   |   |-- context-links/
+|   |   |   |-- documents/
+|   |   |   |-- flights/
+|   |   |   |-- groups/
+|   |   |   |-- hotels/
+|   |   |   |-- itinerary/
+|   |   |   |-- maps/
+|   |   |   |-- notifications/
+|   |   |   |-- proposals/
+|   |   |   `-- votes-comments/
+|   |   |-- infrastructure/         # Supabase, sockets, email y APIs externas
+|   |   |   |-- db/
+|   |   |   |-- email/
+|   |   |   |-- external-apis/
+|   |   |   |-- redis/
+|   |   |   `-- sockets/
+|   |   |-- middlewares/            # Auth, errores y rate limit
+|   |   |-- routes/                 # Routers Express por modulo
+|   |   |-- services/               # Servicios transversales
+|   |   `-- index.ts                # Bootstrap HTTP + Socket.IO
+|   |-- tests/                      # Pruebas e informes
+|   |-- .env.example                # Variables requeridas por backend
+|   |-- package.json                # Scripts y dependencias backend
+|   `-- README.md                   # Guia tecnica de backend
+|
+|-- frontend/
+|   |-- public/                     # Archivos publicos
+|   |-- src/
+|   |   |-- assets/                 # Logos, imagenes y recursos visuales
+|   |   |-- components/             # Componentes reutilizables
+|   |   |-- constants/              # Constantes compartidas
+|   |   |-- context/                # AuthContext y TripContext
+|   |   |-- hooks/                  # Sockets, red, sync y notificaciones
+|   |   |-- lib/                    # Clientes base como Supabase
+|   |   |-- mock/                   # Datos mock de apoyo
+|   |   |-- pages/                  # Vistas completas por ruta
+|   |   |-- services/               # Clientes HTTP por modulo
+|   |   |-- styles/                 # Entradas de estilos
+|   |   |-- types/                  # Tipos compartidos
+|   |   |-- App.tsx                 # Definicion de rutas
+|   |   `-- main.tsx                # Bootstrap React
+|   |-- .env.example                # Variables publicas Vite
+|   |-- vercel.json                 # Rewrite SPA para Vercel
+|   |-- package.json                # Scripts y dependencias frontend
+|   `-- README.md                   # Guia tecnica de frontend
+|
+|-- docs/
+|   |-- README.md                   # Indice general de documentacion
+|   |-- ADS/                        # Entregables academicos de ADS
+|   |-- api/                        # Endpoints REST
+|   |-- architecture/               # Arquitectura actual
+|   |-- casos-de-uso/               # Casos de uso
+|   |-- diagramas/                  # Diagramas del sistema
+|   |-- gitflow/                    # Reglas de ramas y releases
+|   |-- issues/                     # Reglas para levantar issues
+|   |-- requerimientos/             # Requerimientos del sistema
+|   |-- workflows/                  # Guia completa de GitHub Actions
+|   `-- vercel-frontend-deploy.md   # Notas de despliegue frontend
+|
+|-- CONTRIBUTING.md                 # Manual de trabajo del equipo
+|-- LICENSE
+|-- package.json                    # Archivo raiz del workspace
+|-- package-lock.json
+`-- README.md                       # Este documento
 ```
 
----
+## Documentacion principal
 
-##  Módulos del sistema
+| Documento | Uso |
+| --- | --- |
+| [backend/README.md](backend/README.md) | Arquitectura, scripts, variables, modulos y convenciones del backend. |
+| [frontend/README.md](frontend/README.md) | Arquitectura, rutas, servicios, componentes, variables y build del frontend. |
+| [docs/README.md](docs/README.md) | Indice general de documentacion tecnica, funcional y academica. |
+| [docs/architecture/README.md](docs/architecture/README.md) | Vista de arquitectura actual del proyecto. |
+| [docs/api/endpoints.md](docs/api/endpoints.md) | Inventario de endpoints REST. |
+| [docs/workflows/README.md](docs/workflows/README.md) | Guia completa de CI/CD, Vercel y GitHub Actions. |
+| [docs/env/README.md](docs/env/README.md) | Variables de entorno locales, GitHub Actions y Vercel. |
+| [docs/database/README.md](docs/database/README.md) | Supabase, migraciones, RLS y cambios de esquema. |
+| [docs/testing/README.md](docs/testing/README.md) | Estrategia de pruebas y comandos de verificacion. |
+| [docs/realtime/README.md](docs/realtime/README.md) | Eventos Socket.IO, salas, locks y sincronizacion. |
+| [docs/security/README.md](docs/security/README.md) | Secrets, permisos, CORS, uploads y revision segura. |
+| [docs/releases/README.md](docs/releases/README.md) | Checklist de releases, hotfixes y entregas. |
+| [docs/frontend-ui/README.md](docs/frontend-ui/README.md) | Convenciones de paginas, componentes y UI frontend. |
+| [.github/workflows/README.md](.github/workflows/README.md) | Resumen rapido junto a los YAML. |
+| [docs/issues/README.md](docs/issues/README.md) | Reglas para levantar issues. |
+| [docs/gitflow/README.md](docs/gitflow/README.md) | Explicacion del flujo de ramas. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Reglas oficiales de colaboracion del equipo. |
 
-| ID | Módulo |
-|----|--------|
-| M1 | Autenticación y Acceso |
-| M2 | Gestión de Grupo |
-| M3 | Itinerario Colaborativo y Colaboración |
-| M4 | Búsqueda y APIs Externas |
-| M5 | Sincronización en Tiempo Real |
-| M6 | Presupuesto y Gastos |
-| M7 | Notificaciones, Historial y Exportación |
+## Modulos funcionales
 
----
+| ID | Modulo | Backend | Frontend |
+| --- | --- | --- | --- |
+| M1 | Autenticacion y acceso | `auth` | `Login`, `Register`, `OTP`, `Profile` |
+| M2 | Gestion de grupos y viajes | `groups`, `trips` | `MyTrips`, `CreateGroup`, `JoinGroup`, `GroupPanel` |
+| M3 | Itinerario colaborativo | `itinerary`, `proposals`, `votes-comments` | `Itinerary`, modales de propuestas |
+| M4 | Busqueda y APIs externas | `flights`, `hotels`, `maps` | `Search` |
+| M5 | Sincronizacion en tiempo real | `infrastructure/sockets` | `useSocket`, `useGroupRealtimeRefresh` |
+| M6 | Presupuesto y gastos | `budget`, `checkout` | `budget`, `Checkout` |
+| M7 | Documentos y notificaciones | `documents`, `notifications`, `context-links` | `documents`, `useNotifications` |
 
-##  GitFlow — Estrategia de Ramas
+## Instalacion local
 
-### Mapa de ramas
+Requisitos:
 
-```
-main ←────────────────────────── release/vX.X ←── develop ←── feature/*
-  ↑                                                              ↑
-hotfix/*─────────────────────────────────────────────────────────┘
-```
+- Node.js 20.
+- npm.
+- Credenciales de Supabase y servicios externos si se probaran integraciones reales.
 
-### Tabla de ramas
-
-| Rama | Origen | Destino | Propósito |
-|------|--------|---------|-----------|
-| `main` | — | — | Código estable para entrega. **CERO commits directos.** |
-| `develop` | `main` | `main` (vía release) | Integración. Todo PR aprobado converge aquí. |
-| `feature/nombre` | `develop` | `develop` | Nueva funcionalidad o tarea de Sprint. |
-| `hotfix/nombre` | `main` | `main` + `develop` | Fix urgente sobre producción. |
-| `release/vX.X` | `develop` | `main` + `develop` | Freeze para entrega académica. |
-
-### Convención de nombres de ramas
-
-```
-feature/auth-registro-otp
-feature/backend-socket-heartbeat
-feature/frontend-dashboard-financiero
-hotfix/fix-token-expiry
-release/v1.2-sprint3
-```
-
----
-
-##  Protocolo de Pull Request
-
-### Flujo completo
-
-```
-1. Partir siempre desde develop actualizado
-   git checkout develop
-   git pull origin develop
-   git checkout -b feature/nombre
-
-2. Desarrollar y commitear con mensajes descriptivos
-   git commit -m "feat: descripción clara del cambio"
-
-3. Sincronizar antes de abrir el PR
-   git pull origin develop
-
-4. Hacer push y abrir PR en GitHub hacia develop
-   git push -u origin feature/nombre
-
-5. El CI corre automáticamente:
-   → lint + typecheck + build/tests
-   → Copilot code review automático
-
-6. Esperar aprobación del reviewer asignado (Scrum Master)
-
-7. Solo mergear cuando el CI pasa y hay aprobación
-```
-
-### Reglas de aprobación
-
-| PR hacia | Aprobaciones requeridas | Quién aprueba |
-|----------|------------------------|---------------|
-| `develop` | 1 | Scrum Master o líder de célula |
-| `main` | 2 | Scrum Master + Product Owner |
-
->  **Nunca hagas merge de tu propio PR.** Siempre espera revisión externa.
-
-### Mensajes de commit — Convención
-
-```
-feat:     nueva funcionalidad
-fix:      corrección de bug
-refactor: refactor sin cambio de comportamiento
-docs:     cambios en documentación
-test:     agregar o corregir tests
-ci:       cambios en workflows o configuración de CI
-chore:    tareas de mantenimiento
-```
-
----
-
-##  Branch Protection — Rulesets activos
-
-### Ruleset `protect-main`
-
-```
-Target:               main
-Enforcement:          Active
-Bypass:               Repository admin (solo Scrum Master)
-
-Reglas activas:
- Restrict deletions
-Block force pushes
- Require a pull request before merging
-       └ Required approvals: 2
-       └ Dismiss stale reviews on new commits
-       └ Require review from code owners (CODEOWNERS)
- Require status checks to pass
-       └ lint-and-test (backend)
-       └ lint-and-build (frontend)
-```
-
-### Ruleset `protect-develop`
-
-```
-Target:               develop
-Enforcement:          Active
-Bypass:               Repository admin (solo Scrum Master)
-
-Reglas activas:
-  Restrict deletions
-  Block force pushes
-  Require a pull request before merging
-       └ Required approvals: 1
-       └ Dismiss stale reviews on new commits
-  Require status checks to pass
-       └ lint-and-test (backend)
-       └ lint-and-build (frontend)
-```
-
----
-
-##  CI/CD — GitHub Actions
-
-Cada PR activa automáticamente los siguientes checks:
-
-### Backend (`ci-backend.yml`)
-
-```
-Trigger:  PR hacia main o develop con cambios en backend/
-Jobs:
-  1. lint-and-test
-     → npm run lint
-     → npx tsc --noEmit
-     → npm test
-  2. request-copilot-review
-     → Solicita review automático de GitHub Copilot
-```
-
-### Frontend (`ci-frontend.yml`)
-
-```
-Trigger:  PR hacia main o develop con cambios en frontend/
-Jobs:
-  1. lint-and-build
-     → npm run lint
-     → npx tsc --noEmit
-     → npm run build
-  2. request-copilot-review
-     → Solicita review automático de GitHub Copilot
-```
-
-> El CI debe pasar **obligatoriamente** antes de que cualquier PR pueda mergearse, sin excepciones.
-
----
-
-##  Configuración local
+Instalar backend:
 
 ```bash
-# 1. Clonar
-git clone https://github.com/ximcaher20/repo-equipo3ads
-cd ithera
-
-# 2. Variables de entorno
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
-# Edita los .env con tus credenciales locales
-
-# 3. Instalar dependencias
-cd backend && npm install
-cd ../frontend && npm install
-
-# 4. Correr en desarrollo
-cd backend && npm run dev
-cd ../frontend && npm run dev
+cd backend
+npm install
+cp .env.example .env
+npm run dev
 ```
 
----
+Instalar frontend:
 
-## 👥 Equipo
+```bash
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+URLs locales:
+
+| Servicio | URL |
+| --- | --- |
+| Backend | `http://localhost:3001` |
+| Healthcheck | `http://localhost:3001/health` |
+| API base | `http://localhost:3001/api` |
+| Frontend | `http://localhost:5173` |
+
+## Scripts principales
+
+Backend:
+
+```bash
+npm run dev
+npm run build
+npm run start
+npm run test
+npm run lint
+```
+
+Frontend:
+
+```bash
+npm run dev
+npm run build
+npm run lint
+npm run preview
+```
+
+## GitFlow del equipo
+
+El flujo oficial esta documentado con mas detalle en [docs/gitflow/README.md](docs/gitflow/README.md) y [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Ramas permanentes
+
+| Rama | Proposito | Regla |
+| --- | --- | --- |
+| `main` | Codigo estable para entrega. | No recibe commits directos. |
+| `develop` | Integracion del trabajo aprobado. | Todo entra por PR. |
+
+### Ramas temporales
+
+| Rama | Sale de | Entra a | Uso |
+| --- | --- | --- | --- |
+| `feature/nombre` | `develop` | `develop` | Nueva funcionalidad o tarea de sprint. |
+| `fix/nombre` | `develop` | `develop` | Correccion de bug no urgente. |
+| `docs/nombre` | `develop` | `develop` | Cambios de documentacion. |
+| `ci/nombre` | `develop` | `develop` | Cambios en workflows o automatizacion. |
+| `release/vX.X` | `develop` | `main` y `develop` | Cierre de sprint o entrega. |
+| `hotfix/nombre` | `main` | `main` y `develop` | Correccion urgente sobre estable. |
+
+Ejemplos:
+
+```text
+feature/auth-registro-otp
+feature/frontend-dashboard-viaje
+feature/backend-socket-heartbeat
+fix/socket-disconnect
+docs/readmes-proyecto
+ci/vercel-preview
+release/v1.2-sprint3
+hotfix/token-expiry
+```
+
+### Flujo normal de trabajo
+
+```bash
+git checkout develop
+git pull origin develop
+git checkout -b feature/nombre-de-la-tarea
+```
+
+Antes de abrir PR:
+
+```bash
+git checkout develop
+git pull origin develop
+git checkout feature/nombre-de-la-tarea
+git merge develop
+git push -u origin feature/nombre-de-la-tarea
+```
+
+Todo PR normal debe apuntar a `develop`.
+
+## Reglas de oro
+
+1. No hacer push directo a `main` ni a `develop`.
+2. No hacer merge de tu propio PR.
+3. Todo cambio relevante debe tener issue.
+4. Todo PR debe apuntar a la rama correcta.
+5. Un PR debe resolver una cosa clara.
+6. Todo endpoint nuevo debe documentarse en `docs/api/endpoints.md`.
+7. Todo cambio de workflow debe documentarse en `docs/workflows/README.md`.
+8. Todo cambio de variable, migracion, evento realtime o regla de seguridad debe documentarse.
+9. Todo cambio estructural debe reflejarse en el README correspondiente.
+10. No subir `.env`, secrets, tokens ni credenciales.
+11. No pedir merge con CI fallando.
+12. Si hay cambios visuales, agregar evidencia en el PR.
+13. Si hay duda de alcance, preguntar antes de mezclar cambios no relacionados.
+
+## CI/CD
+
+| Workflow | Archivo | Proposito |
+| --- | --- | --- |
+| CI Backend | `.github/workflows/ci-backend.yml` | Valida backend con lint, type check, build y tests. |
+| CI Frontend | `.github/workflows/ci-frontend.yml` | Valida frontend con lint, type check y build. |
+| Preview Vercel | `.github/workflows/vercel-frontend-preview.yml` | Genera deploy preview en PRs hacia `develop`. |
+| Produccion Vercel | `.github/workflows/vercel-frontend-production.yml` | Despliega frontend desde `develop` o manualmente. |
+
+Guia completa: [docs/workflows/README.md](docs/workflows/README.md).
+
+## Variables de entorno
+
+Backend:
+
+- Copiar `backend/.env.example` a `backend/.env`.
+- Configurar Supabase, APIs externas, email y puerto local.
+
+Frontend:
+
+- Copiar `frontend/.env.example` a `frontend/.env`.
+- Configurar `VITE_API_URL`, Supabase publico y llave de Google Maps para navegador.
+
+Regla: ninguna variable secreta debe subirse al repositorio.
+
+## Recursos
+
+- [Tablero Notion](https://www.notion.so/3169d31c051280f69a33cb0401001bd0)
+- [Seguimiento Google Sheets](https://docs.google.com/spreadsheets/d/1usizFziQstavDTBPxTMygbx_ATeBYn-N/edit)
+- [Documentacion del proyecto](docs/README.md)
+
+## Equipo
 
 | Rol | Integrante | GitHub |
-|-----|-----------|--------|
-| Scrum Master | Demian Romero Bautista | @DemianRomero |
-| Product Owner | Ximena Cárdenas Hernández | @ximcaher20 |
-| Líder Backend | Hector Said Ferreira Rodríguez | @HectorSaidFerreira |
-| Backend Dev | Ali Yair Riaño Ortiz | @AliYairRiano |
-| Backend Dev | Yael Sebastián Sangrador Curiel | @YaelSangrador |
-| Backend Dev | Leonardo Esaú Olivares Valdez | @LeonardoOlivares |
-| Líder Frontend | Bryan Ayala Baños | @BryanAyala |
-| Frontend Dev | Carlos Daniel Juárez Gómez | @CarlosDanielJuarez |
-| Frontend Dev | Kevin Antonio López Toledo | @KevinLopez |
-| Líder Docs | Gabriel Hernández Flores | @GabrielHernandez |
-| Analista | Emilio Díaz Maturano | @EmilioDiaz |
-| Analista | Edgar Correa Cano | @EdgarCorrea |
+| --- | --- | --- |
+| Scrum Master | Demian Romero Bautista | `@DemianRomero` |
+| Frontend Dev | Ximena Cardenas Hernandez | `@ximcaher20` |
+| Lider Backend | Hector Said Ferreira Rodriguez | `@HectorSaidFerreira` |
+| Backend Dev | Ali Yair Riano Ortiz | `@AliYairRiano` |
+| Backend Dev | Yael Sebastian Sangrador Curiel | `@YaelSangrador` |
+| Backend Dev | Leonardo Esau Olivares Valdez | `@LeonardoOlivares` |
+| Lider Frontend | Bryan Ayala Banos | `@BryanAyala` |
+| Frontend Dev | Carlos Daniel Juarez Gomez | `@CarlosDanielJuarez` |
+| Frontend Dev | Kevin Antonio Lopez Toledo | `@KevinLopez` |
+| Lider Docs | Gabriel Hernandez Flores | `@GabrielHernandez` |
+| Analista | Emilio Diaz Maturano | `@EmilioDiaz` |
+| Analista | Edgar Correa Cano | `@EdgarCorrea` |
 
 ---
 
-## 🔗 Recursos
-
--  [Tablero Notion](https://www.notion.so/3169d31c051280f69a33cb0401001bd0)
--  [Seguimiento Google Sheets](https://docs.google.com/spreadsheets/d/1usizFziQstavDTBPxTMygbx_ATeBYn-N/edit)
--  Documentación completa en `/docs`
-
----
-
-*Proyecto académico — IPN ESCOM 2026 · Equipo 3*
+Proyecto academico de Analisis y Diseno de Sistemas - Ingenieria en Sistemas Computacionales - ESCOM IPN - Ciclo 2026/2 - Grupo 5CM3.

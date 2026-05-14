@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FC } from 'react'
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { RegisterExpenseModal } from './RegisterExpenseModal'
 import { MyWalletView } from './MyWalletView'
 import { useAuth } from '../../context/useAuth'
@@ -82,11 +82,11 @@ function formatMXN(n: number): string {
 
 function categoryColor(categoria: Expense['categoria']): string {
   switch (categoria) {
-    case 'transporte': return '#1E6FD9'
-    case 'hospedaje': return '#8B5CF6'
+    case 'transporte': return '#2F7CF6'
+    case 'hospedaje': return '#8A63F9'
     case 'comida': return '#F59E0B'
-    case 'actividad': return '#35C56A'
-    default: return '#7A8799'
+    case 'actividad': return '#31C773'
+    default: return '#6B7FA6'
   }
 }
 
@@ -318,6 +318,30 @@ export const BudgetDashboard: FC<Props> = ({
   const comprometido = dashboard?.summary.committed ?? 0
   const disponible = dashboard?.summary.available ?? 0
   const categoryTotals = dashboard?.summary.categoryTotals ?? EMPTY_TOTALS
+  const chartData = useMemo(
+    () =>
+      (Object.keys(CATEGORY_LABELS) as Expense['categoria'][]).map((categoria) => ({
+        categoria,
+        name: CATEGORY_LABELS[categoria],
+        value: Number(categoryTotals[categoria] ?? 0),
+        fill: categoryColor(categoria),
+      })),
+    [categoryTotals],
+  )
+  const chartTotal = useMemo(
+    () => chartData.reduce((sum, item) => sum + item.value, 0),
+    [chartData],
+  )
+  const chartVisibleData = useMemo(
+    () => chartData.filter((item) => item.value > 0),
+    [chartData],
+  )
+  const topCategory = useMemo(() => {
+    if (chartVisibleData.length === 0) return null
+    return [...chartVisibleData].sort((a, b) => b.value - a.value)[0] ?? null
+  }, [chartVisibleData])
+  const activeCategoriesCount = chartVisibleData.length
+  const averagePerCategory = activeCategoriesCount > 0 ? chartTotal / activeCategoriesCount : 0
   const isOverBudget = totalBudget > 0 && comprometido > totalBudget
   const pct = totalBudget > 0 ? Math.min((comprometido / totalBudget) * 100, 100) : 0
   const barColor = pct < 70 ? '#35C56A' : pct < 90 ? '#F59E0B' : '#EF4444'
@@ -541,12 +565,6 @@ export const BudgetDashboard: FC<Props> = ({
           >
             Mi Cartera
           </button>
-          <button
-            onClick={onOpenVault}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#7A4FD6] py-3 font-body text-sm font-semibold text-[#7A4FD6] transition-colors hover:bg-[#7A4FD6]/5"
-          >
-            Bóveda
-          </button>
         </div>
 
         {requiresBudgetSetup && (
@@ -578,42 +596,96 @@ export const BudgetDashboard: FC<Props> = ({
 
         <div className="flex flex-col gap-5 rounded-2xl border border-[#E2E8F0] bg-white p-4">
           <div>
-            <h3 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Participantes</h3>
-            <div className="mb-5 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={(Object.keys(CATEGORY_LABELS) as Expense['categoria'][]).map((categoria) => ({
-                      name: CATEGORY_LABELS[categoria],
-                      value: categoryTotals[categoria] ?? 0,
-                      fill: categoryColor(categoria),
-                    }))}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={70}
-                    outerRadius={100}
-                    paddingAngle={2}
-                    label={({ name }) => name}
-                    labelLine={false}
-                  >
-                    {(Object.keys(CATEGORY_LABELS) as Expense['categoria'][]).map((categoria) => (
-                      <Cell key={categoria} fill={categoryColor(categoria)} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => [formatMXN(Number(value ?? 0)), 'Gasto']}
-                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #E2E8F0', borderRadius: '8px' }}
-                  />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={36}
-                    wrapperStyle={{ paddingTop: '12px' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+            <h3 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Distribucion del gasto</h3>
+            <div className="mb-5 rounded-2xl border border-[#DDD6FE] bg-gradient-to-br from-[#F6F2FF] via-[#F5F9FF] to-[#EEF4FF] p-3 sm:p-4">
+              <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
+                <div className="h-72 rounded-2xl border border-white/70 bg-white/35 backdrop-blur-[1px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={chartVisibleData.length > 0 ? chartVisibleData : [{ name: 'Sin gastos', value: 1, fill: '#D9E2F1' }]}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={66}
+                        outerRadius={98}
+                        paddingAngle={chartVisibleData.length > 1 ? 2 : 0}
+                        labelLine={false}
+                      >
+                        {(chartVisibleData.length > 0 ? chartVisibleData : [{ categoria: 'otro' as const, fill: '#D9E2F1' }]).map((item) => (
+                          <Cell key={item.categoria} fill={item.fill} stroke="#F8FAFC" strokeWidth={2.5} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value, _name, entry) => {
+                          const numeric = Number(value ?? 0)
+                          if (chartVisibleData.length === 0) return ['Sin gastos registrados', 'Estado']
+                          const pctValue = chartTotal > 0 ? (numeric / chartTotal) * 100 : 0
+                          return [`${formatMXN(numeric)} (${pctValue.toFixed(1)}%)`, entry.payload?.name ?? 'Categoria']
+                        }}
+                        contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #D9CCFF', borderRadius: '10px' }}
+                      />
+                      <text x="50%" y="46%" textAnchor="middle" className="fill-[#6B7FA6] text-[11px] font-semibold">
+                        Total comprometido
+                      </text>
+                      <text x="50%" y="54%" textAnchor="middle" className="fill-[#1E0A4E] text-[15px] font-bold">
+                        {formatMXN(chartTotal)}
+                      </text>
+                      {chartVisibleData.length === 0 && (
+                        <text x="50%" y="61%" textAnchor="middle" className="fill-[#8EA0BF] text-[10px] font-medium">
+                          Aun no hay gastos
+                        </text>
+                      )}
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                    <div className="rounded-xl border border-[#DCE5F5] bg-white px-3 py-2.5">
+                      <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-[#6B7FA6]">Categoria principal</p>
+                      <p className="mt-1 font-body text-sm font-bold text-[#1E0A4E]">{topCategory?.name ?? 'Sin datos'}</p>
+                    </div>
+                    <div className="rounded-xl border border-[#DCE5F5] bg-white px-3 py-2.5">
+                      <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-[#6B7FA6]">Categorias activas</p>
+                      <p className="mt-1 font-body text-sm font-bold text-[#1E0A4E]">{activeCategoriesCount}</p>
+                    </div>
+                    <div className="rounded-xl border border-[#DCE5F5] bg-white px-3 py-2.5">
+                      <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-[#6B7FA6]">Promedio activo</p>
+                      <p className="mt-1 font-body text-sm font-bold text-[#1E0A4E]">{formatMXN(averagePerCategory)}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    {chartData.map((item) => {
+                      const pctValue = chartTotal > 0 ? (item.value / chartTotal) * 100 : 0
+                      return (
+                        <div key={item.categoria} className="rounded-xl border border-[#DCE5F5] bg-white/90 px-3 py-2 shadow-[0_1px_0_rgba(30,10,78,0.04)]">
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="h-2.5 w-2.5 rounded-full ring-2 ring-white" style={{ backgroundColor: item.fill }} />
+                              <span className="font-body text-xs font-semibold text-[#2E3A59]">{item.name}</span>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-body text-xs font-semibold text-[#1E0A4E]">{formatMXN(item.value)}</p>
+                              <p className="font-body text-[11px] text-[#6B7FA6]">{pctValue.toFixed(1)}%</p>
+                            </div>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-[#E8EEF9]">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${pctValue}%`, backgroundColor: item.fill }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
+
             <div className="flex flex-wrap gap-2">
               {members.map((member) => (
                 <div key={member.usuario_id} className="flex items-center gap-2 rounded-full border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-1.5">
@@ -703,7 +775,7 @@ export const BudgetDashboard: FC<Props> = ({
                       </div>
                     ) : (
                       <p className="mt-2 rounded-lg bg-[#F8FAFC] px-2.5 py-1.5 font-body text-xs text-[#7A8799]">
-                        Sin actividad ni documento asociado.
+                        Aun no hay asociaciones confirmadas.
                       </p>
                     )}
                   </div>
@@ -717,13 +789,6 @@ export const BudgetDashboard: FC<Props> = ({
                       Editar/asociar
                     </button>
                   )}
-                  <button
-                    onClick={onOpenVault}
-                    aria-label="Abrir boveda"
-                    className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#F4F6F8] hover:text-[#7A4FD6]"
-                  >
-                    Bóveda
-                  </button>
                   {canModifyExpenses && (
                     <button
                       onClick={() => void handleDelete(expense.id)}
@@ -794,3 +859,4 @@ export const BudgetDashboard: FC<Props> = ({
     </div>
   )
 }
+

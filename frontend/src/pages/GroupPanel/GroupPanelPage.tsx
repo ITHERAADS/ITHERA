@@ -54,6 +54,8 @@ export function GroupPanelPage() {
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
+  const [roleChangeTarget, setRoleChangeTarget] = useState<GroupMember | null>(null)
+  const [roleChangeLoading, setRoleChangeLoading] = useState(false)
 
   const groupId = searchParams.get('groupId') || group?.id || ''
 
@@ -182,13 +184,17 @@ export function GroupPanelPage() {
     if (!accessToken || !group || !canManageGroup) return
 
     try {
+      setRoleChangeLoading(true)
       const nextRole = member.rol === 'admin' ? 'viajero' : 'admin'
       await groupsService.updateMemberRole(member.id, nextRole, accessToken)
 
       const refreshed = await groupsService.getMembers(group.id, accessToken)
       setMembers(refreshed.members)
+      setRoleChangeTarget(null)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'No se pudo actualizar el rol')
+    } finally {
+      setRoleChangeLoading(false)
     }
   }
 
@@ -347,26 +353,17 @@ export function GroupPanelPage() {
               </div>
 
               <div className="mt-5 grid w-full grid-cols-1 gap-2 sm:grid-cols-3 lg:absolute lg:right-6 lg:top-6 lg:mt-0 lg:w-[360px]">
+                <div className="min-h-10 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-center text-xs font-semibold text-[#1E0A4E] shadow-sm">
+                  Panel (actual)
+                </div>
                 {canManageGroup && (
                   <>
                     <button
                       type="button"
                       onClick={() => setIsInviteModalOpen(true)}
-                      className="min-h-12 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-center text-sm font-semibold text-[#1E0A4E] shadow-sm transition hover:bg-[#F8FAFC]"
+                      className="min-h-10 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-center text-xs font-semibold text-[#1E0A4E] shadow-sm transition hover:bg-[#F8FAFC]"
                     >
                       Invitar
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigate(
-                          `/group-settings?groupId=${encodeURIComponent(group.id)}`
-                        )
-                      }
-                      className="min-h-12 rounded-xl bg-[#1E6FD9] px-4 py-3 text-center text-sm font-semibold text-white shadow-sm transition hover:bg-[#2C8BE6]"
-                    >
-                      Configuración
                     </button>
                   </>
                 )}
@@ -376,7 +373,7 @@ export function GroupPanelPage() {
                   onClick={() =>
                     navigate(`/dashboard?groupId=${encodeURIComponent(group.id)}`)
                   }
-                  className={`${isAdmin ? '' : 'sm:col-start-3'} min-h-12 rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-center text-sm font-semibold text-[#1E0A4E] shadow-sm transition hover:bg-[#F8FAFC]`}
+                  className={`${isAdmin ? '' : 'sm:col-start-3'} min-h-10 rounded-lg border border-[#E2E8F0] bg-white px-3 py-2 text-center text-xs font-semibold text-[#1E0A4E] shadow-sm transition hover:bg-[#F8FAFC]`}
                 >
                   Itinerario
                 </button>
@@ -447,7 +444,7 @@ export function GroupPanelPage() {
                           {canManageGroup && !isSelf && (
                             <>
                               <button
-                                onClick={() => handleToggleRole(member)}
+                                onClick={() => setRoleChangeTarget(member)}
                                 className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs text-[#1E0A4E] hover:bg-[#F8FAFC]"
                               >
                                 Cambiar rol
@@ -629,6 +626,49 @@ export function GroupPanelPage() {
             setJoinRequests(joinRequestsRes.requests)
           }}
         />
+      )}
+
+      {canManageGroup && roleChangeTarget && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 px-4"
+          onClick={() => {
+            if (!roleChangeLoading) setRoleChangeTarget(null)
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="font-heading text-lg font-bold text-[#1E0A4E]">Confirmar cambio de rol</h3>
+            <p className="mt-2 font-body text-sm leading-relaxed text-[#475569]">
+              {roleChangeTarget.rol === 'admin'
+                ? `Confirmas que quieres cambiar a ${roleChangeTarget.nombre || roleChangeTarget.email} a viajero?`
+                : `Confirmas que quieres hacer admin a ${roleChangeTarget.nombre || roleChangeTarget.email}?`}
+            </p>
+            <p className="mt-2 font-body text-xs text-[#64748B]">
+              Este cambio afecta permisos de administracion del grupo.
+            </p>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={roleChangeLoading}
+                onClick={() => setRoleChangeTarget(null)}
+                className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs font-semibold text-[#1E0A4E] hover:bg-[#F8FAFC] disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={roleChangeLoading}
+                onClick={() => handleToggleRole(roleChangeTarget)}
+                className="rounded-lg bg-[#1E6FD9] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2C8BE6] disabled:opacity-60"
+              >
+                {roleChangeLoading ? 'Guardando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

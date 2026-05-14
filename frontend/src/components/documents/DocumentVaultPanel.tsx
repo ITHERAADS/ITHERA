@@ -589,7 +589,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                 Nota obligatoria
               </span>
               <span className="rounded-full border border-[#D7DEEA] bg-[#F8FAFC] px-3 py-1.5 font-body text-xs font-semibold text-[#475569]">
-                Contexto opcional
+                Relacionar actividad o gasto
               </span>
             </div>
           </div>
@@ -724,7 +724,8 @@ export const DocumentVaultPanel: FC<Props> = ({
                         </p>
                       )}
                       <div className="mt-3">
-                        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#7A8799]">Contexto asociado</p>
+                        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#7A8799]">Asociaciones confirmadas</p>
+                        <p className="mt-1 font-body text-xs text-[#7A8799]">Estos gastos y comprobantes ya estan vinculados a este elemento.</p>
                         {(linkedExpenses.length > 0 || linkedActivities.length > 0) ? (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {linkedExpenses.map((entity) => (
@@ -756,7 +757,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                           </div>
                         ) : (
                           <p className="mt-2 rounded-lg bg-[#F8FAFC] px-2.5 py-1.5 font-body text-xs text-[#7A8799]">
-                            Sin gasto ni actividad asociada.
+                            Aun no hay asociaciones confirmadas.
                           </p>
                         )}
                       </div>
@@ -772,14 +773,14 @@ export const DocumentVaultPanel: FC<Props> = ({
                         }}
                         className="rounded-xl border border-[#D7DEEA] px-3 py-2 font-body text-xs font-semibold text-[#3D4A5C] hover:bg-[#F8FAFC]"
                       >
-                        Relacionar gasto
+                        Elegir gasto
                       </button>
                       <button
                         type="button"
                         onClick={() => openDocumentAction(item, 'activity')}
                         className="rounded-xl border border-[#D7DEEA] px-3 py-2 font-body text-xs font-semibold text-[#5B35B1] hover:bg-[#F3EEFF]"
                       >
-                        Relacionar actividad
+                        Elegir actividad
                       </button>
                       <button
                         type="button"
@@ -859,9 +860,9 @@ export const DocumentVaultPanel: FC<Props> = ({
           <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="font-body text-sm font-semibold text-[#1E0A4E]">Contexto opcional</p>
+                <p className="font-body text-sm font-semibold text-[#1E0A4E]">Vincular este comprobante con una actividad o gasto</p>
                 <p className="mt-1 font-body text-xs text-[#64748B]">
-                  Relaciona este documento con un gasto o una actividad ahora, o súbelo primero y hazlo después.
+                  Relaciona este comprobante con un gasto (taxi, entradas, comida) o una actividad (tour, cena, traslado).
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -873,7 +874,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                   }}
                   className="rounded-xl border border-[#D7DEEA] bg-white px-3 py-2 font-body text-xs font-semibold text-[#1E6FD9]"
                 >
-                  Relacionar gasto
+                  Elegir gasto
                 </button>
                 <button
                   type="button"
@@ -882,7 +883,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                   }}
                   className="rounded-xl border border-[#D7DEEA] bg-white px-3 py-2 font-body text-xs font-semibold text-[#7A4FD6]"
                 >
-                  Relacionar actividad
+                  Elegir actividad
                 </button>
               </div>
             </div>
@@ -919,8 +920,8 @@ export const DocumentVaultPanel: FC<Props> = ({
 
       <ActionModal
         open={actionModal?.mode === 'expense' && !isReadOnly}
-        title="Relacionar gasto"
-        subtitle="Selecciona un gasto existente o crea uno nuevo para dejarlo asociado al documento."
+        title="Vincular este comprobante con una actividad o gasto"
+        subtitle="Elige o crea el gasto de este comprobante, por ejemplo taxi, entradas o comida."
         confirmLabel={
           expenseModalTab === 'associate'
             ? (actionModal?.target === 'document' && savingLinksDocId ? 'Guardando...' : 'Guardar seleccion')
@@ -1016,8 +1017,8 @@ export const DocumentVaultPanel: FC<Props> = ({
 
       <ActionModal
         open={actionModal?.mode === 'activity' && !isReadOnly}
-        title="Relacionar actividad"
-        subtitle="Selecciona una actividad ya existente del viaje para dejarla asociada al documento."
+        title="Vincular este comprobante con una actividad o gasto"
+        subtitle="Elige la actividad relacionada con este comprobante, por ejemplo tour, cena o traslado."
         confirmLabel={actionModal?.target === 'document' && savingLinksDocId ? 'Guardando...' : 'Guardar seleccion'}
         confirmDisabled={actionModal?.target === 'document' && savingLinksDocId != null}
         onClose={() => setActionModal(null)}

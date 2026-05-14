@@ -72,6 +72,45 @@ function DashboardSwitchLoading({ group }: { group?: SwitchingGroupState | Group
   const title = group?.nombre || 'Cargando viaje'
   const destination = group?.destino || group?.destino_formatted_address || 'Preparando información del destino'
   const imageUrl = group?.destino_photo_url
+  const typedGroup = group as Group | SwitchingGroupState | null | undefined
+  const startDate = typedGroup?.fecha_inicio ? new Date(typedGroup.fecha_inicio) : null
+  const endDate = typedGroup?.fecha_fin ? new Date(typedGroup.fecha_fin) : null
+  const tripDays =
+    startDate && endDate
+      ? Math.max(1, Math.floor((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1)
+      : null
+  const memberCount = Number((typedGroup as Group | undefined)?.memberCount ?? 0) || null
+  const maxMembers = Number((typedGroup as Group | undefined)?.maximo_miembros ?? 0) || null
+  const totalBudgetRaw = (typedGroup as Group | undefined)?.presupuesto_total
+  const totalBudget = totalBudgetRaw != null && totalBudgetRaw !== '' ? Number(totalBudgetRaw) : null
+  const loadingDetails = [
+    {
+      label: 'Itinerario',
+      value: tripDays != null ? `${tripDays} dia${tripDays === 1 ? '' : 's'}` : 'Fechas en preparacion',
+      hint: startDate && endDate ? `${typedGroup?.fecha_inicio} -> ${typedGroup?.fecha_fin}` : 'Calculando rango del viaje',
+    },
+    {
+      label: 'Participantes',
+      value:
+        memberCount != null && maxMembers != null
+          ? `${memberCount} / ${maxMembers}`
+          : memberCount != null
+            ? `${memberCount} personas`
+            : 'Sin conteo disponible',
+      hint: maxMembers != null ? 'Integrantes actuales y capacidad' : 'Cargando miembros del grupo',
+    },
+    {
+      label: 'Presupuesto',
+      value:
+        totalBudget != null && Number.isFinite(totalBudget)
+          ? `$${totalBudget.toLocaleString('es-MX')}`
+          : 'Sin presupuesto',
+      hint:
+        totalBudget != null && Number.isFinite(totalBudget)
+          ? 'Monto total definido para el viaje'
+          : 'Cargando presupuesto del grupo',
+    },
+  ]
 
   return (
     <div className="flex flex-1 items-center justify-center bg-[#F0EEF8] px-6 py-8">
@@ -120,10 +159,17 @@ function DashboardSwitchLoading({ group }: { group?: SwitchingGroupState | Group
           </div>
 
           <div className="mt-6 grid gap-3 md:grid-cols-3">
-            {['Itinerario', 'Participantes', 'Presupuesto'].map((item) => (
-              <div key={item} className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-                <div className="mb-3 h-2 w-16 animate-pulse rounded-full bg-gray-200" />
-                <p className="font-body text-xs font-semibold text-[#1E0A4E]/70">{item}</p>
+            {loadingDetails.map((item) => (
+              <div key={item.label} className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+                <p className="font-body text-[11px] font-semibold uppercase tracking-[0.14em] text-[#64748B]">
+                  {item.label}
+                </p>
+                <p className="mt-1 font-heading text-base font-bold text-[#1E0A4E]">
+                  {item.value}
+                </p>
+                <p className="mt-1 font-body text-xs text-[#64748B]">
+                  {item.hint}
+                </p>
               </div>
             ))}
           </div>
@@ -1410,29 +1456,124 @@ export function DashboardPage() {
           <meta name="viewport" content="width=device-width,initial-scale=1" />
           <title>Itinerario Confirmado - ${tripName}</title>
           <style>
-            :root { --ink:#1E0A4E; --blue:#1E6FD9; --green:#35C56A; --lav:#F6F3FF; --paper:#fff; }
-            * { box-sizing: border-box; }
-            body { margin:0; font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif; color:#1f2937; background:linear-gradient(145deg,#f3f0ff 0%,#eef4ff 100%); padding:28px; }
-            .sheet { max-width:900px; margin:0 auto; background:var(--paper); border:1px solid #e5e7eb; border-radius:18px; overflow:hidden; box-shadow:0 16px 36px rgba(30,10,78,.12); }
-            .hero { background:linear-gradient(110deg,var(--ink),#3A1B7A); color:#fff; padding:26px 28px; }
-            .hero h1 { margin:0; font-size:28px; line-height:1.1; }
-            .hero p { margin:8px 0 0; opacity:.88; font-size:14px; }
+            :root {
+              --ink:#1E0A4E;
+              --ink-soft:#2E1767;
+              --blue:#1E6FD9;
+              --blue-soft:#EEF4FF;
+              --purple:#7A4FD6;
+              --purple-soft:#F3EEFF;
+              --green:#35C56A;
+              --paper:#FFFFFF;
+              --text:#243247;
+              --muted:#64748B;
+            }
+            * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body {
+              margin:0;
+              font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;
+              color:var(--text);
+              background:linear-gradient(145deg,#EBE6FA 0%,#EAF2FF 100%);
+              padding:24px;
+            }
+            .sheet {
+              max-width:900px;
+              margin:0 auto;
+              background:var(--paper);
+              border:1px solid #D9E4F7;
+              border-radius:20px;
+              overflow:hidden;
+              box-shadow:0 24px 56px rgba(30,10,78,0.18);
+            }
+            .hero {
+              background:
+                radial-gradient(circle at top right, rgba(122,79,214,.24), transparent 44%),
+                radial-gradient(circle at top left, rgba(30,111,217,.22), transparent 38%),
+                linear-gradient(120deg,var(--ink),var(--ink-soft));
+              color:#fff;
+              padding:28px 30px;
+            }
+            .hero h1 { margin:0; font-size:30px; line-height:1.05; letter-spacing:0; }
+            .hero p { margin:9px 0 0; font-size:14px; color:rgba(255,255,255,.9); }
             .meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
-            .meta span { background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.25); padding:6px 10px; border-radius:999px; font-size:12px; }
-            .content { padding:20px 22px 26px; }
-            .day-section + .day-section { margin-top:16px; }
-            .day-header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; border-bottom:1px dashed #dbe3f2; padding-bottom:8px; }
-            .day-header h3 { margin:0; color:var(--ink); font-size:18px; }
-            .day-header span { color:#64748b; font-size:13px; font-weight:600; }
-            .activity-card { display:flex; gap:12px; background:#fafcff; border:1px solid #d9e4fb; border-radius:14px; padding:12px; margin-bottom:10px; }
-            .activity-index { width:28px; height:28px; border-radius:999px; background:var(--blue); color:#fff; display:grid; place-items:center; font-size:13px; font-weight:700; flex-shrink:0; }
-            .activity-content h4 { margin:0; color:var(--ink); font-size:16px; }
-            .activity-content .desc { margin:5px 0 0; color:#475569; font-size:13px; line-height:1.5; }
-            .chips { display:flex; gap:7px; flex-wrap:wrap; margin-top:9px; }
-            .chips span { background:var(--lav); border:1px solid #dfd4ff; color:#3f2a83; font-size:11px; padding:5px 8px; border-radius:999px; }
-            .footer { border-top:1px solid #e5e7eb; padding:14px 22px; color:#64748b; font-size:12px; display:flex; justify-content:space-between; align-items:center; }
+            .meta span {
+              background:rgba(255,255,255,.14);
+              border:1px solid rgba(255,255,255,.28);
+              padding:6px 10px;
+              border-radius:999px;
+              font-size:11px;
+              font-weight:600;
+            }
+            .content { padding:18px 20px 26px; background:linear-gradient(180deg,#FAFCFF 0%,#FFFFFF 18%); }
+            .day-section + .day-section { margin-top:14px; }
+            .day-section {
+              border:1px solid #DEE7FB;
+              border-radius:16px;
+              background:#fff;
+              overflow:hidden;
+            }
+            .day-header {
+              display:flex;
+              align-items:center;
+              justify-content:space-between;
+              gap:10px;
+              padding:12px 14px;
+              background:linear-gradient(90deg,var(--purple-soft),#F8FAFF);
+              border-bottom:1px solid #E5ECFA;
+            }
+            .day-header h3 { margin:0; color:var(--ink); font-size:16px; }
+            .day-header span { color:#4B5F86; font-size:12px; font-weight:700; }
+            .activity-card {
+              display:flex;
+              gap:12px;
+              background:#fff;
+              border-left:4px solid var(--blue);
+              border-bottom:1px solid #EEF2FB;
+              padding:12px 14px;
+              margin:0;
+            }
+            .day-section .activity-card:last-child { border-bottom:0; }
+            .activity-index {
+              width:28px;
+              height:28px;
+              border-radius:999px;
+              background:linear-gradient(140deg,var(--blue),#4A8DF0);
+              color:#fff;
+              display:grid;
+              place-items:center;
+              font-size:12px;
+              font-weight:800;
+              flex-shrink:0;
+              box-shadow:0 6px 14px rgba(30,111,217,.26);
+            }
+            .activity-content h4 { margin:0; color:var(--ink); font-size:15px; }
+            .activity-content .desc { margin:4px 0 0; color:#4A5C77; font-size:12px; line-height:1.45; }
+            .chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:9px; }
+            .chips span {
+              background:var(--purple-soft);
+              border:1px solid #DCCEFF;
+              color:#452A84;
+              font-size:10.5px;
+              padding:4px 8px;
+              border-radius:999px;
+              font-weight:600;
+            }
+            .footer {
+              border-top:1px solid #E5ECFA;
+              background:#FAFCFF;
+              padding:12px 20px;
+              color:var(--muted);
+              font-size:11px;
+              display:flex;
+              justify-content:space-between;
+              align-items:center;
+            }
             .dot { width:8px; height:8px; border-radius:999px; background:var(--green); display:inline-block; margin-right:6px; }
-            @media print { body { background:#fff; padding:0; } .sheet { border:0; border-radius:0; box-shadow:none; max-width:100%; } @page { size:A4; margin:12mm; } }
+            @media print {
+              body { background:#EEE8FB; padding:0; }
+              .sheet { border:0; border-radius:0; box-shadow:none; max-width:100%; }
+              @page { size:A4; margin:10mm; }
+            }
           </style>
         </head>
         <body>
@@ -1650,6 +1791,9 @@ export function DashboardPage() {
           onDayChange={handleDayChange}
           onOpenGroupPanel={() =>
             navigate(`/grouppanel?groupId=${encodeURIComponent(groupId || currentGroup?.id || '')}`)
+          }
+          onOpenGroupSettings={() =>
+            navigate(`/group-settings?groupId=${encodeURIComponent(groupId || currentGroup?.id || '')}`)
           }
         />
       }

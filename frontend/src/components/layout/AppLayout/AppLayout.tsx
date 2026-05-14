@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Navbar } from '../Navbar'
 import type { NavUserInfo, TripInfo } from '../Navbar'
 
@@ -45,30 +45,47 @@ function IconUsers() {
 
 const GENERAL_NAV = [
   { to: '/my-trips', label: 'Inicio' },
-  { to: '/my-trips', label: 'Mis viajes' },
   { to: '/create-group', label: 'Grupos' },
   { to: '/profile', label: 'Configuración' },
 ]
 
 function GeneralNav({ onNavigate }: { onNavigate: (to: string) => void }) {
   return (
-    <nav>
-      <p className="mb-3 font-body text-[10px] uppercase tracking-widest text-white/40">
-        Navegación
-      </p>
-      <ul className="flex flex-col gap-1">
-        {GENERAL_NAV.map((item) => (
-          <li key={`${item.to}-${item.label}`}>
-            <button
-              type="button"
-              onClick={() => onNavigate(item.to)}
-              className="flex w-full items-center rounded-xl px-3 py-2.5 text-left font-body text-sm text-white/70 transition-colors duration-150 hover:bg-white/10 hover:text-white"
-            >
-              {item.label}
-            </button>
-          </li>
-        ))}
-      </ul>
+    <nav className="space-y-4">
+      <div>
+        <p className="mb-3 font-body text-[10px] uppercase tracking-widest text-white/40">Navegación</p>
+        <ul className="flex flex-col gap-1">
+          {GENERAL_NAV.map((item) => (
+            <li key={`${item.to}-${item.label}`}>
+              <button
+                type="button"
+                onClick={() => onNavigate(item.to)}
+                className="flex w-full items-center rounded-xl px-3 py-2.5 text-left font-body text-sm text-white/70 transition-colors duration-150 hover:bg-white/10 hover:text-white"
+              >
+                {item.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="border-t border-white/10 pt-4">
+        <p className="mb-3 font-body text-[10px] uppercase tracking-widest text-white/40">Viajes</p>
+        <button
+          type="button"
+          onClick={() => onNavigate('/my-trips')}
+          className="flex w-full items-center rounded-xl px-3 py-2.5 text-left font-body text-sm text-white/70 transition-colors duration-150 hover:bg-white/10 hover:text-white"
+        >
+          Mis viajes
+        </button>
+        <button
+          type="button"
+          onClick={() => onNavigate('/my-trips#viajes-pasados')}
+          className="mt-2 flex w-full items-center rounded-xl px-3 py-2.5 text-left font-body text-sm text-white/70 transition-colors duration-150 hover:bg-white/10 hover:text-white"
+        >
+          Viajes pasados
+        </button>
+      </div>
     </nav>
   )
 }
@@ -88,6 +105,15 @@ export function AppLayout({
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   )
   const navigate = useNavigate()
+  const location = useLocation()
+
+  const goToCurrentTrips = () => {
+    if (location.pathname === '/my-trips' && location.hash) {
+      navigate('/my-trips')
+      return
+    }
+    navigate('/my-trips')
+  }
 
   const tripInfo: TripInfo | undefined = trip
     ? { name: trip.name, subtitle: trip.subtitle }
@@ -145,14 +171,15 @@ export function AppLayout({
 
             {trip && (
               <div className="mt-auto border-t border-white/10 pt-4">
+                <p className="mb-2 px-3 font-body text-[10px] uppercase tracking-widest text-white/40">
+                  Viajes
+                </p>
                 <button
-                  onClick={() => navigate('/my-trips')}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 font-body text-sm text-white/60 transition-colors duration-150 hover:bg-white/10 hover:text-white"
+                  onClick={goToCurrentTrips}
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 font-body text-sm text-white/60 transition-colors duration-150 hover:bg-white/10 hover:text-white"
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M19 12H5M5 12l7-7M5 12l7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  Mis viajes
+                  <span>Mis viajes</span>
+                  <span className="text-white/40">›</span>
                 </button>
               </div>
             )}

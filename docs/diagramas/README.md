@@ -1,29 +1,36 @@
-# 📐 Diagramas — Ithera
+# Diagramas - ITHERA
 
-Esta carpeta contiene todos los diagramas del sistema.
+Esta carpeta contiene diagramas del sistema. Su objetivo es explicar visualmente flujos, arquitectura, clases, modulos y relaciones relevantes.
 
-## Contenido
+## Tipos de diagramas esperados
 
-| Carpeta / Archivo | Descripción |
-|-------------------|-------------|
-| `system-map.pdf` | Mapa del sistema completo (flujo de todos los módulos) |
-| `clases/` | Diagramas de clases por módulo |
+| Tipo | Ubicacion sugerida | Uso |
+| --- | --- | --- |
+| Mapa del sistema | `docs/diagramas/` | Vista general de flujos principales. |
+| Casos de uso | `docs/diagramas/` | Relacion actor-sistema. |
+| Clases | `docs/diagramas/clases/` | Entidades, atributos y relaciones. |
+| Secuencia | `docs/diagramas/` | Interacciones entre frontend, backend y servicios externos. |
+| Arquitectura | `docs/diagramas/` | Capas y comunicacion entre modulos. |
 
-## Diagramas de clases
+## Convencion de nombres
 
-Los diagramas de clases representan la arquitectura interna del software: entidades, atributos y relaciones que soportan la lógica de negocio implementada en PostgreSQL.
-
-Sube aquí los archivos con la siguiente convención de nombres:
-
-```
-clases/diagrama-clases-m1-autenticacion.png
+```text
+system-map.pdf
+casos-uso-m1-auth.png
+secuencia-login.png
+arquitectura-general.png
+clases/diagrama-clases-m1-auth.png
 clases/diagrama-clases-m2-grupos.png
-clases/diagrama-clases-m3-itinerario.png
 clases/diagrama-clases-m6-presupuesto.png
 ```
 
-## Mapa del sistema
+## Reglas
 
-El archivo `system-map.pdf` corresponde al diagrama de flujo completo que mapea todos los módulos del sistema: autenticación, gestión de grupos, itinerario colaborativo, sincronización en tiempo real, presupuesto y notificaciones.
+- Usar nombres descriptivos y en kebab-case.
+- Evitar subir imagenes duplicadas o versiones temporales.
+- Si el diagrama reemplaza uno anterior, retirar el obsoleto o marcarlo como historico.
+- Si el diagrama documenta una parte implementada, enlazarlo desde el README del modulo correspondiente.
 
-> Sube aquí: `Ithera_System_Map_Final.pdf`
+## Artefactos relacionados
+
+Algunos diagramas fuente o extraidos pueden estar en [../extracted/README.md](../extracted/README.md). Esa carpeta no debe usarse como documentacion principal, solo como referencia cruda.

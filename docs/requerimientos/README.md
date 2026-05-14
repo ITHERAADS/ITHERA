@@ -1,34 +1,39 @@
-# 📋 Requerimientos — Ithera
+# Requerimientos - ITHERA
 
-Esta carpeta contiene el documento oficial de análisis de requerimientos del sistema.
+Esta carpeta documenta los requerimientos funcionales, no funcionales y reglas de negocio del sistema.
 
-## Contenido
-
-| Archivo | Descripción |
-|---------|-------------|
-| `Ithera_Requerimientos_Oficial.pdf` | Documento completo de RF, RNF, RNB y CU de los 7 módulos |
-
-## Estructura del documento
-
-El documento sigue la notación `X.Y` donde `X` es el número de módulo y `Y` es el número secuencial del artefacto.
+## Convencion de identificadores
 
 | Prefijo | Significado | Ejemplo |
-|---------|-------------|---------|
-| `RF-X.Y` | Requerimiento Funcional | RF-1.1 Autenticación de usuarios |
-| `RNF-X.Y` | Requerimiento No Funcional | RNF-1.1 Protección de datos de sesión |
-| `RNB-X.Y` | Regla de Negocio | RNB-1.1 Validez del token de recuperación |
-| `CU-X.Y` | Caso de Uso | CU-1.1 Iniciar Sesión |
+| --- | --- | --- |
+| `RF-X.Y` | Requerimiento funcional del modulo X. | `RF-1.1 Autenticacion de usuarios` |
+| `RNF-X.Y` | Requerimiento no funcional del modulo X. | `RNF-1.1 Proteccion de datos` |
+| `RNB-X.Y` | Regla de negocio del modulo X. | `RNB-1.1 Validez del token` |
+| `CU-X.Y` | Caso de uso del modulo X. | `CU-1.1 Iniciar sesion` |
 
-## Módulos
+## Modulos
 
-| ID | Módulo |
-|----|--------|
-| M1 | Autenticación y Acceso |
-| M2 | Gestión de Grupo |
-| M3 | Itinerario Colaborativo y Módulo de Colaboración |
-| M4 | Búsqueda y APIs Externas |
-| M5 | Sincronización en Tiempo Real |
-| M6 | Presupuesto y Gastos |
-| M7 | Notificaciones, Historial y Exportación |
+| ID | Modulo |
+| --- | --- |
+| M1 | Autenticacion y acceso |
+| M2 | Gestion de grupos y viajes |
+| M3 | Itinerario colaborativo |
+| M4 | Busqueda y APIs externas |
+| M5 | Sincronizacion en tiempo real |
+| M6 | Presupuesto y gastos |
+| M7 | Documentos, notificaciones e historial |
 
-> Sube aquí el PDF oficial: `Ithera_Requerimientos_Oficial.pdf`
+## Criterios para mantener requerimientos
+
+- Cada requerimiento debe ser claro, verificable y trazable.
+- Si un requerimiento cambia, actualizar tambien los casos de uso relacionados.
+- Si un requerimiento ya esta implementado, enlazarlo con endpoint, pantalla o modulo.
+- No mezclar notas temporales con requerimientos oficiales.
+
+## Relacion con otros documentos
+
+- Casos de uso: [../casos-de-uso/README.md](../casos-de-uso/README.md)
+- API implementada: [../api/endpoints.md](../api/endpoints.md)
+- Arquitectura actual: [../architecture/README.md](../architecture/README.md)
+
+Los documentos fuente exportados desde PDFs o herramientas externas deben revisarse antes de considerarse documentacion oficial.

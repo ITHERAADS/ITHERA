@@ -12,6 +12,7 @@ interface WalletEntry {
 
 interface Props {
   onBack: () => void
+  isReadOnly?: boolean
   settlements?: BudgetSettlement[]
   paymentHistory?: BudgetPaymentHistoryItem[]
   members?: BudgetMember[]
@@ -47,6 +48,7 @@ const paymentStatusLabel: Record<BudgetPaymentHistoryItem['status'], string> = {
 
 export const MyWalletView: FC<Props> = ({
   onBack,
+  isReadOnly = false,
   settlements = [],
   paymentHistory = [],
   members = [],
@@ -228,6 +230,11 @@ export const MyWalletView: FC<Props> = ({
 
       <div className="flex flex-1 flex-col gap-4 px-6 py-5">
         {error && <div className="rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-4 py-3 text-sm text-[#C03535]">{error}</div>}
+        {isReadOnly && (
+          <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
+            Estas en modo solo lectura (sin conexion). Puedes consultar datos sincronizados, pero no modificar pagos.
+          </div>
+        )}
 
         <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
@@ -341,7 +348,7 @@ export const MyWalletView: FC<Props> = ({
                           setReceiptBusyPairId(null)
                         }
                       }}
-                      disabled={receiptBusyPairId === e.pairId}
+                      disabled={isReadOnly || receiptBusyPairId === e.pairId}
                       className="rounded-lg border border-[#15803D] px-3 py-1 text-xs font-semibold text-[#15803D]"
                     >
                       {receiptBusyPairId === e.pairId ? 'Generando...' : 'Generar recibo'}
@@ -362,7 +369,7 @@ export const MyWalletView: FC<Props> = ({
                     </div>
                     <div className="mt-2">
                       <button
-                        disabled={hasPending}
+                        disabled={isReadOnly || hasPending}
                         onClick={() => { setPayingEntry(e); setPayAmount(String(e.monto)); setPayMethod('transferencia'); setPayNote(''); setPayProof(null) }}
                         className="rounded-lg bg-[#1E6FD9] px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
                       >
@@ -383,7 +390,7 @@ export const MyWalletView: FC<Props> = ({
               <p className="text-sm font-semibold">{nameById.get(p.from) ?? `Usuario ${p.from}`} reporto {formatMXN(p.amount)}</p>
               <div className="mt-2 flex gap-2">
                 <button
-                  disabled={reviewBusyId === p.id}
+                  disabled={isReadOnly || reviewBusyId === p.id}
                   onClick={async () => {
                     setReviewBusyId(p.id)
                     try { await onReviewPayment?.(p.id, { status: 'confirmado' }) } finally { setReviewBusyId(null) }
@@ -392,9 +399,9 @@ export const MyWalletView: FC<Props> = ({
                 >
                   {reviewBusyId === p.id ? 'Confirmando...' : 'Confirmar'}
                 </button>
-                <input value={rejectReasonByPayment[p.id] ?? ''} onChange={(e) => setRejectReasonByPayment((s) => ({ ...s, [p.id]: e.target.value }))} placeholder="Motivo rechazo" className="rounded-lg border border-[#CBD5E1] px-2 py-1 text-xs" />
+                <input disabled={isReadOnly} value={rejectReasonByPayment[p.id] ?? ''} onChange={(e) => setRejectReasonByPayment((s) => ({ ...s, [p.id]: e.target.value }))} placeholder="Motivo rechazo" className="rounded-lg border border-[#CBD5E1] px-2 py-1 text-xs" />
                 <button
-                  disabled={reviewBusyId === p.id}
+                  disabled={isReadOnly || reviewBusyId === p.id}
                   onClick={async () => {
                     setReviewBusyId(p.id)
                     try { await onReviewPayment?.(p.id, { status: 'rechazado', rejection_reason: rejectReasonByPayment[p.id] ?? '' }) } finally { setReviewBusyId(null) }
@@ -426,7 +433,8 @@ export const MyWalletView: FC<Props> = ({
                       setEditNote(p.note ?? '')
                       setEditProof(null)
                     }}
-                    className="rounded-lg bg-[#1E6FD9] px-3 py-1 text-xs font-semibold text-white"
+                    disabled={isReadOnly}
+                    className="rounded-lg bg-[#1E6FD9] px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
                   >
                     Editar
                   </button>
@@ -438,7 +446,7 @@ export const MyWalletView: FC<Props> = ({
                       setError(null)
                       try { await onDeleteSentPayment?.(p.id) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo eliminar') } finally { setBusyId(null) }
                     }}
-                    disabled={busyId === p.id}
+                    disabled={isReadOnly || busyId === p.id}
                     className="rounded-lg border border-[#DC2626] px-3 py-1 text-xs font-semibold text-[#DC2626] disabled:opacity-60"
                   >
                     {busyId === p.id ? 'Eliminando...' : 'Eliminar'}
@@ -478,7 +486,7 @@ export const MyWalletView: FC<Props> = ({
                   await onRegisterPayment?.({ from_user_id: payingEntry.fromUserId, to_user_id: payingEntry.toUserId, amount, payment_method: payMethod, note: payNote || null, proofFile: payProof })
                   setPayingEntry(null)
                 } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo registrar') } finally { setBusyId(null) }
-              }} disabled={busyId === `pay-${payingEntry.pairId}`} className="rounded-lg bg-[#1E6FD9] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">
+              }} disabled={isReadOnly || busyId === `pay-${payingEntry.pairId}`} className="rounded-lg bg-[#1E6FD9] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">
                 {busyId === `pay-${payingEntry.pairId}` ? 'Guardando...' : 'Guardar'}
               </button>
             </div>
@@ -507,7 +515,7 @@ export const MyWalletView: FC<Props> = ({
                   await onUpdateSentPayment?.(editingPayment.id, { amount, payment_method: editMethod, note: editNote || null, proofFile: editProof })
                   setEditingPayment(null)
                 } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo actualizar') } finally { setBusyId(null) }
-              }} disabled={busyId === `edit-${editingPayment.id}`} className="rounded-lg bg-[#1E6FD9] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">
+              }} disabled={isReadOnly || busyId === `edit-${editingPayment.id}`} className="rounded-lg bg-[#1E6FD9] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">
                 {busyId === `edit-${editingPayment.id}` ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>

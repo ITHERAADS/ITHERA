@@ -36,6 +36,10 @@ const parsePersonReferences = (value: unknown): string[] | null => {
   }
 };
 
+const parseBoolean = (value: unknown): boolean => {
+  return String(value ?? '').toLowerCase() === 'true';
+};
+
 const uploadHandler = async (req: Request, res: Response) => {
   try {
     const tripId = resolveTripId(req);
@@ -54,6 +58,8 @@ const uploadHandler = async (req: Request, res: Response) => {
       expense_reason: req.body.expense_reason || null,
       expense_amount: req.body.expense_amount ? Number(req.body.expense_amount) : null,
       notes: req.body.notes || null,
+      immutable: parseBoolean(req.body.immutable),
+      immutable_kind: req.body.immutable_kind || null,
     };
 
     const doc = await uploadDocument({

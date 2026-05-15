@@ -404,6 +404,10 @@ export const getBudgetDashboard = async (authUserId: string, groupId: string) =>
   const committed = roundMoney(expenses.reduce((sum, expense) => sum + Number(expense.amount), 0));
   const balances = calculateBalances(expenses);
   const settlements = applyPaymentsToSettlements(calculateMinimumSettlements(balances), payments);
+  const groupSettlementSummary = {
+    totalTransfers: settlements.length,
+    totalAmount: roundMoney(settlements.reduce((sum, settlement) => sum + settlement.amount, 0)),
+  };
   const personalSettlements = settlements.filter(
     (settlement) => settlement.from === String(usuarioId) || settlement.to === String(usuarioId),
   );
@@ -426,6 +430,7 @@ export const getBudgetDashboard = async (authUserId: string, groupId: string) =>
     expenses: expenses.map((expense) => mapExpense(expense, membersById)),
     balances,
     settlements: personalSettlements,
+    groupSettlementSummary,
     paymentHistory: personalPaymentHistory,
   };
 };

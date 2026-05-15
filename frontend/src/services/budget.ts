@@ -65,6 +65,10 @@ export interface BudgetDashboardResponse {
   expenses: BudgetExpense[]
   balances: Record<string, number>
   settlements: BudgetSettlement[]
+  groupSettlementSummary?: {
+    totalTransfers: number
+    totalAmount: number
+  }
   paymentHistory: BudgetPaymentHistoryItem[]
 }
 

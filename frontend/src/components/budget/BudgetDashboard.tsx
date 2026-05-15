@@ -179,6 +179,9 @@ export const BudgetDashboard: FC<Props> = ({
   const [error, setError] = useState<string | null>(null)
   const [contextLinks, setContextLinks] = useState<ContextLink[]>([])
   const [linkOptions, setLinkOptions] = useState<ContextLinkOptions>(EMPTY_LINK_OPTIONS)
+  const [isOffline, setIsOffline] = useState<boolean>(typeof navigator !== 'undefined' ? !navigator.onLine : false)
+  const [copyGroupSummaryState, setCopyGroupSummaryState] = useState<'idle' | 'loading' | 'done'>('idle')
+  const [exportingGroupSummary, setExportingGroupSummary] = useState(false)
 
   const toUserMessage = (err: unknown, fallback: string): string => {
     const raw = err instanceof Error ? err.message : ''
@@ -199,6 +202,9 @@ export const BudgetDashboard: FC<Props> = ({
     setExpenses(nextDashboard.expenses.map(normalizeExpense))
     setMembers(nextDashboard.members)
     onSummaryChange?.(nextDashboard.summary)
+    if (groupId) {
+      localStorage.setItem(`budget-dashboard-cache:${groupId}`, JSON.stringify(nextDashboard))
+    }
   }, [onSummaryChange])
 
   const loadDashboard = useCallback(async () => {
@@ -213,12 +219,35 @@ export const BudgetDashboard: FC<Props> = ({
     try {
       applyDashboard(await budgetService.getDashboard(groupId, accessToken))
     } catch (err) {
-      setError(toUserMessage(err, 'No se pudo cargar el presupuesto'))
-      onSummaryChange?.(null)
+      const cachedRaw = localStorage.getItem(`budget-dashboard-cache:${groupId}`)
+      if (cachedRaw) {
+        try {
+          const cached = JSON.parse(cachedRaw) as BudgetDashboardResponse
+          applyDashboard(cached)
+          setError('Mostrando el ultimo estado sincronizado (modo offline).')
+        } catch {
+          setError(toUserMessage(err, 'No se pudo cargar el presupuesto'))
+          onSummaryChange?.(null)
+        }
+      } else {
+        setError(toUserMessage(err, 'No se pudo cargar el presupuesto'))
+        onSummaryChange?.(null)
+      }
     } finally {
       setIsLoading(false)
     }
   }, [accessToken, applyDashboard, groupId, onSummaryChange])
+
+  useEffect(() => {
+    const goOnline = () => setIsOffline(false)
+    const goOffline = () => setIsOffline(true)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [])
 
   const loadContextLinks = useCallback(async () => {
     if (!groupId || !accessToken) {
@@ -379,9 +408,19 @@ export const BudgetDashboard: FC<Props> = ({
   const barLabel = totalBudget === 0
     ? 'Define un presupuesto para activar seguimiento'
     : pct < 70 ? 'Presupuesto saludable' : pct < 90 ? 'Atencion: presupuesto al limite' : 'Presupuesto excedido'
-  const canModifyExpenses = dashboard?.myRole === 'admin' && !isReadOnly
-  const canAdjustBudget = dashboard?.myRole === 'admin' && !isReadOnly
+  const canModifyExpenses = dashboard?.myRole === 'admin' && !isReadOnly && !isOffline
+  const canAdjustBudget = dashboard?.myRole === 'admin' && !isReadOnly && !isOffline
   const requiresBudgetSetup = totalBudget <= 0
+  const groupSettlementSummary = dashboard?.groupSettlementSummary ?? { totalTransfers: 0, totalAmount: 0 }
+
+  const buildGroupSettlementSummaryText = () => {
+    return [
+      'Resumen grupal de liquidacion',
+      `Fecha: ${new Date().toLocaleString('es-MX')}`,
+      `Transferencias minimas pendientes: ${groupSettlementSummary.totalTransfers}`,
+      `Monto total por liquidar: ${formatMXN(groupSettlementSummary.totalAmount)}`,
+    ].join('\n')
+  }
 
   const handleSaveExpense = async (expense: Expense) => {
     if (!groupId || !accessToken) return
@@ -489,6 +528,7 @@ export const BudgetDashboard: FC<Props> = ({
     return (
       <MyWalletView
         onBack={() => setView('dashboard')}
+        isReadOnly={isReadOnly || isOffline}
         settlements={dashboard?.settlements ?? []}
         paymentHistory={dashboard?.paymentHistory ?? []}
         members={members}
@@ -602,6 +642,8 @@ export const BudgetDashboard: FC<Props> = ({
               file,
               'otro',
               {
+                immutable: true,
+                immutable_kind: 'recibo_cobro',
                 linked_entity_type: 'otro',
                 person_reference: payload.debtor_user_id,
                 person_references: [payload.creditor_user_id, payload.debtor_user_id],
@@ -690,6 +732,11 @@ export const BudgetDashboard: FC<Props> = ({
       </div>
 
       <div className="flex flex-1 flex-col gap-4 px-6 py-5">
+        {isOffline && (
+          <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 font-body text-sm text-[#92400E]">
+            Sin conexion: finanzas esta en modo solo lectura con el ultimo estado sincronizado.
+          </div>
+        )}
         <div className="flex gap-3">
           {!isReadOnly && (
             <button
@@ -707,6 +754,148 @@ export const BudgetDashboard: FC<Props> = ({
           >
             Mi Cartera
           </button>
+        </div>
+
+        <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="font-body text-xs text-[#7A8799]">Liquidacion grupal (sin detalle sensible)</p>
+              <p className="font-body text-sm font-semibold text-[#3D4A5C]">
+                {groupSettlementSummary.totalTransfers} transferencias · {formatMXN(groupSettlementSummary.totalAmount)}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    setCopyGroupSummaryState('loading')
+                    await navigator.clipboard.writeText(buildGroupSettlementSummaryText())
+                    setCopyGroupSummaryState('done')
+                    window.setTimeout(() => setCopyGroupSummaryState('idle'), 1800)
+                  } catch {
+                    setCopyGroupSummaryState('idle')
+                    setError('No se pudo copiar el resumen grupal.')
+                  }
+                }}
+                className="rounded-lg border border-[#CBD5E1] px-3 py-1.5 font-body text-xs font-semibold text-[#334155]"
+                disabled={copyGroupSummaryState === 'loading'}
+              >
+                {copyGroupSummaryState === 'loading' ? 'Copiando...' : copyGroupSummaryState === 'done' ? 'Resumen copiado' : 'Copiar resumen'}
+              </button>
+              <button
+                onClick={() => {
+                  setExportingGroupSummary(true)
+                  const generatedAt = new Date().toLocaleString('es-MX', {
+                    day: '2-digit',
+                    month: 'long',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                  const committedPct = totalBudget > 0 ? Math.min((comprometido / totalBudget) * 100, 100) : 0
+                  const html = `
+                    <!doctype html>
+                    <html lang="es">
+                      <head>
+                        <meta charset="utf-8" />
+                        <meta name="viewport" content="width=device-width,initial-scale=1" />
+                        <title>Resumen grupal de liquidacion</title>
+                        <style>
+                          :root{--ink:#1E0A4E;--ink-soft:#2E1767;--blue:#1E6FD9;--paper:#fff;--muted:#64748B;}
+                          *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+                          body{margin:0;font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:linear-gradient(145deg,#EBE6FA 0%,#EAF2FF 100%);padding:24px;color:#243247;}
+                          .sheet{max-width:920px;margin:0 auto;background:var(--paper);border:1px solid #D9E4F7;border-radius:20px;overflow:hidden;box-shadow:0 24px 56px rgba(30,10,78,.18);}
+                          .hero{background:linear-gradient(120deg,var(--ink),var(--ink-soft));color:#fff;padding:28px 30px;}
+                          .hero h1{margin:0;font-size:30px;}
+                          .hero p{margin:8px 0 0;font-size:14px;color:rgba(255,255,255,.9);}
+                          .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:14px;}
+                          .metric{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.24);padding:10px;border-radius:12px;}
+                          .metric b{display:block;font-size:20px;margin-top:4px;}
+                          .content{padding:18px 20px 26px;background:linear-gradient(180deg,#FAFCFF 0%,#FFFFFF 18%);}
+                          .section{border:1px solid #DEE7FB;border-radius:16px;background:#fff;overflow:hidden;}
+                          .section h3{margin:0;padding:12px 14px;background:linear-gradient(90deg,#F3EEFF,#F8FAFF);border-bottom:1px solid #E5ECFA;color:var(--ink);}
+                          .body{padding:14px;}
+                          .row{display:flex;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px dashed #E6ECFA;}
+                          .row:last-child{border-bottom:0;}
+                          .label{color:#55637E;font-size:13px;}
+                          .value{font-weight:700;color:#1E0A4E;}
+                          .footer{border-top:1px solid #E5ECFA;background:#FAFCFF;padding:12px 20px;color:var(--muted);font-size:11px;display:flex;justify-content:space-between;}
+                          @media print{body{background:#EEE8FB;padding:0}.sheet{border:0;border-radius:0;box-shadow:none;max-width:100%}@page{size:A4;margin:10mm}}
+                        </style>
+                      </head>
+                      <body>
+                        <main class="sheet">
+                          <header class="hero">
+                            <h1>Resumen Grupal de Liquidacion</h1>
+                            <p>Panel de Finanzas · ITHERA</p>
+                            <div class="metrics">
+                              <div class="metric"><span>Total viaje</span><b>${formatMXN(totalBudget)}</b></div>
+                              <div class="metric"><span>Comprometido</span><b>${formatMXN(comprometido)}</b></div>
+                              <div class="metric"><span>Transferencias minimas</span><b>${groupSettlementSummary.totalTransfers}</b></div>
+                              <div class="metric"><span>Monto por liquidar</span><b>${formatMXN(groupSettlementSummary.totalAmount)}</b></div>
+                            </div>
+                          </header>
+                          <section class="content">
+                            <div class="section">
+                              <h3>Resumen consolidado (sin detalle sensible)</h3>
+                              <div class="body">
+                                <div class="row">
+                                  <span class="label">Porcentaje comprometido del presupuesto</span>
+                                  <span class="value">${committedPct.toFixed(1)}%</span>
+                                </div>
+                                <div class="row">
+                                  <span class="label">Monto disponible actual</span>
+                                  <span class="value">${formatMXN(disponible)}</span>
+                                </div>
+                                <div class="row">
+                                  <span class="label">Transferencias minimas pendientes</span>
+                                  <span class="value">${groupSettlementSummary.totalTransfers}</span>
+                                </div>
+                                <div class="row">
+                                  <span class="label">Monto total por liquidar</span>
+                                  <span class="value">${formatMXN(groupSettlementSummary.totalAmount)}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </section>
+                          <footer class="footer">
+                            <span>Generado por ITHERA</span>
+                            <span>${generatedAt}</span>
+                          </footer>
+                        </main>
+                      </body>
+                    </html>
+                  `
+                  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+                  const blobUrl = URL.createObjectURL(blob)
+                  const win = window.open(blobUrl, '_blank')
+                  if (!win) {
+                    setExportingGroupSummary(false)
+                    URL.revokeObjectURL(blobUrl)
+                    setError('No se pudo abrir la ventana para exportar el resumen.')
+                    return
+                  }
+                  const cleanup = () => {
+                    URL.revokeObjectURL(blobUrl)
+                    setExportingGroupSummary(false)
+                  }
+                  try {
+                    win.addEventListener('load', () => {
+                      try { win.focus(); win.print() } finally { cleanup() }
+                    }, { once: true })
+                  } catch {
+                    window.setTimeout(() => {
+                      try { win.focus(); win.print() } finally { cleanup() }
+                    }, 700)
+                  }
+                }}
+                className="rounded-lg bg-[#1E6FD9] px-3 py-1.5 font-body text-xs font-semibold text-white"
+                disabled={exportingGroupSummary}
+              >
+                {exportingGroupSummary ? 'Exportando...' : 'Exportar resumen'}
+              </button>
+            </div>
+          </div>
         </div>
 
         {requiresBudgetSetup && (

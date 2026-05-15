@@ -198,6 +198,17 @@ export const emitGroupDashboardUpdated = (
     };
 
     io.to(String(grupoId)).emit('dashboard_updated', eventPayload);
+
+    const tipo = String(eventPayload.tipo ?? '');
+    if (
+      tipo.includes('miembro') ||
+      tipo.includes('solicitud_union') ||
+      tipo.includes('invitacion') ||
+      tipo.includes('rol') ||
+      tipo.includes('grupo_actualizado')
+    ) {
+      io.to(String(grupoId)).emit('group_members_updated', eventPayload);
+    }
   } catch (ioError) {
     console.log('[Notifications] No se pudo emitir dashboard_updated', ioError);
   }

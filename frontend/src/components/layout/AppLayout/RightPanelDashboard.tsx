@@ -225,9 +225,12 @@ export function RightPanelDashboard({
       })()
     : null
 
-  // Presence-only socket listener — room joining is handled by ChatDrawer
+  // Presence socket listener. The right panel joins the group room so the
+  // online state works even when the chat drawer is closed.
   useEffect(() => {
     if (!socket || !groupId) return
+
+    socket.emit('join_room', { tripId: groupId })
 
     const handlePresenceUpdate = (payload: { tripId: string; onlineUserIds: string[] }) => {
       if (String(payload.tripId) !== groupId) return
@@ -237,6 +240,7 @@ export function RightPanelDashboard({
     socket.on('presence_update', handlePresenceUpdate)
 
     return () => {
+      socket.emit('leave_room', { tripId: groupId })
       socket.off('presence_update', handlePresenceUpdate)
       setOnlineUserIds([])
     }

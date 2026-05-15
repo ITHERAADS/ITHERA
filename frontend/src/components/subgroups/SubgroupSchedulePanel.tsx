@@ -450,6 +450,31 @@ export function SubgroupSchedulePanel({
   useEffect(() => { void load() }, [load])
 
   useEffect(() => {
+    if (!socket || !groupId) return
+
+    const handleDashboardUpdate = (payload: { groupId?: string | number; grupoId?: string | number; tipo?: string }) => {
+      const payloadGroupId = payload.grupoId ?? payload.groupId
+      if (payloadGroupId !== undefined && String(payloadGroupId) !== String(groupId)) return
+
+      const tipo = String(payload.tipo ?? '')
+      if (
+        tipo.startsWith('subgrupo_') ||
+        tipo.startsWith('subgroup_') ||
+        tipo === 'documento_subido' ||
+        tipo === 'documento_eliminado' ||
+        tipo === 'gasto_creado' ||
+        tipo === 'gasto_actualizado' ||
+        tipo === 'gasto_eliminado'
+      ) {
+        void load()
+      }
+    }
+
+    socket.on('dashboard_updated', handleDashboardUpdate)
+    return () => { socket.off('dashboard_updated', handleDashboardUpdate) }
+  }, [groupId, load, socket])
+
+  useEffect(() => {
     if (!accessToken || slots.length === 0 || group?.destino_photo_url) return
     const missingActivities = slots
       .flatMap((slot) => slot.subgroups)
@@ -1456,8 +1481,7 @@ export function SubgroupSchedulePanel({
     setActivityDraft,
     subgroupModal?.mode,
     subgroupModal?.slotId,
-    subgroupModalDraft?.query,
-    subgroupModalDraft?.selectedPlace?.name,
+    subgroupModalDraft,
     subgroupModalSlot,
   ])
 

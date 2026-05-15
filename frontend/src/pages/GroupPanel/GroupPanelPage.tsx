@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
 import { InviteModal } from '../../components/InviteModal/InviteModal'
 import { useAuth } from '../../context/useAuth'
+import { useSocket } from '../../hooks/useSocket'
 import {
   getCurrentGroup,
   groupsService,
   saveCurrentGroup,
+  clearCurrentGroup,
 } from '../../services/groups'
 import type { Group, GroupInvitation, GroupJoinRequest, GroupMember } from '../../types/groups'
 
@@ -43,6 +45,7 @@ export function GroupPanelPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { accessToken, localUser } = useAuth()
+  const { socket } = useSocket(accessToken)
 
   const [group, setGroup] = useState<Group | null>(getCurrentGroup())
   const [members, setMembers] = useState<GroupMember[]>([])
@@ -82,14 +85,13 @@ export function GroupPanelPage() {
     })
   }
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!accessToken || !groupId) {
       setLoading(false)
       setError('No se recibió un groupId válido')
       return
     }
 
-    const loadData = async () => {
       try {
         setLoading(true)
         setError('')
@@ -171,10 +173,41 @@ export function GroupPanelPage() {
       } finally {
         setLoading(false)
       }
+  }, [accessToken, groupId, localUser?.id_usuario])
+
+  useEffect(() => {
+    void loadData()
+  }, [loadData])
+
+  useEffect(() => {
+    if (!socket || !groupId) return
+
+    const handleRealtime = (payload: { grupoId?: string | number; groupId?: string | number; tipo?: string }) => {
+      const payloadGroupId = payload.grupoId ?? payload.groupId
+      if (payloadGroupId !== undefined && String(payloadGroupId) !== String(groupId)) return
+
+      if (payload.tipo === 'grupo_eliminado') {
+        clearCurrentGroup()
+        alert('Este grupo fue eliminado por el administrador.')
+        navigate('/my-trips')
+        return
+      }
+
+      void loadData()
     }
 
-    loadData()
-  }, [accessToken, groupId, localUser?.id_usuario])
+    socket.emit('join_room', { tripId: groupId })
+    socket.on('dashboard_updated', handleRealtime)
+    socket.on('group_members_updated', handleRealtime)
+    socket.on('group_deleted', handleRealtime)
+
+    return () => {
+      socket.emit('leave_room', { tripId: groupId })
+      socket.off('dashboard_updated', handleRealtime)
+      socket.off('group_members_updated', handleRealtime)
+      socket.off('group_deleted', handleRealtime)
+    }
+  }, [groupId, loadData, navigate, socket])
 
   const inviteMembers: InviteMember[] = useMemo(
     () =>

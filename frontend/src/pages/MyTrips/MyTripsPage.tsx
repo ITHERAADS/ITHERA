@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout/AppLayout'
 import { useAuth } from '../../context/useAuth'
+import { useSocket } from '../../hooks/useSocket'
 import { groupsService, saveCurrentGroup } from '../../services/groups'
 import type { GroupHistoryItem } from '../../types/groups'
 
@@ -449,8 +450,9 @@ export function MyTripsPage() {
   const [error,   setError]   = useState(false)
   const [showJoin, setShowJoin] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const { socket } = useSocket(accessToken)
 
-  async function fetchTrips() {
+  const fetchTrips = useCallback(async () => {
   if (!accessToken) return
 
   setLoading(true)
@@ -466,12 +468,38 @@ export function MyTripsPage() {
   } finally {
     setLoading(false)
   }
-}
+  }, [accessToken])
 
   useEffect(() => {
-    fetchTrips()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken])
+    void fetchTrips()
+  }, [fetchTrips])
+
+  useEffect(() => {
+    if (!socket) return
+
+    const refreshTrips = () => { void fetchTrips() }
+    const handleDashboardUpdated = (payload: { tipo?: string; actorUsuarioId?: string | number | null; metadata?: Record<string, unknown> }) => {
+      const tipo = String(payload?.tipo ?? '')
+      if (
+        tipo.includes('grupo') ||
+        tipo.includes('solicitud_union') ||
+        tipo.includes('miembro') ||
+        tipo.includes('viaje')
+      ) refreshTrips()
+    }
+
+    socket.on('dashboard_updated', handleDashboardUpdated)
+    socket.on('group_members_updated', refreshTrips)
+    socket.on('group_deleted', refreshTrips)
+    socket.on('notification_created', refreshTrips)
+
+    return () => {
+      socket.off('dashboard_updated', handleDashboardUpdated)
+      socket.off('group_members_updated', refreshTrips)
+      socket.off('group_deleted', refreshTrips)
+      socket.off('notification_created', refreshTrips)
+    }
+  }, [fetchTrips, socket])
 
   const isPastTripsMode = location.hash === '#viajes-pasados'
 
@@ -520,7 +548,7 @@ export function MyTripsPage() {
       {loading ? (
         <SkeletonCards/>
       ) : error ? (
-        <ErrorState onRetry={fetchTrips}/>
+        <ErrorState onRetry={() => { void fetchTrips() }}/>
       ) : (
         <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
 
@@ -565,7 +593,7 @@ export function MyTripsPage() {
                 <p className="font-body text-xs font-semibold text-[#1E0A4E]/50 uppercase tracking-wide mb-3">
                   Código de invitación
                 </p>
-                <JoinCodePanel onJoined={() => { setShowJoin(false); fetchTrips() }}/>
+                <JoinCodePanel onJoined={() => { setShowJoin(false); void fetchTrips() }}/>
               </div>
             </div>
           )}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { getCurrentGroup, groupsService, saveCurrentGroup } from '../../services/groups'
+import { clearCurrentGroup, getCurrentGroup, groupsService, saveCurrentGroup } from '../../services/groups'
 import type { ItineraryDay } from '../../services/groups'
 import { mapsService } from '../../services/maps'
 import { proposalsService, type ProposalComment, type VoteResult } from '../../services/proposals'
@@ -787,6 +787,29 @@ interface DashboardUpdatedSocketPayload {
   createdAt?: string
 }
 
+
+interface ProposalCommentSocketPayload {
+  grupoId?: number | string
+  groupId?: number | string
+  proposalId?: number | string
+  entidadId?: number | string | null
+  comment?: Record<string, unknown> | null
+  commentId?: number | string | null
+}
+
+const normalizeRealtimeProposalComment = (raw: Record<string, unknown> | null | undefined): ProposalComment | null => {
+  if (!raw) return null
+  return {
+    id: String(raw.id ?? raw.id_comentario ?? ''),
+    proposalId: String(raw.proposalId ?? raw.id_propuesta ?? ''),
+    usuarioId: String(raw.usuarioId ?? raw.id_usuario ?? ''),
+    authorName: (raw.authorName ?? raw.nombre ?? null) as string | null,
+    contenido: String(raw.contenido ?? ''),
+    createdAt: String(raw.createdAt ?? raw.created_at ?? new Date().toISOString()),
+    updatedAt: String(raw.updatedAt ?? raw.updated_at ?? new Date().toISOString()),
+  }
+}
+
 const otherEntityForActivity = (link: ContextLink, activityId: string): ContextEntitySummary | null => {
   if (link.entityA.type === 'activity' && link.entityA.id === activityId) return link.entityB
   if (link.entityB.type === 'activity' && link.entityB.id === activityId) return link.entityA
@@ -1211,6 +1234,13 @@ export function DashboardPage() {
     }
 
     const handleDashboardUpdated = (payload: DashboardUpdatedSocketPayload) => {
+      const tipo = String(payload?.tipo ?? '')
+      if (tipo === 'grupo_eliminado') {
+        clearCurrentGroup()
+        alert('Este grupo fue eliminado por el administrador. Te enviaremos a Mis viajes.')
+        navigate('/my-trips')
+        return
+      }
       scheduleCollaborativeRefresh(payload)
     }
 
@@ -1220,6 +1250,8 @@ export function DashboardPage() {
 
     socket.on('dashboard_updated', handleDashboardUpdated)
     socket.on('vote_updated', handleVoteUpdated)
+    socket.on('checkout_updated', handleDashboardUpdated)
+    socket.on('group_deleted', handleDashboardUpdated)
 
     return () => {
       if (collaborativeRefreshTimerRef.current !== null) {
@@ -1228,8 +1260,66 @@ export function DashboardPage() {
       }
       socket.off('dashboard_updated', handleDashboardUpdated)
       socket.off('vote_updated', handleVoteUpdated)
+      socket.off('checkout_updated', handleDashboardUpdated)
+      socket.off('group_deleted', handleDashboardUpdated)
     }
-  }, [socket, resolvedGroupId, accessToken, reloadDashboard, expandedCommentsProposalId, refreshCommentsForProposal])
+  }, [socket, resolvedGroupId, accessToken, reloadDashboard, expandedCommentsProposalId, refreshCommentsForProposal, navigate])
+
+
+  useEffect(() => {
+    if (!socket || !resolvedGroupId) return
+
+    const belongsToGroup = (payload: ProposalCommentSocketPayload) => {
+      const payloadGroupId = payload.grupoId ?? payload.groupId
+      return payloadGroupId === undefined || String(payloadGroupId) === String(resolvedGroupId)
+    }
+
+    const getProposalId = (payload: ProposalCommentSocketPayload) => String(payload.proposalId ?? payload.entidadId ?? '')
+
+    const handleCommentCreated = (payload: ProposalCommentSocketPayload) => {
+      if (!belongsToGroup(payload)) return
+      const proposalId = getProposalId(payload)
+      const comment = normalizeRealtimeProposalComment(payload.comment)
+      if (!proposalId || !comment?.id) return
+      setCommentsByProposal((prev) => {
+        const current = prev[proposalId] ?? []
+        if (current.some((item) => item.id === comment.id)) return prev
+        return { ...prev, [proposalId]: [...current, comment] }
+      })
+    }
+
+    const handleCommentUpdated = (payload: ProposalCommentSocketPayload) => {
+      if (!belongsToGroup(payload)) return
+      const proposalId = getProposalId(payload)
+      const comment = normalizeRealtimeProposalComment(payload.comment)
+      if (!proposalId || !comment?.id) return
+      setCommentsByProposal((prev) => ({
+        ...prev,
+        [proposalId]: (prev[proposalId] ?? []).map((item) => item.id === comment.id ? comment : item),
+      }))
+    }
+
+    const handleCommentDeleted = (payload: ProposalCommentSocketPayload) => {
+      if (!belongsToGroup(payload)) return
+      const proposalId = getProposalId(payload)
+      const commentId = String(payload.commentId ?? '')
+      if (!proposalId || !commentId) return
+      setCommentsByProposal((prev) => ({
+        ...prev,
+        [proposalId]: (prev[proposalId] ?? []).filter((item) => item.id !== commentId),
+      }))
+    }
+
+    socket.on('proposal_comment_created', handleCommentCreated)
+    socket.on('proposal_comment_updated', handleCommentUpdated)
+    socket.on('proposal_comment_deleted', handleCommentDeleted)
+
+    return () => {
+      socket.off('proposal_comment_created', handleCommentCreated)
+      socket.off('proposal_comment_updated', handleCommentUpdated)
+      socket.off('proposal_comment_deleted', handleCommentDeleted)
+    }
+  }, [socket, resolvedGroupId])
 
   const handleDeleteActivity = useCallback(async (activityId: string) => {
     const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
@@ -1364,7 +1454,9 @@ export function DashboardPage() {
       const response = await proposalsService.addComment(String(resolvedGroupId), proposalId, { contenido: content }, accessToken)
       setCommentsByProposal((prev) => ({
         ...prev,
-        [proposalId]: [...(prev[proposalId] ?? []), response.comment],
+        [proposalId]: (prev[proposalId] ?? []).some((item) => item.id === response.comment.id)
+          ? (prev[proposalId] ?? [])
+          : [...(prev[proposalId] ?? []), response.comment],
       }))
       setCommentDraftByProposal((prev) => ({ ...prev, [proposalId]: '' }))
     } finally {
@@ -2400,6 +2492,7 @@ export function DashboardPage() {
           tripId={groupId || currentGroup?.id || ''}
           onClose={() => setSelectedProposal(null)}
           onAccept={() => setShowConfirm(true)}
+          socket={socket}
         />
       )}
       {showConfirm && selectedProposal && (

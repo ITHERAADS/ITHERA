@@ -1,7 +1,26 @@
 import { supabase } from '../../infrastructure/db/supabase.client';
 import { getLocalUserId } from '../groups/groups.service';
+import * as NotificationsService from '../notifications/notifications.service';
 
 type Role = 'admin' | 'viajero';
+
+
+const emitSubgroupScheduleUpdated = (
+  groupId: string,
+  tipo: string,
+  entidadTipo: string,
+  entidadId: string | number | null,
+  actorUsuarioId: string | number | null,
+  metadata: Record<string, unknown> = {},
+): void => {
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo,
+    entidadTipo,
+    entidadId: entidadId !== null ? Number(entidadId) : null,
+    actorUsuarioId: actorUsuarioId !== null ? Number(actorUsuarioId) : null,
+    metadata: { itemType: 'subgrupo', ...metadata },
+  });
+};
 
 const isThirtyMinuteBoundary = (value: string): boolean => {
   const date = new Date(value);
@@ -325,6 +344,11 @@ export const createSlot = async (
     .select('*')
     .single();
   if (error || !data) throw new Error(error?.message ?? 'No se pudo crear horario');
+  emitSubgroupScheduleUpdated(groupId, 'subgrupo_horario_creado', 'subgroup_slot', ((data as { id?: string | number | null }).id ?? null), admin.userId, {
+    itemTitle: payload.title,
+    startsAt: payload.starts_at,
+    endsAt: payload.ends_at,
+  });
   return data;
 };
 
@@ -355,6 +379,12 @@ export const updateSlot = async (
     .select('*')
     .single();
   if (error || !data) throw new Error(error?.message ?? 'No se pudo actualizar horario');
+  const actor = await ensureGroupMember(authUserId, groupId);
+  emitSubgroupScheduleUpdated(groupId, 'subgrupo_horario_actualizado', 'subgroup_slot', slotId, actor.userId, {
+    itemTitle: (data as any).title,
+    startsAt: (data as any).starts_at,
+    endsAt: (data as any).ends_at,
+  });
   return data;
 };
 
@@ -363,6 +393,8 @@ export const deleteSlot = async (authUserId: string, groupId: string, slotId: st
   await ensureSlotInGroup(slotId, groupId);
   const { error } = await supabase.from('subgroup_slots').delete().eq('id', slotId).eq('group_id', groupId);
   if (error) throw new Error(error.message);
+  const actor = await ensureGroupMember(authUserId, groupId);
+  emitSubgroupScheduleUpdated(groupId, 'subgrupo_horario_eliminado', 'subgroup_slot', slotId, actor.userId);
 };
 
 export const createSubgroup = async (
@@ -390,15 +422,20 @@ export const createSubgroup = async (
     .from('subgroup_memberships')
     .upsert({
       slot_id: Number(slotId),
-      subgroup_id: Number((data as any).id),
+      subgroup_id: Number(((data as { id?: string | number | null }).id ?? null)),
       user_id: member.userId,
       assigned_by: member.userId,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'slot_id,user_id' });
   if (membershipError) {
-    await supabase.from('subgroups').delete().eq('id', (data as any).id);
+    await supabase.from('subgroups').delete().eq('id', ((data as { id?: string | number | null }).id ?? null));
     throw new Error(membershipError.message);
   }
+
+  emitSubgroupScheduleUpdated(groupId, 'subgrupo_creado', 'subgroup', ((data as { id?: string | number | null }).id ?? null), member.userId, {
+    itemTitle: payload.name,
+    slotId: Number(slotId),
+  });
 
   return data;
 };
@@ -430,6 +467,10 @@ export const updateSubgroup = async (
     .select('*')
     .single();
   if (error || !data) throw new Error(error?.message ?? 'No se pudo actualizar subgrupo');
+  emitSubgroupScheduleUpdated(groupId, 'subgrupo_actualizado', 'subgroup', subgroupId, member.userId, {
+    itemTitle: (data as any).name,
+    slotId: Number(slotId),
+  });
   return data;
 };
 
@@ -449,6 +490,9 @@ export const deleteSubgroup = async (
 
   const { error } = await supabase.from('subgroups').delete().eq('id', subgroupId).eq('slot_id', slotId);
   if (error) throw new Error(error.message);
+  emitSubgroupScheduleUpdated(groupId, 'subgrupo_eliminado', 'subgroup', subgroupId, member.userId, {
+    slotId: Number(slotId),
+  });
 };
 
 export const joinSubgroup = async (
@@ -499,6 +543,13 @@ export const joinSubgroup = async (
     .select('*')
     .single();
   if (error || !data) throw new Error(error?.message ?? 'No se pudo actualizar tu subgrupo');
+
+  emitSubgroupScheduleUpdated(groupId, 'subgrupo_miembro_actualizado', 'subgroup_membership', ((data as { id?: string | number | null }).id ?? null), member.userId, {
+    slotId: Number(slotId),
+    subgroupId: subgroupId ? Number(subgroupId) : null,
+    previousSubgroupId: currentSubgroupId ? Number(currentSubgroupId) : null,
+  });
+
   return data;
 };
 
@@ -572,6 +623,12 @@ export const createSubgroupActivity = async (
     .select('*')
     .single();
   if (error || !data) throw new Error(error?.message ?? 'No se pudo crear actividad');
+  emitSubgroupScheduleUpdated(groupId, 'subgrupo_actividad_creada', 'subgroup_activity', ((data as { id?: string | number | null }).id ?? null), member.userId, {
+    itemTitle: payload.title,
+    slotId: Number(slotId),
+    subgroupId: Number(subgroupId),
+    startsAt: payload.starts_at ?? null,
+  });
   return data;
 };
 
@@ -634,6 +691,11 @@ export const updateSubgroupActivity = async (
     .select('*')
     .single();
   if (error || !data) throw new Error(error?.message ?? 'No se pudo actualizar actividad');
+  emitSubgroupScheduleUpdated(groupId, 'subgrupo_actividad_actualizada', 'subgroup_activity', activityId, member.userId, {
+    itemTitle: (data as any).title,
+    slotId: Number(slotId),
+    startsAt: (data as any).starts_at ?? null,
+  });
   return data;
 };
 
@@ -663,4 +725,7 @@ export const deleteSubgroupActivity = async (
 
   const { error } = await supabase.from('subgroup_activities').delete().eq('id', activityId).eq('slot_id', slotId);
   if (error) throw new Error(error.message);
+  emitSubgroupScheduleUpdated(groupId, 'subgrupo_actividad_eliminada', 'subgroup_activity', activityId, member.userId, {
+    slotId: Number(slotId),
+  });
 };

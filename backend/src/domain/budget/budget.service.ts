@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../infrastructure/db/supabase.client';
+import * as NotificationsService from '../notifications/notifications.service';
 import { getLocalUserId } from '../groups/groups.service';
 import {
   BudgetCategory,
@@ -45,6 +46,23 @@ const createError = (message: string, statusCode: number): ServiceError => {
   const err = new Error(message) as ServiceError;
   err.statusCode = statusCode;
   return err;
+};
+
+const emitBudgetDashboardUpdated = (
+  groupId: string,
+  tipo: string,
+  entidadTipo: string,
+  entidadId: string | number | null,
+  actorUsuarioId: string | number | null,
+  metadata: Record<string, unknown> = {},
+): void => {
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo,
+    entidadTipo,
+    entidadId: entidadId !== null ? Number(entidadId) : null,
+    actorUsuarioId: actorUsuarioId !== null ? Number(actorUsuarioId) : null,
+    metadata: { itemType: 'presupuesto', ...metadata },
+  });
 };
 
 const roundMoney = (value: number): number => Math.round(value * 100) / 100;
@@ -396,6 +414,12 @@ export const updateBudget = async (authUserId: string, groupId: string, amount: 
     .eq('id', groupId);
 
   if (error) throw createError(error.message, 500);
+
+  const actor = await ensureGroupMember(authUserId, groupId);
+  emitBudgetDashboardUpdated(groupId, 'presupuesto_actualizado', 'presupuesto', groupId, actor.usuarioId, {
+    amount: roundMoney(totalBudget),
+  });
+
   return getBudgetDashboard(authUserId, groupId);
 };
 
@@ -431,6 +455,12 @@ export const createExpense = async (
   const splits = buildSplits(String(expense.id), payload, members, amount);
   const { error: splitError } = await supabaseAdmin.from('expense_splits').insert(splits);
   if (splitError) throw createError(splitError.message, 500);
+
+  emitBudgetDashboardUpdated(groupId, 'gasto_creado', 'gasto', expense.id, paidByUserId, {
+    amount,
+    category,
+    itemTitle: String(payload.description ?? '').trim() || 'Gasto',
+  });
 
   return getBudgetDashboard(authUserId, groupId);
 };
@@ -475,6 +505,13 @@ export const updateExpense = async (
   const { error: insertSplitsError } = await supabaseAdmin.from('expense_splits').insert(splits);
   if (insertSplitsError) throw createError(insertSplitsError.message, 500);
 
+  const actor = await ensureGroupMember(authUserId, groupId);
+  emitBudgetDashboardUpdated(groupId, 'gasto_actualizado', 'gasto', expenseId, actor.usuarioId, {
+    amount,
+    category,
+    itemTitle: String(payload.description ?? '').trim() || 'Gasto',
+  });
+
   return getBudgetDashboard(authUserId, groupId);
 };
 
@@ -494,6 +531,10 @@ export const deleteExpense = async (authUserId: string, groupId: string, expense
     .eq('group_id', groupId);
 
   if (error) throw createError(error.message, 500);
+
+  const actor = await ensureGroupMember(authUserId, groupId);
+  emitBudgetDashboardUpdated(groupId, 'gasto_eliminado', 'gasto', expenseId, actor.usuarioId);
+
   return getBudgetDashboard(authUserId, groupId);
 };
 
@@ -558,5 +599,12 @@ export const markSettlementPaid = async (
   });
 
   if (error) throw createError(error.message, 500);
+
+  emitBudgetDashboardUpdated(groupId, 'pago_liquidacion_registrado', 'settlement_payment', null, usuarioId, {
+    fromUserId,
+    toUserId,
+    amount,
+  });
+
   return getBudgetDashboard(authUserId, groupId);
 };

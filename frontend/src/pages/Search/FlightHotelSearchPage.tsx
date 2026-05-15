@@ -174,7 +174,7 @@ const DEFAULT_HOTEL_FORM: HotelFormState = {
 
 const MAX_TRIP_PEOPLE = 50;
 const MAX_HOTEL_ROOMS = 50;
-const MAX_SEARCH_RANGE_DAYS = 7;
+const TRIP_END_GRACE_DAYS = 3;
 
 function todayIsoDate() {
   const now = new Date();
@@ -197,10 +197,6 @@ function addDaysIso(value: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-function minIsoDate(...values: Array<string | undefined | null>) {
-  return values.filter(Boolean).sort()[0] ?? "";
-}
-
 function getDateWindow(currentGroup?: Group | null) {
   const tripStart = currentGroup?.fecha_inicio || todayIsoDate();
   const tripEnd = currentGroup?.fecha_fin || addDaysIso(tripStart, 60);
@@ -213,13 +209,9 @@ function getDateWindow(currentGroup?: Group | null) {
 function getEndDateWindow(startDate: string, currentGroup?: Group | null) {
   const baseStart = startDate || currentGroup?.fecha_inicio || todayIsoDate();
   const min = addDaysIso(baseStart, 1);
-  const maxBySearchRange = addDaysIso(baseStart, MAX_SEARCH_RANGE_DAYS);
-  const maxByTrip = currentGroup?.fecha_fin
-    ? addDaysIso(currentGroup.fecha_fin, MAX_SEARCH_RANGE_DAYS)
-    : undefined;
-  const max = maxByTrip
-    ? minIsoDate(maxBySearchRange, maxByTrip)
-    : maxBySearchRange;
+  const max = currentGroup?.fecha_fin
+    ? addDaysIso(currentGroup.fecha_fin, TRIP_END_GRACE_DAYS)
+    : addDaysIso(baseStart, TRIP_END_GRACE_DAYS);
   return { min, max };
 }
 
@@ -1570,8 +1562,7 @@ const FlightHotelSearchPage = () => {
                     className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
                   />
                   <p className="mt-1 text-[11px] font-normal text-gray-400">
-                    Mínimo 1 día después; máximo {MAX_SEARCH_RANGE_DAYS} día(s)
-                    desde la salida.
+Debe ser posterior a la salida y puede quedar hasta 3 día(s) después del fin del viaje: {flightReturnWindow.min} a {flightReturnWindow.max}.
                   </p>
                 </label>
                 <label className="text-xs font-semibold text-[#1E0A4E]">
@@ -1691,8 +1682,7 @@ const FlightHotelSearchPage = () => {
                     className="mt-2 w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#1E6FD9]"
                   />
                   <p className="mt-1 text-[11px] font-normal text-gray-400">
-                    Mínimo 1 noche; máximo {MAX_SEARCH_RANGE_DAYS} noche(s)
-                    desde el check-in.
+Debe ser posterior al check-in y puede quedar hasta 3 día(s) después del fin del viaje: {hotelCheckoutWindow.min} a {hotelCheckoutWindow.max}.
                   </p>
                 </label>
                 <label className="text-xs font-semibold text-[#1E0A4E]">

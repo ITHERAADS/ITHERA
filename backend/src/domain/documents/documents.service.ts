@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../infrastructure/db/supabase.client';
+import * as NotificationsService from '../notifications/notifications.service';
 import { TripDocument } from './documents.entity';
 
 const BUCKET = 'trip-documents';
@@ -66,6 +67,19 @@ export const uploadDocument = async (data: {
     throw dbError;
   }
 
+  NotificationsService.emitGroupDashboardUpdated(Number(data.tripId), {
+    tipo: 'documento_subido',
+    entidadTipo: 'documento',
+    entidadId: null,
+    actorUsuarioId: null,
+    metadata: {
+      itemTitle: data.fileName,
+      itemType: 'documento',
+      category: data.category,
+      documentId: String((doc as any).id),
+    },
+  });
+
   return doc as TripDocument;
 };
 
@@ -103,4 +117,16 @@ export const deleteDocument = async (
 
   await supabaseAdmin.storage.from(BUCKET).remove([doc.file_path]);
   await supabaseAdmin.from('trip_documents').delete().eq('id', docId);
+
+  NotificationsService.emitGroupDashboardUpdated(Number(tripId), {
+    tipo: 'documento_eliminado',
+    entidadTipo: 'documento',
+    entidadId: null,
+    actorUsuarioId: null,
+    metadata: {
+      itemTitle: doc.file_name ?? 'Documento',
+      itemType: 'documento',
+      documentId: docId,
+    },
+  });
 };

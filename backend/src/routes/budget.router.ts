@@ -7,6 +7,9 @@ import {
   getBudgetDashboard,
   getMinimumSettlements,
   markSettlementPaid,
+  reviewSettlementPayment,
+  updatePendingSettlementPayment,
+  deletePendingSettlementPayment,
   updateBudget,
   updateExpense,
 } from '../domain/budget/budget.service';
@@ -104,6 +107,39 @@ const postSettlementPayment = async (req: Request, res: Response) => {
   }
 };
 
+const reviewPayment = async (req: Request, res: Response) => {
+  try {
+    const groupId = requireGroupId(req, res);
+    if (!groupId) return;
+    const dashboard = await reviewSettlementPayment(req.user!.id, groupId, req.params.paymentId, req.body);
+    res.status(200).json(dashboard);
+  } catch (err) {
+    handleError(res, err, 'Error al revisar pago');
+  }
+};
+
+const patchPendingPayment = async (req: Request, res: Response) => {
+  try {
+    const groupId = requireGroupId(req, res);
+    if (!groupId) return;
+    const dashboard = await updatePendingSettlementPayment(req.user!.id, groupId, req.params.paymentId, req.body);
+    res.status(200).json(dashboard);
+  } catch (err) {
+    handleError(res, err, 'Error al actualizar pago');
+  }
+};
+
+const removePendingPayment = async (req: Request, res: Response) => {
+  try {
+    const groupId = requireGroupId(req, res);
+    if (!groupId) return;
+    const dashboard = await deletePendingSettlementPayment(req.user!.id, groupId, req.params.paymentId);
+    res.status(200).json(dashboard);
+  } catch (err) {
+    handleError(res, err, 'Error al eliminar pago');
+  }
+};
+
 const getGroupBalances = async (req: Request, res: Response) => {
   try {
     const groupId = requireGroupId(req, res);
@@ -135,6 +171,9 @@ router.post('/expenses', requireAuth, postExpense);
 router.put('/expenses/:expenseId', requireAuth, putExpense);
 router.delete('/expenses/:expenseId', requireAuth, removeExpense);
 router.post('/settlements/payments', requireAuth, postSettlementPayment);
+router.patch('/settlements/payments/:paymentId/review', requireAuth, reviewPayment);
+router.patch('/settlements/payments/:paymentId', requireAuth, patchPendingPayment);
+router.delete('/settlements/payments/:paymentId', requireAuth, removePendingPayment);
 
 router.get('/:groupId', requireAuth, getDashboard);
 router.patch('/:groupId', requireAuth, patchBudget);
@@ -144,6 +183,9 @@ router.post('/:groupId/expenses', requireAuth, postExpense);
 router.put('/:groupId/expenses/:expenseId', requireAuth, putExpense);
 router.delete('/:groupId/expenses/:expenseId', requireAuth, removeExpense);
 router.post('/:groupId/settlements/payments', requireAuth, postSettlementPayment);
+router.patch('/:groupId/settlements/payments/:paymentId/review', requireAuth, reviewPayment);
+router.patch('/:groupId/settlements/payments/:paymentId', requireAuth, patchPendingPayment);
+router.delete('/:groupId/settlements/payments/:paymentId', requireAuth, removePendingPayment);
 router.get('/:groupId/balances', requireAuth, getGroupBalances);
 router.get('/:groupId/settlements', requireAuth, getGroupSettlements);
 

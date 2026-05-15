@@ -43,8 +43,14 @@ export interface BudgetPayment {
   from: string;
   to: string;
   amount: number;
+  status: 'pendiente_validacion' | 'confirmado' | 'rechazado';
+  payment_method: 'efectivo_presencial' | 'transferencia' | null;
   paid_at: string;
   created_by_user_id: string;
+  reviewed_by_user_id?: string | null;
+  reviewed_at?: string | null;
+  rejection_reason?: string | null;
+  proof_document_id?: string | null;
   note?: string | null;
 }
 
@@ -63,5 +69,19 @@ export interface MarkSettlementPaymentPayload {
   from_user_id: string;
   to_user_id: string;
   amount: number;
+  payment_method: 'efectivo_presencial' | 'transferencia';
+  proof_document_id?: string | null;
+  note?: string | null;
+}
+
+export interface ReviewSettlementPaymentPayload {
+  status: 'confirmado' | 'rechazado';
+  rejection_reason?: string | null;
+}
+
+export interface UpdateSettlementPaymentPayload {
+  amount: number;
+  payment_method: 'efectivo_presencial' | 'transferencia';
+  proof_document_id?: string | null;
   note?: string | null;
 }

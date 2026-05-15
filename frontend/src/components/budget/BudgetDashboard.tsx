@@ -172,6 +172,7 @@ export const BudgetDashboard: FC<Props> = ({
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [view, setView] = useState<'dashboard' | 'wallet'>('dashboard')
   const [showAdjustModal, setShowAdjustModal] = useState(false)
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null)
   const [adjustValue, setAdjustValue] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -362,6 +363,10 @@ export const BudgetDashboard: FC<Props> = ({
     () => chartData.filter((item) => item.value > 0),
     [chartData],
   )
+  const chartZeroData = useMemo(
+    () => chartData.filter((item) => item.value <= 0),
+    [chartData],
+  )
   const topCategory = useMemo(() => {
     if (chartVisibleData.length === 0) return null
     return [...chartVisibleData].sort((a, b) => b.value - a.value)[0] ?? null
@@ -445,12 +450,12 @@ export const BudgetDashboard: FC<Props> = ({
 
   const handleDelete = async (id: string) => {
     if (!groupId || !accessToken) return
-    if (!window.confirm('Eliminar este gasto? Esta accion no se puede deshacer.')) return
 
     setIsSaving(true)
     setError(null)
     try {
       applyDashboard(await budgetService.deleteExpense(groupId, id, accessToken))
+      setExpenseToDelete(null)
     } catch (err) {
       setError(toUserMessage(err, 'No se pudo eliminar el gasto'))
     } finally {
@@ -487,17 +492,128 @@ export const BudgetDashboard: FC<Props> = ({
         settlements={dashboard?.settlements ?? []}
         paymentHistory={dashboard?.paymentHistory ?? []}
         members={members}
-        myRole={dashboard?.myRole ?? 'viajero'}
         currentUserId={localUser?.id_usuario != null ? String(localUser.id_usuario) : null}
-        onMarkPaid={async (payload) => {
+        onRegisterPayment={async (payload) => {
           if (!groupId || !accessToken) return
           setIsSaving(true)
           setError(null)
           try {
-            const nextDashboard = await budgetService.markSettlementPaid(groupId, payload, accessToken)
+            let proofDocumentId: string | null = null
+            if (payload.proofFile) {
+              const proofDocument = await documentsService.upload(
+                groupId,
+                payload.proofFile,
+                'gasto',
+                {
+                  notes: `Comprobante de pago de liquidacion ${payload.from_user_id} -> ${payload.to_user_id}`,
+                  linked_entity_type: 'otro',
+                },
+                accessToken,
+              )
+              proofDocumentId = proofDocument.id
+            }
+            const nextDashboard = await budgetService.markSettlementPaid(groupId, {
+              from_user_id: payload.from_user_id,
+              to_user_id: payload.to_user_id,
+              amount: payload.amount,
+              payment_method: payload.payment_method,
+              note: payload.note ?? null,
+              proof_document_id: proofDocumentId,
+            }, accessToken)
             applyDashboard(nextDashboard)
           } catch (err) {
-            setError(toUserMessage(err, 'No se pudo marcar el pago'))
+            setError(toUserMessage(err, 'No se pudo registrar el pago'))
+          } finally {
+            setIsSaving(false)
+          }
+        }}
+        onReviewPayment={async (paymentId, payload) => {
+          if (!groupId || !accessToken) return
+          setIsSaving(true)
+          setError(null)
+          try {
+            const nextDashboard = await budgetService.reviewSettlementPayment(groupId, paymentId, payload, accessToken)
+            applyDashboard(nextDashboard)
+          } catch (err) {
+            setError(toUserMessage(err, 'No se pudo revisar el pago'))
+          } finally {
+            setIsSaving(false)
+          }
+        }}
+        onUpdateSentPayment={async (paymentId, payload) => {
+          if (!groupId || !accessToken) return
+          setIsSaving(true)
+          setError(null)
+          try {
+            let proofDocumentId: string | null = null
+            if (payload.proofFile) {
+              const proofDocument = await documentsService.upload(
+                groupId,
+                payload.proofFile,
+                'gasto',
+                {
+                  notes: `Comprobante actualizado de pago de liquidacion`,
+                  linked_entity_type: 'otro',
+                },
+                accessToken,
+              )
+              proofDocumentId = proofDocument.id
+            }
+            const nextDashboard = await budgetService.updatePendingSettlementPayment(
+              groupId,
+              paymentId,
+              {
+                amount: payload.amount,
+                payment_method: payload.payment_method,
+                note: payload.note ?? null,
+                proof_document_id: proofDocumentId,
+              },
+              accessToken,
+            )
+            applyDashboard(nextDashboard)
+          } catch (err) {
+            setError(toUserMessage(err, 'No se pudo actualizar el pago'))
+          } finally {
+            setIsSaving(false)
+          }
+        }}
+        onDeleteSentPayment={async (paymentId) => {
+          if (!groupId || !accessToken) return
+          setIsSaving(true)
+          setError(null)
+          try {
+            const nextDashboard = await budgetService.deletePendingSettlementPayment(groupId, paymentId, accessToken)
+            applyDashboard(nextDashboard)
+          } catch (err) {
+            setError(toUserMessage(err, 'No se pudo eliminar el pago'))
+          } finally {
+            setIsSaving(false)
+          }
+        }}
+        onGenerateReceipt={async (payload) => {
+          if (!groupId || !accessToken) return
+          setIsSaving(true)
+          setError(null)
+          try {
+            const blob = new Blob([payload.receiptText], { type: 'text/plain;charset=utf-8' })
+            const file = new File([blob], payload.fileName, { type: 'text/plain' })
+            await documentsService.upload(
+              groupId,
+              file,
+              'otro',
+              {
+                linked_entity_type: 'otro',
+                person_reference: payload.debtor_user_id,
+                person_references: [payload.creditor_user_id, payload.debtor_user_id],
+                expense_reason: `Recibo de cobro ${payload.folio}`,
+                expense_amount: payload.amount,
+                notes: `Recibo inmutable generado. Folio: ${payload.folio}`,
+              },
+              accessToken,
+            )
+            await loadDashboard()
+          } catch (err) {
+            setError(toUserMessage(err, 'No se pudo generar el recibo de cobro'))
           } finally {
             setIsSaving(false)
           }
@@ -625,7 +741,7 @@ export const BudgetDashboard: FC<Props> = ({
             <h3 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Distribucion del gasto</h3>
             <div className="mb-5 rounded-2xl border border-[#DDD6FE] bg-gradient-to-br from-[#F6F2FF] via-[#F5F9FF] to-[#EEF4FF] p-3 sm:p-4">
               <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
-                <div className="h-72 rounded-2xl border border-white/70 bg-white/35 backdrop-blur-[1px]">
+                <div className="h-80 rounded-2xl border border-white/70 bg-white/35 backdrop-blur-[1px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -634,8 +750,8 @@ export const BudgetDashboard: FC<Props> = ({
                         nameKey="name"
                         cx="50%"
                         cy="50%"
-                        innerRadius={66}
-                        outerRadius={98}
+                        innerRadius={78}
+                        outerRadius={118}
                         paddingAngle={chartVisibleData.length > 1 ? 2 : 0}
                         labelLine={false}
                       >
@@ -684,24 +800,38 @@ export const BudgetDashboard: FC<Props> = ({
                   </div>
 
                   <div className="grid gap-2">
-                    {chartData.map((item) => {
+                    {[...chartVisibleData, ...chartZeroData].map((item) => {
                       const pctValue = chartTotal > 0 ? (item.value / chartTotal) * 100 : 0
+                      const isZero = item.value <= 0
                       return (
-                        <div key={item.categoria} className="rounded-xl border border-[#DCE5F5] bg-white/90 px-3 py-2 shadow-[0_1px_0_rgba(30,10,78,0.04)]">
+                        <div
+                          key={item.categoria}
+                          className={[
+                            'rounded-xl border px-3 py-2 shadow-[0_1px_0_rgba(30,10,78,0.04)]',
+                            isZero ? 'border-[#E6ECF7] bg-[#F8FAFD]' : 'border-[#DCE5F5] bg-white/95',
+                          ].join(' ')}
+                        >
                           <div className="mb-1.5 flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
-                              <span className="h-2.5 w-2.5 rounded-full ring-2 ring-white" style={{ backgroundColor: item.fill }} />
-                              <span className="font-body text-xs font-semibold text-[#2E3A59]">{item.name}</span>
+                              <span
+                                className="h-2.5 w-2.5 rounded-full ring-2 ring-white"
+                                style={{ backgroundColor: isZero ? '#C6D3EA' : item.fill }}
+                              />
+                              <span className={['font-body text-xs font-semibold', isZero ? 'text-[#7A8799]' : 'text-[#2E3A59]'].join(' ')}>
+                                {item.name}
+                              </span>
                             </div>
                             <div className="text-right">
-                              <p className="font-body text-xs font-semibold text-[#1E0A4E]">{formatMXN(item.value)}</p>
+                              <p className={['font-body text-xs font-semibold', isZero ? 'text-[#7A8799]' : 'text-[#1E0A4E]'].join(' ')}>
+                                {formatMXN(item.value)}
+                              </p>
                               <p className="font-body text-[11px] text-[#6B7FA6]">{pctValue.toFixed(1)}%</p>
                             </div>
                           </div>
                           <div className="h-1.5 overflow-hidden rounded-full bg-[#E8EEF9]">
                             <div
                               className="h-full rounded-full transition-all duration-500"
-                              style={{ width: `${pctValue}%`, backgroundColor: item.fill }}
+                              style={{ width: `${pctValue}%`, backgroundColor: isZero ? '#C6D3EA' : item.fill }}
                             />
                           </div>
                         </div>
@@ -817,7 +947,7 @@ export const BudgetDashboard: FC<Props> = ({
                   )}
                   {canModifyExpenses && (
                     <button
-                      onClick={() => void handleDelete(expense.id)}
+                      onClick={() => setExpenseToDelete(expense)}
                       aria-label="Eliminar gasto"
                       className="shrink-0 rounded-lg p-1.5 text-[#7A8799] transition-colors hover:bg-[#FEF2F2] hover:text-[#EF4444]"
                     >
@@ -878,6 +1008,40 @@ export const BudgetDashboard: FC<Props> = ({
                 className="flex-1 rounded-xl bg-[#1E6FD9] py-3 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {expenseToDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: 'rgba(13,8,32,0.75)' }}
+          onClick={() => !isSaving && setExpenseToDelete(null)}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-2 font-heading text-lg font-bold text-[#1E0A4E]">Eliminar gasto</h2>
+            <p className="mb-4 font-body text-sm text-[#475569]">
+              ¿Seguro que quieres eliminar{' '}
+              <span className="font-semibold text-[#1E0A4E]">"{expenseToDelete.titulo}"</span>{' '}
+              por <span className="font-semibold text-[#1E0A4E]">{formatMXN(expenseToDelete.monto)}</span>?
+              Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setExpenseToDelete(null)}
+                disabled={isSaving}
+                className="flex-1 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] py-3 font-body text-sm font-semibold text-[#7A8799] transition-colors hover:border-[#3D4A5C] hover:text-[#3D4A5C] disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => void handleDelete(expenseToDelete.id)}
+                disabled={isSaving}
+                className="flex-1 rounded-xl bg-[#C03535] py-3 font-body text-sm font-semibold text-white transition-colors hover:bg-[#D94848] disabled:opacity-60"
+              >
+                {isSaving ? 'Eliminando...' : 'Sí, eliminar'}
               </button>
             </div>
           </div>

@@ -307,13 +307,13 @@ router.post('/:groupId/invitations', requireAuth, async (req: Request, res: Resp
     const invalidEmails = emails.filter(
       (email) =>
         typeof email !== 'string' ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+        !/^[A-Za-z0-9._%+-]+@[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)*\.[A-Za-z]{2,24}$/.test(email.trim().toLowerCase())
     );
 
     if (invalidEmails.length > 0) {
       res.status(400).json({
         ok: false,
-        error: 'Uno o más correos no tienen un formato válido',
+        error: 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).',
         invalidEmails,
       });
       return;

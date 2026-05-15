@@ -113,6 +113,7 @@ export interface InvitePreview {
   memberCount: number
   maximo_miembros?: number | null
   canJoin: boolean
+  cannotJoinReason?: 'GROUP_CAPACITY_REACHED' | string | null
   requiresApproval?: boolean
 }
 

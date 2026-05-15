@@ -25,8 +25,10 @@ function parseEmails(value: string) {
     .filter(Boolean)
 }
 
+const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)*\.[A-Za-z]{2,24}$/
+
 function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+  return EMAIL_REGEX.test(email.trim().toLowerCase())
 }
 
 export function InviteModal({
@@ -46,6 +48,11 @@ export function InviteModal({
 
   const emails = useMemo(() => parseEmails(emailsText), [emailsText])
   const invalidEmails = emails.filter((email) => !isValidEmail(email))
+  const hasEmailText = emailsText.trim().length > 0
+  const emailValidationError = hasEmailText && invalidEmails.length > 0
+    ? 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).'
+    : ''
+  const canSendInvitations = !sending && emails.length > 0 && invalidEmails.length === 0
 
   useEffect(() => {
     if (!copied) return
@@ -167,25 +174,41 @@ export function InviteModal({
               setError('')
               setMessage('')
             }}
+            onBlur={() => {
+              if (emailValidationError) {
+                setError(emailValidationError)
+              }
+            }}
             placeholder="correo1@gmail.com, correo2@gmail.com"
-            className="min-h-24 w-full resize-none rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm text-[#3D4A5C] outline-none focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10"
+            aria-invalid={Boolean(emailValidationError || error)}
+            className={`min-h-24 w-full resize-none rounded-xl border px-4 py-3 text-sm text-[#3D4A5C] outline-none transition
+              ${emailValidationError || error
+                ? 'border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+                : 'border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10'}
+            `}
           />
 
-          <p className="mt-2 text-xs text-[#7A8799]">
-            Puedes separar correos con coma, punto y coma o salto de línea.
-          </p>
+          {emailValidationError ? (
+            <p className="mt-2 text-xs text-red-500">{emailValidationError}</p>
+          ) : (
+            <p className="mt-2 text-xs text-[#7A8799]">
+              Puedes separar correos con coma, punto y coma o salto de línea.
+            </p>
+          )}
 
           <button
             type="button"
             onClick={handleSendInvitations}
-            disabled={sending}
-            className="mt-3 h-11 w-full rounded-xl bg-[#1E0A4E] text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            disabled={!canSendInvitations}
+            className="mt-3 h-11 w-full rounded-xl bg-[#1E0A4E] text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {sending ? 'Enviando invitaciones…' : 'Enviar invitaciones'}
           </button>
 
           {message && <p className="mt-3 text-sm text-[#35C56A]">{message}</p>}
-          {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+          {error && !emailValidationError && (
+            <p className="mt-3 text-sm text-red-500">{error}</p>
+          )}
         </div>
 
         <div className="border-t border-[#E2E8F0] pt-4">

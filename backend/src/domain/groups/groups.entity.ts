@@ -123,6 +123,7 @@ export interface GroupInvitePreview {
   maximo_miembros?: number | null;
   es_publico: boolean;
   canJoin: boolean;
+  cannotJoinReason?: 'GROUP_CAPACITY_REACHED' | string | null;
   requiresApproval?: boolean;
 }
 

@@ -114,6 +114,9 @@ export const deleteDocument = async (
 
   if (fetchError || !doc) throw new Error('Documento no encontrado');
   if (doc.user_id !== userId) throw new Error('Solo el autor puede eliminar el documento');
+  if (doc.metadata && typeof doc.metadata === 'object' && (doc.metadata as Record<string, unknown>).immutable === true) {
+    throw new Error('Este documento es inmutable y no puede eliminarse');
+  }
 
   await supabaseAdmin.storage.from(BUCKET).remove([doc.file_path]);
   await supabaseAdmin.from('trip_documents').delete().eq('id', docId);

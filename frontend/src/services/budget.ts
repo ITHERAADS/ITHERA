@@ -45,8 +45,14 @@ export interface BudgetPaymentHistoryItem {
   from: string
   to: string
   amount: number
+  status: 'pendiente_validacion' | 'confirmado' | 'rechazado'
+  payment_method: 'efectivo_presencial' | 'transferencia' | null
   paid_at: string
   created_by_user_id: string
+  reviewed_by_user_id?: string | null
+  reviewed_at?: string | null
+  rejection_reason?: string | null
+  proof_document_id?: string | null
   note?: string | null
 }
 
@@ -59,6 +65,10 @@ export interface BudgetDashboardResponse {
   expenses: BudgetExpense[]
   balances: Record<string, number>
   settlements: BudgetSettlement[]
+  groupSettlementSummary?: {
+    totalTransfers: number
+    totalAmount: number
+  }
   paymentHistory: BudgetPaymentHistoryItem[]
 }
 
@@ -77,6 +87,20 @@ export interface MarkSettlementPaymentPayload {
   from_user_id: string
   to_user_id: string
   amount: number
+  payment_method: 'efectivo_presencial' | 'transferencia'
+  proof_document_id?: string | null
+  note?: string | null
+}
+
+export interface ReviewSettlementPaymentPayload {
+  status: 'confirmado' | 'rechazado'
+  rejection_reason?: string | null
+}
+
+export interface UpdatePendingSettlementPaymentPayload {
+  amount: number
+  payment_method: 'efectivo_presencial' | 'transferencia'
+  proof_document_id?: string | null
   note?: string | null
 }
 
@@ -198,6 +222,78 @@ export const budgetService = {
       return apiClient.post<BudgetDashboardResponse>(
         `/budget/${groupId}/settlements/payments`,
         payload,
+        token
+      )
+    }
+  },
+
+  reviewSettlementPayment: async (
+    groupId: string,
+    paymentId: string,
+    payload: ReviewSettlementPaymentPayload,
+    token: string,
+  ) => {
+    try {
+      return await apiClient.patch<BudgetDashboardResponse>(
+        `/groups/${groupId}/settlements/payments/${paymentId}/review`,
+        payload,
+        token
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      const shouldFallback =
+        message.includes('Cannot PATCH /api/groups/') ||
+        message.includes('HTTP 404')
+
+      if (!shouldFallback) throw error
+      return apiClient.patch<BudgetDashboardResponse>(
+        `/budget/${groupId}/settlements/payments/${paymentId}/review`,
+        payload,
+        token
+      )
+    }
+  },
+
+  updatePendingSettlementPayment: async (
+    groupId: string,
+    paymentId: string,
+    payload: UpdatePendingSettlementPaymentPayload,
+    token: string,
+  ) => {
+    try {
+      return await apiClient.patch<BudgetDashboardResponse>(
+        `/groups/${groupId}/settlements/payments/${paymentId}`,
+        payload,
+        token
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      const shouldFallback =
+        message.includes('Cannot PATCH /api/groups/') ||
+        message.includes('HTTP 404')
+      if (!shouldFallback) throw error
+      return apiClient.patch<BudgetDashboardResponse>(
+        `/budget/${groupId}/settlements/payments/${paymentId}`,
+        payload,
+        token
+      )
+    }
+  },
+
+  deletePendingSettlementPayment: async (groupId: string, paymentId: string, token: string) => {
+    try {
+      return await apiClient.delete<BudgetDashboardResponse>(
+        `/groups/${groupId}/settlements/payments/${paymentId}`,
+        token
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      const shouldFallback =
+        message.includes('Cannot DELETE /api/groups/') ||
+        message.includes('HTTP 404')
+      if (!shouldFallback) throw error
+      return apiClient.delete<BudgetDashboardResponse>(
+        `/budget/${groupId}/settlements/payments/${paymentId}`,
         token
       )
     }

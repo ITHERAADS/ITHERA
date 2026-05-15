@@ -38,6 +38,15 @@ function IconDownload({ size = 14 }: { size?: number }) {
   )
 }
 
+function IconSpinner({ size = 14 }: { size?: number }) {
+  return (
+    <svg className="animate-spin" width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.25" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function IconPlus({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -893,6 +902,9 @@ export function DashboardPage() {
   const [, setLockedProposalIds] = useState<Record<string, boolean>>({})
   const [, setLockErrorActivityIds] = useState<Record<string, boolean>>({})
   const [voteResultByProposal, setVoteResultByProposal] = useState<Record<string, VoteResult>>({})
+  const [adminDecisionBusyProposalId, setAdminDecisionBusyProposalId] = useState<string | null>(null)
+  const [adminDecisionBusyType, setAdminDecisionBusyType] = useState<'aprobar' | 'rechazar' | null>(null)
+  const [subgroupQuickBusyKey, setSubgroupQuickBusyKey] = useState<string | null>(null)
   const [selectedProposal, setSelectedProposal] = useState<DayActivity | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const [expandedCommentsProposalId, setExpandedCommentsProposalId] = useState<string | null>(null)
@@ -1344,11 +1356,17 @@ export function DashboardPage() {
 
   const handleDeleteSubgroupSlot = useCallback(async (slotId: number) => {
     const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
-    if (!resolvedGroupId || !accessToken) return
+    const busyKey = `slot-delete:${slotId}`
+    if (!resolvedGroupId || !accessToken || subgroupQuickBusyKey) return
     if (!window.confirm('Eliminar este horario de subgrupos?')) return
-    await subgroupScheduleService.deleteSlot(String(resolvedGroupId), slotId, accessToken)
-    await reloadDashboard()
-  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard])
+    try {
+      setSubgroupQuickBusyKey(busyKey)
+      await subgroupScheduleService.deleteSlot(String(resolvedGroupId), slotId, accessToken)
+      await reloadDashboard()
+    } finally {
+      setSubgroupQuickBusyKey(null)
+    }
+  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard, subgroupQuickBusyKey])
 
   const lockProposalForActivity = useCallback((activity: DayActivity | null) => {
     if (!socket || !activity?.proposalId) return
@@ -1415,10 +1433,17 @@ export function DashboardPage() {
 
   const handleAdminDecision = useCallback(async (proposalId: string, decision: 'aprobar' | 'rechazar') => {
     const resolvedGroupId = groupIdFromState || groupId || (currentGroup?.id ? String(currentGroup.id) : null)
-    if (!resolvedGroupId || !accessToken) return
-    await proposalsService.applyAdminDecision(String(resolvedGroupId), proposalId, { decision }, accessToken)
-    await reloadDashboard()
-  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard])
+    if (!resolvedGroupId || !accessToken || adminDecisionBusyProposalId) return
+    try {
+      setAdminDecisionBusyProposalId(proposalId)
+      setAdminDecisionBusyType(decision)
+      await proposalsService.applyAdminDecision(String(resolvedGroupId), proposalId, { decision }, accessToken)
+      await reloadDashboard()
+    } finally {
+      setAdminDecisionBusyProposalId(null)
+      setAdminDecisionBusyType(null)
+    }
+  }, [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard, adminDecisionBusyProposalId])
 
   const openVoteHistoryModal = useCallback((activity: DayActivity) => {
     setVoteHistoryActivity(activity)
@@ -1803,45 +1828,66 @@ export function DashboardPage() {
     if (activity.kind === 'subgroup-slot' && activity.subgroupSlot) {
       const slotId = activity.subgroupSlot.slotId
       const targetSubgroupId = activity.subgroupSlot.targetSubgroupId ?? null
+      const openBusy = subgroupQuickBusyKey === `slot-open:${slotId}`
+      const editBusy = subgroupQuickBusyKey === `slot-edit:${slotId}`
+      const deleteBusy = subgroupQuickBusyKey === `slot-delete:${slotId}`
+      const subgroupActionsBusy = Boolean(subgroupQuickBusyKey)
       return (
         <>
           <button
             type="button"
+            disabled={subgroupActionsBusy}
+            aria-busy={openBusy}
             onClick={(event) => {
               event.stopPropagation()
+              setSubgroupQuickBusyKey(`slot-open:${slotId}`)
               handleOpenSubgroupSlot(slotId, targetSubgroupId)
+              window.setTimeout(() => setSubgroupQuickBusyKey(null), 250)
             }}
-            className="inline-flex h-10 min-w-[104px] items-center justify-center rounded-xl bg-[#1E0A4E] px-3 font-body text-xs font-semibold text-white transition-colors hover:bg-[#2E1767]"
+            className="inline-flex h-10 min-w-[104px] items-center justify-center gap-1.5 rounded-xl bg-[#1E0A4E] px-3 font-body text-xs font-semibold text-white transition-colors hover:bg-[#2E1767] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Subgrupos
+            {openBusy && <IconSpinner size={13} />}
+            {openBusy ? 'Abriendo...' : 'Subgrupos'}
           </button>
           {isCurrentUserAdmin && (
             <>
               <button
                 type="button"
+                disabled={subgroupActionsBusy}
+                aria-busy={editBusy}
                 onClick={(event) => {
                   event.stopPropagation()
+                  setSubgroupQuickBusyKey(`slot-edit:${slotId}`)
                   handleEditSubgroupSlot(slotId)
+                  window.setTimeout(() => setSubgroupQuickBusyKey(null), 250)
                 }}
-                className="inline-flex h-10 min-w-[84px] items-center justify-center rounded-xl border border-[#D8C8FF] bg-white px-3 font-body text-xs font-semibold text-[#6D45C0] transition-colors hover:bg-[#F7F2FF]"
+                className="inline-flex h-10 min-w-[84px] items-center justify-center gap-1.5 rounded-xl border border-[#D8C8FF] bg-white px-3 font-body text-xs font-semibold text-[#6D45C0] transition-colors hover:bg-[#F7F2FF] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Editar
+                {editBusy && <IconSpinner size={13} />}
+                {editBusy ? 'Abriendo...' : 'Editar'}
               </button>
               <button
                 type="button"
+                disabled={subgroupActionsBusy}
+                aria-busy={deleteBusy}
                 onClick={(event) => {
                   event.stopPropagation()
                   void handleDeleteSubgroupSlot(slotId)
                 }}
-                className="inline-flex h-10 min-w-[84px] items-center justify-center rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-3 font-body text-xs font-semibold text-[#C03535] transition-colors hover:bg-[#FFEAEA]"
+                className="inline-flex h-10 min-w-[84px] items-center justify-center gap-1.5 rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-3 font-body text-xs font-semibold text-[#C03535] transition-colors hover:bg-[#FFEAEA] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Eliminar
+                {deleteBusy && <IconSpinner size={13} />}
+                {deleteBusy ? 'Eliminando...' : 'Eliminar'}
               </button>
             </>
           )}
         </>
       )
     }
+
+    const isAdminDecisionBusy = adminDecisionBusyProposalId === activity.proposalId
+    const isApproveBusy = isAdminDecisionBusy && adminDecisionBusyType === 'aprobar'
+    const isRejectBusy = isAdminDecisionBusy && adminDecisionBusyType === 'rechazar'
 
     return activity.proposalId ? (
       <>
@@ -1859,35 +1905,44 @@ export function DashboardPage() {
           <>
             <button
               type="button"
+              disabled={isAdminDecisionBusy}
+              aria-busy={isAdminDecisionBusy}
               onClick={(event) => {
                 event.stopPropagation()
                 void handleAdminDecision(activity.proposalId!, 'aprobar')
               }}
-              className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-xl border border-[#A8E6BF] bg-[#EAFBF1] px-3 font-body text-xs font-semibold text-[#1E7A45] transition-colors hover:bg-[#DCFCE7]"
+              className="inline-flex h-9 min-w-[112px] items-center justify-center gap-1.5 rounded-xl border border-[#A8E6BF] bg-[#EAFBF1] px-3 font-body text-xs font-semibold text-[#1E7A45] transition-colors hover:bg-[#DCFCE7] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Admin aprobar
+              {isApproveBusy && <IconSpinner size={13} />}
+              {isApproveBusy ? 'Aprobando...' : 'Admin aprobar'}
             </button>
             <button
               type="button"
+              disabled={isAdminDecisionBusy}
+              aria-busy={isAdminDecisionBusy}
               onClick={(event) => {
                 event.stopPropagation()
                 void handleAdminDecision(activity.proposalId!, 'rechazar')
               }}
-              className="inline-flex h-9 min-w-[112px] items-center justify-center rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-3 font-body text-xs font-semibold text-[#C03535] transition-colors hover:bg-[#FFEAEA]"
+              className="inline-flex h-9 min-w-[112px] items-center justify-center gap-1.5 rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-3 font-body text-xs font-semibold text-[#C03535] transition-colors hover:bg-[#FFEAEA] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Admin rechazar
+              {isRejectBusy && <IconSpinner size={13} />}
+              {isRejectBusy ? 'Rechazando...' : 'Admin rechazar'}
             </button>
           </>
         )}
         <button
           type="button"
+          disabled={loadingCommentsProposalId === activity.proposalId}
+          aria-busy={loadingCommentsProposalId === activity.proposalId}
           onClick={(event) => {
             event.stopPropagation()
             void openChatModal(activity)
           }}
-          className="inline-flex h-9 min-w-[86px] items-center justify-center gap-1.5 rounded-xl border border-[#CFE0FF] bg-white px-3 font-body text-xs font-semibold text-bluePrimary transition-colors hover:bg-[#EEF4FF]"
+          className="inline-flex h-9 min-w-[86px] items-center justify-center gap-1.5 rounded-xl border border-[#CFE0FF] bg-white px-3 font-body text-xs font-semibold text-bluePrimary transition-colors hover:bg-[#EEF4FF] disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Chat
+          {loadingCommentsProposalId === activity.proposalId && <IconSpinner size={13} />}
+          {loadingCommentsProposalId === activity.proposalId ? 'Abriendo...' : 'Chat'}
           <span className="rounded-full bg-bluePrimary/10 px-1.5 py-0.5 text-[10px] font-bold text-bluePrimary">
             {commentsByProposal[activity.proposalId]?.length ?? 0}
           </span>
@@ -2184,9 +2239,9 @@ export function DashboardPage() {
               onManageContext={isReadOnly ? undefined : openActivityEditor}
               onOpenBudget={() => setActiveTab('pagar')}
               onOpenVault={() => setActiveTab('boveda')}
-              onAccept={isReadOnly ? undefined : (id) => void handleAcceptActivity(id)}
-              onReject={isReadOnly ? undefined : (id) => void handleRejectActivity(id)}
-              onDelete={isReadOnly ? undefined : (id) => void handleDeleteActivity(id)}
+              onAccept={isReadOnly ? undefined : handleAcceptActivity}
+              onReject={isReadOnly ? undefined : handleRejectActivity}
+              onDelete={isReadOnly ? undefined : handleDeleteActivity}
               onEdit={isReadOnly ? undefined : (id) => {
                 const activity = days.flatMap((d) => d.activities).find((a) => a.id === id)
                 if (!activity) return

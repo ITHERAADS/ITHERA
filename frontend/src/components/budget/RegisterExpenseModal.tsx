@@ -13,8 +13,9 @@ interface Props {
   editingExpense?: Expense | null
   totalBudget?: number
   comprometido?: number
+  isSaving?: boolean
   onClose: () => void
-  onSave: (expense: Expense) => void
+  onSave: (expense: Expense) => void | Promise<void>
 }
 
 type ExpenseContextModalMode = 'activity' | 'document' | null
@@ -43,6 +44,15 @@ const documentCategoryLabels: Record<TripDocumentCategory, string> = {
   gasto: 'Gasto',
   actividad: 'Actividad',
   otro: 'Otro',
+}
+
+function InlineSpinner({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" className="animate-spin">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3" />
+      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
 }
 
 function ActionModal({
@@ -107,6 +117,7 @@ export const RegisterExpenseModal: FC<Props> = ({
   editingExpense,
   totalBudget = 0,
   comprometido = 0,
+  isSaving = false,
   onClose,
   onSave,
 }) => {
@@ -223,8 +234,8 @@ export const RegisterExpenseModal: FC<Props> = ({
     setActiveContextModal(null)
   }
 
-  const handleSave = () => {
-    if (!isValid) return
+  const handleSave = async () => {
+    if (isSaving || !isValid) return
     if (draftDocumentFile && !draftDocumentNotes.trim()) return
 
     const parsedSplitAmounts: Record<string, number> | undefined =
@@ -263,14 +274,14 @@ export const RegisterExpenseModal: FC<Props> = ({
       console.log('Gasto registrado:', expense)
     }
 
-    onSave(expense)
+    await Promise.resolve(onSave(expense))
   }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
       style={{ background: 'rgba(13,8,32,0.75)' }}
-      onClick={onClose}
+      onClick={isSaving ? undefined : onClose}
     >
       <div
         className="flex w-full max-w-lg flex-col rounded-t-3xl bg-white max-h-[90vh]"
@@ -291,7 +302,7 @@ export const RegisterExpenseModal: FC<Props> = ({
                 </span>
               )}
             </div>
-            <button onClick={onClose} className="text-[#7A8799] transition-colors hover:text-[#3D4A5C]">
+            <button onClick={isSaving ? undefined : onClose} disabled={isSaving} className="text-[#7A8799] transition-colors hover:text-[#3D4A5C] disabled:cursor-not-allowed disabled:opacity-50">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -501,18 +512,21 @@ export const RegisterExpenseModal: FC<Props> = ({
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={onClose}
-              className="flex-1 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] py-3.5 font-body text-sm font-semibold text-[#7A8799] transition-colors hover:border-[#3D4A5C] hover:text-[#3D4A5C]"
+              onClick={isSaving ? undefined : onClose}
+              disabled={isSaving}
+              className="flex-1 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] py-3.5 font-body text-sm font-semibold text-[#7A8799] transition-colors hover:border-[#3D4A5C] hover:text-[#3D4A5C] disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="button"
-              onClick={handleSave}
-              disabled={!isValid}
-              className="flex-1 rounded-xl bg-[#1E6FD9] py-3.5 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => void handleSave()}
+              disabled={isSaving || !isValid}
+              aria-busy={isSaving}
+              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#1E6FD9] py-3.5 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {editingExpense ? 'Guardar cambios' : 'Guardar gasto'}
+              {isSaving && <InlineSpinner size={15} />}
+              {isSaving ? 'Guardando...' : editingExpense ? 'Guardar cambios' : 'Guardar gasto'}
             </button>
           </div>
         </div>

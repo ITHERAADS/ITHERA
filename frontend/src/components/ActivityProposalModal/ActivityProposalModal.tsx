@@ -15,12 +15,16 @@ import type { Group } from '../../types/groups'
 import type { Activity } from '../ui/DayView/DayView'
 import { ExpenseDraftForm } from '../budget/ExpenseDraftForm'
 
-type EnrichedPlaceResult = PlaceResult & {
+type RoutePreview = {
   routeDistanceText?: string | null
   routeDurationText?: string | null
   routeDistanceMeters?: number | null
   routeDurationSeconds?: number | null
 }
+
+type EnrichedPlaceResult = PlaceResult & RoutePreview
+
+type EnrichedPlaceAutocompleteResult = PlaceAutocompleteResult & RoutePreview
 
 type ActivityContextModalMode =
   | 'expense'
@@ -82,6 +86,15 @@ function parseGoogleDurationSeconds(raw?: string | null): number | null {
   if (!raw) return null
   const match = raw.match(/^(\d+(?:\.\d+)?)s$/)
   return match ? Number(match[1]) : null
+}
+
+function InlineSpinner({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" className="animate-spin">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3" />
+      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
 }
 
 function ActionModal({
@@ -154,12 +167,13 @@ export function ActivityProposalModal({
   const [description, setDescription] = useState('')
   const [timeValue, setTimeValue] = useState('12:00')
   const [results, setResults] = useState<EnrichedPlaceResult[]>([])
-  const [suggestions, setSuggestions] = useState<PlaceAutocompleteResult[]>([])
+  const [suggestions, setSuggestions] = useState<EnrichedPlaceAutocompleteResult[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const [selectedPlace, setSelectedPlace] = useState<EnrichedPlaceResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [savingMode, setSavingMode] = useState<'admin' | 'normal' | null>(null)
   const [error, setError] = useState('')
   const [linkOptions, setLinkOptions] = useState<ContextLinkOptions>(EMPTY_LINK_OPTIONS)
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([])
@@ -431,8 +445,29 @@ export function ActivityProposalModal({
           radius: PLACE_SEARCH_RADIUS_METERS,
         })
 
+        const rawSuggestions = response.data ?? []
+        const nextSuggestions: EnrichedPlaceAutocompleteResult[] = routeOrigin
+          ? await Promise.all(
+            rawSuggestions.slice(0, 6).map(async (suggestion) => {
+              try {
+                const detailResponse = await mapsService.getPlaceDetails(suggestion.placeId, token)
+                const place = detailResponse.data
+                if (!place) return suggestion
+                const enrichedPlace = await enrichPlaceWithRoute(place)
+                return {
+                  ...suggestion,
+                  routeDistanceText: enrichedPlace.routeDistanceText ?? null,
+                  routeDurationText: enrichedPlace.routeDurationText ?? null,
+                  routeDistanceMeters: enrichedPlace.routeDistanceMeters ?? null,
+                  routeDurationSeconds: enrichedPlace.routeDurationSeconds ?? null,
+                }
+              } catch {
+                return suggestion
+              }
+            })
+          )
+          : rawSuggestions
         if (cancelled) return
-        const nextSuggestions = response.data ?? []
         setSuggestions(nextSuggestions)
         setShowSuggestions(nextSuggestions.length > 0)
       } catch {
@@ -448,7 +483,7 @@ export function ActivityProposalModal({
       cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [open, query, routeOrigin, selectedPlace?.name, token])
+  }, [enrichPlaceWithRoute, open, query, routeOrigin, selectedPlace?.name, token])
 
   if (!open) return null
 
@@ -482,7 +517,7 @@ export function ActivityProposalModal({
       const fetchedResults: EnrichedPlaceResult[] = response.data ?? []
 
       if (routeOrigin && fetchedResults.length > 0) {
-        const topResults = await Promise.all(fetchedResults.slice(0, 10).map(enrichPlaceWithRoute))
+        const topResults: EnrichedPlaceResult[] = await Promise.all(fetchedResults.slice(0, 10).map(enrichPlaceWithRoute))
 
         topResults.sort((a, b) => {
           const distA = a.routeDistanceMeters ?? Infinity
@@ -650,6 +685,7 @@ export function ActivityProposalModal({
 
     try {
       setSaving(true)
+      setSavingMode(asAdminDirect ? 'admin' : 'normal')
       setError('')
 
       let activityId = ''
@@ -775,6 +811,7 @@ export function ActivityProposalModal({
       )
     } finally {
       setSaving(false)
+      setSavingMode(null)
     }
   }
 
@@ -927,6 +964,17 @@ export function ActivityProposalModal({
                       <p className="mt-0.5 font-body text-xs text-gray500">
                         {suggestion.secondaryText || suggestion.description}
                       </p>
+                      {(suggestion.routeDistanceText || suggestion.routeDurationText) && (
+                        <p className="mt-2 inline-flex rounded-full bg-[#EEF4FF] px-2.5 py-1 font-body text-[11px] font-semibold text-bluePrimary">
+                          {suggestion.routeDistanceText ?? 'Distancia no disponible'}
+                          {suggestion.routeDurationText ? ` · ${suggestion.routeDurationText}` : ''} desde {routeOriginLabel}
+                        </p>
+                      )}
+                      {suggestion.routeDurationSeconds != null && suggestion.routeDurationSeconds > LONG_ROUTE_THRESHOLD_SECONDS && (
+                        <p className="mt-1 font-body text-[11px] font-semibold text-red-700">
+                          Traslado largo: mas de 1 hora
+                        </p>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -1134,18 +1182,22 @@ export function ActivityProposalModal({
               type="button"
               onClick={() => void handleSave(true)}
               disabled={saving || !selectedPlace}
-              className="rounded-xl border border-[#1E6FD9] bg-[#EEF4FF] px-4 py-3 font-body text-sm font-semibold text-[#1E6FD9] disabled:opacity-50"
+              aria-busy={saving}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#1E6FD9] bg-[#EEF4FF] px-4 py-3 font-body text-sm font-semibold text-[#1E6FD9] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {saving ? 'Guardando...' : 'Agregar como admin (directo)'}
+              {savingMode === 'admin' && <InlineSpinner size={15} />}
+              {savingMode === 'admin' ? 'Guardando...' : 'Agregar como admin (directo)'}
             </button>
           )}
           <button
             type="button"
             onClick={() => void handleSave(false)}
             disabled={saving || !selectedPlace}
-            className="rounded-xl bg-bluePrimary px-4 py-3 font-body text-sm font-semibold text-white disabled:opacity-50"
+            aria-busy={saving}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-bluePrimary px-4 py-3 font-body text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? 'Guardando...' : editingActivity ? 'Guardar cambios' : 'Agregar actividad'}
+            {savingMode === 'normal' && <InlineSpinner size={15} />}
+            {savingMode === 'normal' ? 'Guardando...' : editingActivity ? 'Guardar cambios' : 'Agregar actividad'}
           </button>
         </div>
       </div>

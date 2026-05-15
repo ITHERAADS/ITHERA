@@ -359,6 +359,19 @@ const countMembers = async (groupId: string): Promise<number> => {
   return count ?? 0;
 };
 
+const isGroupAtCapacity = async (grupo: { id: number | string; maximo_miembros?: number | null }): Promise<boolean> => {
+  if (!grupo.maximo_miembros) return false;
+  const memberCount = await countMembers(String(grupo.id));
+  return memberCount >= Number(grupo.maximo_miembros);
+};
+
+const throwGroupAtCapacity = (): never => {
+  throw Object.assign(new Error('ERR-24-002: Este grupo ya alcanzó su capacidad máxima de miembros.'), {
+    statusCode: 409,
+    code: 'GROUP_CAPACITY_REACHED',
+  });
+};
+
 const normalizeMaxMembers = (value?: number | null): number | null => {
   if (value === undefined || value === null) return null;
 
@@ -578,6 +591,10 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
     throw Object.assign(new Error('El usuario ya pertenece a este grupo'), { statusCode: 409 });
   }
 
+  if (await isGroupAtCapacity(grupo)) {
+    throwGroupAtCapacity();
+  }
+
   const isPublicGroup = grupo.es_publico === true;
 
   if (!isPublicGroup) {
@@ -663,15 +680,6 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
       joinRequestId: String(createdRequest.id),
       requiresApproval: true,
     };
-  }
-
-  if (grupo.maximo_miembros) {
-    const miembrosActuales = await countMembers(String(grupo.id));
-    if (miembrosActuales >= grupo.maximo_miembros) {
-      throw Object.assign(new Error('El grupo alcanzó el máximo de miembros'), {
-        statusCode: 409,
-      });
-    }
   }
 
   const { error: insertError } = await supabase
@@ -871,6 +879,10 @@ export const getInviteInfo = async (authUserId: string, groupId: string) => {
   await ensureGroupMember(authUserId, groupId);
   const grupo = await getGroupById(groupId);
 
+  if (await isGroupAtCapacity(grupo)) {
+    throwGroupAtCapacity();
+  }
+
   const inviteLink = getFrontendJoinLink(grupo.codigo_invitacion);
 
   return {
@@ -914,6 +926,7 @@ export const getInvitePreviewByCode = async (
     maximo_miembros: grupo.maximo_miembros ?? null,
     es_publico: grupo.es_publico ?? false,
     canJoin,
+    cannotJoinReason: canJoin ? null : 'GROUP_CAPACITY_REACHED',
     requiresApproval: grupo.es_publico !== true,
   };
 };
@@ -945,6 +958,10 @@ export const createGroupInvitations = async (
 ) => {
   const { usuarioId } = await ensureGroupAdmin(authUserId, groupId);
   const grupo = await getGroupById(groupId);
+
+  if (await isGroupAtCapacity(grupo)) {
+    throwGroupAtCapacity();
+  }
 
   const emails = Array.from(
     new Set(payload.emails.map((email) => email.trim().toLowerCase()).filter(Boolean))
@@ -1205,11 +1222,8 @@ export const resolveJoinRequest = async (
     return { request: data, member: null };
   }
 
-  if (grupo.maximo_miembros) {
-    const miembrosActuales = await countMembers(String(grupo.id));
-    if (miembrosActuales >= grupo.maximo_miembros) {
-      throw Object.assign(new Error('El grupo alcanzó el máximo de miembros'), { statusCode: 409 });
-    }
+  if (await isGroupAtCapacity(grupo)) {
+    throwGroupAtCapacity();
   }
 
   const membership = await getMembership(groupId, String(request.usuario_id));

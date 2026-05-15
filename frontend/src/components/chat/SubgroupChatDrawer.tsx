@@ -133,12 +133,11 @@ export function SubgroupChatDrawer({
   const [messages, setMessages] = useState<SubgroupChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatError, setChatError] = useState<string | null>(null)
-  const [loadedSubgroupId, setLoadedSubgroupId] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   const subgroupIdStr = subgroupId != null ? String(subgroupId) : null
-  const isLoading = subgroupIdStr != null && loadedSubgroupId !== subgroupIdStr
+  const isLoading = false
 
   const subgroupInitials = subgroupName
     .split(' ')
@@ -158,14 +157,12 @@ export function SubgroupChatDrawer({
         if (isMounted) {
           setMessages(res.messages)
           setChatError(null)
-          setLoadedSubgroupId(subgroupIdStr)
         }
       })
       .catch((err: unknown) => {
         if (isMounted) {
           setMessages([])
           setChatError(err instanceof Error ? err.message : 'No se pudo cargar el chat')
-          setLoadedSubgroupId(subgroupIdStr)
         }
       })
     return () => { isMounted = false }
@@ -346,12 +343,6 @@ export function SubgroupChatDrawer({
 
         {/* Message list */}
         <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-0.5 min-h-0">
-          {isLoading && (
-            <div className="flex-1 flex items-center justify-center py-12">
-              <p className="font-body text-sm text-gray-500">Cargando mensajes...</p>
-            </div>
-          )}
-
           {!isLoading && messages.length === 0 && (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 py-12 text-center">
               <div className="text-[#35C56A]/30">

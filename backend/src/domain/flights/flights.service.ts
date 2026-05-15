@@ -3,7 +3,6 @@ import { FlightBaggage, FlightOffer, FlightSegment, FlightSliceSummary, SearchFl
 
 const DEFAULT_MAX_RESULTS = 20;
 const MAX_TRIP_PEOPLE = 50;
-const MAX_SEARCH_RANGE_DAYS = 7;
 
 function parseIsoDate(value: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -184,9 +183,6 @@ function validateParams(params: SearchFlightsParams): void {
       throw Object.assign(new Error('La fecha de regreso debe ser posterior a la salida'), { statusCode: 400 });
     }
 
-    if (days > MAX_SEARCH_RANGE_DAYS) {
-      throw Object.assign(new Error(`La búsqueda de vuelos permite máximo ${MAX_SEARCH_RANGE_DAYS} día(s) entre salida y regreso`), { statusCode: 400 });
-    }
   }
 
   const adults = params.adults ?? 1;

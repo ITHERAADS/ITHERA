@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Dispatch, FC, ReactNode, SetStateAction } from 'react'
 import { useAuth } from '../../context/useAuth'
+import { useSocket } from '../../hooks/useSocket'
+import { useGroupRealtimeRefresh } from '../../hooks/useGroupRealtimeRefresh'
 import { budgetService, type BudgetCategory, type BudgetSplitType } from '../../services/budget'
 import {
   documentsService,
@@ -166,6 +168,7 @@ export const DocumentVaultPanel: FC<Props> = ({
   isReadOnly = false,
 }) => {
   const { accessToken } = useAuth()
+  const { socket } = useSocket(accessToken)
   const [items, setItems] = useState<TripDocument[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -408,6 +411,19 @@ export const DocumentVaultPanel: FC<Props> = ({
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupId, accessToken])
+
+  useGroupRealtimeRefresh({
+    socket,
+    groupId,
+    events: ['dashboard_updated'],
+    debounceMs: 250,
+    onRefresh: async (payload) => {
+      const tipo = String(payload.tipo ?? '')
+      if (tipo.includes('documento') || tipo.includes('gasto') || tipo.includes('actividad')) {
+        await load()
+      }
+    },
+  })
 
   const handleUpload = async (file: File | null) => {
     if (isReadOnly) return

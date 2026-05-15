@@ -7,6 +7,8 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
+import { useSocket } from "../../hooks/useSocket";
+import { useGroupRealtimeRefresh } from "../../hooks/useGroupRealtimeRefresh";
 import { getCurrentGroup } from "../../services/groups";
 import {
   proposalsService,
@@ -25,6 +27,15 @@ export interface ComparisonPageProps {
 type ProposalFilter = "todas" | "vuelo" | "hospedaje";
 
 const MAX_COMPARISON_COLUMNS = 4;
+
+type ComparisonCacheEntry = {
+  proposals: Proposal[];
+  voteResults: VoteResult[];
+  budgetSummary: BudgetSummary | null;
+  selected: string | null;
+};
+
+const comparisonCache = new Map<string, ComparisonCacheEntry>();
 
 const FALLBACK_FLIGHT_IMAGES = [
   "https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=900&h=420&fit=crop",
@@ -331,6 +342,55 @@ function IconTrash({ size = 13 }: { size?: number }) {
   );
 }
 
+function InlineSpinner({ size = 14 }: { size?: number }) {
+  return (
+    <span
+      className="inline-block animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]"
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+    />
+  );
+}
+
+function ActionIconButton({
+  children,
+  label,
+  onClick,
+  disabled,
+  loading,
+  variant = "neutral",
+}: {
+  children: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  variant?: "neutral" | "danger" | "primary" | "success";
+}) {
+  const variantClasses = {
+    neutral: "border-[#E2E8F0] bg-white text-[#64748B] hover:bg-[#F8FAFC]",
+    danger: "border-[#FCA5A5] bg-white text-[#EF4444] hover:bg-[#FEF2F2]",
+    primary: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1E6FD9] hover:bg-[#DBEAFE]",
+    success: "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D] hover:bg-[#DCFCE7]",
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || loading}
+      className={[
+        "inline-flex h-11 w-11 items-center justify-center rounded-2xl border shadow-sm transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0",
+        variantClasses[variant],
+      ].join(" ")}
+      aria-label={label}
+      title={label}
+    >
+      {loading ? <InlineSpinner size={14} /> : children}
+    </button>
+  );
+}
+
 function CategoryIcon({ type }: { type: Proposal["tipo"] }) {
   return type === "hospedaje" ? <IconHotel /> : <IconPlane />;
 }
@@ -379,6 +439,18 @@ function formatDate(value?: string | null) {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  }).format(date);
+}
+
+function formatCommentDate(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("es-MX", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(date);
 }
 
@@ -747,13 +819,41 @@ function voteLabel(result?: VoteResult) {
   return "Te abstuviste";
 }
 
+interface ProposalCommentSocketPayload {
+  grupoId?: number | string;
+  groupId?: number | string;
+  proposalId?: number | string;
+  entidadId?: number | string | null;
+  comment?: Record<string, unknown> | null;
+  commentId?: number | string | null;
+}
+
+function normalizeRealtimeProposalComment(
+  raw: Record<string, unknown> | null | undefined,
+): ProposalComment | null {
+  if (!raw) return null;
+  return {
+    id: String(raw.id ?? raw.id_comentario ?? ""),
+    proposalId: String(raw.proposalId ?? raw.id_propuesta ?? ""),
+    usuarioId: String(raw.usuarioId ?? raw.id_usuario ?? ""),
+    authorName: (raw.authorName ?? raw.nombre ?? null) as string | null,
+    contenido: String(raw.contenido ?? ""),
+    createdAt: String(
+      raw.createdAt ?? raw.created_at ?? new Date().toISOString(),
+    ),
+    updatedAt: String(
+      raw.updatedAt ?? raw.updated_at ?? new Date().toISOString(),
+    ),
+  };
+}
+
 function TableRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-start border-t border-[#E2E8F0]">
-      <div className="flex w-28 shrink-0 items-center self-stretch py-3 pl-4 pr-2 font-body text-xs text-[#9CA3AF]">
+    <div className="flex items-stretch border-t border-[#E2E8F0]">
+      <div className="flex w-24 shrink-0 items-center bg-[#F8FAFC]/70 py-3 pl-4 pr-2 font-body text-[11px] font-semibold text-[#94A3B8]">
         {label}
       </div>
-      <div className="flex min-w-0 flex-1">{children}</div>
+      <div className="flex min-w-0 flex-1 gap-3 px-4">{children}</div>
     </div>
   );
 }
@@ -761,13 +861,22 @@ function TableRow({ label, children }: { label: string; children: ReactNode }) {
 export function ComparisonPage({ onBack }: ComparisonPageProps) {
   const navigate = useNavigate();
   const { accessToken, localUser } = useAuth();
+  const { socket } = useSocket(accessToken);
   const currentGroup = useMemo(() => getCurrentGroup(), []);
+  const groupId = currentGroup?.id ? String(currentGroup.id) : "";
+  const cachedComparison = groupId ? comparisonCache.get(groupId) : undefined;
   const [filter, setFilter] = useState<ProposalFilter>("todas");
-  const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [voteResults, setVoteResults] = useState<VoteResult[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>(
+    cachedComparison?.proposals ?? [],
+  );
+  const [voteResults, setVoteResults] = useState<VoteResult[]>(
+    cachedComparison?.voteResults ?? [],
+  );
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<string | null>(
+    cachedComparison?.selected ?? null,
+  );
+  const [loading, setLoading] = useState(!cachedComparison);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -781,10 +890,11 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
   const [editingProposal, setEditingProposal] = useState<Proposal | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [budgetSummary, setBudgetSummary] = useState<BudgetSummary | null>(null);
+  const [budgetSummary, setBudgetSummary] = useState<BudgetSummary | null>(
+    cachedComparison?.budgetSummary ?? null,
+  );
   const [budgetLoading, setBudgetLoading] = useState(false);
 
-  const groupId = currentGroup?.id ? String(currentGroup.id) : "";
   const localUserId = localUser?.id_usuario ? String(localUser.id_usuario) : "";
   const isAdmin = currentGroup?.myRole === "admin";
 
@@ -803,12 +913,14 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
       .filter((value) => Number.isFinite(value)),
   );
 
-  const comparisonMode: 'mixed' | 'flight' | 'hotel' =
-    filteredProposals.length > 0 && filteredProposals.every((proposal) => proposal.tipo === 'vuelo')
-      ? 'flight'
-      : filteredProposals.length > 0 && filteredProposals.every((proposal) => proposal.tipo === 'hospedaje')
-        ? 'hotel'
-        : 'mixed';
+  const comparisonMode: "mixed" | "flight" | "hotel" =
+    filteredProposals.length > 0 &&
+    filteredProposals.every((proposal) => proposal.tipo === "vuelo")
+      ? "flight"
+      : filteredProposals.length > 0 &&
+          filteredProposals.every((proposal) => proposal.tipo === "hospedaje")
+        ? "hotel"
+        : "mixed";
 
   const selectedProposal = selected
     ? (filteredProposals.find((proposal) => proposal.id === selected) ?? null)
@@ -848,30 +960,38 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
     }
 
     try {
-      setLoading(true);
+      if (!comparisonCache.has(groupId)) setLoading(true);
       setError(null);
       setBudgetLoading(true);
-      const [proposalsResponse, votesResponse, budgetResponse] = await Promise.all([
-        proposalsService.getGroupProposals(groupId, accessToken),
-        proposalsService
-          .getVoteResults(groupId, accessToken)
-          .catch(() => ({ results: [] as VoteResult[] })),
-        budgetService
-          .getDashboard(groupId, accessToken)
-          .catch(() => null),
-      ]);
-      setProposals(proposalsResponse.proposals);
-      setVoteResults(votesResponse.results ?? []);
-      setBudgetSummary(budgetResponse?.summary ?? null);
-      setSelected(
-        (prev) =>
-          prev ??
-          proposalsResponse.proposals.find(
-            (proposal) =>
-              proposal.tipo === "vuelo" || proposal.tipo === "hospedaje",
-          )?.id ??
-          null,
-      );
+      const [proposalsResponse, votesResponse, budgetResponse] =
+        await Promise.all([
+          proposalsService.getGroupProposals(groupId, accessToken),
+          proposalsService
+            .getVoteResults(groupId, accessToken)
+            .catch(() => ({ results: [] as VoteResult[] })),
+          budgetService.getDashboard(groupId, accessToken).catch(() => null),
+        ]);
+      const nextProposals = proposalsResponse.proposals;
+      const nextVotes = votesResponse.results ?? [];
+      const nextBudget = budgetResponse?.summary ?? null;
+      const nextSelected =
+        selected ??
+        nextProposals.find(
+          (proposal) =>
+            proposal.tipo === "vuelo" || proposal.tipo === "hospedaje",
+        )?.id ??
+        null;
+
+      setProposals(nextProposals);
+      setVoteResults(nextVotes);
+      setBudgetSummary(nextBudget);
+      setSelected(nextSelected);
+      comparisonCache.set(groupId, {
+        proposals: nextProposals,
+        voteResults: nextVotes,
+        budgetSummary: nextBudget,
+        selected: nextSelected,
+      });
     } catch (err) {
       setError(
         err instanceof Error
@@ -882,11 +1002,97 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
       setLoading(false);
       setBudgetLoading(false);
     }
-  }, [accessToken, groupId]);
+  }, [accessToken, groupId, selected]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useGroupRealtimeRefresh({
+    socket,
+    groupId,
+    events: ["dashboard_updated", "vote_updated", "checkout_updated"],
+    debounceMs: 250,
+    onRefresh: async (payload) => {
+      await loadData();
+      const tipo = String(payload.tipo ?? "");
+      const proposalId =
+        payload.entidadTipo === "propuesta" && payload.entidadId != null
+          ? String(payload.entidadId)
+          : null;
+      const isCommentEvent =
+        tipo.startsWith("comentario_") || payload.entidadTipo === "comentario";
+      if (
+        isCommentEvent &&
+        openCommentsFor &&
+        (!proposalId || proposalId === openCommentsFor)
+      ) {
+        await loadComments(openCommentsFor);
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (!socket || !groupId) return;
+
+    const belongsToGroup = (payload: ProposalCommentSocketPayload) => {
+      const payloadGroupId = payload.grupoId ?? payload.groupId;
+      return (
+        payloadGroupId === undefined ||
+        String(payloadGroupId) === String(groupId)
+      );
+    };
+    const getProposalId = (payload: ProposalCommentSocketPayload) =>
+      String(payload.proposalId ?? payload.entidadId ?? "");
+
+    const handleCreated = (payload: ProposalCommentSocketPayload) => {
+      if (!belongsToGroup(payload)) return;
+      const proposalId = getProposalId(payload);
+      const comment = normalizeRealtimeProposalComment(payload.comment);
+      if (!proposalId || !comment?.id) return;
+      setCommentsByProposal((prev) => {
+        const current = prev[proposalId] ?? [];
+        if (current.some((item) => item.id === comment.id)) return prev;
+        return { ...prev, [proposalId]: [...current, comment] };
+      });
+    };
+
+    const handleUpdated = (payload: ProposalCommentSocketPayload) => {
+      if (!belongsToGroup(payload)) return;
+      const proposalId = getProposalId(payload);
+      const comment = normalizeRealtimeProposalComment(payload.comment);
+      if (!proposalId || !comment?.id) return;
+      setCommentsByProposal((prev) => ({
+        ...prev,
+        [proposalId]: (prev[proposalId] ?? []).map((item) =>
+          item.id === comment.id ? comment : item,
+        ),
+      }));
+    };
+
+    const handleDeleted = (payload: ProposalCommentSocketPayload) => {
+      if (!belongsToGroup(payload)) return;
+      const proposalId = getProposalId(payload);
+      const commentId = String(payload.commentId ?? "");
+      if (!proposalId || !commentId) return;
+      setCommentsByProposal((prev) => ({
+        ...prev,
+        [proposalId]: (prev[proposalId] ?? []).filter(
+          (item) => item.id !== commentId,
+        ),
+      }));
+    };
+
+    socket.on("proposal_comment_created", handleCreated);
+    socket.on("proposal_comment_updated", handleUpdated);
+    socket.on("proposal_comment_deleted", handleDeleted);
+
+    return () => {
+      socket.off("proposal_comment_created", handleCreated);
+      socket.off("proposal_comment_updated", handleUpdated);
+      socket.off("proposal_comment_deleted", handleDeleted);
+    };
+  }, [socket, groupId]);
 
   const canManageProposal = (proposal: Proposal) => {
     return (
@@ -896,7 +1102,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
   };
 
   const canManageComment = (comment: ProposalComment) => {
-    return isAdmin || String(comment.usuarioId) === localUserId;
+    return String(comment.usuarioId) === localUserId;
   };
 
   const loadComments = async (proposalId: string) => {
@@ -1060,14 +1266,19 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
     try {
       setActionLoading(`${proposalId}-comment`);
       setError(null);
-      await proposalsService.addComment(
+      const response = await proposalsService.addComment(
         groupId,
         proposalId,
         { contenido: draft },
         accessToken,
       );
+      setCommentsByProposal((prev) => {
+        const current = prev[proposalId] ?? [];
+        return current.some((item) => item.id === response.comment.id)
+          ? prev
+          : { ...prev, [proposalId]: [...current, response.comment] };
+      });
       setCommentDrafts((prev) => ({ ...prev, [proposalId]: "" }));
-      await loadComments(proposalId);
       setSuccess("Comentario agregado.");
     } catch (err) {
       setError(
@@ -1140,50 +1351,66 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-[#E2E8F0] bg-white p-6 text-center font-body text-sm text-[#6B7280]">
-        Cargando propuestas para comparar...
+      <div className="rounded-[28px] border border-white/70 bg-white/85 p-8 text-center shadow-xl shadow-[#1E0A4E]/10 backdrop-blur">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1E6FD9] to-[#7A4FD6] text-white shadow-lg shadow-[#7A4FD6]/25">
+          <InlineSpinner size={22} />
+        </div>
+        <p className="font-heading text-base font-bold text-[#1E0A4E]">
+          Preparando comparativa
+        </p>
+        <p className="mt-1 font-body text-sm text-[#64748B]">
+          Cargando votos, presupuesto y opciones guardadas.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <button
-            onClick={onBack}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#E2E8F0] px-4 py-2 font-body text-sm text-[#1E0A4E] transition-colors hover:bg-[#F8FAFC]"
-          >
-            <IconArrowLeft size={14} />
-            Regresar
-          </button>
-          <div>
-            <h1 className="font-heading text-xl font-bold leading-tight text-[#1E0A4E]">
-              Comparar opciones
-            </h1>
-            <p className="font-body text-xs text-[#6B7280]">
-              Compara propuestas de vuelos y hospedajes con votos, comentarios y
-              edición controlada.
-            </p>
+    <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-4 px-1">
+      <div className="relative overflow-hidden rounded-[26px] border border-white/70 bg-gradient-to-br from-white via-[#F8FAFC] to-[#F0EEF8] p-4 shadow-xl shadow-[#1E0A4E]/10">
+        <div className="pointer-events-none absolute right-0 top-0 h-28 w-28 rounded-bl-[48px] bg-[#7A4FD6]/10 blur-2xl" />
+        <div className="relative flex flex-wrap items-center justify-between gap-3 pr-0 sm:pr-2">
+          <div className="flex min-w-0 items-start gap-3">
+            <button
+              onClick={onBack}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-2xl border border-white bg-white/90 px-3.5 font-body text-xs font-bold text-[#1E0A4E] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <IconArrowLeft size={14} />
+              Regresar
+            </button>
+            <div className="min-w-0">
+              <h1 className="font-heading text-[26px] font-bold leading-tight text-[#1E0A4E]">
+                Comparar opciones
+              </h1>
+              <p className="mt-0.5 max-w-xl font-body text-sm leading-relaxed text-[#64748B]">
+                Compara propuestas de vuelos y hospedajes con votos, comentarios
+                y edición controlada.
+              </p>
+            </div>
           </div>
-        </div>
 
-        {exceedsBudget ? (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#FEF2F2] px-3 py-1.5 font-body text-sm font-semibold text-[#EF4444]">
-            <IconWarning size={14} />
-            Esta opción supera el disponible
-          </span>
-        ) : (
-          <span className="shrink-0 rounded-full bg-white px-3 py-1.5 font-body text-sm text-[#6B7280] shadow-sm ring-1 ring-[#E2E8F0]">
-            {budgetLoading
-              ? "Consultando presupuesto..."
-              : hasRealBudget
-                ? `Disponible real: ${formatMoney(budgetSummary.available, "MXN")}`
-                : budgetSummary
-                  ? "Sin presupuesto definido"
-                  : "Presupuesto real no disponible"}
-          </span>
-        )}
+          {exceedsBudget ? (
+            <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 font-body text-xs font-bold text-[#EF4444] shadow-sm">
+              <IconWarning size={13} />
+              Supera disponible
+            </span>
+          ) : (
+            <span className="inline-flex w-fit shrink-0 flex-col rounded-2xl border border-[#E2E8F0] bg-white/95 px-3.5 py-2 text-right shadow-sm">
+              <span className="font-body text-[10px] font-bold uppercase tracking-[0.18em] text-[#94A3B8]">
+                Disponible real
+              </span>
+              <span className="font-heading text-sm font-bold leading-tight text-[#1E0A4E]">
+                {budgetLoading
+                  ? "Consultando..."
+                  : hasRealBudget
+                    ? formatMoney(budgetSummary.available, "MXN")
+                    : budgetSummary
+                      ? "Sin definir"
+                      : "No disponible"}
+              </span>
+            </span>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -1199,7 +1426,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
       )}
 
       {editingProposal && (
-        <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4 shadow-sm">
+        <div className="rounded-[26px] border border-white/80 bg-white p-5 shadow-xl shadow-[#1E0A4E]/10 ring-1 ring-[#E2E8F0]/70">
           <h2 className="font-heading text-base font-bold text-[#1E0A4E]">
             Editar propuesta
           </h2>
@@ -1225,9 +1452,14 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
             <button
               onClick={saveProposalEdit}
               disabled={actionLoading !== null || !editTitle.trim()}
-              className="rounded-xl bg-[#1E6FD9] px-4 py-2 font-body text-xs font-semibold text-white disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-4 py-2 font-body text-xs font-bold text-white shadow-sm disabled:opacity-60"
             >
-              Guardar cambios
+              {actionLoading === `${editingProposal.id}-edit` && (
+                <InlineSpinner size={12} />
+              )}
+              {actionLoading === `${editingProposal.id}-edit`
+                ? "Guardando..."
+                : "Guardar cambios"}
             </button>
             <button
               onClick={() => setEditingProposal(null)}
@@ -1239,7 +1471,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="inline-flex w-fit flex-wrap gap-1.5 rounded-2xl border border-white bg-white/80 p-1.5 shadow-sm">
         {(["todas", "vuelo", "hospedaje"] as ProposalFilter[]).map((item) => (
           <button
             key={item}
@@ -1249,10 +1481,10 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
               setSelected(null);
             }}
             className={[
-              "rounded-lg px-4 py-2 font-body text-xs font-semibold transition-colors",
+              "rounded-xl px-4 py-2 font-body text-xs font-bold transition-all",
               filter === item
-                ? "bg-[#1E6FD9] text-white"
-                : "border border-[#E2E8F0] bg-white text-[#6B7280] hover:bg-[#F8FAFC]",
+                ? "bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] text-white shadow-md shadow-[#1E6FD9]/20"
+                : "text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#1E0A4E]",
             ].join(" ")}
           >
             {item === "todas"
@@ -1275,28 +1507,25 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white">
+        <div className="overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-2xl shadow-[#1E0A4E]/10 ring-1 ring-[#E2E8F0]/70">
           <div className="overflow-x-auto">
-            <div className="min-w-max w-full">
-              <div className="flex items-start gap-3 p-4">
-                <div className="w-28 shrink-0" />
+            <div className="min-w-max">
+              <div className="flex items-stretch gap-3 bg-gradient-to-b from-[#F8FAFC] to-white p-4">
+                <div className="w-24 shrink-0" />
                 {filteredProposals.map((proposal, index) => (
-                  <div
-                    key={proposal.id}
-                    className="min-w-56 flex-1 pr-3 last:pr-0"
-                  >
-                    <div className="relative overflow-hidden rounded-xl">
+                  <div key={proposal.id} className="w-[380px] shrink-0 pr-0">
+                    <div className="group relative overflow-hidden rounded-2xl shadow-lg shadow-[#1E0A4E]/10">
                       <img
                         src={getImageUrl(proposal, index)}
                         alt={getTitle(proposal)}
-                        className="h-[100px] w-full object-cover"
+                        className="h-[128px] w-full object-cover transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
                       />
                       <button
                         onClick={() => removeOption(proposal.id)}
                         disabled={filteredProposals.length <= 1}
                         className={[
-                          "absolute right-1.5 top-1.5 rounded-full bg-black/40 p-1 transition-opacity",
+                          "absolute right-2 top-2 rounded-full bg-black/45 p-1.5 text-white backdrop-blur transition-all",
                           filteredProposals.length <= 1
                             ? "cursor-not-allowed opacity-30"
                             : "hover:bg-black/60",
@@ -1335,10 +1564,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     filteredProposals.length > 1;
 
                   return (
-                    <div
-                      key={proposal.id}
-                      className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
-                    >
+                    <div key={proposal.id} className="w-[380px] shrink-0 py-3">
                       <span className="font-heading text-base font-bold leading-none text-[#1E0A4E]">
                         {formatMoney(price, getCurrency(proposal))}
                       </span>
@@ -1354,10 +1580,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
               <TableRow label="Tipo">
                 {filteredProposals.map((proposal) => (
-                  <div
-                    key={proposal.id}
-                    className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
-                  >
+                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
                     <span className="font-body text-sm text-[#1E0A4E]">
                       {proposal.tipo === "vuelo"
                         ? getSlice(proposal, "returnSlice")
@@ -1369,12 +1592,17 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 ))}
               </TableRow>
 
-              <TableRow label={comparisonMode === 'flight' ? "Pasajeros" : comparisonMode === 'hotel' ? "Huéspedes" : "Viajeros / huéspedes"}>
+              <TableRow
+                label={
+                  comparisonMode === "flight"
+                    ? "Pasajeros"
+                    : comparisonMode === "hotel"
+                      ? "Huéspedes"
+                      : "Viajeros / huéspedes"
+                }
+              >
                 {filteredProposals.map((proposal) => (
-                  <div
-                    key={proposal.id}
-                    className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
-                  >
+                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
                     <span className="font-body text-xs text-[#6B7280]">
                       {getHotelOccupancyText(proposal)}
                     </span>
@@ -1382,12 +1610,17 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 ))}
               </TableRow>
 
-              <TableRow label={comparisonMode === 'flight' ? "Ruta" : comparisonMode === 'hotel' ? "Ubicación" : "Ruta / ubicación"}>
+              <TableRow
+                label={
+                  comparisonMode === "flight"
+                    ? "Ruta"
+                    : comparisonMode === "hotel"
+                      ? "Ubicación"
+                      : "Ruta / ubicación"
+                }
+              >
                 {filteredProposals.map((proposal) => (
-                  <div
-                    key={proposal.id}
-                    className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
-                  >
+                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
                     <span className="font-body text-xs text-[#6B7280]">
                       {getRouteOrLocation(proposal)}
                     </span>
@@ -1395,12 +1628,17 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 ))}
               </TableRow>
 
-              <TableRow label={comparisonMode === 'flight' ? "Salida" : comparisonMode === 'hotel' ? "Check-in / Check-out" : "Fechas"}>
+              <TableRow
+                label={
+                  comparisonMode === "flight"
+                    ? "Salida"
+                    : comparisonMode === "hotel"
+                      ? "Check-in / Check-out"
+                      : "Fechas"
+                }
+              >
                 {filteredProposals.map((proposal) => (
-                  <div
-                    key={proposal.id}
-                    className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
-                  >
+                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
                     <span className="font-body text-xs text-[#6B7280]">
                       {getOutboundText(proposal)}
                     </span>
@@ -1408,12 +1646,17 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 ))}
               </TableRow>
 
-              <TableRow label={comparisonMode === 'flight' ? "Regreso" : comparisonMode === 'hotel' ? "Estancia" : "Regreso / estancia"}>
+              <TableRow
+                label={
+                  comparisonMode === "flight"
+                    ? "Regreso"
+                    : comparisonMode === "hotel"
+                      ? "Estancia"
+                      : "Regreso / estancia"
+                }
+              >
                 {filteredProposals.map((proposal) => (
-                  <div
-                    key={proposal.id}
-                    className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
-                  >
+                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
                     <span className="font-body text-xs text-[#6B7280]">
                       {getStayOrReturnText(proposal)}
                     </span>
@@ -1421,62 +1664,78 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 ))}
               </TableRow>
 
-              {comparisonMode !== 'mixed' && (
+              {comparisonMode !== "mixed" && (
                 <>
-                  <TableRow label={comparisonMode === 'flight' ? "Duración" : comparisonMode === 'hotel' ? "Habitación / tarifa" : "Habitación / duración"}>
-                {filteredProposals.map((proposal) => (
-                  <div
-                    key={proposal.id}
-                    className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
+                  <TableRow
+                    label={
+                      comparisonMode === "flight"
+                        ? "Duración"
+                        : comparisonMode === "hotel"
+                          ? "Habitación / tarifa"
+                          : "Habitación / duración"
+                    }
                   >
-                    <span className="font-body text-xs text-[#6B7280]">
-                      {proposal.tipo === "hospedaje"
-                        ? getHotelRoomText(proposal)
-                        : getDurationText(proposal)}
-                    </span>
-                  </div>
-                ))}
+                    {filteredProposals.map((proposal) => (
+                      <div
+                        key={proposal.id}
+                        className="w-[380px] shrink-0 py-3"
+                      >
+                        <span className="font-body text-xs text-[#6B7280]">
+                          {proposal.tipo === "hospedaje"
+                            ? getHotelRoomText(proposal)
+                            : getDurationText(proposal)}
+                        </span>
+                      </div>
+                    ))}
                   </TableRow>
 
-                  <TableRow label={comparisonMode === 'flight' ? "Escalas / conexión" : comparisonMode === 'hotel' ? "Régimen / política" : "Régimen / conexión"}>
-                {filteredProposals.map((proposal) => (
-                  <div
-                    key={proposal.id}
-                    className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
+                  <TableRow
+                    label={
+                      comparisonMode === "flight"
+                        ? "Escalas / conexión"
+                        : comparisonMode === "hotel"
+                          ? "Régimen / política"
+                          : "Régimen / conexión"
+                    }
                   >
-                    <span className="font-body text-xs text-[#6B7280]">
-                      {proposal.tipo === "hospedaje"
-                        ? getHotelBoardText(proposal)
-                        : getDurationText(proposal)}
-                    </span>
-                  </div>
-                ))}
+                    {filteredProposals.map((proposal) => (
+                      <div
+                        key={proposal.id}
+                        className="w-[380px] shrink-0 py-3"
+                      >
+                        <span className="font-body text-xs text-[#6B7280]">
+                          {proposal.tipo === "hospedaje"
+                            ? getHotelBoardText(proposal)
+                            : getDurationText(proposal)}
+                        </span>
+                      </div>
+                    ))}
                   </TableRow>
 
-                  <TableRow label={comparisonMode === 'flight' ? "Aerolínea" : "Calificación"}>
-                {filteredProposals.map((proposal) => (
-                  <div
-                    key={proposal.id}
-                    className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
+                  <TableRow
+                    label={
+                      comparisonMode === "flight" ? "Aerolínea" : "Calificación"
+                    }
                   >
-                    <span className="font-body text-xs text-[#6B7280]">
-                      {proposal.tipo === "hospedaje"
-                        ? getHotelRatingText(proposal)
-                        : getSubtitle(proposal)}
-                    </span>
-                  </div>
-                ))}
+                    {filteredProposals.map((proposal) => (
+                      <div
+                        key={proposal.id}
+                        className="w-[380px] shrink-0 py-3"
+                      >
+                        <span className="font-body text-xs text-[#6B7280]">
+                          {proposal.tipo === "hospedaje"
+                            ? getHotelRatingText(proposal)
+                            : getSubtitle(proposal)}
+                        </span>
+                      </div>
+                    ))}
                   </TableRow>
-
                 </>
               )}
 
               <TableRow label="Proveedor">
                 {filteredProposals.map((proposal) => (
-                  <div
-                    key={proposal.id}
-                    className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
-                  >
+                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
                     <span className="inline-flex rounded-full bg-[#F0F4FF] px-2 py-1 font-body text-[11px] font-semibold text-[#1E0A4E]/70">
                       {getProviderText(proposal)}
                     </span>
@@ -1488,10 +1747,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 {filteredProposals.map((proposal) => {
                   const result = resultsByProposalId.get(proposal.id);
                   return (
-                    <div
-                      key={proposal.id}
-                      className="min-w-56 flex-1 py-3 pr-3 last:pr-4"
-                    >
+                    <div key={proposal.id} className="w-[380px] shrink-0 py-3">
                       <p className="font-body text-xs font-semibold text-[#1E0A4E]">
                         {result
                           ? `${result.votos_a_favor} a favor · ${result.votos_en_contra} en contra`
@@ -1513,116 +1769,181 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                   return (
                     <div
                       key={proposal.id}
-                      className="min-w-56 flex-1 space-y-2 py-3 pr-3 last:pr-4"
+                      className="w-[380px] shrink-0 space-y-3 py-4"
                     >
-                      <button
-                        onClick={() => {
-                          setSelected(proposal.id);
-                          handleVote(proposal.id, "a_favor");
-                        }}
-                        disabled={actionLoading !== null || hasVoted}
-                        className={[
-                          "inline-flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 px-3 font-body text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-70",
-                          selectedColumn || result?.mi_voto === "a_favor"
-                            ? "bg-[#1E6FD9] text-white"
-                            : "border border-[#1E6FD9] text-[#1E6FD9] hover:bg-[#1E6FD9]/5",
-                        ].join(" ")}
-                      >
-                        {(selectedColumn || result?.mi_voto === "a_favor") && (
-                          <IconCheck size={12} />
-                        )}
-                        {result?.mi_voto === "a_favor"
-                          ? "Seleccionada"
-                          : "Votar a favor"}
-                      </button>
-                      <button
-                        onClick={() => handleVote(proposal.id, "en_contra")}
-                        disabled={actionLoading !== null || hasVoted}
-                        className="w-full rounded-xl border border-[#EF4444] px-3 py-2 font-body text-xs font-semibold text-[#EF4444] transition-colors hover:bg-[#FEF2F2] disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {result?.mi_voto === "en_contra"
-                          ? "Votaste en contra"
-                          : "Votar en contra"}
-                      </button>
-
-                      <button
-                        onClick={() => toggleComments(proposal.id)}
-                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-[#7A4FD6] px-3 py-2 font-body text-xs font-semibold text-[#7A4FD6] transition-colors hover:bg-[#7A4FD6]/5"
-                      >
-                        <IconMessage />
-                        {openCommentsFor === proposal.id
-                          ? "Ocultar chat"
-                          : "Abrir chat"}
-                      </button>
-
-                      {canManageProposal(proposal) && (
-                        <div className="grid grid-cols-2 gap-2">
+                      <div className="min-h-[126px] rounded-[28px] border border-[#E2E8F0] bg-white/95 p-3.5 shadow-sm shadow-[#1E0A4E]/5">
+                        <div className="grid grid-cols-2 gap-2.5">
                           <button
-                            onClick={() => startEditProposal(proposal)}
-                            disabled={actionLoading !== null}
-                            className="inline-flex items-center justify-center gap-1 rounded-lg border border-[#CBD5E1] px-3 py-2 font-body text-[11px] font-semibold text-[#64748B] disabled:cursor-not-allowed disabled:opacity-70"
+                            onClick={() => {
+                              setSelected(proposal.id);
+                              handleVote(proposal.id, "a_favor");
+                            }}
+                            disabled={actionLoading !== null || hasVoted}
+                            className={[
+                              "inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-2xl px-4 font-body text-[12px] font-bold shadow-sm transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0",
+                              selectedColumn || result?.mi_voto === "a_favor"
+                                ? "bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] text-white shadow-[#1E6FD9]/25"
+                                : "bg-[#1E6FD9] text-white hover:bg-[#185DB8]",
+                            ].join(" ")}
                           >
-                            <IconEdit />
-                            Editar
+                            {actionLoading === `${proposal.id}-a_favor` ? (
+                              <InlineSpinner size={13} />
+                            ) : selectedColumn ||
+                              result?.mi_voto === "a_favor" ? (
+                              <IconCheck size={12} />
+                            ) : null}
+                            <span className="truncate">
+                              {result?.mi_voto === "a_favor"
+                                ? "Seleccionada"
+                                : actionLoading === `${proposal.id}-a_favor`
+                                  ? "Registrando..."
+                                  : "A favor"}
+                            </span>
                           </button>
                           <button
-                            onClick={() => deleteProposal(proposal)}
-                            disabled={actionLoading !== null}
-                            className="inline-flex items-center justify-center gap-1 rounded-lg border border-[#FCA5A5] px-3 py-2 font-body text-[11px] font-semibold text-[#EF4444] disabled:cursor-not-allowed disabled:opacity-70"
+                            onClick={() => handleVote(proposal.id, "en_contra")}
+                            disabled={actionLoading !== null || hasVoted}
+                            className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-[#FCA5A5] bg-white px-4 font-body text-[12px] font-bold text-[#EF4444] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#FEF2F2] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                           >
-                            <IconTrash />
-                            Borrar
+                            {actionLoading === `${proposal.id}-en_contra` && (
+                              <InlineSpinner size={13} />
+                            )}
+                            <span className="truncate">
+                              {result?.mi_voto === "en_contra"
+                                ? "En contra"
+                                : actionLoading === `${proposal.id}-en_contra`
+                                  ? "Registrando..."
+                                  : "En contra"}
+                            </span>
                           </button>
                         </div>
-                      )}
 
-                      {proposal.estado === "aprobada" && (proposal.tipo === "vuelo" || proposal.tipo === "hospedaje") && (() => {
-                        const detail = proposal.detalle as (ProposalDetailFlight & ProposalDetailHotel) | null
-                        const isConfirmed = proposal.tipo === "vuelo"
-                          ? detail?.compra_estado === "confirmada_simulada"
-                          : detail?.reserva_estado === "confirmada_simulada"
+                        <div className="mt-3 flex items-center justify-center gap-2.5 border-t border-[#EEF2F7] pt-3">
+                          <ActionIconButton
+                            label={
+                              openCommentsFor === proposal.id
+                                ? "Ocultar chat"
+                                : "Abrir chat"
+                            }
+                            onClick={() => toggleComments(proposal.id)}
+                            variant="neutral"
+                          >
+                            <span className="relative inline-flex">
+                              <IconMessage />
+                              {(commentsByProposal[proposal.id] ?? []).length >
+                                0 && (
+                                <span className="absolute -right-2.5 -top-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#1E6FD9] px-1 font-body text-[9px] font-bold text-white ring-2 ring-white">
+                                  {
+                                    (commentsByProposal[proposal.id] ?? [])
+                                      .length
+                                  }
+                                </span>
+                              )}
+                            </span>
+                          </ActionIconButton>
 
-                        if (isConfirmed) {
+                          {canManageProposal(proposal) && (
+                            <>
+                              <ActionIconButton
+                                label="Editar propuesta"
+                                onClick={() => startEditProposal(proposal)}
+                                disabled={actionLoading !== null}
+                                loading={
+                                  actionLoading === `${proposal.id}-edit`
+                                }
+                                variant="neutral"
+                              >
+                                <IconEdit />
+                              </ActionIconButton>
+                              <ActionIconButton
+                                label="Eliminar propuesta"
+                                onClick={() => deleteProposal(proposal)}
+                                disabled={actionLoading !== null}
+                                loading={
+                                  actionLoading === `${proposal.id}-delete`
+                                }
+                                variant="danger"
+                              >
+                                <IconTrash />
+                              </ActionIconButton>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {proposal.estado === "aprobada" &&
+                        (proposal.tipo === "vuelo" ||
+                          proposal.tipo === "hospedaje") &&
+                        (() => {
+                          const detail = proposal.detalle as
+                            | (ProposalDetailFlight & ProposalDetailHotel)
+                            | null;
+                          const isConfirmed =
+                            proposal.tipo === "vuelo"
+                              ? detail?.compra_estado === "confirmada_simulada"
+                              : detail?.reserva_estado ===
+                                "confirmada_simulada";
+
+                          if (isConfirmed) {
+                            return (
+                              <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-center font-body text-xs font-bold text-[#15803D]">
+                                {proposal.tipo === "vuelo"
+                                  ? "Vuelo comprado"
+                                  : "Hospedaje reservado"}
+                              </div>
+                            );
+                          }
+
                           return (
-                            <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-center font-body text-xs font-bold text-[#15803D]">
-                              {proposal.tipo === "vuelo" ? "Vuelo comprado" : "Hospedaje reservado"}
-                            </div>
-                          )
-                        }
+                            <button
+                              onClick={() =>
+                                navigate(
+                                  `/checkout/${proposal.tipo === "vuelo" ? "flight" : "hotel"}/${proposal.id}`,
+                                )
+                              }
+                              disabled={actionLoading !== null}
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-3 py-2.5 font-body text-xs font-bold text-white shadow-lg shadow-[#1E6FD9]/20 transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                            >
+                              {actionLoading === `${proposal.id}-checkout` && (
+                                <InlineSpinner size={13} />
+                              )}
+                              {proposal.tipo === "vuelo"
+                                ? "Comprar vuelo"
+                                : "Reservar hospedaje"}
+                            </button>
+                          );
+                        })()}
 
-                        return (
-                          <button
-                            onClick={() => navigate(`/checkout/${proposal.tipo === "vuelo" ? "flight" : "hotel"}/${proposal.id}`)}
-                            disabled={actionLoading !== null}
-                            className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-3 py-2.5 font-body text-xs font-bold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            {proposal.tipo === "vuelo" ? "Comprar vuelo" : "Reservar hospedaje"}
-                          </button>
-                        )
-                      })()}
-
-                      {isAdmin && proposal.estado !== "aprobada" && proposal.estado !== "descartada" && (
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() =>
-                              handleAdminDecision(proposal.id, "aprobar")
-                            }
-                            disabled={actionLoading !== null}
-                            className="rounded-lg bg-[#35C56A] px-3 py-2 font-body text-[11px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            Aprobar
-                          </button>
-                          <button
-                            onClick={() =>
-                              handleAdminDecision(proposal.id, "rechazar")
-                            }
-                            disabled={actionLoading !== null}
-                            className="rounded-lg border border-[#CBD5E1] px-3 py-2 font-body text-[11px] font-semibold text-[#64748B] disabled:cursor-not-allowed disabled:opacity-70"
-                          >
-                            Descartar
-                          </button>
-                        </div>
-                      )}
+                      {isAdmin &&
+                        proposal.estado !== "aprobada" &&
+                        proposal.estado !== "descartada" && (
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <button
+                              onClick={() =>
+                                handleAdminDecision(proposal.id, "aprobar")
+                              }
+                              disabled={actionLoading !== null}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#35C56A] px-3 py-2.5 font-body text-[11px] font-bold text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                            >
+                              {actionLoading === `${proposal.id}-aprobar` && (
+                                <InlineSpinner size={12} />
+                              )}
+                              Aprobar
+                            </button>
+                            <button
+                              onClick={() =>
+                                handleAdminDecision(proposal.id, "rechazar")
+                              }
+                              disabled={actionLoading !== null}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-2.5 font-body text-[11px] font-bold text-[#64748B] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                            >
+                              {actionLoading === `${proposal.id}-rechazar` && (
+                                <InlineSpinner size={12} />
+                              )}
+                              Descartar
+                            </button>
+                          </div>
+                        )}
                     </div>
                   );
                 })}
@@ -1630,84 +1951,183 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
             </div>
           </div>
 
-          {openCommentsFor && (
-            <div className="border-t border-[#E2E8F0] bg-[#F8FAFC] p-4">
-              <div className="mb-3 flex items-center gap-2 font-heading text-sm font-bold text-[#1E0A4E]">
-                <IconMessage />
-                Chat de propuesta
-              </div>
-              <div className="space-y-2">
-                {(commentsByProposal[openCommentsFor] ?? []).length === 0 ? (
-                  <p className="rounded-xl bg-white p-3 font-body text-xs text-[#94A3B8]">
-                    Aún no hay comentarios en esta propuesta.
-                  </p>
-                ) : (
-                  commentsByProposal[openCommentsFor].map((comment) => (
-                    <div
-                      key={comment.id}
-                      className="rounded-xl border border-[#E2E8F0] bg-white p-3"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <p className="font-body text-xs font-semibold text-[#1E0A4E]">
-                            {comment.authorName ?? "Integrante"}
+          {openCommentsFor &&
+            (() => {
+              const activeProposal =
+                filteredProposals.find(
+                  (proposal) => proposal.id === openCommentsFor,
+                ) ??
+                proposals.find((proposal) => proposal.id === openCommentsFor);
+              const activeComments = commentsByProposal[openCommentsFor] ?? [];
+
+              return (
+                <div className="fixed inset-0 z-50 flex justify-end bg-[#0F172A]/35 backdrop-blur-[3px]">
+                  <button
+                    type="button"
+                    className="absolute inset-0 cursor-default"
+                    onClick={() => setOpenCommentsFor(null)}
+                    aria-label="Cerrar chat de propuesta"
+                  />
+
+                  <aside className="relative z-10 flex h-full w-[min(430px,calc(100vw-24px))] max-w-[430px] flex-col overflow-hidden border-l border-[#DDD6FE] bg-[#F8FAFC] shadow-2xl shadow-[#1E0A4E]/25">
+                    <div className="bg-gradient-to-r from-[#1E0A4E] to-[#7A4FD6] px-5 py-5 text-white">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-body text-[10px] font-bold uppercase tracking-[0.28em] text-white/55">
+                            Chat de propuesta
                           </p>
-                          <p className="mt-1 font-body text-sm text-[#334155]">
-                            {comment.contenido}
+                          <h3 className="mt-2 truncate font-heading text-lg font-bold">
+                            {activeProposal?.titulo ?? "Propuesta"}
+                          </h3>
+                          <p className="mt-1 truncate font-body text-xs text-white/75">
+                            {activeProposal?.tipo === "vuelo"
+                              ? "Vuelo"
+                              : activeProposal?.tipo === "hospedaje"
+                                ? "Hospedaje"
+                                : "Actividad"}{" "}
+                            · Comentarios en tiempo real
                           </p>
                         </div>
-                        {canManageComment(comment) && (
-                          <div className="flex shrink-0 gap-1">
-                            <button
-                              onClick={() =>
-                                editComment(openCommentsFor, comment)
-                              }
-                              className="rounded-lg border border-[#E2E8F0] p-1.5 text-[#64748B] hover:bg-[#F8FAFC]"
-                              aria-label="Editar comentario"
-                            >
-                              <IconEdit />
-                            </button>
-                            <button
-                              onClick={() =>
-                                deleteComment(openCommentsFor, comment)
-                              }
-                              className="rounded-lg border border-[#FCA5A5] p-1.5 text-[#EF4444] hover:bg-[#FEF2F2]"
-                              aria-label="Eliminar comentario"
-                            >
-                              <IconTrash />
-                            </button>
-                          </div>
-                        )}
+                        <button
+                          onClick={() => setOpenCommentsFor(null)}
+                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white/75 transition-colors hover:bg-white/20 hover:text-white"
+                          aria-label="Cerrar chat"
+                          title="Cerrar chat"
+                        >
+                          <IconX size={11} />
+                        </button>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-              <div className="mt-3 flex gap-2">
-                <input
-                  value={commentDrafts[openCommentsFor] ?? ""}
-                  onChange={(event) =>
-                    setCommentDrafts((prev) => ({
-                      ...prev,
-                      [openCommentsFor]: event.target.value,
-                    }))
-                  }
-                  placeholder="Escribe un comentario para el grupo..."
-                  className="min-w-0 flex-1 rounded-xl border border-[#E2E8F0] px-3 py-2 font-body text-sm outline-none focus:border-[#1E6FD9]"
-                />
-                <button
-                  onClick={() => addComment(openCommentsFor)}
-                  disabled={
-                    actionLoading !== null ||
-                    !(commentDrafts[openCommentsFor] ?? "").trim()
-                  }
-                  className="rounded-xl bg-[#1E6FD9] px-4 py-2 font-body text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Enviar
-                </button>
-              </div>
-            </div>
-          )}
+
+                    <div className="grid grid-cols-[auto_1fr] gap-0 border-b border-[#E2E8F0] bg-white px-5 py-3">
+                      <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 text-center font-body text-xs font-bold text-[#1E6FD9]">
+                        {activeComments.length}
+                        <br />
+                        <span className="text-[10px] font-semibold">
+                          comentarios
+                        </span>
+                      </div>
+                      <div className="min-w-0 px-3 py-2">
+                        <p className="truncate font-body text-xs font-semibold text-[#64748B]">
+                          {activeProposal
+                            ? getRouteOrLocation(activeProposal)
+                            : "Conversación del grupo"}
+                        </p>
+                        <p className="mt-0.5 truncate font-body text-[11px] text-[#94A3B8]">
+                          {activeProposal
+                            ? getOutboundText(activeProposal)
+                            : "Sin datos adicionales"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+                      {activeComments.length === 0 ? (
+                        <div className="flex min-h-[280px] flex-col items-center justify-center rounded-3xl border border-dashed border-[#DDD6FE] bg-white p-8 text-center">
+                          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#7A4FD6]">
+                            <IconMessage size={20} />
+                          </span>
+                          <p className="font-heading text-sm font-bold text-[#1E0A4E]">
+                            Sé el primero en comentar
+                          </p>
+                          <p className="mt-1 max-w-xs font-body text-xs text-[#64748B]">
+                            Coordina esta opción con el grupo sin salir de la
+                            comparativa.
+                          </p>
+                        </div>
+                      ) : (
+                        activeComments.map((comment) => {
+                          const isOwnComment = localUser?.id_usuario
+                            ? String(comment.usuarioId) ===
+                              String(localUser.id_usuario)
+                            : false;
+
+                          return (
+                            <div
+                              key={comment.id}
+                              className="rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3 shadow-sm shadow-[#1E0A4E]/5"
+                            >
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <p className="min-w-0 truncate font-body text-xs font-bold text-[#1E0A4E]">
+                                  {comment.authorName ??
+                                    (isOwnComment ? "Tú" : "Integrante")}
+                                </p>
+                                <p className="shrink-0 font-body text-[11px] text-[#64748B]">
+                                  {formatCommentDate(comment.createdAt)}
+                                </p>
+                              </div>
+
+                              <p className="whitespace-pre-wrap break-words font-body text-sm leading-relaxed text-[#334155]">
+                                {comment.contenido}
+                              </p>
+
+                              {canManageComment(comment) && (
+                                <div className="mt-2 flex gap-3">
+                                  <button
+                                    onClick={() =>
+                                      editComment(openCommentsFor, comment)
+                                    }
+                                    disabled={actionLoading !== null}
+                                    className="font-body text-xs font-semibold text-[#1E6FD9] transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                    aria-label="Editar comentario"
+                                    title="Editar comentario"
+                                  >
+                                    Editar
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      deleteComment(openCommentsFor, comment)
+                                    }
+                                    disabled={actionLoading !== null}
+                                    className="font-body text-xs font-semibold text-[#EF4444] transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                    aria-label="Eliminar comentario"
+                                    title="Eliminar comentario"
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="border-t border-[#E2E8F0] bg-white p-4">
+                      <div className="flex gap-2">
+                        <input
+                          value={commentDrafts[openCommentsFor] ?? ""}
+                          onChange={(event) =>
+                            setCommentDrafts((prev) => ({
+                              ...prev,
+                              [openCommentsFor]: event.target.value,
+                            }))
+                          }
+                          placeholder="Escribe un comentario..."
+                          className="min-w-0 flex-1 rounded-2xl border border-[#DDE6F3] bg-white px-4 py-3 font-body text-sm outline-none transition-colors focus:border-[#7A4FD6] focus:ring-2 focus:ring-[#7A4FD6]/10"
+                        />
+                        <button
+                          onClick={() => addComment(openCommentsFor)}
+                          disabled={
+                            actionLoading !== null ||
+                            !(commentDrafts[openCommentsFor] ?? "").trim()
+                          }
+                          className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] font-body text-xs font-bold text-white shadow-md shadow-[#1E6FD9]/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="Enviar comentario"
+                          title="Enviar"
+                        >
+                          {actionLoading === `${openCommentsFor}-comment` ? (
+                            <InlineSpinner size={13} />
+                          ) : (
+                            <IconArrowRight size={18} />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </aside>
+                </div>
+              );
+            })()}
 
           {filteredProposals.length === 1 && (
             <div className="border-t border-[#E2E8F0] p-4">
@@ -1740,8 +2160,10 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
             <IconWarning size={14} />
           </span>
           <p className="font-body text-xs text-[#EF4444]">
-            Esta opción cuesta {formatMoney(selectedPrice, selectedCurrency)} y supera el presupuesto disponible real del grupo
-            ({formatMoney(budgetAvailable ?? 0, "MXN")}). El voto se registra, pero conviene revisarla antes de aprobarla.
+            Esta opción cuesta {formatMoney(selectedPrice, selectedCurrency)} y
+            supera el presupuesto disponible real del grupo (
+            {formatMoney(budgetAvailable ?? 0, "MXN")}). El voto se registra,
+            pero conviene revisarla antes de aprobarla.
           </p>
         </div>
       )}

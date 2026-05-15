@@ -3,6 +3,7 @@ import { sendEmail } from '../../services/email.service';
 import { supabase } from '../../infrastructure/db/supabase.client';
 import { getPlaceDetails } from '../maps/maps.service';
 import { baseTemplate } from '../../infrastructure/email/templates/baseTemplate';
+import { emitGroupDeleted } from '../../infrastructure/sockets/socket.gateway';
 import {
   CreateGroupInvitationsPayload,
   CreateGroupPayload,
@@ -532,6 +533,14 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
     .insert({ grupo_id: grupo.id, usuario_id: Number(usuarioId), rol: 'admin' });
 
   if (memberError) throw new Error(memberError.message);
+
+  NotificationsService.emitGroupDashboardUpdated(Number(grupo.id), {
+    tipo: 'grupo_creado',
+    entidadTipo: 'grupo',
+    entidadId: Number(grupo.id),
+    actorUsuarioId: Number(usuarioId),
+    metadata: { itemTitle: grupo.nombre, itemType: 'grupo' },
+  });
 
   return {
     ...grupo,
@@ -1385,6 +1394,16 @@ export const archiveExpiredGroups = async (): Promise<void> => {
       { statusCode: 500 }
     );
   }
+
+  for (const groupId of idsToClose) {
+    NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+      tipo: 'viaje_cerrado_automaticamente',
+      entidadTipo: 'grupo',
+      entidadId: Number(groupId),
+      actorUsuarioId: null,
+      metadata: { itemType: 'grupo', status: 'cerrado' },
+    });
+  }
 };
 
 export const getMyTravelHistory = async (authUserId: string) => {
@@ -1505,6 +1524,15 @@ export const updateGroup = async (
     throw new Error(error?.message ?? 'No se pudo actualizar el grupo');
   }
 
+  const actorUsuarioId = await getLocalUserId(authUserId);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'grupo_actualizado',
+    entidadTipo: 'grupo',
+    entidadId: Number(groupId),
+    actorUsuarioId: Number(actorUsuarioId),
+    metadata: { itemTitle: data.nombre, itemType: 'grupo' },
+  });
+
   return data;
 };
 
@@ -1517,6 +1545,20 @@ export const deleteGroup = async (authUserId: string, groupId: string) => {
     .eq('id', groupId);
 
   if (error) throw new Error(error.message);
+
+  const actorUsuarioId = await getLocalUserId(authUserId);
+  emitGroupDeleted({
+    groupId: Number(groupId),
+    actorUsuarioId: Number(actorUsuarioId),
+  });
+
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'grupo_eliminado',
+    entidadTipo: 'grupo',
+    entidadId: Number(groupId),
+    actorUsuarioId: Number(actorUsuarioId),
+    metadata: { itemType: 'grupo' },
+  });
 
   return { ok: true };
 };

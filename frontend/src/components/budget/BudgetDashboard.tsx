@@ -4,6 +4,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { RegisterExpenseModal } from './RegisterExpenseModal'
 import { MyWalletView } from './MyWalletView'
 import { useAuth } from '../../context/useAuth'
+import { useSocket } from '../../hooks/useSocket'
+import { useGroupRealtimeRefresh } from '../../hooks/useGroupRealtimeRefresh'
 import {
   budgetService,
   type BudgetDashboardResponse,
@@ -162,6 +164,7 @@ export const BudgetDashboard: FC<Props> = ({
   isReadOnly = false,
 }) => {
   const { accessToken, localUser } = useAuth()
+  const { socket } = useSocket(accessToken)
   const [dashboard, setDashboard] = useState<BudgetDashboardResponse | null>(null)
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [members, setMembers] = useState<BudgetMember[]>([])
@@ -241,6 +244,29 @@ export const BudgetDashboard: FC<Props> = ({
       setLinkOptions(EMPTY_LINK_OPTIONS)
     })
   }, [loadContextLinks])
+
+  useGroupRealtimeRefresh({
+    socket,
+    groupId,
+    events: ['dashboard_updated', 'checkout_updated'],
+    debounceMs: 250,
+    onRefresh: async (payload) => {
+      const tipo = String(payload.tipo ?? '')
+      if (
+        tipo.startsWith('gasto_') ||
+        tipo.startsWith('presupuesto_') ||
+        tipo.startsWith('pago_') ||
+        tipo.includes('checkout') ||
+        tipo.includes('documento') ||
+        tipo.includes('liquidacion')
+      ) {
+        await Promise.all([
+          loadDashboard(),
+          loadContextLinks().catch(() => undefined),
+        ])
+      }
+    },
+  })
 
   const getLinksForExpense = useCallback((expenseId: string) => {
     return contextLinks

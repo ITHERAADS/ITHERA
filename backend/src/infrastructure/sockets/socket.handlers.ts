@@ -59,6 +59,31 @@ const validateMembership = async (userId: string, tripId: string): Promise<boole
   return !error && !!data;
 };
 
+type SocketErrorCode =
+  | 'ERR-51-001'
+  | 'ERR-51-002'
+  | 'ERR-53-001'
+  | 'ERR-54-001'
+  | 'ERR-58-001'
+  | 'ERR-59-001'
+  | 'ERR-211-002';
+
+const emitStandardError = (
+  socket: Socket,
+  code: SocketErrorCode,
+  message: string,
+  extra: Record<string, unknown> = {},
+): void => {
+  socket.emit('error_event', {
+    ok: false,
+    code,
+    message,
+    severity: code === 'ERR-59-001' ? 'baja' : 'media',
+    createdAt: new Date().toISOString(),
+    ...extra,
+  });
+};
+
 
 // ── Presence en memoria ─────────────────────────────────────────────────
 // roomPresence: tripId -> userId -> sockets activos del usuario en esa room
@@ -146,10 +171,29 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
 
       for (const groupId of groupIds) {
         socket.join(groupId);
+        addPresence(socket, groupId, user.localUserId);
+      }
+
+      const { data: subgroupMemberships } = await supabase
+        .from('subgroup_memberships')
+        .select('subgroup_id')
+        .eq('user_id', user.localUserId);
+
+      const subgroupIds = Array.from(
+        new Set((subgroupMemberships ?? []).map((row: any) => String(row.subgroup_id)).filter(Boolean))
+      );
+
+      for (const subgroupId of subgroupIds) {
+        socket.join(`subgroup:${subgroupId}`);
       }
 
       if (groupIds.length > 0) {
+        groupIds.forEach((groupId) => emitPresenceUpdate(io, groupId));
         console.log(`[socket.io] ${user.userName} unido a rooms de grupo: ${groupIds.join(', ')}`);
+      }
+
+      if (subgroupIds.length > 0) {
+        console.log(`[socket.io] ${user.userName} unido a rooms de subgrupo: ${subgroupIds.join(', ')}`);
       }
     } catch (err) {
       console.warn('[socket.io] Error al unir usuario a sus rooms de grupo:', err);
@@ -162,14 +206,14 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
       const { tripId } = payload;
 
       if (!tripId) {
-        socket.emit('error_event', { message: 'tripId es requerido' });
+        emitStandardError(socket, 'ERR-51-002', 'No fue posible conectarte al viaje. Intenta recargar la página.');
         return;
       }
 
       // Validar membresía al grupo
       const isMember = await validateMembership(user.localUserId, tripId);
       if (!isMember) {
-        socket.emit('error_event', { message: 'No perteneces a este viaje' });
+        emitStandardError(socket, 'ERR-51-002', 'No fue posible conectarte al viaje. Intenta recargar la página.');
         return;
       }
 
@@ -191,7 +235,7 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al unirse a la room';
       console.error(`[socket.io] Error en join_room:`, message);
-      socket.emit('error_event', { message });
+      emitStandardError(socket, 'ERR-58-001', message);
     }
   });
 
@@ -202,8 +246,10 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
       if (!tripId) return;
 
       removePresence(socket, tripId, user.localUserId);
-      socket.leave(tripId);
-      console.log(`[socket.io] ${user.userName} salió de room: ${tripId}`);
+      // No se ejecuta socket.leave(tripId) porque el mismo socket puede tener
+      // otros consumidores activos (dashboard, panel derecho, chat) dentro del
+      // mismo viaje. Solo retiramos presencia visual de este consumidor.
+      console.log(`[socket.io] ${user.userName} salió de presencia de room: ${tripId}`);
 
       // Actualizar presencia para los clientes que quedan en la room
       emitPresenceUpdate(io, tripId);
@@ -254,7 +300,7 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al enviar mensaje';
       console.error('[socket.io] Error en chat_send_message:', message);
-      socket.emit('error_event', { message });
+      emitStandardError(socket, 'ERR-58-001', message);
       ack?.({ ok: false, error: message });
     }
   });
@@ -321,21 +367,21 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
       const { propuestaId, tripId } = payload;
 
       if (!propuestaId || !tripId) {
-        socket.emit('error_event', { message: 'propuestaId y tripId son requeridos' });
+        emitStandardError(socket, 'ERR-51-002', 'No fue posible conectarte al viaje. Intenta recargar la página.');
         return;
       }
 
       // Validar que el usuario pertenece a este viaje
       const isMember = await validateMembership(user.localUserId, tripId);
       if (!isMember) {
-        socket.emit('error_event', { message: 'No perteneces a este viaje' });
+        emitStandardError(socket, 'ERR-51-002', 'No fue posible conectarte al viaje. Intenta recargar la página.');
         return;
       }
 
       // Validar que la propuesta pertenece a este grupo
       const belongs = await LockService.validateProposalBelongsToGroup(propuestaId, tripId);
       if (!belongs) {
-        socket.emit('error_event', { message: 'La propuesta no pertenece a este viaje' });
+        emitStandardError(socket, 'ERR-59-001', 'Esta acción ya fue realizada por otro integrante.');
         return;
       }
 
@@ -411,12 +457,25 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
         clientId: payload.clientId ?? null,
       });
 
+      if ((message as any).groupId || (message as any).grupoId) {
+        const messageGroupId = String((message as any).groupId ?? (message as any).grupoId);
+        io.to(messageGroupId).emit('dashboard_updated', {
+          groupId: messageGroupId,
+          grupoId: messageGroupId,
+          tipo: 'subgrupo_chat_mensaje_creado',
+          entidadTipo: 'subgroup_chat_mensaje',
+          entidadId: (message as any).id,
+          metadata: { subgroupId },
+          createdAt: new Date().toISOString(),
+        });
+      }
+
       ack?.({ ok: true, message });
       console.log(`[socket.io] Mensaje de subgrupo enviado por ${user.userName} en subgroup:${subgroupId}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al enviar mensaje';
       console.error('[socket.io] Error en subgroup_chat_send_message:', message);
-      socket.emit('error_event', { message });
+      emitStandardError(socket, 'ERR-58-001', message);
       ack?.({ ok: false, error: message });
     }
   });
@@ -440,7 +499,7 @@ export const registerSocketHandlers = (io: SocketIOServer, socket: Socket): void
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al unirse a la room del subgrupo';
       console.error('[socket.io] Error en join_subgroup_room:', message);
-      socket.emit('error_event', { message });
+      emitStandardError(socket, 'ERR-58-001', message);
     }
   });
 

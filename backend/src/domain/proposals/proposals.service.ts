@@ -11,7 +11,7 @@ import {
 	UpdateCommentPayload,
 } from './proposals.entity';
 import * as NotificationsService from '../notifications/notifications.service';
-import { emitDashboardUpdated } from '../../infrastructure/sockets/socket.gateway';
+import { emitDashboardUpdated, emitProposalCommentChanged } from '../../infrastructure/sockets/socket.gateway';
 
 const isPresent = (value: unknown): boolean => value !== undefined;
 const dbText = (value: string | null | undefined, max = 190): string | null => {
@@ -1239,6 +1239,14 @@ export const createComment = async (
     metadata: { actorName, commentPreview: payload.contenido.trim().slice(0, 120) },
   });
 
+  emitProposalCommentChanged({
+    groupId,
+    proposalId,
+    action: 'created',
+    comment: enriched as Record<string, unknown>,
+    actorUsuarioId: Number(localUserId),
+  });
+
 	return enriched;
 };
 
@@ -1330,6 +1338,15 @@ export const updateComment = async (
     },
   });
 
+  emitProposalCommentChanged({
+    groupId,
+    proposalId,
+    action: 'updated',
+    comment: enriched as Record<string, unknown>,
+    commentId,
+    actorUsuarioId: Number(localUserId),
+  });
+
 	return enriched;
 };
 
@@ -1384,6 +1401,14 @@ export const deleteComment = async (
       actorUsuarioId: Number(localUserId),
       commentId: Number(commentId),
     },
+  });
+
+  emitProposalCommentChanged({
+    groupId,
+    proposalId,
+    action: 'deleted',
+    commentId,
+    actorUsuarioId: Number(localUserId),
   });
 
 	return { deleted: true, commentId };

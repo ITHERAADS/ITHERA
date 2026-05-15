@@ -967,6 +967,12 @@ export function ActivityProposalModal({
               <p className="mt-0.5 font-body text-xs text-gray500">
                 {selectedPlace.formattedAddress || 'Direccion no disponible'}
               </p>
+              {(selectedPlace.routeDistanceText || selectedPlace.routeDurationText) && (
+                <p className="mt-2 inline-flex rounded-full bg-white px-2.5 py-1 font-body text-[11px] font-semibold text-bluePrimary shadow-sm">
+                  A {selectedPlace.routeDistanceText ?? 'distancia no disponible'}
+                  {selectedPlace.routeDurationText ? ` · ${selectedPlace.routeDurationText}` : ''} desde {routeOriginLabel}
+                </p>
+              )}
               {selectedPlaceIsLongRoute && (
                 <div className="mt-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-red-800">
                   <span className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full bg-red-100 text-red-700">
@@ -1014,6 +1020,12 @@ export function ActivityProposalModal({
                         <p className="mt-0.5 line-clamp-2 font-body text-xs text-gray500">
                           {place.formattedAddress || 'Direccion no disponible'}
                         </p>
+                        {(place.routeDistanceText || place.routeDurationText) && (
+                          <p className="mt-1 font-body text-[11px] font-semibold text-bluePrimary">
+                            {place.routeDistanceText ?? 'Distancia no disponible'}
+                            {place.routeDurationText ? ` · ${place.routeDurationText}` : ''} desde {routeOriginLabel}
+                          </p>
+                        )}
                         {place.routeDurationSeconds != null && place.routeDurationSeconds > LONG_ROUTE_THRESHOLD_SECONDS && (
                           <p className="mt-1 flex items-center gap-1.5 font-body text-[11px] font-semibold text-red-700">
                             <span className="text-red-600">

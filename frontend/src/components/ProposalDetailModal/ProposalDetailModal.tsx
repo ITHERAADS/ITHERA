@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import type { Socket } from 'socket.io-client'
 import type { Activity as DayActivity } from '../ui/DayView'
 import { proposalsService, type ProposalComment } from '../../services/proposals'
 import { useAuth } from '../../context/useAuth'
@@ -107,11 +108,56 @@ export interface ProposalDetailModalProps {
   tripId: string
   onClose: () => void
   onAccept: () => void
+  socket?: Socket | null
+}
+
+
+type RealtimeCommentRaw = {
+  id?: string | number
+  id_comentario?: string | number
+  proposalId?: string | number
+  id_propuesta?: string | number
+  usuarioId?: string | number
+  id_usuario?: string | number
+  authorName?: string | null
+  nombre?: string | null
+  contenido?: string | null
+  createdAt?: string
+  created_at?: string
+  updatedAt?: string
+  updated_at?: string
+}
+
+type ProposalCommentSocketPayload = {
+  proposalId?: string | number
+  entidadId?: string | number
+  commentId?: string | number
+  comment?: RealtimeCommentRaw
+}
+
+function asRealtimeCommentRaw(value: unknown): RealtimeCommentRaw | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as RealtimeCommentRaw
+    : null
+}
+
+function normalizeRealtimeComment(raw: unknown): ProposalComment | null {
+  const record = asRealtimeCommentRaw(raw)
+  if (!record) return null
+  return {
+    id: String(record.id ?? record.id_comentario ?? ''),
+    proposalId: String(record.proposalId ?? record.id_propuesta ?? ''),
+    usuarioId: String(record.usuarioId ?? record.id_usuario ?? ''),
+    authorName: record.authorName ?? record.nombre ?? null,
+    contenido: String(record.contenido ?? ''),
+    createdAt: String(record.createdAt ?? record.created_at ?? new Date().toISOString()),
+    updatedAt: String(record.updatedAt ?? record.updated_at ?? new Date().toISOString()),
+  }
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ProposalDetailModal({ proposal, tripId, onClose, onAccept }: ProposalDetailModalProps) {
+export function ProposalDetailModal({ proposal, tripId, onClose, onAccept, socket }: ProposalDetailModalProps) {
   const { accessToken } = useAuth()
   const isConfirmed = proposal.status === 'confirmada'
 
@@ -134,6 +180,46 @@ export function ProposalDetailModal({ proposal, tripId, onClose, onAccept }: Pro
       .finally(() => setLoading(false))
   }, [proposal.proposalId, tripId, accessToken])
 
+
+
+  useEffect(() => {
+    if (!socket || !proposal.proposalId) return
+
+    const currentProposalId = String(proposal.proposalId)
+    const belongsToThisProposal = (payload: ProposalCommentSocketPayload) => String(payload.proposalId ?? payload.entidadId ?? '') === currentProposalId
+
+    const handleCreated = (payload: ProposalCommentSocketPayload) => {
+      if (!belongsToThisProposal(payload)) return
+      const comment = normalizeRealtimeComment(payload.comment)
+      if (!comment?.id) return
+      setComments((prev) => prev.some((item) => item.id === comment.id) ? prev : [...prev, comment])
+    }
+
+    const handleUpdated = (payload: ProposalCommentSocketPayload) => {
+      if (!belongsToThisProposal(payload)) return
+      const comment = normalizeRealtimeComment(payload.comment)
+      if (!comment?.id) return
+      setComments((prev) => prev.map((item) => item.id === comment.id ? comment : item))
+    }
+
+    const handleDeleted = (payload: ProposalCommentSocketPayload) => {
+      if (!belongsToThisProposal(payload)) return
+      const commentId = String(payload.commentId ?? '')
+      if (!commentId) return
+      setComments((prev) => prev.filter((item) => item.id !== commentId))
+    }
+
+    socket.on('proposal_comment_created', handleCreated)
+    socket.on('proposal_comment_updated', handleUpdated)
+    socket.on('proposal_comment_deleted', handleDeleted)
+
+    return () => {
+      socket.off('proposal_comment_created', handleCreated)
+      socket.off('proposal_comment_updated', handleUpdated)
+      socket.off('proposal_comment_deleted', handleDeleted)
+    }
+  }, [socket, proposal.proposalId])
+
   const heroImage =
     proposal.image ||
     'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=500&fit=crop'
@@ -151,7 +237,7 @@ export function ProposalDetailModal({ proposal, tripId, onClose, onAccept }: Pro
     try {
       setSending(true)
       const res = await proposalsService.addComment(tripId, proposal.proposalId, { contenido: text }, accessToken)
-      setComments((prev) => [...prev, res.comment])
+      setComments((prev) => prev.some((item) => item.id === res.comment.id) ? prev : [...prev, res.comment])
       setDraft('')
     } finally {
       setSending(false)

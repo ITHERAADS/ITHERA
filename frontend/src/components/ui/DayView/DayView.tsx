@@ -49,9 +49,9 @@ export interface DayViewProps {
   defaultExpanded?: boolean
   isExpanded?: boolean
   onSelect?: (dayNumber: number) => void
-  onAccept?: (activityId: string) => void
-  onReject?: (activityId: string) => void
-  onDelete?: (activityId: string) => void
+  onAccept?: (activityId: string) => void | Promise<void>
+  onReject?: (activityId: string) => void | Promise<void>
+  onDelete?: (activityId: string) => void | Promise<void>
   onEdit?: (activityId: string) => void
   onManageContext?: (activity: Activity) => void
   onOpenBudget?: () => void
@@ -99,6 +99,15 @@ function IconCheck({ size = 10 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <polyline points="20 6 9 17 4 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function IconSpinner({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" className="animate-spin">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3" />
+      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   )
 }
@@ -689,9 +698,9 @@ function ActivityCardPending({
   activity: Activity
   currentUserId?: string | number | null
   currentUserRole?: 'admin' | 'viajero' | string | null
-  onAccept?: (id: string) => void
-  onReject?: (id: string) => void
-  onDelete?: (id: string) => void
+  onAccept?: (id: string) => void | Promise<void>
+  onReject?: (id: string) => void | Promise<void>
+  onDelete?: (id: string) => void | Promise<void>
   onEdit?: (id: string) => void
   onManageContext?: (activity: Activity) => void
   onOpenBudget?: () => void
@@ -705,6 +714,18 @@ function ActivityCardPending({
   const canDelete = isOwner || isAdmin
   const myVote = activity.myVote ?? null
   const routeUrl = getGoogleMapsRouteUrl(activity)
+  const [busyAction, setBusyAction] = useState<'accept' | 'reject' | 'delete' | null>(null)
+  const isActionBusy = busyAction !== null
+
+  const runCardAction = async (action: 'accept' | 'reject' | 'delete', callback?: (id: string) => void | Promise<void>) => {
+    if (!callback || isActionBusy) return
+    try {
+      setBusyAction(action)
+      await Promise.resolve(callback(activity.id))
+    } finally {
+      setBusyAction(null)
+    }
+  }
 
   return (
     <div className="bg-white rounded-2xl border-2 border-dashed border-[#E2E8F0] overflow-hidden">
@@ -795,26 +816,31 @@ function ActivityCardPending({
           <div className="grid h-11 flex-1 grid-cols-2 overflow-hidden rounded-xl border border-[#D9E2F2] bg-white">
             <button
               type="button"
-              onClick={() => onAccept?.(activity.id)}
-              className={`inline-flex items-center justify-center gap-1.5 border-r border-[#D9E2F2] px-3 font-body text-sm font-bold transition-colors ${
+              onClick={() => void runCardAction('accept', onAccept)}
+              disabled={isActionBusy}
+              aria-busy={busyAction === 'accept'}
+              className={`inline-flex items-center justify-center gap-1.5 border-r border-[#D9E2F2] px-3 font-body text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 myVote === 'a_favor'
                   ? 'bg-[#16A34A] text-white hover:bg-[#15803D]'
                   : 'bg-[#ECFDF3] text-[#166534] hover:bg-[#DCFCE7]'
               }`}
             >
-              <IconCheck size={12} />
-              A favor
+              {busyAction === 'accept' ? <IconSpinner size={13} /> : <IconCheck size={12} />}
+              {busyAction === 'accept' ? 'Votando...' : 'A favor'}
             </button>
             <button
               type="button"
-              onClick={() => onReject?.(activity.id)}
-              className={`inline-flex items-center justify-center px-3 font-body text-sm font-bold transition-colors ${
+              onClick={() => void runCardAction('reject', onReject)}
+              disabled={isActionBusy}
+              aria-busy={busyAction === 'reject'}
+              className={`inline-flex items-center justify-center gap-1.5 px-3 font-body text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 myVote === 'en_contra'
                   ? 'bg-[#BE123C] text-white hover:bg-[#9F1239]'
                   : 'text-[#BE123C] hover:bg-[#FFF1F2]'
               }`}
             >
-              En contra
+              {busyAction === 'reject' && <IconSpinner size={13} />}
+              {busyAction === 'reject' ? 'Votando...' : 'En contra'}
             </button>
           </div>
 
@@ -823,18 +849,23 @@ function ActivityCardPending({
               {actionButtons}
               {canDelete && (
                 <button
-                  onClick={() => onDelete?.(activity.id)}
-                  className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
+                  type="button"
+                  onClick={() => void runCardAction('delete', onDelete)}
+                  disabled={isActionBusy}
+                  aria-busy={busyAction === 'delete'}
+                  className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Eliminar propuesta"
                 >
-                  <IconTrash size={14} />
+                  {busyAction === 'delete' ? <IconSpinner size={13} /> : <IconTrash size={14} />}
                 </button>
               )}
 
               {canEdit && (
                 <button
+                  type="button"
                   onClick={() => onEdit?.(activity.id)}
-                  className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0"
+                  disabled={isActionBusy}
+                  className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Editar propuesta"
                 >
                   <IconEdit size={14} />
@@ -910,9 +941,9 @@ function ActivitiesBody({
   activities: Activity[]
   currentUserId?: string | number | null
   currentUserRole?: 'admin' | 'viajero' | string | null
-  onAccept?: (id: string) => void
-  onReject?: (id: string) => void
-  onDelete?: (id: string) => void
+  onAccept?: (id: string) => void | Promise<void>
+  onReject?: (id: string) => void | Promise<void>
+  onDelete?: (id: string) => void | Promise<void>
   onAddActivity?: () => void
   onEdit?: (id: string) => void
   onManageContext?: (activity: Activity) => void

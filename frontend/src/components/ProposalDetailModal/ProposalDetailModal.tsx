@@ -60,6 +60,15 @@ function IconThumbDown() {
   )
 }
 
+function IconSpinner() {
+  return (
+    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3" />
+      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function IconCheck() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -361,16 +370,16 @@ export function ProposalDetailModal({ proposal, tripId, onClose, onAccept, socke
                 disabled={voting}
                 className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#35C56A] text-[#35C56A] py-2 font-body text-xs font-semibold hover:bg-[#35C56A]/10 transition-colors disabled:opacity-50"
               >
-                <IconThumbUp />
-                A favor
+                {voting ? <IconSpinner /> : <IconThumbUp />}
+                {voting ? 'Votando...' : 'A favor'}
               </button>
               <button
                 onClick={() => void handleVote('en_contra')}
                 disabled={voting}
                 className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#EF4444] text-[#EF4444] py-2 font-body text-xs font-semibold hover:bg-[#EF4444]/10 transition-colors disabled:opacity-50"
               >
-                <IconThumbDown />
-                En contra
+                {voting ? <IconSpinner /> : <IconThumbDown />}
+                {voting ? 'Votando...' : 'En contra'}
               </button>
             </div>
           )}

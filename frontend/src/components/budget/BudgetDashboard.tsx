@@ -839,7 +839,8 @@ export const BudgetDashboard: FC<Props> = ({
         documentOptions={linkOptions.documents}
         totalBudget={totalBudget}
         comprometido={comprometido}
-        onClose={() => { setShowModal(false); setEditingExpense(null) }}
+        isSaving={isSaving}
+        onClose={() => { if (!isSaving) { setShowModal(false); setEditingExpense(null) } }}
         onSave={(expense) => void handleSaveExpense(expense)}
       />
 

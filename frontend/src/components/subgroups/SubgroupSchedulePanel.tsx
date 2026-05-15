@@ -40,19 +40,23 @@ interface Props {
   onScheduleChanged?: (slots: SubgroupSlot[]) => void
 }
 
-type EnrichedPlaceResult = PlaceResult & {
+type RoutePreview = {
   routeDistanceText?: string | null
   routeDurationText?: string | null
   routeDistanceMeters?: number | null
   routeDurationSeconds?: number | null
 }
 
+type EnrichedPlaceResult = PlaceResult & RoutePreview
+
+type EnrichedPlaceAutocompleteResult = PlaceAutocompleteResult & RoutePreview
+
 type ActivityDraft = {
   query: string
   description: string
   timeValue: string
   results: EnrichedPlaceResult[]
-  suggestions: PlaceAutocompleteResult[]
+  suggestions: EnrichedPlaceAutocompleteResult[]
   showSuggestions: boolean
   suggestionsLoading: boolean
   selectedPlace: EnrichedPlaceResult | null
@@ -107,12 +111,29 @@ function parseGoogleDurationSeconds(raw?: string | null): number | null {
   return match ? Number(match[1]) : null
 }
 
+function InlineSpinner({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="animate-spin"
+    >
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3" />
+      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function ActionModal({
   open,
   title,
   subtitle,
   confirmLabel,
   confirmDisabled = false,
+  confirmLoading = false,
   panelClassName = 'max-w-lg',
   onClose,
   onConfirm,
@@ -123,15 +144,16 @@ function ActionModal({
   subtitle: string
   confirmLabel: string
   confirmDisabled?: boolean
+  confirmLoading?: boolean
   panelClassName?: string
   onClose: () => void
-  onConfirm: () => void
+  onConfirm: () => void | Promise<void>
   children: ReactNode
 }) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#0D0820]/70 px-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#0D0820]/70 px-4" onClick={confirmLoading ? undefined : onClose}>
       <div
         className={`max-h-[84vh] w-full overflow-y-auto rounded-2xl bg-white shadow-xl ${panelClassName}`}
         onClick={(event) => event.stopPropagation()}
@@ -145,17 +167,20 @@ function ActionModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-[#D7DEEA] px-4 py-2.5 text-sm font-semibold text-[#3D4A5C]"
+            disabled={confirmLoading}
+            className="rounded-xl border border-[#D7DEEA] px-4 py-2.5 text-sm font-semibold text-[#3D4A5C] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            disabled={confirmDisabled}
-            className="rounded-xl bg-[#1E6FD9] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            disabled={confirmDisabled || confirmLoading}
+            aria-busy={confirmLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1E6FD9] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {confirmLabel}
+            {confirmLoading && <InlineSpinner size={15} />}
+            {confirmLoading ? 'Guardando...' : confirmLabel}
           </button>
         </div>
       </div>
@@ -251,6 +276,18 @@ const isThirtyMinute = (value: string): boolean => {
   return d.getMinutes() % 30 === 0 && d.getSeconds() === 0
 }
 
+const isThirtyMinuteTime = (value: string): boolean => /^([01]\d|2[0-3]):(00|30)$/.test(value)
+
+const isClosedDatetimeLocalInput = (value: string): boolean => {
+  if (!value) return true
+  const time = value.includes('T') ? value.split('T')[1]?.slice(0, 5) : value.slice(11, 16)
+  return Boolean(time && isThirtyMinuteTime(time))
+}
+
+const setClosedDatetimeLocalValue = (value: string, setter: (nextValue: string) => void) => {
+  if (isClosedDatetimeLocalInput(value)) setter(value)
+}
+
 const memberName = (membership: SubgroupMembership) =>
   membership.user?.nombre || membership.usuarios?.nombre || membership.user?.email || membership.usuarios?.email || `Usuario ${membership.user_id}`
 
@@ -309,6 +346,7 @@ export function SubgroupSchedulePanel({
   const [myUserId, setMyUserId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [actionBusyKey, setActionBusyKey] = useState<string | null>(null)
 
   const [newSlotTitle, setNewSlotTitle] = useState('')
   const [newSlotStart, setNewSlotStart] = useState('')
@@ -512,8 +550,10 @@ export function SubgroupSchedulePanel({
     return () => { cancelled = true }
   }, [accessToken, group?.destino_latitud, group?.destino_longitud, group?.destino_photo_url, slots, subgroupPhotoByActivityId])
 
-  const runAction = async (action: () => Promise<void>) => {
+  const runAction = async (action: () => Promise<void>, busyKey = 'general') => {
+    if (actionBusyKey) return
     try {
+      setActionBusyKey(busyKey)
       setError(null)
       await action()
     } catch (err) {
@@ -525,6 +565,8 @@ export function SubgroupSchedulePanel({
         return
       }
       setError(err instanceof Error ? err.message : 'No se pudo completar la accion')
+    } finally {
+      setActionBusyKey(null)
     }
   }
 
@@ -926,17 +968,15 @@ export function SubgroupSchedulePanel({
     if (createdExpenseId == null) return
 
     if (draftActionModal?.activityId != null) {
-      await runAction(async () => {
-        await contextLinksService.create(
-          groupId!,
-          {
-            source: { type: 'subgroup_activity', id: String(draftActionModal.activityId) },
-            target: { type: 'expense', id: createdExpenseId },
-          },
-          accessToken!,
-        )
-        await Promise.all([loadContextLinks(), loadLinkOptions(true)])
-      })
+      await contextLinksService.create(
+        groupId!,
+        {
+          source: { type: 'subgroup_activity', id: String(draftActionModal.activityId) },
+          target: { type: 'expense', id: createdExpenseId },
+        },
+        accessToken!,
+      )
+      await Promise.all([loadContextLinks(), loadLinkOptions(true)])
     }
 
     closeDraftActionModal()
@@ -966,17 +1006,15 @@ export function SubgroupSchedulePanel({
     if (createdDocumentId == null) return
 
     if (draftActionModal?.activityId != null) {
-      await runAction(async () => {
-        await contextLinksService.create(
-          groupId!,
-          {
-            source: { type: 'subgroup_activity', id: String(draftActionModal.activityId) },
-            target: { type: 'document', id: createdDocumentId },
-          },
-          accessToken!,
-        )
-        await Promise.all([loadContextLinks(), loadLinkOptions(true)])
-      })
+      await contextLinksService.create(
+        groupId!,
+        {
+          source: { type: 'subgroup_activity', id: String(draftActionModal.activityId) },
+          target: { type: 'document', id: createdDocumentId },
+        },
+        accessToken!,
+      )
+      await Promise.all([loadContextLinks(), loadLinkOptions(true)])
     }
 
     closeDraftActionModal()
@@ -984,6 +1022,18 @@ export function SubgroupSchedulePanel({
 
   const minDateTime = tripStartDate ? `${tripStartDate}T00:00` : undefined
   const maxDateTime = tripEndDate ? `${tripEndDate}T23:30` : undefined
+
+  const slotTimeValidationMessage = useMemo(() => {
+    if (!slotModal || !newSlotStart || !newSlotEnd) return null
+    const start = new Date(newSlotStart)
+    const end = new Date(newSlotEnd)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'Ingresa un rango de fecha y hora valido.'
+    if (end <= start) return 'La hora de fin debe ser posterior a la hora de inicio.'
+    if (!isThirtyMinute(newSlotStart) || !isThirtyMinute(newSlotEnd)) return 'Usa horas cerradas: los minutos solo pueden ser 00 o 30.'
+    if (tripStartDate && newSlotStart.slice(0, 10) < tripStartDate) return `La hora de inicio no puede ser menor al inicio del viaje (${tripStartDate}).`
+    if (tripEndDate && newSlotEnd.slice(0, 10) > tripEndDate) return `La hora de fin no puede ser mayor al fin del viaje (${tripEndDate}).`
+    return null
+  }, [newSlotEnd, newSlotStart, slotModal, tripEndDate, tripStartDate])
 
   const onCreateSlot = async () => {
     if (!groupId || !accessToken || !newSlotTitle.trim() || !newSlotStart || !newSlotEnd) return
@@ -994,7 +1044,7 @@ export function SubgroupSchedulePanel({
       return
     }
     if (!isThirtyMinute(newSlotStart) || !isThirtyMinute(newSlotEnd)) {
-      setError('Las horas deben estar en multiplos de 30 minutos')
+      setError('Las horas deben ser cerradas: los minutos solo pueden ser 00 o 30')
       return
     }
     if (tripStartDate && newSlotStart.slice(0, 10) < tripStartDate) {
@@ -1017,7 +1067,7 @@ export function SubgroupSchedulePanel({
       setNewSlotEnd('')
       setSlotModal(null)
       await load()
-    })
+    }, 'slot')
   }
 
   const submitSlotModal = async () => {
@@ -1028,20 +1078,8 @@ export function SubgroupSchedulePanel({
 
     const start = new Date(newSlotStart)
     const end = new Date(newSlotEnd)
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
-      setError('Rango de fecha invalido para el horario')
-      return
-    }
-    if (!isThirtyMinute(newSlotStart) || !isThirtyMinute(newSlotEnd)) {
-      setError('Las horas deben estar en multiplos de 30 minutos')
-      return
-    }
-    if (tripStartDate && newSlotStart.slice(0, 10) < tripStartDate) {
-      setError(`La hora de inicio no puede ser menor al inicio del viaje (${tripStartDate})`)
-      return
-    }
-    if (tripEndDate && newSlotEnd.slice(0, 10) > tripEndDate) {
-      setError(`La hora de fin no puede ser mayor al fin del viaje (${tripEndDate})`)
+    if (slotTimeValidationMessage) {
+      setError(slotTimeValidationMessage)
       return
     }
 
@@ -1054,7 +1092,7 @@ export function SubgroupSchedulePanel({
         }, accessToken)
         setSlotModal(null)
         await load()
-      })
+      }, 'slot')
       return
     }
 
@@ -1105,6 +1143,10 @@ export function SubgroupSchedulePanel({
     }
     const title = selectedPlace.name || draft.query.trim()
     if (!title) return
+    if (!isThirtyMinuteTime(draft.timeValue)) {
+      setError('La hora estimada debe ser un multiplo exacto de 30 minutos (00 o 30).')
+      return
+    }
     const startsAt = new Date(`${slotDate}T${draft.timeValue}:00`)
     const slotStart = new Date(slot.starts_at)
     const slotEnd = new Date(slot.ends_at)
@@ -1242,7 +1284,7 @@ export function SubgroupSchedulePanel({
       setLongRouteConfirmation(null)
       setSubgroupModal(null)
       await load()
-    })
+    }, `subgroup-create:${slot.id}`)
   }
 
   const onSearchPlace = async (slotId: number) => {
@@ -1341,7 +1383,7 @@ export function SubgroupSchedulePanel({
     await runAction(async () => {
       await subgroupScheduleService.deleteSlot(groupId, slotId, accessToken)
       await load()
-    })
+    }, `slot-delete:${slotId}`)
   }
 
   const onJoin = async (slotId: number, subgroupId: number | null) => {
@@ -1349,7 +1391,7 @@ export function SubgroupSchedulePanel({
     await runAction(async () => {
       await subgroupScheduleService.joinSubgroup(groupId, slotId, subgroupId, accessToken)
       await load()
-    })
+    }, `join:${slotId}:${subgroupId ?? 'free'}`)
   }
 
   const onDeleteActivity = async (slotId: number, activityId: number) => {
@@ -1357,7 +1399,7 @@ export function SubgroupSchedulePanel({
     await runAction(async () => {
       await subgroupScheduleService.deleteSubgroupActivity(groupId, slotId, activityId, accessToken)
       await load()
-    })
+    }, `activity-delete:${slotId}:${activityId}`)
   }
 
   const submitSubgroupEdit = async () => {
@@ -1367,8 +1409,10 @@ export function SubgroupSchedulePanel({
       return
     }
 
-    const slot = slots.find((item) => item.id === subgroupModal.slotId)
-    const subgroup = slot?.subgroups.find((item) => item.id === subgroupModal.subgroupId)
+    const editingSlotId = subgroupModal.slotId
+    const editingSubgroupId = subgroupModal.subgroupId
+    const slot = slots.find((item) => item.id === editingSlotId)
+    const subgroup = slot?.subgroups.find((item) => item.id === editingSubgroupId)
     const details = subgroup ? primaryActivity(subgroup) : null
     const slotDate = slot ? toLocalInputValue(slot.starts_at).slice(0, 10) : ''
     const startsAt = slotDate ? new Date(`${slotDate}T${subgroupFormTime || '12:00'}:00`) : null
@@ -1384,12 +1428,12 @@ export function SubgroupSchedulePanel({
     }
 
     await runAction(async () => {
-      await subgroupScheduleService.updateSubgroup(groupId, subgroupModal.slotId, subgroupModal.subgroupId!, {
+      await subgroupScheduleService.updateSubgroup(groupId, editingSlotId, editingSubgroupId, {
         name: subgroupFormName.trim(),
       }, accessToken)
 
       if (details?.id != null) {
-        await subgroupScheduleService.updateSubgroupActivity(groupId, subgroupModal.slotId, details.id, {
+        await subgroupScheduleService.updateSubgroupActivity(groupId, editingSlotId, details.id, {
           title: subgroupFormTitle.trim() || subgroupFormName.trim(),
           description: subgroupFormDescription.trim() || null,
           location: subgroupFormLocation.trim() || null,
@@ -1399,7 +1443,7 @@ export function SubgroupSchedulePanel({
 
       setSubgroupModal(null)
       await load()
-    })
+    }, `subgroup-edit:${editingSlotId}:${editingSubgroupId}`)
   }
 
   const onDeleteSubgroup = async (slotId: number, subgroupId: number) => {
@@ -1408,11 +1452,14 @@ export function SubgroupSchedulePanel({
     await runAction(async () => {
       await subgroupScheduleService.deleteSubgroup(groupId, slotId, subgroupId, accessToken)
       await load()
-    })
+    }, `subgroup-delete:${slotId}:${subgroupId}`)
   }
 
   const modalSlotId = draftActionModal?.slotId ?? null
   const modalDraft = modalSlotId != null ? activityDraftBySlot[modalSlotId] : null
+  const slotModalSaving = actionBusyKey === 'slot'
+  const subgroupCreateSaving = subgroupModal?.mode === 'create' && actionBusyKey === `subgroup-create:${subgroupModal.slotId}`
+  const subgroupEditSaving = subgroupModal?.mode === 'edit' && actionBusyKey === `subgroup-edit:${subgroupModal.slotId}:${subgroupModal.subgroupId ?? 'new'}`
   const subgroupModalSlot = subgroupModal ? slots.find((slot) => slot.id === subgroupModal.slotId) ?? null : null
   const subgroupModalDraft =
     subgroupModal?.mode === 'create' && subgroupModalSlot
@@ -1457,8 +1504,29 @@ export function SubgroupSchedulePanel({
           longitude: routeOrigin?.lng,
           radius: PLACE_SEARCH_RADIUS_METERS,
         })
+        const rawSuggestions = response.data ?? []
+        const nextSuggestions: EnrichedPlaceAutocompleteResult[] = routeOrigin
+          ? await Promise.all(
+            rawSuggestions.slice(0, 6).map(async (suggestion) => {
+              try {
+                const detailResponse = await mapsService.getPlaceDetails(suggestion.placeId, accessToken)
+                const place = detailResponse.data
+                if (!place) return suggestion
+                const enrichedPlace = await enrichPlaceWithRoute(place)
+                return {
+                  ...suggestion,
+                  routeDistanceText: enrichedPlace.routeDistanceText ?? null,
+                  routeDurationText: enrichedPlace.routeDurationText ?? null,
+                  routeDistanceMeters: enrichedPlace.routeDistanceMeters ?? null,
+                  routeDurationSeconds: enrichedPlace.routeDurationSeconds ?? null,
+                }
+              } catch {
+                return suggestion
+              }
+            })
+          )
+          : rawSuggestions
         if (cancelled) return
-        const nextSuggestions = response.data ?? []
         setActivityDraft(slotId, {
           suggestions: nextSuggestions,
           showSuggestions: nextSuggestions.length > 0,
@@ -1478,6 +1546,7 @@ export function SubgroupSchedulePanel({
     accessToken,
     buildEmptyDraft,
     routeOrigin,
+    enrichPlaceWithRoute,
     setActivityDraft,
     subgroupModal?.mode,
     subgroupModal?.slotId,
@@ -1657,6 +1726,9 @@ export function SubgroupSchedulePanel({
             })
             const mySubgroupId = myMembership?.subgroup_id != null ? String(myMembership.subgroup_id) : null
             const mySubgroup = slot.subgroups.find((sg) => mySubgroupId != null && String(sg.id) === mySubgroupId)
+            const freeBusy = actionBusyKey === `join:${slot.id}:free`
+            const deleteSlotBusy = actionBusyKey === `slot-delete:${slot.id}`
+            const slotActionsBusy = actionBusyKey != null
 
             return (
               <section
@@ -1691,26 +1763,33 @@ export function SubgroupSchedulePanel({
                     <div className="flex flex-wrap items-center gap-3">
                       <button
                         type="button"
+                        disabled={slotActionsBusy}
+                        aria-busy={freeBusy}
                         onClick={() => void onJoin(slot.id, null)}
-                        className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-[#D7DEEA] bg-white px-5 text-sm font-semibold text-[#1E0A4E] transition hover:border-[#1E6FD9] hover:text-[#1E6FD9]"
+                        className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl border border-[#D7DEEA] bg-white px-5 text-sm font-semibold text-[#1E0A4E] transition hover:border-[#1E6FD9] hover:text-[#1E6FD9] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {myMembership?.subgroup_id ? 'Quedar libre' : 'Estoy libre'}
+                        {freeBusy && <InlineSpinner size={14} />}
+                        {freeBusy ? 'Guardando...' : (myMembership?.subgroup_id ? 'Quedar libre' : 'Estoy libre')}
                       </button>
                       {isAdmin && (
                         <>
                           <button
                             type="button"
+                            disabled={slotActionsBusy}
                             onClick={() => openEditSlotModal(slot)}
-                            className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-[#D7DEEA] bg-white px-5 text-sm font-semibold text-[#475569]"
+                            className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-[#D7DEEA] bg-white px-5 text-sm font-semibold text-[#475569] disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             Editar horario
                           </button>
                           <button
                             type="button"
+                            disabled={slotActionsBusy}
+                            aria-busy={deleteSlotBusy}
                             onClick={() => void onDeleteSlot(slot.id)}
-                            className="inline-flex min-h-[52px] items-center justify-center rounded-2xl border border-red-200 bg-[#FFF5F5] px-5 text-sm font-semibold text-red-600"
+                            className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-2xl border border-red-200 bg-[#FFF5F5] px-5 text-sm font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            Eliminar
+                            {deleteSlotBusy && <InlineSpinner size={14} />}
+                            {deleteSlotBusy ? 'Eliminando...' : 'Eliminar'}
                           </button>
                         </>
                       )}
@@ -1728,8 +1807,9 @@ export function SubgroupSchedulePanel({
                     </div>
                     <button
                       type="button"
+                      disabled={slotActionsBusy}
                       onClick={() => openCreateSubgroupModal(slot)}
-                      className="inline-flex items-center justify-center rounded-2xl bg-[#1E6FD9] px-4 py-3 text-sm font-semibold text-white"
+                      className="inline-flex items-center justify-center rounded-2xl bg-[#1E6FD9] px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isAdmin ? 'Agregar opcion' : 'Proponer opcion'}
                     </button>
@@ -1747,6 +1827,11 @@ export function SubgroupSchedulePanel({
                       {slot.subgroups.map((subgroup) => {
                         const canManageSubgroup = isAdmin || Number(subgroup.created_by) === Number(myUserId)
                         const isMine = mySubgroupId != null && String(mySubgroupId) === String(subgroup.id)
+                        const joinBusy = actionBusyKey === `join:${slot.id}:${subgroup.id}`
+                        const deleteSubgroupBusy = actionBusyKey === `subgroup-delete:${slot.id}:${subgroup.id}`
+                        const expenseOpenBusy = actionBusyKey === `expense-open:${slot.id}:${subgroup.id}`
+                        const documentOpenBusy = actionBusyKey === `document-open:${slot.id}:${subgroup.id}`
+                        const chatOpenBusy = actionBusyKey === `chat-open:${slot.id}:${subgroup.id}`
                         const details = primaryActivity(subgroup)
                         const linkedContext = getLinksForSubgroupActivity(details?.id)
                         const linkedExpenses = linkedContext.filter((entity) => entity.type === 'expense')
@@ -1758,13 +1843,22 @@ export function SubgroupSchedulePanel({
                         const openEditWithContext = () => openEditSubgroupModal(slot, subgroup)
                         const openExpenseAssociationModal = () => {
                           if (details?.id == null) return
+                          setActionBusyKey(`expense-open:${slot.id}:${subgroup.id}`)
                           setDraftExpenseTab('associate')
                           openDraftActionModal(slot.id, 'expense', details.id)
+                          window.setTimeout(() => setActionBusyKey((current) => (current === `expense-open:${slot.id}:${subgroup.id}` ? null : current)), 250)
                         }
                         const openDocumentAssociationModal = () => {
                           if (details?.id == null) return
+                          setActionBusyKey(`document-open:${slot.id}:${subgroup.id}`)
                           setDraftDocumentTab('associate')
                           openDraftActionModal(slot.id, 'document', details.id)
+                          window.setTimeout(() => setActionBusyKey((current) => (current === `document-open:${slot.id}:${subgroup.id}` ? null : current)), 250)
+                        }
+                        const openChatForSubgroup = () => {
+                          setActionBusyKey(`chat-open:${slot.id}:${subgroup.id}`)
+                          setChatSubgroup({ slotId: slot.id, subgroupId: subgroup.id, name: subgroup.name })
+                          window.setTimeout(() => setActionBusyKey((current) => (current === `chat-open:${slot.id}:${subgroup.id}` ? null : current)), 250)
                         }
 
                         return (
@@ -1812,10 +1906,13 @@ export function SubgroupSchedulePanel({
                                       </button>
                                       <button
                                         type="button"
+                                        disabled={slotActionsBusy}
+                                        aria-busy={deleteSubgroupBusy}
                                         onClick={() => void onDeleteSubgroup(slot.id, subgroup.id)}
-                                        className="rounded-full border border-white/30 bg-[#8B1E3F]/60 px-3 py-1.5 text-xs font-semibold"
+                                        className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-[#8B1E3F]/60 px-3 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                                       >
-                                        Eliminar
+                                        {deleteSubgroupBusy && <InlineSpinner size={12} />}
+                                        {deleteSubgroupBusy ? 'Eliminando...' : 'Eliminar'}
                                       </button>
                                     </div>
                                   )}
@@ -1838,12 +1935,15 @@ export function SubgroupSchedulePanel({
                                 <div className="flex flex-wrap items-center gap-3 pt-4">
                                   <button
                                     type="button"
+                                    disabled={slotActionsBusy}
+                                    aria-busy={joinBusy}
                                     onClick={() => void onJoin(slot.id, subgroup.id)}
-                                    className={`inline-flex min-h-[54px] items-center justify-center rounded-2xl px-5 text-sm font-semibold shadow-[0_14px_28px_rgba(15,23,42,0.18)] ${
+                                    className={`inline-flex min-h-[54px] items-center justify-center gap-2 rounded-2xl px-5 text-sm font-semibold shadow-[0_14px_28px_rgba(15,23,42,0.18)] disabled:cursor-not-allowed disabled:opacity-60 ${
                                       isMine ? 'bg-white text-[#1E0A4E]' : 'bg-[#1E6FD9] text-white'
                                     }`}
                                   >
-                                    {isMine ? 'Estoy aqui' : 'Unirme a este plan'}
+                                    {joinBusy && <InlineSpinner size={14} />}
+                                    {joinBusy ? 'Guardando...' : (isMine ? 'Estoy aqui' : 'Unirme a este plan')}
                                   </button>
                                   <div className="rounded-2xl border border-white/18 bg-white/10 px-4 py-3 text-sm text-white/88 backdrop-blur">
                                     {subgroup.members.length === 0
@@ -1870,24 +1970,33 @@ export function SubgroupSchedulePanel({
                               <div className="grid gap-2 sm:grid-cols-3">
                                 <button
                                   type="button"
+                                  disabled={slotActionsBusy}
+                                  aria-busy={expenseOpenBusy}
                                   onClick={details?.id != null ? openExpenseAssociationModal : openEditWithContext}
-                                  className="rounded-2xl border border-[#CFE0FF] bg-[#EEF4FF] px-4 py-3 text-sm font-semibold text-[#1E6FD9]"
+                                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#CFE0FF] bg-[#EEF4FF] px-4 py-3 text-sm font-semibold text-[#1E6FD9] disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  {linkedExpenses.length > 0 ? 'Elegir gasto' : 'Agregar gasto'}
+                                  {expenseOpenBusy && <InlineSpinner size={14} />}
+                                  {expenseOpenBusy ? 'Abriendo...' : (linkedExpenses.length > 0 ? 'Elegir gasto' : 'Agregar gasto')}
                                 </button>
                                 <button
                                   type="button"
+                                  disabled={slotActionsBusy}
+                                  aria-busy={documentOpenBusy}
                                   onClick={details?.id != null ? openDocumentAssociationModal : openEditWithContext}
-                                  className="rounded-2xl border border-[#D8C8FF] bg-[#F3EEFF] px-4 py-3 text-sm font-semibold text-[#6D45C0]"
+                                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#D8C8FF] bg-[#F3EEFF] px-4 py-3 text-sm font-semibold text-[#6D45C0] disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  {linkedDocuments.length > 0 ? 'Elegir comprobante' : 'Agregar comprobante'}
+                                  {documentOpenBusy && <InlineSpinner size={14} />}
+                                  {documentOpenBusy ? 'Abriendo...' : (linkedDocuments.length > 0 ? 'Elegir comprobante' : 'Agregar comprobante')}
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setChatSubgroup({ slotId: slot.id, subgroupId: subgroup.id, name: subgroup.name })}
-                                  className="rounded-2xl border border-[#B9F0CB] bg-[#ECFDF5] px-4 py-3 text-sm font-semibold text-[#0A8A3E]"
+                                  disabled={slotActionsBusy}
+                                  aria-busy={chatOpenBusy}
+                                  onClick={openChatForSubgroup}
+                                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#B9F0CB] bg-[#ECFDF5] px-4 py-3 text-sm font-semibold text-[#0A8A3E] disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  Abrir chat
+                                  {chatOpenBusy && <InlineSpinner size={14} />}
+                                  {chatOpenBusy ? 'Abriendo...' : 'Abrir chat'}
                                 </button>
                               </div>
 
@@ -1961,10 +2070,13 @@ export function SubgroupSchedulePanel({
                                         {(isAdmin || Number(activity.created_by) === Number(myUserId)) && (
                                           <button
                                             type="button"
+                                            disabled={slotActionsBusy}
+                                            aria-busy={actionBusyKey === `activity-delete:${slot.id}:${activity.id}`}
                                             onClick={() => void onDeleteActivity(slot.id, activity.id)}
-                                            className="text-xs font-semibold text-red-600"
+                                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
                                           >
-                                            Eliminar
+                                            {actionBusyKey === `activity-delete:${slot.id}:${activity.id}` && <InlineSpinner size={12} />}
+                                            {actionBusyKey === `activity-delete:${slot.id}:${activity.id}` ? 'Eliminando...' : 'Eliminar'}
                                           </button>
                                         )}
                                       </div>
@@ -2011,9 +2123,10 @@ export function SubgroupSchedulePanel({
         title={slotModal?.mode === 'edit' ? 'Editar horario' : 'Crear horario'}
         subtitle="Define el bloque de tiempo donde las personas podran separarse y elegir un plan."
         confirmLabel={slotModal?.mode === 'edit' ? 'Guardar horario' : 'Crear horario'}
-        confirmDisabled={!newSlotTitle.trim() || !newSlotStart || !newSlotEnd}
+        confirmDisabled={slotModalSaving || !newSlotTitle.trim() || !newSlotStart || !newSlotEnd || Boolean(slotTimeValidationMessage)}
+        confirmLoading={slotModalSaving}
         panelClassName="max-w-2xl"
-        onClose={closeSlotModal}
+        onClose={slotModalSaving ? () => {} : closeSlotModal}
         onConfirm={() => void submitSlotModal()}
       >
         <div className="grid gap-4 md:grid-cols-2">
@@ -2035,7 +2148,7 @@ export function SubgroupSchedulePanel({
               max={maxDateTime}
               step={1800}
               value={newSlotStart}
-              onChange={(event) => setNewSlotStart(event.target.value)}
+              onChange={(event) => setClosedDatetimeLocalValue(event.target.value, setNewSlotStart)}
             />
           </label>
           <label className="grid gap-2">
@@ -2047,9 +2160,17 @@ export function SubgroupSchedulePanel({
               max={maxDateTime}
               step={1800}
               value={newSlotEnd}
-              onChange={(event) => setNewSlotEnd(event.target.value)}
+              onChange={(event) => setClosedDatetimeLocalValue(event.target.value, setNewSlotEnd)}
             />
           </label>
+          {slotTimeValidationMessage && (
+            <div className="md:col-span-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {slotTimeValidationMessage}
+            </div>
+          )}
+          <p className="md:col-span-2 text-xs text-[#64748B]">
+            Por consistencia del itinerario, los horarios solo aceptan horas cerradas: minutos 00 o 30, y deben quedar dentro de las fechas del viaje.
+          </p>
         </div>
       </ActionModal>
 
@@ -2058,10 +2179,13 @@ export function SubgroupSchedulePanel({
         title={subgroupModalSlot ? `Agregar opcion para ${subgroupModalSlot.title}` : 'Agregar opcion'}
         subtitle="Busca un lugar, define una hora aproximada y agrega contexto si quieres dejar listo el plan."
         confirmLabel="Crear opcion"
-        confirmDisabled={!subgroupModalDraft?.selectedPlace}
+        confirmDisabled={subgroupCreateSaving || !subgroupModalDraft?.selectedPlace}
+        confirmLoading={subgroupCreateSaving}
         panelClassName="max-w-4xl"
-        onClose={closeSubgroupModal}
-        onConfirm={() => subgroupModalSlot && void onCreateSubgroup(subgroupModalSlot)}
+        onClose={subgroupCreateSaving ? () => {} : closeSubgroupModal}
+        onConfirm={() => {
+          if (subgroupModalSlot) void onCreateSubgroup(subgroupModalSlot)
+        }}
       >
         {subgroupModalSlot && subgroupModalDraft && (
           <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
@@ -2132,6 +2256,15 @@ export function SubgroupSchedulePanel({
                           <p className="mt-0.5 text-xs text-[#64748B]">
                             {suggestion.secondaryText || suggestion.description}
                           </p>
+                          {(suggestion.routeDistanceText || suggestion.routeDurationText) && (
+                            <p className="mt-2 inline-flex rounded-full bg-[#EEF4FF] px-2.5 py-1 text-[11px] font-semibold text-[#1E6FD9]">
+                              {suggestion.routeDistanceText ?? 'Distancia no disponible'}
+                              {suggestion.routeDurationText ? ` · ${suggestion.routeDurationText}` : ''} desde {routeOriginLabel}
+                            </p>
+                          )}
+                          {suggestion.routeDurationSeconds != null && suggestion.routeDurationSeconds > LONG_ROUTE_THRESHOLD_SECONDS && (
+                            <p className="mt-1 text-[11px] font-semibold text-red-700">Traslado largo: mas de 1 hora</p>
+                          )}
                         </button>
                       ))}
                     </div>
@@ -2179,11 +2312,18 @@ export function SubgroupSchedulePanel({
                     max={subgroupCreateUsesSingleDayWindow ? subgroupCreateTimeMax : undefined}
                     step={1800}
                     value={subgroupModalDraft.timeValue}
-                    onChange={(event) => setActivityDraft(subgroupModalSlot.id, { timeValue: event.target.value })}
+                    onChange={(event) => {
+                      setActivityDraft(subgroupModalSlot.id, { timeValue: event.target.value })
+                      if (event.target.value && !isThirtyMinuteTime(event.target.value)) {
+                        setError('La hora estimada debe estar en intervalos de 30 minutos exactos.')
+                      } else {
+                        setError(null)
+                      }
+                    }}
                   />
                   {subgroupCreateUsesSingleDayWindow && subgroupCreateTimeMin && subgroupCreateTimeMax && (
                     <p className="text-xs text-[#64748B]">
-                      Elige una hora entre {subgroupCreateTimeMin} y {subgroupCreateTimeMax} para este bloque.
+                      Elige una hora entre {subgroupCreateTimeMin} y {subgroupCreateTimeMax} para este bloque, usando minutos 00 o 30.
                     </p>
                   )}
                 </label>
@@ -2347,9 +2487,10 @@ export function SubgroupSchedulePanel({
         title="Editar subgrupo"
         subtitle="Ajusta nombre, lugar, descripcion y hora estimada del plan."
         confirmLabel="Guardar cambios"
-        confirmDisabled={!subgroupFormName.trim()}
+        confirmDisabled={subgroupEditSaving || !subgroupFormName.trim()}
+        confirmLoading={subgroupEditSaving}
         panelClassName="max-w-3xl"
-        onClose={closeSubgroupModal}
+        onClose={subgroupEditSaving ? () => {} : closeSubgroupModal}
         onConfirm={() => void submitSubgroupEdit()}
       >
         <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
@@ -2466,6 +2607,7 @@ export function SubgroupSchedulePanel({
           : 'Relaciona un gasto existente o crea uno nuevo, por ejemplo taxi, entradas o comida.'
       }
       confirmLabel={draftExpenseTab === 'associate' ? 'Guardar seleccion' : 'Guardar gasto'}
+      confirmLoading={actionBusyKey === 'draft-expense'}
       onClose={closeDraftActionModal}
       onConfirm={() => {
         if (draftExpenseTab === 'associate') {
@@ -2478,18 +2620,21 @@ export function SubgroupSchedulePanel({
               )
               await loadContextLinks()
               closeDraftActionModal()
-            })
+            }, 'draft-expense')
           } else {
             closeDraftActionModal()
           }
         } else if (modalSlotId != null) {
-          void confirmDraftExpense(modalSlotId)
+          void runAction(async () => {
+            await confirmDraftExpense(modalSlotId)
+          }, 'draft-expense')
         }
       }}
     >
       <div className="mb-4 inline-flex rounded-lg border border-[#D7DEEA] bg-[#F8FAFC] p-1">
         <button
           type="button"
+          disabled={actionBusyKey === 'draft-expense'}
           onClick={() => setDraftExpenseTab('associate')}
           className={`rounded-md px-3 py-1.5 text-sm font-semibold ${draftExpenseTab === 'associate' ? 'bg-[#1E6FD9] text-white' : 'text-[#475569]'}`}
         >
@@ -2497,6 +2642,7 @@ export function SubgroupSchedulePanel({
         </button>
         <button
           type="button"
+          disabled={actionBusyKey === 'draft-expense'}
           onClick={() => setDraftExpenseTab('create')}
           className={`rounded-md px-3 py-1.5 text-sm font-semibold ${draftExpenseTab === 'create' ? 'bg-[#1E6FD9] text-white' : 'text-[#475569]'}`}
         >
@@ -2570,6 +2716,7 @@ export function SubgroupSchedulePanel({
           : 'Relaciona un comprobante existente o sube uno nuevo, por ejemplo ticket, reservacion o recibo.'
       }
       confirmLabel={draftDocumentTab === 'associate' ? 'Guardar seleccion' : 'Guardar documento'}
+      confirmLoading={actionBusyKey === 'draft-document'}
       onClose={closeDraftActionModal}
       onConfirm={() => {
         if (draftDocumentTab === 'associate') {
@@ -2582,18 +2729,21 @@ export function SubgroupSchedulePanel({
               )
               await loadContextLinks()
               closeDraftActionModal()
-            })
+            }, 'draft-document')
           } else {
             closeDraftActionModal()
           }
         } else if (modalSlotId != null) {
-          void confirmDraftDocument(modalSlotId)
+          void runAction(async () => {
+            await confirmDraftDocument(modalSlotId)
+          }, 'draft-document')
         }
       }}
     >
       <div className="mb-4 inline-flex rounded-lg border border-[#D7DEEA] bg-[#F8FAFC] p-1">
         <button
           type="button"
+          disabled={actionBusyKey === 'draft-document'}
           onClick={() => setDraftDocumentTab('associate')}
           className={`rounded-md px-3 py-1.5 text-sm font-semibold ${draftDocumentTab === 'associate' ? 'bg-[#7A4FD6] text-white' : 'text-[#475569]'}`}
         >
@@ -2601,6 +2751,7 @@ export function SubgroupSchedulePanel({
         </button>
         <button
           type="button"
+          disabled={actionBusyKey === 'draft-document'}
           onClick={() => setDraftDocumentTab('create')}
           className={`rounded-md px-3 py-1.5 text-sm font-semibold ${draftDocumentTab === 'create' ? 'bg-[#7A4FD6] text-white' : 'text-[#475569]'}`}
         >

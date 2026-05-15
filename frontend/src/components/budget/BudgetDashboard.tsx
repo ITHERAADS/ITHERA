@@ -52,7 +52,7 @@ interface Props {
 }
 
 const CATEGORY_LABELS: Record<Expense['categoria'], string> = {
-  transporte: 'Vuelos',
+  transporte: 'Transporte',
   hospedaje: 'Hospedaje',
   actividad: 'Actividades',
   comida: 'Comida',
@@ -80,6 +80,108 @@ function formatMXN(n: number): string {
     currency: 'MXN',
     maximumFractionDigits: 0,
   }).format(n)
+}
+
+function buildReceiptPdfDocument(data: {
+  folio: string
+  fecha: string
+  viaje: string
+  acreedor: string
+  deudor: string
+  monto: string
+}): string {
+  const esc = (value: string) => value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+  const lines = [
+    'BT',
+    // Header text
+    '/F1 34 Tf',
+    '1 1 1 rg',
+    '72 770 Td',
+    '(RECIBO DE COBRO) Tj',
+    '/F1 13 Tf',
+    '0 -24 Td (ITHERA - Comprobante financiero) Tj',
+    // Body labels/values
+    '/F1 12 Tf',
+    '0.16 0.22 0.36 rg',
+    '0 -70 Td (Folio) Tj',
+    '240 0 Td (Fecha de emision) Tj',
+    '-240 -20 Td',
+    '/F1 18 Tf',
+    `(${esc(data.folio)}) Tj`,
+    '240 0 Td',
+    `(${esc(data.fecha)}) Tj`,
+    '/F1 12 Tf',
+    '-240 -52 Td (Viaje) Tj',
+    '0 -20 Td',
+    '/F1 18 Tf',
+    `(${esc(data.viaje)}) Tj`,
+    '/F1 12 Tf',
+    '0 -52 Td (Acreedor \\(cobra\\)) Tj',
+    '0 -20 Td',
+    '/F1 18 Tf',
+    `(${esc(data.acreedor)}) Tj`,
+    '/F1 12 Tf',
+    '0 -52 Td (Deudor) Tj',
+    '0 -20 Td',
+    '/F1 18 Tf',
+    `(${esc(data.deudor)}) Tj`,
+    '/F1 12 Tf',
+    '0 -52 Td (Monto) Tj',
+    '0 -20 Td',
+    '/F1 22 Tf',
+    '0.12 0.44 0.86 rg',
+    `(${esc(data.monto)}) Tj`,
+    '/F1 11 Tf',
+    '0.32 0.40 0.54 rg',
+    '0 -42 Td (Snapshot inmutable del estado de deuda al momento de emision.) Tj',
+    'ET',
+  ].join('\n')
+
+  const draw = [
+    // Header background
+    '0.12 0.04 0.36 rg',
+    '40 740 515 90 re',
+    'f',
+    // Main card
+    '0.96 0.96 0.99 rg',
+    '72 250 451 480 re',
+    'f',
+    // Card border
+    '0.82 0.85 0.93 RG',
+    '1 w',
+    '72 250 451 480 re',
+    'S',
+    // Horizontal separators
+    '0.86 0.89 0.95 RG',
+    '0.8 w',
+    '92 586 m 503 586 l S',
+    '92 512 m 503 512 l S',
+    '92 438 m 503 438 l S',
+    '92 364 m 503 364 l S',
+  ].join('\n')
+
+  const contentStream = `${draw}\n${lines}`
+  const objects = [
+    '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+    '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
+    '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj',
+    '4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
+    `5 0 obj << /Length ${contentStream.length} >> stream\n${contentStream}\nendstream endobj`,
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = [0]
+  for (const obj of objects) {
+    offsets.push(pdf.length)
+    pdf += `${obj}\n`
+  }
+  const xrefStart = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n`
+  pdf += '0000000000 65535 f \n'
+  for (let i = 1; i <= objects.length; i++) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`
+  }
+  pdf += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
+  return pdf
 }
 
 function categoryColor(categoria: Expense['categoria']): string {
@@ -635,8 +737,78 @@ export const BudgetDashboard: FC<Props> = ({
           setIsSaving(true)
           setError(null)
           try {
-            const blob = new Blob([payload.receiptText], { type: 'text/plain;charset=utf-8' })
-            const file = new File([blob], payload.fileName, { type: 'text/plain' })
+            const apiBase = String(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
+            const apiRoots = Array.from(new Set([
+              apiBase,
+              apiBase.endsWith('/groups') ? apiBase.slice(0, -'/groups'.length) : apiBase,
+            ])).filter(Boolean)
+
+            const requestPayload = {
+              folio: payload.folio,
+              tripLabel: String(groupId),
+              issuedAt: new Date().toLocaleString('es-MX'),
+              creditor: payload.creditor_name || payload.creditor_user_id,
+              debtor: payload.debtor_name || payload.debtor_user_id,
+              amount: formatMXN(payload.amount),
+            }
+
+            let receiptBlob: Blob | null = null
+            for (const root of apiRoots) {
+              const endpoints = [
+                `${root}/groups/${groupId}/settlements/receipt-pdf`,
+                `${root}/budget/${groupId}/settlements/receipt-pdf`,
+              ]
+              for (const endpoint of endpoints) {
+                const response = await fetch(endpoint, {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(requestPayload),
+                })
+                if (response.ok) {
+                  receiptBlob = await response.blob()
+                  break
+                }
+              }
+              if (receiptBlob) break
+            }
+
+            if (!receiptBlob) {
+              const fallbackPdf = buildReceiptPdfDocument({
+                folio: payload.folio,
+                fecha: requestPayload.issuedAt,
+                viaje: requestPayload.tripLabel,
+                acreedor: requestPayload.creditor,
+                deudor: requestPayload.debtor,
+                monto: requestPayload.amount,
+              })
+              receiptBlob = new Blob([fallbackPdf], { type: 'application/pdf' })
+            }
+
+            const previewBlob = receiptBlob
+            const previewUrl = URL.createObjectURL(previewBlob)
+            const previewWindow = window.open(previewUrl, '_blank')
+            window.setTimeout(() => URL.revokeObjectURL(previewUrl), 120000)
+            if (!previewWindow) {
+              throw new Error('No se pudo abrir la vista previa del recibo. Revisa el bloqueador de ventanas.')
+            }
+
+            if (!payload.save_to_vault) return
+
+            const existingDocs = await documentsService.list(groupId, accessToken)
+            const duplicated = existingDocs.find((doc) =>
+              String(doc.metadata?.immutable_kind ?? '') === 'recibo_cobro' &&
+              String(doc.metadata?.receipt_debtor_user_id ?? '') === String(payload.debtor_user_id) &&
+              String(doc.metadata?.receipt_creditor_user_id ?? '') === String(payload.creditor_user_id)
+            )
+            if (duplicated) {
+              throw new Error('Este recibo ya fue generado y ya esta en la boveda de documentos.')
+            }
+
+            const pdfName = payload.fileName.replace(/\.txt$/i, '.pdf')
+            const file = new File([receiptBlob], pdfName, { type: 'application/pdf' })
             await documentsService.upload(
               groupId,
               file,
@@ -644,6 +816,9 @@ export const BudgetDashboard: FC<Props> = ({
               {
                 immutable: true,
                 immutable_kind: 'recibo_cobro',
+                receipt_debtor_user_id: payload.debtor_user_id,
+                receipt_creditor_user_id: payload.creditor_user_id,
+                receipt_folio: payload.folio,
                 linked_entity_type: 'otro',
                 person_reference: payload.debtor_user_id,
                 person_references: [payload.creditor_user_id, payload.debtor_user_id],

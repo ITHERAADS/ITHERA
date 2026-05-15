@@ -13,6 +13,7 @@ import {
   updateBudget,
   updateExpense,
 } from '../domain/budget/budget.service';
+import { generateCollectionReceiptPdf } from '../domain/checkout/pdf.service';
 
 const router = Router({ mergeParams: true });
 
@@ -164,6 +165,39 @@ const getGroupSettlements = async (req: Request, res: Response) => {
   }
 };
 
+const postReceiptPdf = async (req: Request, res: Response) => {
+  try {
+    const groupId = requireGroupId(req, res);
+    if (!groupId) return;
+    await getBudgetDashboard(req.user!.id, groupId);
+
+    const folio = String(req.body?.folio ?? '').trim();
+    const tripLabel = String(req.body?.tripLabel ?? `Viaje ${groupId}`).trim();
+    const issuedAt = String(req.body?.issuedAt ?? new Date().toLocaleString('es-MX')).trim();
+    const creditor = String(req.body?.creditor ?? '').trim();
+    const debtor = String(req.body?.debtor ?? '').trim();
+    const amount = String(req.body?.amount ?? '').trim();
+    if (!folio || !creditor || !debtor || !amount) {
+      return res.status(400).json({ ok: false, error: 'folio, creditor, debtor y amount son requeridos' });
+    }
+
+    const pdf = await generateCollectionReceiptPdf({
+      folio,
+      tripLabel,
+      issuedAt,
+      creditor,
+      debtor,
+      amount,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="recibo_${folio}.pdf"`);
+    res.status(200).send(pdf);
+  } catch (err) {
+    handleError(res, err, 'Error al generar recibo PDF');
+  }
+};
+
 router.get('/budget', requireAuth, getDashboard);
 router.patch('/budget', requireAuth, patchBudget);
 router.get('/expenses', requireAuth, getDashboard);
@@ -188,5 +222,6 @@ router.patch('/:groupId/settlements/payments/:paymentId', requireAuth, patchPend
 router.delete('/:groupId/settlements/payments/:paymentId', requireAuth, removePendingPayment);
 router.get('/:groupId/balances', requireAuth, getGroupBalances);
 router.get('/:groupId/settlements', requireAuth, getGroupSettlements);
+router.post('/:groupId/settlements/receipt-pdf', requireAuth, postReceiptPdf);
 
 export default router;

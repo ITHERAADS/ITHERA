@@ -34,6 +34,9 @@ export interface DocumentMetadataInput {
   notes?: string | null
   immutable?: boolean
   immutable_kind?: string | null
+  receipt_debtor_user_id?: string | null
+  receipt_creditor_user_id?: string | null
+  receipt_folio?: string | null
 }
 
 const authHeaders = (token?: string): Record<string, string> => (
@@ -127,6 +130,9 @@ export const documentsService = {
     if (metadata.notes) formData.append('notes', metadata.notes)
     if (metadata.immutable != null) formData.append('immutable', String(metadata.immutable))
     if (metadata.immutable_kind) formData.append('immutable_kind', metadata.immutable_kind)
+    if (metadata.receipt_debtor_user_id) formData.append('receipt_debtor_user_id', metadata.receipt_debtor_user_id)
+    if (metadata.receipt_creditor_user_id) formData.append('receipt_creditor_user_id', metadata.receipt_creditor_user_id)
+    if (metadata.receipt_folio) formData.append('receipt_folio', metadata.receipt_folio)
 
     const endpoints = endpointsForTrip(tripId)
     const roots = resolveApiRoots()

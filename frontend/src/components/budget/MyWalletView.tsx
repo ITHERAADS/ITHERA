@@ -35,15 +35,19 @@ interface Props {
   onDeleteSentPayment?: (paymentId: string) => Promise<void>
   onGenerateReceipt?: (payload: {
     debtor_user_id: string
+    debtor_name: string
     creditor_user_id: string
+    creditor_name: string
     amount: number
     folio: string
     fileName: string
     receiptText: string
+    save_to_vault: boolean
   }) => Promise<void>
 }
 
 const formatMXN = (n: number): string => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(n)
+const round2 = (n: number): number => Math.round(n * 100) / 100
 const paymentStatusLabel: Record<BudgetPaymentHistoryItem['status'], string> = { pendiente_validacion: 'Pendiente de validacion', confirmado: 'Confirmado', rechazado: 'Rechazado' }
 
 export const MyWalletView: FC<Props> = ({
@@ -65,6 +69,8 @@ export const MyWalletView: FC<Props> = ({
   const [exportingPdf, setExportingPdf] = useState(false)
   const [reviewBusyId, setReviewBusyId] = useState<string | null>(null)
   const [receiptBusyPairId, setReceiptBusyPairId] = useState<string | null>(null)
+  const [receiptDonePairIds, setReceiptDonePairIds] = useState<Set<string>>(new Set())
+  const [receiptModalEntry, setReceiptModalEntry] = useState<WalletEntry | null>(null)
   const [historialOpen, setHistorialOpen] = useState(false)
   const [rejectReasonByPayment, setRejectReasonByPayment] = useState<Record<string, string>>({})
 
@@ -96,6 +102,55 @@ export const MyWalletView: FC<Props> = ({
   const totalOweMe = meDeben.reduce((s, i) => s + i.monto, 0)
   const totalIOwe = leDebo.reduce((s, i) => s + i.monto, 0)
   const net = totalOweMe - totalIOwe
+  const projectedSettlements = useMemo(() => {
+    const pairMap = new Map<string, number>()
+    for (const s of settlements) {
+      pairMap.set(`${s.from}->${s.to}`, Number(s.amount))
+    }
+
+    const pendingForProjection = paymentHistory.filter((p) =>
+      p.status === 'pendiente_validacion' &&
+      (String(p.from) === String(currentUserId) || String(p.to) === String(currentUserId))
+    )
+
+    const applyDelta = (from: string, to: string, amount: number) => {
+      const forwardKey = `${from}->${to}`
+      const reverseKey = `${to}->${from}`
+      const forward = pairMap.get(forwardKey) ?? 0
+      const reverse = pairMap.get(reverseKey) ?? 0
+      if (forward > 0) {
+        const nextForward = forward - amount
+        if (nextForward > 0.01) {
+          pairMap.set(forwardKey, nextForward)
+        } else if (nextForward < -0.01) {
+          pairMap.delete(forwardKey)
+          pairMap.set(reverseKey, round2(reverse + Math.abs(nextForward)))
+        } else {
+          pairMap.delete(forwardKey)
+        }
+        return
+      }
+      pairMap.set(reverseKey, round2(reverse + amount))
+    }
+
+    for (const p of pendingForProjection) {
+      applyDelta(String(p.from), String(p.to), Number(p.amount))
+    }
+
+    return Array.from(pairMap.entries())
+      .map(([key, amount]) => {
+        const [from, to] = key.split('->')
+        return { from, to, amount: round2(amount) }
+      })
+      .filter((item) => item.amount > 0.01)
+  }, [settlements, paymentHistory, currentUserId])
+
+  const projectedMeDebenTotal = projectedSettlements
+    .filter((s) => String(s.to) === String(currentUserId))
+    .reduce((sum, s) => sum + s.amount, 0)
+  const projectedYoDeboTotal = projectedSettlements
+    .filter((s) => String(s.from) === String(currentUserId))
+    .reduce((sum, s) => sum + s.amount, 0)
   const summaryText = useMemo(() => {
     const lines: string[] = []
     lines.push('Resumen de liquidacion')
@@ -306,6 +361,14 @@ export const MyWalletView: FC<Props> = ({
             <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2"><p className="text-xs text-[#991B1B]">Tu debes</p><p className="text-lg font-bold text-[#DC2626]">{formatMXN(totalIOwe)}</p></div>
             <div className="rounded-xl border border-[#DBEAFE] bg-[#EFF6FF] px-3 py-2"><p className="text-xs text-[#1E40AF]">Balance neto</p><p className="text-lg font-bold text-[#1D4ED8]">{formatMXN(net)}</p></div>
           </div>
+          {sentByMe.some((p) => p.status === 'pendiente_validacion') && (
+            <div className="mt-3 rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] px-3 py-2">
+              <p className="text-xs font-semibold text-[#1E40AF]">Proyeccion si confirman tus pagos pendientes</p>
+              <p className="text-xs text-[#334155]">
+                Te deberian: <b>{formatMXN(projectedMeDebenTotal)}</b> · Tu deberias: <b>{formatMXN(projectedYoDeboTotal)}</b>
+              </p>
+            </div>
+          )}
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-[#E2E8F0] p-3">
               <p className="mb-2 text-sm font-semibold">Te deben</p>
@@ -317,41 +380,11 @@ export const MyWalletView: FC<Props> = ({
                   </div>
                   <div className="mt-2">
                     <button
-                      onClick={async () => {
-                        const now = new Date()
-                        const folio = `RC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${now.getTime().toString().slice(-6)}`
-                        const creditorName = nameById.get(String(e.toUserId)) ?? `Usuario ${e.toUserId}`
-                        const debtorName = nameById.get(String(e.fromUserId)) ?? `Usuario ${e.fromUserId}`
-                        const receiptText = [
-                          'RECIBO DE COBRO',
-                          `Folio: ${folio}`,
-                          `Fecha de emision: ${now.toLocaleString('es-MX')}`,
-                          `Acreedor: ${creditorName} (ID: ${e.toUserId})`,
-                          `Deudor: ${debtorName} (ID: ${e.fromUserId})`,
-                          `Monto: ${formatMXN(e.monto)}`,
-                          '',
-                          'Este recibo es un snapshot inmutable generado al momento de su emision.',
-                        ].join('\n')
-                        try {
-                          setReceiptBusyPairId(e.pairId)
-                          await onGenerateReceipt?.({
-                            debtor_user_id: e.fromUserId,
-                            creditor_user_id: e.toUserId,
-                            amount: e.monto,
-                            folio,
-                            fileName: `recibo_cobro_${folio}.txt`,
-                            receiptText,
-                          })
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : 'No se pudo generar el recibo.')
-                        } finally {
-                          setReceiptBusyPairId(null)
-                        }
-                      }}
+                      onClick={() => setReceiptModalEntry(e)}
                       disabled={isReadOnly || receiptBusyPairId === e.pairId}
                       className="rounded-lg border border-[#15803D] px-3 py-1 text-xs font-semibold text-[#15803D]"
                     >
-                      {receiptBusyPairId === e.pairId ? 'Generando...' : 'Generar recibo'}
+                      {receiptBusyPairId === e.pairId ? 'Generando...' : receiptDonePairIds.has(e.pairId) ? 'Ya en boveda' : 'Generar recibo'}
                     </button>
                   </div>
                 </div>
@@ -517,6 +550,108 @@ export const MyWalletView: FC<Props> = ({
                 } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo actualizar') } finally { setBusyId(null) }
               }} disabled={isReadOnly || busyId === `edit-${editingPayment.id}`} className="rounded-lg bg-[#1E6FD9] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60">
                 {busyId === `edit-${editingPayment.id}` ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {receiptModalEntry && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-4">
+            <h3 className="mb-2 text-base font-bold">Generar recibo de cobro</h3>
+            <p className="text-sm text-[#475569]">
+              Puedes abrir la vista previa del recibo y decidir si tambien quieres guardarlo en la boveda.
+            </p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                onClick={() => setReceiptModalEntry(null)}
+                className="rounded-lg border border-[#CBD5E1] px-3 py-1.5 text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  const e = receiptModalEntry
+                  const now = new Date()
+                  const folio = `RC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${now.getTime().toString().slice(-6)}`
+                  const creditorName = nameById.get(String(e.toUserId)) ?? `Usuario ${e.toUserId}`
+                  const debtorName = nameById.get(String(e.fromUserId)) ?? `Usuario ${e.fromUserId}`
+                  const receiptText = [
+                    'RECIBO DE COBRO',
+                    `Folio: ${folio}`,
+                    `Fecha de emision: ${now.toLocaleString('es-MX')}`,
+                    `Acreedor: ${creditorName} (ID: ${e.toUserId})`,
+                    `Deudor: ${debtorName} (ID: ${e.fromUserId})`,
+                    `Monto: ${formatMXN(e.monto)}`,
+                    '',
+                    'Este recibo es snapshot del estado actual de deuda.',
+                  ].join('\n')
+                  try {
+                    setReceiptBusyPairId(e.pairId)
+                    await onGenerateReceipt?.({
+                      debtor_user_id: e.fromUserId,
+                      debtor_name: debtorName,
+                      creditor_user_id: e.toUserId,
+                      creditor_name: creditorName,
+                      amount: e.monto,
+                      folio,
+                      fileName: `recibo_cobro_${folio}.pdf`,
+                      receiptText,
+                      save_to_vault: false,
+                    })
+                    setReceiptModalEntry(null)
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'No se pudo generar el recibo.')
+                  } finally {
+                    setReceiptBusyPairId(null)
+                  }
+                }}
+                className="rounded-lg border border-[#1E6FD9] px-3 py-1.5 text-sm font-semibold text-[#1E6FD9]"
+              >
+                Solo vista previa
+              </button>
+              <button
+                onClick={async () => {
+                  const e = receiptModalEntry
+                  const now = new Date()
+                  const folio = `RC-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${now.getTime().toString().slice(-6)}`
+                  const creditorName = nameById.get(String(e.toUserId)) ?? `Usuario ${e.toUserId}`
+                  const debtorName = nameById.get(String(e.fromUserId)) ?? `Usuario ${e.fromUserId}`
+                  const receiptText = [
+                    'RECIBO DE COBRO',
+                    `Folio: ${folio}`,
+                    `Fecha de emision: ${now.toLocaleString('es-MX')}`,
+                    `Acreedor: ${creditorName} (ID: ${e.toUserId})`,
+                    `Deudor: ${debtorName} (ID: ${e.fromUserId})`,
+                    `Monto: ${formatMXN(e.monto)}`,
+                    '',
+                    'Este recibo es snapshot del estado actual de deuda.',
+                  ].join('\n')
+                  try {
+                    setReceiptBusyPairId(e.pairId)
+                    await onGenerateReceipt?.({
+                      debtor_user_id: e.fromUserId,
+                      debtor_name: debtorName,
+                      creditor_user_id: e.toUserId,
+                      creditor_name: creditorName,
+                      amount: e.monto,
+                      folio,
+                      fileName: `recibo_cobro_${folio}.pdf`,
+                      receiptText,
+                      save_to_vault: true,
+                    })
+                    setReceiptDonePairIds((prev) => new Set(prev).add(e.pairId))
+                    setReceiptModalEntry(null)
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'No se pudo generar el recibo.')
+                  } finally {
+                    setReceiptBusyPairId(null)
+                  }
+                }}
+                className="rounded-lg bg-[#1E6FD9] px-3 py-1.5 text-sm font-semibold text-white"
+              >
+                Vista previa + guardar en boveda
               </button>
             </div>
           </div>

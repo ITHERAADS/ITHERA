@@ -60,6 +60,9 @@ const uploadHandler = async (req: Request, res: Response) => {
       notes: req.body.notes || null,
       immutable: parseBoolean(req.body.immutable),
       immutable_kind: req.body.immutable_kind || null,
+      receipt_debtor_user_id: req.body.receipt_debtor_user_id || null,
+      receipt_creditor_user_id: req.body.receipt_creditor_user_id || null,
+      receipt_folio: req.body.receipt_folio || null,
     };
 
     const doc = await uploadDocument({

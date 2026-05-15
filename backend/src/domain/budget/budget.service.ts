@@ -284,6 +284,22 @@ const calculateBalances = (expenses: RawExpenseRow[]): Record<string, number> =>
   return balances;
 };
 
+const applyConfirmedPaymentsToBalances = (
+  balances: Record<string, number>,
+  payments: RawPaymentRow[],
+): Record<string, number> => {
+  const next = { ...balances };
+  for (const payment of payments) {
+    if (normalizePaymentStatus(payment.status) !== 'confirmado') continue;
+    const from = String(payment.from_user_id);
+    const to = String(payment.to_user_id);
+    const amount = Number(payment.amount);
+    next[from] = roundMoney((next[from] ?? 0) - amount);
+    next[to] = roundMoney((next[to] ?? 0) + amount);
+  }
+  return next;
+};
+
 const calculateMinimumSettlements = (balances: Record<string, number>): BudgetSettlement[] => {
   const debtors: { userId: string; amount: number }[] = [];
   const creditors: { userId: string; amount: number }[] = [];
@@ -346,29 +362,6 @@ const mapPayment = (payment: RawPaymentRow): BudgetPayment => ({
   note: payment.note ?? null,
 });
 
-const applyPaymentsToSettlements = (
-  settlements: BudgetSettlement[],
-  payments: RawPaymentRow[],
-): BudgetSettlement[] => {
-  const paidByPair = new Map<string, number>();
-  for (const payment of payments) {
-    if (normalizePaymentStatus(payment.status) !== 'confirmado') continue;
-    const key = `${payment.from_user_id}->${payment.to_user_id}`;
-    paidByPair.set(key, roundMoney((paidByPair.get(key) ?? 0) + Number(payment.amount)));
-  }
-
-  return settlements
-    .map((settlement) => {
-      const key = `${settlement.from}->${settlement.to}`;
-      const paid = paidByPair.get(key) ?? 0;
-      return {
-        ...settlement,
-        amount: roundMoney(Math.max(0, settlement.amount - paid)),
-      };
-    })
-    .filter((settlement) => settlement.amount > 0.01);
-};
-
 const mapExpense = (expense: RawExpenseRow, membersById: Map<string, BudgetMember>) => {
   const splitAmounts = Object.fromEntries(
     (expense.expense_splits ?? []).map((split) => [String(split.user_id), Number(split.share)])
@@ -402,8 +395,8 @@ export const getBudgetDashboard = async (authUserId: string, groupId: string) =>
   const membersById = new Map(members.map((member) => [String(member.usuario_id), member]));
   const totalBudget = Number(group.presupuesto_total ?? 0);
   const committed = roundMoney(expenses.reduce((sum, expense) => sum + Number(expense.amount), 0));
-  const balances = calculateBalances(expenses);
-  const settlements = applyPaymentsToSettlements(calculateMinimumSettlements(balances), payments);
+  const balances = applyConfirmedPaymentsToBalances(calculateBalances(expenses), payments);
+  const settlements = calculateMinimumSettlements(balances);
   const groupSettlementSummary = {
     totalTransfers: settlements.length,
     totalAmount: roundMoney(settlements.reduce((sum, settlement) => sum + settlement.amount, 0)),
@@ -649,9 +642,8 @@ export const markSettlementPaid = async (
 
   const expenses = await getExpenses(groupId);
   const payments = await getSettlementPayments(groupId);
-  const currentSettlements = applyPaymentsToSettlements(
-    calculateMinimumSettlements(calculateBalances(expenses)),
-    payments,
+  const currentSettlements = calculateMinimumSettlements(
+    applyConfirmedPaymentsToBalances(calculateBalances(expenses), payments),
   );
 
   const pendingPair = currentSettlements.find(
@@ -742,9 +734,8 @@ export const updatePendingSettlementPayment = async (
 
   const expenses = await getExpenses(groupId);
   const payments = await getSettlementPayments(groupId);
-  const currentSettlements = applyPaymentsToSettlements(
-    calculateMinimumSettlements(calculateBalances(expenses)),
-    payments,
+  const currentSettlements = calculateMinimumSettlements(
+    applyConfirmedPaymentsToBalances(calculateBalances(expenses), payments),
   );
   const pendingPair = currentSettlements.find(
     (settlement) => settlement.from === String(payment.from_user_id) && settlement.to === String(payment.to_user_id),
@@ -856,3 +847,4 @@ export const reviewSettlementPayment = async (
 
   return getBudgetDashboard(authUserId, groupId);
 };
+

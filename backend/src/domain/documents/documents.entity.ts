@@ -14,6 +14,7 @@ export interface TripDocument {
 
 export const ALLOWED_MIME_TYPES = [
   'application/pdf',
+  'text/plain',
   'image/jpeg',
   'image/png',
   'image/webp',

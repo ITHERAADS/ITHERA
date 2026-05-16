@@ -12,6 +12,7 @@ import { hotelsService, type HotelOffer } from "../../services/hotels";
 import { getCurrentGroup } from "../../services/groups";
 import type { Group } from "../../types/groups";
 import { proposalsService } from "../../services/proposals";
+import { HelpButton } from "../../components/ui/HelpButton";
 
 type SearchTab = "flights" | "hotels";
 type ViewState = "initial" | "loading" | "results" | "error";
@@ -1426,9 +1427,16 @@ const FlightHotelSearchPage = () => {
           </button>
           <div className="absolute inset-0 bg-gradient-to-r from-[#1E0A4E] via-[#2D1266]/90 to-[#7A4FD6]/50" />
           <div className="relative mx-auto max-w-6xl">
-            <h1 className="font-heading text-3xl font-bold">
-              Planea tu viaje grupal
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="font-heading text-3xl font-bold">
+                Planea tu viaje grupal
+              </h1>
+              <HelpButton
+                title="Búsqueda externa"
+                description="Consulta proveedores externos para vuelos y hospedajes. Revisa fechas, pasajeros y resultados antes de proponerlos al itinerario del grupo."
+                placement="right"
+              />
+            </div>
             <p className="mt-1 font-body text-sm text-white/80">
               Busca, compara y propone opciones para tu itinerario
             </p>

@@ -38,6 +38,7 @@ import {
 import type { Group } from "../../types/groups";
 import { SubgroupChatDrawer } from "../chat/SubgroupChatDrawer";
 import { ExpenseDraftForm } from "../budget/ExpenseDraftForm";
+import { HelpButton } from "../ui/HelpButton";
 
 interface Props {
   groupId: string | null;
@@ -2219,9 +2220,16 @@ export function SubgroupSchedulePanel({
                   <span className="h-2 w-2 rounded-full bg-[#7A4FD6]" />
                   Momentos para dividirse y reencontrarse
                 </div>
-                <h2 className="font-heading text-[30px] leading-tight text-[#1E0A4E]">
-                  Vista de subgrupos
-                </h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="font-heading text-[30px] leading-tight text-[#1E0A4E]">
+                    Vista de subgrupos
+                  </h2>
+                  <HelpButton
+                    title="Subgrupos"
+                    description="Crea horarios solo para hoy o fechas futuras del viaje. Los horarios de días pasados quedan como historial y ya no cuentan como activos."
+                    placement="right"
+                  />
+                </div>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[#64748B]">
                   Organiza ratos libres del viaje para que cada quien elija
                   plan, vea quien ya esta dentro y vuelva al grupo con todo
@@ -3000,7 +3008,7 @@ export function SubgroupSchedulePanel({
       <ActionModal
         open={slotModal !== null}
         title={slotModal?.mode === "edit" ? "Editar horario" : "Crear horario"}
-        subtitle="Define el bloque de tiempo donde las personas podran separarse y elegir un plan."
+        subtitle="Define el bloque de tiempo donde las personas podran separarse y elegir un plan. Usa fechas actuales o futuras y horas cerradas en minutos 00 o 30."
         confirmLabel={
           slotModal?.mode === "edit" ? "Guardar horario" : "Crear horario"
         }

@@ -5,6 +5,7 @@ import { useAuth } from "../../context/useAuth";
 import { groupsService, saveCurrentGroup } from "../../services/groups";
 import { DestinationSearch } from "../../components/DestinationSearch/DestinationSearch";
 import type { GeocodingResult } from "../../services/maps";
+import { HelpButton } from "../../components/ui/HelpButton";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Member {
@@ -304,18 +305,23 @@ function MembersSection({
 function SectionLabel({
   icon,
   title,
+  help,
 }: {
   icon: React.ReactNode;
   title: string;
+  help?: string;
 }) {
   return (
-    <div className="flex items-center gap-2 mb-4">
-      <div className="w-7 h-7 bg-[#1E0A4E] rounded-lg flex items-center justify-center">
-        {icon}
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 bg-[#1E0A4E] rounded-lg flex items-center justify-center">
+          {icon}
+        </div>
+        <h3 className="font-heading font-semibold text-[#1E0A4E] text-sm">
+          {title}
+        </h3>
       </div>
-      <h3 className="font-heading font-semibold text-[#1E0A4E] text-sm">
-        {title}
-      </h3>
+      {help && <HelpButton title={title} description={help} placement="right" />}
     </div>
   );
 }
@@ -698,6 +704,7 @@ export function CreateGroupPage() {
             <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
               <SectionLabel
                 title="Información básica"
+                help="Completa los datos generales del viaje. El nombre tiene máximo 60 caracteres y la descripción máximo 300."
                 icon={
                   <svg
                     width="14"
@@ -770,6 +777,7 @@ export function CreateGroupPage() {
             <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
               <SectionLabel
                 title="Fechas y capacidad"
+                help="Define fechas futuras y la capacidad máxima. El regreso debe ser posterior a la salida y el viaje no debe exceder 60 días."
                 icon={
                   <svg
                     width="14"
@@ -893,6 +901,7 @@ export function CreateGroupPage() {
               <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
                 <SectionLabel
                   title="Invitar al grupo"
+                  help="Agrega correos válidos y solo hasta el límite permitido por la capacidad seleccionada. Si eliges un viaje de una persona, esta sección se oculta."
                   icon={
                     <svg
                       width="14"

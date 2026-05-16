@@ -1,360 +1,686 @@
-import { useState, useRef, useImperativeHandle, forwardRef, type ReactNode } from 'react'
-import type { ContextEntitySummary } from '../../../services/context-links'
+import {
+  useState,
+  useRef,
+  useImperativeHandle,
+  forwardRef,
+  type ReactNode,
+} from "react";
+import type { ContextEntitySummary } from "../../../services/context-links";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface Activity {
-  id: string
-  kind?: 'activity' | 'subgroup-slot'
-  proposalId?: string | null
-  createdBy?: string | null
-  hasVoted?: boolean
-  myVote?: 'a_favor' | 'en_contra' | 'abstencion' | null
-  title: string
-  description: string
-  category: 'transporte' | 'hospedaje' | 'actividad'
-  status: 'confirmada' | 'pendiente'
-  price: number
-  currency: string
-  time: string
-  location?: string
-  votes?: number
-  proposedBy?: string
-  image: string
-  externalReference?: string | null
-  latitude?: number | null
-  longitude?: number | null
-  routeDistanceText?: string | null
-  routeDurationText?: string | null
-  routeTravelMode?: string | null
-  adminDecisionType?: 'A' | 'B' | 'C' | null
-  linkedContext?: ContextEntitySummary[]
-  startsAt?: string | null
-  endsAt?: string | null
+  id: string;
+  kind?: "activity" | "subgroup-slot";
+  proposalId?: string | null;
+  createdBy?: string | null;
+  hasVoted?: boolean;
+  myVote?: "a_favor" | "en_contra" | "abstencion" | null;
+  title: string;
+  description: string;
+  category: "transporte" | "hospedaje" | "actividad";
+  status: "confirmada" | "pendiente";
+  price: number;
+  currency: string;
+  time: string;
+  location?: string;
+  votes?: number;
+  proposedBy?: string;
+  image: string;
+  externalReference?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  routeDistanceText?: string | null;
+  routeDurationText?: string | null;
+  routeTravelMode?: string | null;
+  adminDecisionType?: "A" | "B" | "C" | null;
+  linkedContext?: ContextEntitySummary[];
+  startsAt?: string | null;
+  endsAt?: string | null;
   subgroupSlot?: {
-    slotId: number
-    startsAt: string
-    endsAt: string
-    groupCount: number
-    participantCount: number
-    targetSubgroupId?: number | null
-  }
+    slotId: number;
+    startsAt: string;
+    endsAt: string;
+    groupCount: number;
+    participantCount: number;
+    targetSubgroupId?: number | null;
+  };
 }
 
 export interface DayViewProps {
-  dayNumber: number
-  date: string
-  activities: Activity[]
-  isActive?: boolean
-  defaultExpanded?: boolean
-  isExpanded?: boolean
-  onSelect?: (dayNumber: number) => void
-  onAccept?: (activityId: string) => void | Promise<void>
-  onReject?: (activityId: string) => void | Promise<void>
-  onDelete?: (activityId: string) => void | Promise<void>
-  onEdit?: (activityId: string) => void
-  onManageContext?: (activity: Activity) => void
-  onOpenBudget?: () => void
-  onOpenVault?: () => void
-  currentUserId?: string | number | null
-  currentUserRole?: 'admin' | 'viajero' | string | null
-  onAddActivity?: (dayNumber: number) => void
-  renderConfirmedActions?: (activity: Activity) => ReactNode
-  renderPendingActions?: (activity: Activity) => ReactNode
+  dayNumber: number;
+  date: string;
+  activities: Activity[];
+  isActive?: boolean;
+  defaultExpanded?: boolean;
+  isExpanded?: boolean;
+  onSelect?: (dayNumber: number) => void;
+  onAccept?: (activityId: string) => void | Promise<void>;
+  onReject?: (activityId: string) => void | Promise<void>;
+  onDelete?: (activityId: string) => void | Promise<void>;
+  onEdit?: (activityId: string) => void;
+  onManageContext?: (activity: Activity) => void;
+  onOpenBudget?: () => void;
+  onOpenVault?: () => void;
+  currentUserId?: string | number | null;
+  currentUserRole?: "admin" | "viajero" | string | null;
+  onAddActivity?: (dayNumber: number) => void;
+  renderConfirmedActions?: (activity: Activity) => ReactNode;
+  renderPendingActions?: (activity: Activity) => ReactNode;
+  isPastDay?: boolean;
 }
 
 export interface DayViewHandle {
-  scrollIntoView: () => void
+  scrollIntoView: () => void;
 }
 
 // ── Inline icons ──────────────────────────────────────────────────────────────
 
 function IconChevron({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <polyline points="6 9 12 15 18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <polyline
+        points="6 9 12 15 18 9"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
-  )
+  );
 }
 
 function IconClock({ size = 12 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
-      <path d="M12 6v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path
+        d="M12 6v6l4 2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
-  )
+  );
 }
 
 function IconMapPin({ size = 12 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
       <circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2" />
     </svg>
-  )
+  );
 }
 
 function IconCheck({ size = 10 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <polyline points="20 6 9 17 4 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <polyline
+        points="20 6 9 17 4 12"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
     </svg>
-  )
+  );
 }
 
 function IconSpinner({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" className="animate-spin">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3" />
-      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="animate-spin"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeOpacity="0.3"
+      />
+      <path
+        d="M12 2a10 10 0 0110 10"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
-  )
+  );
 }
 
 function IconTrash({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" strokeWidth="2" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <polyline
+        points="3 6 5 6 21 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M10 11v6M14 11v6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
     </svg>
-  )
+  );
 }
 
 function IconEdit({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 20h9"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
-  )
+  );
 }
 
 function IconSearch({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
       <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
-      <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path
+        d="M21 21l-4.35-4.35"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
-  )
+  );
 }
 
 function IconPlus({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <line
+        x1="12"
+        y1="5"
+        x2="12"
+        y2="19"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="5"
+        y1="12"
+        x2="19"
+        y2="12"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
-  )
+  );
 }
 
 function IconCalendarEmpty({ size = 36 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" className="text-bluePrimary">
-      <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
-      <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2" />
-      <line x1="8" y1="14" x2="16" y2="14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <line x1="8" y1="18" x2="12" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      className="text-bluePrimary"
+    >
+      <rect
+        x="3"
+        y="4"
+        width="18"
+        height="18"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <line
+        x1="16"
+        y1="2"
+        x2="16"
+        y2="6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="8"
+        y1="2"
+        x2="8"
+        y2="6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="3"
+        y1="10"
+        x2="21"
+        y2="10"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <line
+        x1="8"
+        y1="14"
+        x2="16"
+        y2="14"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="8"
+        y1="18"
+        x2="12"
+        y2="18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
-  )
+  );
 }
 
 // ── Category helpers ──────────────────────────────────────────────────────────
 
-function CategoryIcon({ category, size = 13 }: { category: Activity['category']; size?: number }) {
-  if (category === 'transporte') {
+function CategoryIcon({
+  category,
+  size = 13,
+}: {
+  category: Activity["category"];
+  size?: number;
+}) {
+  if (category === "transporte") {
     return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19.5 2.5 18 1 16 1 14.5 2.5L11 6 2.8 4.2l-2 2 3.5 3.5L2 14l2 2 4.5-2 3.5 3.5 3.5 3.5 2-2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path
+          d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19.5 2.5 18 1 16 1 14.5 2.5L11 6 2.8 4.2l-2 2 3.5 3.5L2 14l2 2 4.5-2 3.5 3.5 3.5 3.5 2-2z"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
-    )
+    );
   }
-  if (category === 'hospedaje') {
+  if (category === "hospedaje") {
     return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M2 9V5a1 1 0 011-1h18a1 1 0 011 1v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        <rect x="2" y="9" width="20" height="9" rx="1" stroke="currentColor" strokeWidth="2" />
-        <line x1="2" y1="18" x2="2" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        <line x1="22" y1="18" x2="22" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path
+          d="M2 9V5a1 1 0 011-1h18a1 1 0 011 1v4"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <rect
+          x="2"
+          y="9"
+          width="20"
+          height="9"
+          rx="1"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <line
+          x1="2"
+          y1="18"
+          x2="2"
+          y2="21"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <line
+          x1="22"
+          y1="18"
+          x2="22"
+          y2="21"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
       </svg>
-    )
+    );
   }
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
-  )
+  );
 }
 
-function getCategoryColor(category: Activity['category']): string {
-  if (category === 'transporte') return '#1E6FD9'
-  if (category === 'hospedaje')  return '#7A4FD6'
-  return '#F59E0B'
+function getCategoryColor(category: Activity["category"]): string {
+  if (category === "transporte") return "#1E6FD9";
+  if (category === "hospedaje") return "#7A4FD6";
+  return "#F59E0B";
 }
 
-function getSectionLabel(category: Activity['category']): { emoji: string; text: string } {
-  if (category === 'transporte') return { emoji: '✈', text: 'TRANSPORTE' }
-  if (category === 'hospedaje')  return { emoji: '🏨', text: 'HOSPEDAJE' }
-  return { emoji: '⭐', text: 'ACTIVIDADES' }
+function getSectionLabel(category: Activity["category"]): {
+  emoji: string;
+  text: string;
+} {
+  if (category === "transporte") return { emoji: "✈", text: "TRANSPORTE" };
+  if (category === "hospedaje") return { emoji: "🏨", text: "HOSPEDAJE" };
+  return { emoji: "⭐", text: "ACTIVIDADES" };
 }
 
 function getGoogleMapsRouteUrl(activity: Activity): string | null {
-  if (activity.latitude == null || activity.longitude == null) return null
-  const destination = `${activity.latitude},${activity.longitude}`
-  const travelMode = String(activity.routeTravelMode ?? 'DRIVE').toLowerCase()
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=${encodeURIComponent(travelMode)}`
+  if (activity.latitude == null || activity.longitude == null) return null;
+  const destination = `${activity.latitude},${activity.longitude}`;
+  const travelMode = String(activity.routeTravelMode ?? "DRIVE").toLowerCase();
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&travelmode=${encodeURIComponent(travelMode)}`;
 }
 
 function IconLayers({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 3l9 4.5-9 4.5-9-4.5L12 3z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-      <path d="M3 12l9 4.5 9-4.5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-      <path d="M3 16.5L12 21l9-4.5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 3l9 4.5-9 4.5-9-4.5L12 3z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3 12l9 4.5 9-4.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3 16.5L12 21l9-4.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
     </svg>
-  )
+  );
 }
 
 function IconMessageCircle({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
-  )
+  );
 }
 
 function getMinutesFromDate(value?: string | null): number | null {
-  if (!value) return null
-  const parsed = new Date(value)
-  if (!Number.isFinite(parsed.getTime())) return null
-  return parsed.getHours() * 60 + parsed.getMinutes()
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  return parsed.getHours() * 60 + parsed.getMinutes();
 }
 
 function getMinutesFromTimeLabel(value?: string | null): number | null {
-  if (!value) return null
-  const match = value.match(/(\d{1,2}):([0-5]\d)\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?/i)
-  if (!match) return null
+  if (!value) return null;
+  const match = value.match(
+    /(\d{1,2}):([0-5]\d)\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?/i,
+  );
+  if (!match) return null;
 
-  let hours = Number(match[1])
-  const minutes = Number(match[2])
-  const meridiem = match[3]?.toLowerCase().replace(/\s|\./g, '')
-  if (meridiem === 'pm' && hours < 12) hours += 12
-  if (meridiem === 'am' && hours === 12) hours = 0
-  if (hours > 23) return null
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const meridiem = match[3]?.toLowerCase().replace(/\s|\./g, "");
+  if (meridiem === "pm" && hours < 12) hours += 12;
+  if (meridiem === "am" && hours === 12) hours = 0;
+  if (hours > 23) return null;
 
-  return hours * 60 + minutes
+  return hours * 60 + minutes;
 }
 
 function getActivitySortTimestamp(activity: Activity): number {
-  const labelMinutes = getMinutesFromTimeLabel(activity.time)
-  if (labelMinutes !== null) return labelMinutes
+  const labelMinutes = getMinutesFromTimeLabel(activity.time);
+  if (labelMinutes !== null) return labelMinutes;
 
   if (activity.startsAt) {
-    const minutes = getMinutesFromDate(activity.startsAt)
-    if (minutes !== null) return minutes
+    const minutes = getMinutesFromDate(activity.startsAt);
+    if (minutes !== null) return minutes;
   }
 
-  return Number.MAX_SAFE_INTEGER
+  return Number.MAX_SAFE_INTEGER;
 }
 
 function getActivityTimelineTimeLabel(activity: Activity): string {
-  if (activity.kind === 'subgroup-slot' && activity.subgroupSlot?.startsAt) {
-    return new Date(activity.subgroupSlot.startsAt).toLocaleTimeString('es-MX', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: 'America/Mexico_City',
-    })
+  if (activity.kind === "subgroup-slot" && activity.subgroupSlot?.startsAt) {
+    return new Date(activity.subgroupSlot.startsAt).toLocaleTimeString(
+      "es-MX",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "America/Mexico_City",
+      },
+    );
   }
 
-  return activity.time
+  return activity.time;
 }
 
 function getActivityStartTime(activity: Activity): number | null {
   if (activity.startsAt) {
-    const parsed = new Date(activity.startsAt).getTime()
-    if (Number.isFinite(parsed)) return parsed
+    const parsed = new Date(activity.startsAt).getTime();
+    if (Number.isFinite(parsed)) return parsed;
   }
 
-  return null
+  return null;
 }
 
 function sortActivitiesChronologically(activities: Activity[]): Activity[] {
   return [...activities].sort((left, right) => {
-    const startDiff = getActivitySortTimestamp(left) - getActivitySortTimestamp(right)
-    if (startDiff !== 0) return startDiff
-    return left.title.localeCompare(right.title, 'es')
-  })
+    const startDiff =
+      getActivitySortTimestamp(left) - getActivitySortTimestamp(right);
+    if (startDiff !== 0) return startDiff;
+    return left.title.localeCompare(right.title, "es");
+  });
 }
 
 function getConflictActivityIds(activities: Activity[]): Set<string> {
-  const ids = new Set<string>()
-  const groups = new Map<string, string[]>()
+  const ids = new Set<string>();
+  const groups = new Map<string, string[]>();
 
   for (const activity of activities) {
-    const key = activity.startsAt ?? activity.time
-    if (!key || key === 'Hora pendiente') continue
-    const bucket = groups.get(key) ?? []
-    bucket.push(activity.id)
-    groups.set(key, bucket)
+    const key = activity.startsAt ?? activity.time;
+    if (!key || key === "Hora pendiente") continue;
+    const bucket = groups.get(key) ?? [];
+    bucket.push(activity.id);
+    groups.set(key, bucket);
   }
 
   for (const bucket of groups.values()) {
-    if (bucket.length <= 1) continue
-    for (const activityId of bucket) ids.add(activityId)
+    if (bucket.length <= 1) continue;
+    for (const activityId of bucket) ids.add(activityId);
   }
 
-  return ids
+  return ids;
 }
 
 type TimelineNowPosition =
-  | { type: 'before'; label: string; timeLabel: string | null }
-  | { type: 'on'; activityId: string; label: string }
-  | { type: 'after'; label: string; timeLabel: string | null }
-  | null
+  | { type: "before"; label: string; timeLabel: string | null }
+  | { type: "on"; activityId: string; label: string }
+  | { type: "after"; label: string; timeLabel: string | null }
+  | null;
 
 function isSameCalendarDay(left: number, right: number): boolean {
-  return new Date(left).toDateString() === new Date(right).toDateString()
+  return new Date(left).toDateString() === new Date(right).toDateString();
 }
 
 function getTimelineNowPosition(activities: Activity[]): TimelineNowPosition {
   const starts = activities
     .map((activity) => ({ activity, start: getActivityStartTime(activity) }))
-    .filter((item): item is { activity: Activity; start: number } => item.start !== null)
-    .sort((a, b) => a.start - b.start)
+    .filter(
+      (item): item is { activity: Activity; start: number } =>
+        item.start !== null,
+    )
+    .sort((a, b) => a.start - b.start);
 
-  if (starts.length === 0) return null
+  if (starts.length === 0) return null;
 
-  const now = Date.now()
-  const nowLabel = new Date(now).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
-  const first = starts[0]
-  const last = starts[starts.length - 1]
-  const isActivityDayToday = isSameCalendarDay(first.start, now)
+  const now = Date.now();
+  const nowLabel = new Date(now).toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const first = starts[0];
+  const last = starts[starts.length - 1];
+  const isActivityDayToday = isSameCalendarDay(first.start, now);
 
   if (now < first.start) {
-    return { type: 'before', label: 'Aun no inicia', timeLabel: isActivityDayToday ? nowLabel : null }
+    return {
+      type: "before",
+      label: "Aun no inicia",
+      timeLabel: isActivityDayToday ? nowLabel : null,
+    };
   }
 
   for (let index = 0; index < starts.length; index += 1) {
-    const current = starts[index]
-    const next = starts[index + 1]
+    const current = starts[index];
+    const next = starts[index + 1];
     if (now >= current.start && (!next || now < next.start)) {
-      return { type: 'on', activityId: current.activity.id, label: 'Ahora' }
+      return { type: "on", activityId: current.activity.id, label: "Ahora" };
     }
   }
 
   if (now > last.start) {
-    return { type: 'after', label: 'Dia completado', timeLabel: isActivityDayToday ? nowLabel : null }
+    return {
+      type: "after",
+      label: "Dia completado",
+      timeLabel: isActivityDayToday ? nowLabel : null,
+    };
   }
 
-  return null
+  return null;
 }
 
-function TimelineNowMarker({ label, timeLabel }: { label: string; timeLabel: string | null }) {
+function TimelineNowMarker({
+  label,
+  timeLabel,
+}: {
+  label: string;
+  timeLabel: string | null;
+}) {
   return (
     <div className="relative grid grid-cols-[64px_28px_minmax(0,1fr)] gap-3">
       <div className="relative z-10 flex justify-end pt-1">
@@ -364,7 +690,10 @@ function TimelineNowMarker({ label, timeLabel }: { label: string; timeLabel: str
           </span>
         )}
       </div>
-      <div className="relative z-10 flex justify-center pt-[7px]" aria-hidden="true">
+      <div
+        className="relative z-10 flex justify-center pt-[7px]"
+        aria-hidden="true"
+      >
         <span className="h-7 w-7 rounded-full border-[6px] border-white bg-[#7A4FD6] shadow-[0_0_0_8px_rgba(232,222,255,0.95),0_12px_28px_rgba(122,79,214,0.28)]" />
       </div>
       <div className="flex min-h-[34px] items-center">
@@ -373,7 +702,7 @@ function TimelineNowMarker({ label, timeLabel }: { label: string; timeLabel: str
         </span>
       </div>
     </div>
-  )
+  );
 }
 
 function TimelineItem({
@@ -382,12 +711,12 @@ function TimelineItem({
   isNow,
   children,
 }: {
-  activity: Activity
-  hasConflict: boolean
-  isNow: boolean
-  children: ReactNode
+  activity: Activity;
+  hasConflict: boolean;
+  isNow: boolean;
+  children: ReactNode;
 }) {
-  const accentColor = hasConflict ? '#DC2626' : isNow ? '#1E0A4E' : '#7A4FD6'
+  const accentColor = hasConflict ? "#DC2626" : isNow ? "#1E0A4E" : "#7A4FD6";
 
   return (
     <div className="relative grid grid-cols-[64px_28px_minmax(0,1fr)] gap-3">
@@ -396,8 +725,8 @@ function TimelineItem({
           className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border px-2.5 font-body text-[11px] font-bold"
           style={{
             color: accentColor,
-            borderColor: hasConflict ? '#FECACA' : '#E2D8FF',
-            backgroundColor: hasConflict ? '#FFF7F7' : '#FFFFFF',
+            borderColor: hasConflict ? "#FECACA" : "#E2D8FF",
+            backgroundColor: hasConflict ? "#FFF7F7" : "#FFFFFF",
           }}
         >
           {getActivityTimelineTimeLabel(activity)}
@@ -420,7 +749,7 @@ function TimelineItem({
         {children}
       </div>
     </div>
-  )
+  );
 }
 
 // ── SectionLabel ──────────────────────────────────────────────────────────────
@@ -433,7 +762,7 @@ function SectionLabel({ emoji, text }: { emoji: string; text: string }) {
         {text}
       </span>
     </div>
-  )
+  );
 }
 
 function ActivityContextBlock({
@@ -441,14 +770,14 @@ function ActivityContextBlock({
   onOpenBudget,
   onOpenVault,
 }: {
-  activity: Activity
-  onManageContext?: (activity: Activity) => void
-  onOpenBudget?: () => void
-  onOpenVault?: () => void
+  activity: Activity;
+  onManageContext?: (activity: Activity) => void;
+  onOpenBudget?: () => void;
+  onOpenVault?: () => void;
 }) {
-  const linked = activity.linkedContext ?? []
-  const expenses = linked.filter((entity) => entity.type === 'expense')
-  const documents = linked.filter((entity) => entity.type === 'document')
+  const linked = activity.linkedContext ?? [];
+  const expenses = linked.filter((entity) => entity.type === "expense");
+  const documents = linked.filter((entity) => entity.type === "document");
 
   return (
     <div className="mt-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-3">
@@ -489,7 +818,7 @@ function ActivityContextBlock({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 // ── ActivityCardConfirmed ─────────────────────────────────────────────────────
@@ -498,10 +827,10 @@ function SubgroupSlotCard({
   activity,
   actionButtons,
 }: {
-  activity: Activity
-  actionButtons?: ReactNode
+  activity: Activity;
+  actionButtons?: ReactNode;
 }) {
-  const slot = activity.subgroupSlot
+  const slot = activity.subgroupSlot;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[#D8C8FF] bg-[linear-gradient(135deg,#FFFFFF_0%,#F7F2FF_100%)] shadow-[0_14px_34px_rgba(122,79,214,0.10)]">
@@ -525,10 +854,11 @@ function SubgroupSlotCard({
           )}
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="rounded-full bg-white px-3 py-1 font-body text-xs font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
-              {slot?.groupCount ?? 0} opcion{slot?.groupCount === 1 ? '' : 'es'}
+              {slot?.groupCount ?? 0} opcion{slot?.groupCount === 1 ? "" : "es"}
             </span>
             <span className="rounded-full bg-white px-3 py-1 font-body text-xs font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
-              {slot?.participantCount ?? 0} participante{slot?.participantCount === 1 ? '' : 's'}
+              {slot?.participantCount ?? 0} participante
+              {slot?.participantCount === 1 ? "" : "s"}
             </span>
           </div>
         </div>
@@ -540,7 +870,7 @@ function SubgroupSlotCard({
         )}
       </div>
     </div>
-  )
+  );
 }
 
 function ActivityCardConfirmed({
@@ -554,26 +884,30 @@ function ActivityCardConfirmed({
   onOpenVault,
   actionButtons,
 }: {
-  activity: Activity
-  currentUserId?: string | number | null
-  currentUserRole?: 'admin' | 'viajero' | string | null
-  onDelete?: (id: string) => void
-  onEdit?: (id: string) => void
-  onManageContext?: (activity: Activity) => void
-  onOpenBudget?: () => void
-  onOpenVault?: () => void
-  actionButtons?: ReactNode
+  activity: Activity;
+  currentUserId?: string | number | null;
+  currentUserRole?: "admin" | "viajero" | string | null;
+  onDelete?: (id: string) => void;
+  onEdit?: (id: string) => void;
+  onManageContext?: (activity: Activity) => void;
+  onOpenBudget?: () => void;
+  onOpenVault?: () => void;
+  actionButtons?: ReactNode;
 }) {
-  if (activity.kind === 'subgroup-slot') {
-    return <SubgroupSlotCard activity={activity} actionButtons={actionButtons} />
+  if (activity.kind === "subgroup-slot") {
+    return (
+      <SubgroupSlotCard activity={activity} actionButtons={actionButtons} />
+    );
   }
 
-  const iconColor = getCategoryColor(activity.category)
-  const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
-  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
-  const canEdit = isOwner
-  const canDelete = isOwner || isAdmin
-  const routeUrl = getGoogleMapsRouteUrl(activity)
+  const iconColor = getCategoryColor(activity.category);
+  const isOwner =
+    String(activity.createdBy ?? "") === String(currentUserId ?? "");
+  const isAdmin =
+    currentUserRole === "admin" || currentUserRole === "organizador";
+  const canEdit = isOwner;
+  const canDelete = isOwner || isAdmin;
+  const routeUrl = getGoogleMapsRouteUrl(activity);
 
   return (
     <div className="bg-white rounded-2xl border border-[#E2E8F0] overflow-hidden">
@@ -611,27 +945,35 @@ function ActivityCardConfirmed({
         {/* Info chips */}
         <div className="flex flex-wrap gap-2 mb-3">
           <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
-            <span className="text-bluePrimary"><IconClock /></span>
+            <span className="text-bluePrimary">
+              <IconClock />
+            </span>
             {activity.time}
           </span>
           {activity.location && (
             <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
-              <span className="text-bluePrimary"><IconMapPin /></span>
+              <span className="text-bluePrimary">
+                <IconMapPin />
+              </span>
               {activity.location}
             </span>
           )}
           {activity.routeDistanceText && activity.routeDurationText && (
             <a
-              href={routeUrl ?? '#'}
+              href={routeUrl ?? "#"}
               target="_blank"
               rel="noreferrer"
-              title={routeUrl ? 'Abrir ruta en Google Maps' : 'Ruta no disponible'}
+              title={
+                routeUrl ? "Abrir ruta en Google Maps" : "Ruta no disponible"
+              }
               onClick={(event) => {
-                if (!routeUrl) event.preventDefault()
+                if (!routeUrl) event.preventDefault();
               }}
               className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
             >
-              <span className="text-bluePrimary"><IconMapPin /></span>
+              <span className="text-bluePrimary">
+                <IconMapPin />
+              </span>
               {activity.routeDistanceText} · {activity.routeDurationText}
             </a>
           )}
@@ -677,7 +1019,7 @@ function ActivityCardConfirmed({
         )}
       </div>
     </div>
-  )
+  );
 }
 
 // ── ActivityCardPending ───────────────────────────────────────────────────────
@@ -694,38 +1036,47 @@ function ActivityCardPending({
   onOpenBudget,
   onOpenVault,
   actionButtons,
+  isExpired = false,
 }: {
-  activity: Activity
-  currentUserId?: string | number | null
-  currentUserRole?: 'admin' | 'viajero' | string | null
-  onAccept?: (id: string) => void | Promise<void>
-  onReject?: (id: string) => void | Promise<void>
-  onDelete?: (id: string) => void | Promise<void>
-  onEdit?: (id: string) => void
-  onManageContext?: (activity: Activity) => void
-  onOpenBudget?: () => void
-  onOpenVault?: () => void
-  actionButtons?: ReactNode
+  activity: Activity;
+  currentUserId?: string | number | null;
+  currentUserRole?: "admin" | "viajero" | string | null;
+  onAccept?: (id: string) => void | Promise<void>;
+  onReject?: (id: string) => void | Promise<void>;
+  onDelete?: (id: string) => void | Promise<void>;
+  onEdit?: (id: string) => void;
+  onManageContext?: (activity: Activity) => void;
+  onOpenBudget?: () => void;
+  onOpenVault?: () => void;
+  actionButtons?: ReactNode;
+  isExpired?: boolean;
 }) {
-  const iconColor = getCategoryColor(activity.category)
-  const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
-  const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
-  const canEdit = isOwner
-  const canDelete = isOwner || isAdmin
-  const myVote = activity.myVote ?? null
-  const routeUrl = getGoogleMapsRouteUrl(activity)
-  const [busyAction, setBusyAction] = useState<'accept' | 'reject' | 'delete' | null>(null)
-  const isActionBusy = busyAction !== null
+  const iconColor = getCategoryColor(activity.category);
+  const isOwner =
+    String(activity.createdBy ?? "") === String(currentUserId ?? "");
+  const isAdmin =
+    currentUserRole === "admin" || currentUserRole === "organizador";
+  const canEdit = isExpired ? isAdmin : isOwner;
+  const canDelete = isExpired ? false : isOwner || isAdmin;
+  const myVote = activity.myVote ?? null;
+  const routeUrl = getGoogleMapsRouteUrl(activity);
+  const [busyAction, setBusyAction] = useState<
+    "accept" | "reject" | "delete" | null
+  >(null);
+  const isActionBusy = busyAction !== null;
 
-  const runCardAction = async (action: 'accept' | 'reject' | 'delete', callback?: (id: string) => void | Promise<void>) => {
-    if (!callback || isActionBusy) return
+  const runCardAction = async (
+    action: "accept" | "reject" | "delete",
+    callback?: (id: string) => void | Promise<void>,
+  ) => {
+    if (!callback || isActionBusy) return;
     try {
-      setBusyAction(action)
-      await Promise.resolve(callback(activity.id))
+      setBusyAction(action);
+      await Promise.resolve(callback(activity.id));
     } finally {
-      setBusyAction(null)
+      setBusyAction(null);
     }
-  }
+  };
 
   return (
     <div className="bg-white rounded-2xl border-2 border-dashed border-[#E2E8F0] overflow-hidden">
@@ -738,8 +1089,13 @@ function ActivityCardPending({
           loading="lazy"
         />
         {/* Pending badge */}
-        <span className="absolute top-3 left-3 font-body text-[11px] font-bold text-white bg-purpleMedium rounded-full px-3 py-1">
-          POR CONFIRMAR
+        <span
+          className={[
+            "absolute top-3 left-3 font-body text-[11px] font-bold text-white rounded-full px-3 py-1",
+            isExpired ? "bg-[#BE123C]" : "bg-purpleMedium",
+          ].join(" ")}
+        >
+          {isExpired ? "PROPUESTA VENCIDA" : "POR CONFIRMAR"}
         </span>
         {/* Category icon circle */}
         <div
@@ -762,27 +1118,35 @@ function ActivityCardPending({
         {/* Info chips */}
         <div className="flex flex-wrap gap-2 mb-2">
           <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
-            <span className="text-bluePrimary"><IconClock /></span>
+            <span className="text-bluePrimary">
+              <IconClock />
+            </span>
             {activity.time}
           </span>
           {activity.location && (
             <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
-              <span className="text-bluePrimary"><IconMapPin /></span>
+              <span className="text-bluePrimary">
+                <IconMapPin />
+              </span>
               {activity.location}
             </span>
           )}
           {activity.routeDistanceText && activity.routeDurationText && (
             <a
-              href={routeUrl ?? '#'}
+              href={routeUrl ?? "#"}
               target="_blank"
               rel="noreferrer"
-              title={routeUrl ? 'Abrir ruta en Google Maps' : 'Ruta no disponible'}
+              title={
+                routeUrl ? "Abrir ruta en Google Maps" : "Ruta no disponible"
+              }
               onClick={(event) => {
-                if (!routeUrl) event.preventDefault()
+                if (!routeUrl) event.preventDefault();
               }}
               className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
             >
-              <span className="text-bluePrimary"><IconMapPin /></span>
+              <span className="text-bluePrimary">
+                <IconMapPin />
+              </span>
               {activity.routeDistanceText} · {activity.routeDurationText}
             </a>
           )}
@@ -798,10 +1162,16 @@ function ActivityCardPending({
             Propuesto por {activity.proposedBy}
           </p>
         )}
-        {activity.adminDecisionType === 'A' && (
+        {activity.adminDecisionType === "A" && (
           <p className="font-body text-xs text-[#1E6FD9] font-semibold mt-1 mb-3">
             Puesta por el admin directamente (Tipo A)
           </p>
+        )}
+        {isExpired && (
+          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 font-body text-xs font-semibold text-red-700">
+            Esta propuesta ya vencio porque su hora programada paso. Solo el
+            administrador puede editarla para reprogramarla.
+          </div>
         )}
 
         <ActivityContextBlock
@@ -813,50 +1183,60 @@ function ActivityCardPending({
 
         {/* Accept / Delete row */}
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#EEF2FF] pt-3">
-          <div className="grid h-11 flex-1 grid-cols-2 overflow-hidden rounded-xl border border-[#D9E2F2] bg-white">
-            <button
-              type="button"
-              onClick={() => void runCardAction('accept', onAccept)}
-              disabled={isActionBusy}
-              aria-busy={busyAction === 'accept'}
-              className={`inline-flex items-center justify-center gap-1.5 border-r border-[#D9E2F2] px-3 font-body text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                myVote === 'a_favor'
-                  ? 'bg-[#16A34A] text-white hover:bg-[#15803D]'
-                  : 'bg-[#ECFDF3] text-[#166534] hover:bg-[#DCFCE7]'
-              }`}
-            >
-              {busyAction === 'accept' ? <IconSpinner size={13} /> : <IconCheck size={12} />}
-              {busyAction === 'accept' ? 'Votando...' : 'A favor'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void runCardAction('reject', onReject)}
-              disabled={isActionBusy}
-              aria-busy={busyAction === 'reject'}
-              className={`inline-flex items-center justify-center gap-1.5 px-3 font-body text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                myVote === 'en_contra'
-                  ? 'bg-[#BE123C] text-white hover:bg-[#9F1239]'
-                  : 'text-[#BE123C] hover:bg-[#FFF1F2]'
-              }`}
-            >
-              {busyAction === 'reject' && <IconSpinner size={13} />}
-              {busyAction === 'reject' ? 'Votando...' : 'En contra'}
-            </button>
-          </div>
+          {!isExpired && (
+            <div className="grid h-11 flex-1 grid-cols-2 overflow-hidden rounded-xl border border-[#D9E2F2] bg-white">
+              <button
+                type="button"
+                onClick={() => void runCardAction("accept", onAccept)}
+                disabled={isActionBusy}
+                aria-busy={busyAction === "accept"}
+                className={`inline-flex items-center justify-center gap-1.5 border-r border-[#D9E2F2] px-3 font-body text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  myVote === "a_favor"
+                    ? "bg-[#16A34A] text-white hover:bg-[#15803D]"
+                    : "bg-[#ECFDF3] text-[#166534] hover:bg-[#DCFCE7]"
+                }`}
+              >
+                {busyAction === "accept" ? (
+                  <IconSpinner size={13} />
+                ) : (
+                  <IconCheck size={12} />
+                )}
+                {busyAction === "accept" ? "Votando..." : "A favor"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void runCardAction("reject", onReject)}
+                disabled={isActionBusy}
+                aria-busy={busyAction === "reject"}
+                className={`inline-flex items-center justify-center gap-1.5 px-3 font-body text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  myVote === "en_contra"
+                    ? "bg-[#BE123C] text-white hover:bg-[#9F1239]"
+                    : "text-[#BE123C] hover:bg-[#FFF1F2]"
+                }`}
+              >
+                {busyAction === "reject" && <IconSpinner size={13} />}
+                {busyAction === "reject" ? "Votando..." : "En contra"}
+              </button>
+            </div>
+          )}
 
-          {(actionButtons || canDelete || canEdit) && (
+          {((!isExpired && actionButtons) || canDelete || canEdit) && (
             <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-              {actionButtons}
+              {!isExpired && actionButtons}
               {canDelete && (
                 <button
                   type="button"
-                  onClick={() => void runCardAction('delete', onDelete)}
+                  onClick={() => void runCardAction("delete", onDelete)}
                   disabled={isActionBusy}
-                  aria-busy={busyAction === 'delete'}
+                  aria-busy={busyAction === "delete"}
                   className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Eliminar propuesta"
                 >
-                  {busyAction === 'delete' ? <IconSpinner size={13} /> : <IconTrash size={14} />}
+                  {busyAction === "delete" ? (
+                    <IconSpinner size={13} />
+                  ) : (
+                    <IconTrash size={14} />
+                  )}
                 </button>
               )}
 
@@ -876,7 +1256,7 @@ function ActivityCardPending({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // ── AddActivityRow ────────────────────────────────────────────────────────────
@@ -895,7 +1275,7 @@ function AddActivityRow({ onClick }: { onClick?: () => void }) {
         Buscar y proponer actividad
       </span>
     </button>
-  )
+  );
 }
 
 // ── EmptyDayState ─────────────────────────────────────────────────────────────
@@ -918,7 +1298,7 @@ function EmptyDayState({ onClick }: { onClick?: () => void }) {
         Agregar primera actividad
       </button>
     </div>
-  )
+  );
 }
 
 // ── ActivitiesBody ────────────────────────────────────────────────────────────
@@ -937,33 +1317,53 @@ function ActivitiesBody({
   onOpenVault,
   renderConfirmedActions,
   renderPendingActions,
+  isPastDay = false,
 }: {
-  activities: Activity[]
-  currentUserId?: string | number | null
-  currentUserRole?: 'admin' | 'viajero' | string | null
-  onAccept?: (id: string) => void | Promise<void>
-  onReject?: (id: string) => void | Promise<void>
-  onDelete?: (id: string) => void | Promise<void>
-  onAddActivity?: () => void
-  onEdit?: (id: string) => void
-  onManageContext?: (activity: Activity) => void
-  onOpenBudget?: () => void
-  onOpenVault?: () => void
-  renderConfirmedActions?: (activity: Activity) => ReactNode
-  renderPendingActions?: (activity: Activity) => ReactNode
+  activities: Activity[];
+  currentUserId?: string | number | null;
+  currentUserRole?: "admin" | "viajero" | string | null;
+  onAccept?: (id: string) => void | Promise<void>;
+  onReject?: (id: string) => void | Promise<void>;
+  onDelete?: (id: string) => void | Promise<void>;
+  onAddActivity?: () => void;
+  onEdit?: (id: string) => void;
+  onManageContext?: (activity: Activity) => void;
+  onOpenBudget?: () => void;
+  onOpenVault?: () => void;
+  renderConfirmedActions?: (activity: Activity) => ReactNode;
+  renderPendingActions?: (activity: Activity) => ReactNode;
+  isPastDay?: boolean;
 }) {
-  const [activeSection, setActiveSection] = useState<'confirmadas' | 'pendientes'>('confirmadas')
-  const orderedActivities = sortActivitiesChronologically(activities)
-  const conflictActivityIds = getConflictActivityIds(orderedActivities)
-  const confirmedActivities = orderedActivities.filter((a) => a.status === 'confirmada')
-  const pendingActivities = orderedActivities.filter((a) => a.status === 'pendiente')
-  const activitySectionLabel = getSectionLabel('actividad')
-  const visibleSection =
-    activeSection === 'confirmadas' && confirmedActivities.length === 0 && pendingActivities.length > 0
-      ? 'pendientes'
-      : activeSection
-  const visibleActivities = visibleSection === 'confirmadas' ? confirmedActivities : pendingActivities
-  const nowPosition = getTimelineNowPosition(visibleActivities)
+  const [activeSection, setActiveSection] = useState<
+    "confirmadas" | "pendientes"
+  >("confirmadas");
+  const orderedActivities = sortActivitiesChronologically(activities);
+  const conflictActivityIds = getConflictActivityIds(orderedActivities);
+  const confirmedActivities = orderedActivities.filter(
+    (a) => a.status === "confirmada",
+  );
+  const pendingActivities = orderedActivities.filter(
+    (a) => a.status === "pendiente",
+  );
+  const activePendingActivities = pendingActivities.filter(
+    (a) => !isPendingActivityExpired(a),
+  );
+  const expiredPendingActivities = pendingActivities.filter(
+    isPendingActivityExpired,
+  );
+  const activitySectionLabel = getSectionLabel("actividad");
+  const visibleSection = isPastDay
+    ? "confirmadas"
+    : activeSection === "confirmadas" &&
+        confirmedActivities.length === 0 &&
+        activePendingActivities.length > 0
+      ? "pendientes"
+      : activeSection;
+  const visibleActivities =
+    visibleSection === "confirmadas"
+      ? confirmedActivities
+      : [...activePendingActivities, ...expiredPendingActivities];
+  const nowPosition = getTimelineNowPosition(visibleActivities);
 
   const renderConfirmedTimeline = () =>
     confirmedActivities.length > 0 ? (
@@ -972,15 +1372,20 @@ function ActivitiesBody({
           className="absolute bottom-4 left-[89px] top-4 z-0 w-[3px] rounded-full bg-[linear-gradient(180deg,#7A4FD6_0%,#1E6FD9_52%,#7A4FD6_100%)] shadow-[0_0_18px_rgba(122,79,214,0.22)]"
           aria-hidden="true"
         />
-        {nowPosition?.type === 'before' && (
-          <TimelineNowMarker label={nowPosition.label} timeLabel={nowPosition.timeLabel} />
+        {nowPosition?.type === "before" && (
+          <TimelineNowMarker
+            label={nowPosition.label}
+            timeLabel={nowPosition.timeLabel}
+          />
         )}
         {confirmedActivities.map((a) => (
           <TimelineItem
             key={`confirmed-${a.id}`}
             activity={a}
             hasConflict={conflictActivityIds.has(a.id)}
-            isNow={nowPosition?.type === 'on' && nowPosition.activityId === a.id}
+            isNow={
+              nowPosition?.type === "on" && nowPosition.activityId === a.id
+            }
           >
             <ActivityCardConfirmed
               activity={a}
@@ -995,83 +1400,114 @@ function ActivitiesBody({
             />
           </TimelineItem>
         ))}
-        {nowPosition?.type === 'after' && (
-          <TimelineNowMarker label={nowPosition.label} timeLabel={nowPosition.timeLabel} />
+        {nowPosition?.type === "after" && (
+          <TimelineNowMarker
+            label={nowPosition.label}
+            timeLabel={nowPosition.timeLabel}
+          />
         )}
       </div>
     ) : (
       <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-        <p className="font-body text-xs text-gray500">Aun no hay actividades confirmadas para este dia.</p>
+        <p className="font-body text-xs text-gray500">
+          Aun no hay actividades confirmadas para este dia.
+        </p>
       </div>
-    )
+    );
 
   const renderPendingTimeline = () =>
-    pendingActivities.length > 0 ? (
+    visibleActivities.length > 0 ? (
       <div className="relative space-y-6">
         <div
           className="absolute bottom-4 left-[89px] top-4 z-0 w-[3px] rounded-full bg-[linear-gradient(180deg,#7A4FD6_0%,#1E6FD9_52%,#7A4FD6_100%)] shadow-[0_0_18px_rgba(122,79,214,0.22)]"
           aria-hidden="true"
         />
-        {nowPosition?.type === 'before' && (
-          <TimelineNowMarker label={nowPosition.label} timeLabel={nowPosition.timeLabel} />
+        {nowPosition?.type === "before" && (
+          <TimelineNowMarker
+            label={nowPosition.label}
+            timeLabel={nowPosition.timeLabel}
+          />
         )}
-        {pendingActivities.map((a) => (
-          <TimelineItem
-            key={`pending-${a.id}`}
-            activity={a}
-            hasConflict={conflictActivityIds.has(a.id)}
-            isNow={nowPosition?.type === 'on' && nowPosition.activityId === a.id}
-          >
-            <ActivityCardPending
+        {visibleActivities.map((a) => {
+          const isExpired = isPendingActivityExpired(a);
+          return (
+            <TimelineItem
+              key={`pending-${a.id}`}
               activity={a}
-              currentUserId={currentUserId}
-              currentUserRole={currentUserRole}
-              onAccept={onAccept}
-              onReject={onReject}
-              onDelete={onDelete}
-              onEdit={onEdit}
-              onManageContext={onManageContext}
-              onOpenBudget={onOpenBudget}
-              onOpenVault={onOpenVault}
-              actionButtons={renderPendingActions?.(a)}
-            />
-          </TimelineItem>
-        ))}
-        {nowPosition?.type === 'after' && (
-          <TimelineNowMarker label={nowPosition.label} timeLabel={nowPosition.timeLabel} />
+              hasConflict={conflictActivityIds.has(a.id)}
+              isNow={
+                nowPosition?.type === "on" && nowPosition.activityId === a.id
+              }
+            >
+              <ActivityCardPending
+                activity={a}
+                currentUserId={currentUserId}
+                currentUserRole={currentUserRole}
+                onAccept={onAccept}
+                onReject={onReject}
+                onDelete={onDelete}
+                onEdit={onEdit}
+                onManageContext={onManageContext}
+                onOpenBudget={onOpenBudget}
+                onOpenVault={onOpenVault}
+                actionButtons={
+                  isExpired ? undefined : renderPendingActions?.(a)
+                }
+                isExpired={isExpired}
+              />
+            </TimelineItem>
+          );
+        })}
+        {nowPosition?.type === "after" && (
+          <TimelineNowMarker
+            label={nowPosition.label}
+            timeLabel={nowPosition.timeLabel}
+          />
         )}
       </div>
     ) : (
       <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-        <p className="font-body text-xs text-gray500">No hay propuestas pendientes para este dia.</p>
+        <p className="font-body text-xs text-gray500">
+          No hay propuestas pendientes para este dia.
+        </p>
       </div>
-    )
+    );
 
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-[#D9E4F7] bg-[#F8FAFF] px-4 py-4">
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_260px]">
+        <div
+          className={
+            isPastDay
+              ? "grid gap-3 xl:grid-cols-1"
+              : "grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_260px]"
+          }
+        >
           <div className="xl:contents">
             <DaySectionSwitcher
               label="Linea de tiempo confirmada"
               count={confirmedActivities.length}
               accent="blue"
               icon={<IconLayers size={16} />}
-              active={visibleSection === 'confirmadas'}
-              onClick={() => setActiveSection('confirmadas')}
+              active={visibleSection === "confirmadas"}
+              onClick={() => setActiveSection("confirmadas")}
             />
-            <DaySectionSwitcher
-              label="Propuestas por confirmar"
-              count={pendingActivities.length}
-              accent="purple"
-              icon={<IconMessageCircle size={16} />}
-              active={visibleSection === 'pendientes'}
-              onClick={() => setActiveSection('pendientes')}
-            />
+            {!isPastDay && (
+              <DaySectionSwitcher
+                label="Propuestas por confirmar"
+                count={activePendingActivities.length}
+                accent="purple"
+                icon={<IconMessageCircle size={16} />}
+                active={visibleSection === "pendientes"}
+                onClick={() => setActiveSection("pendientes")}
+              />
+            )}
           </div>
-          <div className="w-full">
-            <AddActivityRow onClick={onAddActivity} />
-          </div>
+          {!isPastDay && (
+            <div className="w-full">
+              <AddActivityRow onClick={onAddActivity} />
+            </div>
+          )}
         </div>
       </section>
 
@@ -1079,23 +1515,31 @@ function ActivitiesBody({
         <div className="mb-3 flex items-center justify-between gap-3">
           <SectionLabel
             emoji={activitySectionLabel.emoji}
-            text={visibleSection === 'confirmadas' ? 'CONFIRMADAS' : 'PROPUESTAS POR CONFIRMAR'}
+            text={
+              visibleSection === "confirmadas"
+                ? "CONFIRMADAS"
+                : "PROPUESTAS POR CONFIRMAR"
+            }
           />
           <span
             className={[
-              'rounded-full px-3 py-1 font-body text-[11px] font-semibold',
-              visibleSection === 'confirmadas'
-                ? 'bg-greenAccent/10 text-greenAccent'
-                : 'bg-purpleMedium/10 text-purpleMedium',
-            ].join(' ')}
+              "rounded-full px-3 py-1 font-body text-[11px] font-semibold",
+              visibleSection === "confirmadas"
+                ? "bg-greenAccent/10 text-greenAccent"
+                : "bg-purpleMedium/10 text-purpleMedium",
+            ].join(" ")}
           >
-            {visibleSection === 'confirmadas' ? confirmedActivities.length : pendingActivities.length}
+            {visibleSection === "confirmadas"
+              ? confirmedActivities.length
+              : activePendingActivities.length}
           </span>
         </div>
-        {visibleSection === 'confirmadas' ? renderConfirmedTimeline() : renderPendingTimeline()}
+        {visibleSection === "confirmadas"
+          ? renderConfirmedTimeline()
+          : renderPendingTimeline()}
       </section>
     </div>
-  )
+  );
 }
 
 function DaySectionSwitcher({
@@ -1106,26 +1550,25 @@ function DaySectionSwitcher({
   active,
   onClick,
 }: {
-  label: string
-  count: number
-  accent: 'blue' | 'purple'
-  icon: ReactNode
-  active: boolean
-  onClick: () => void
+  label: string;
+  count: number;
+  accent: "blue" | "purple";
+  icon: ReactNode;
+  active: boolean;
+  onClick: () => void;
 }) {
-  const styles =
-    active
-      ? accent === 'blue'
-        ? 'border-[#1E6FD9]/35 bg-[#F8FAFF] text-[#1E0A4E] shadow-[0_8px_22px_rgba(30,111,217,0.08)]'
-        : 'border-[#7A4FD6]/35 bg-[#FBF8FF] text-[#1E0A4E] shadow-[0_8px_22px_rgba(122,79,214,0.08)]'
-      : accent === 'blue'
-        ? 'border-[#DCE7FA] bg-white text-[#1E0A4E] hover:border-[#1E6FD9]/40 hover:bg-[#F8FAFF]'
-        : 'border-[#E6DBFF] bg-white text-[#1E0A4E] hover:border-[#7A4FD6]/40 hover:bg-[#FBF8FF]'
+  const styles = active
+    ? accent === "blue"
+      ? "border-[#1E6FD9]/35 bg-[#F8FAFF] text-[#1E0A4E] shadow-[0_8px_22px_rgba(30,111,217,0.08)]"
+      : "border-[#7A4FD6]/35 bg-[#FBF8FF] text-[#1E0A4E] shadow-[0_8px_22px_rgba(122,79,214,0.08)]"
+    : accent === "blue"
+      ? "border-[#DCE7FA] bg-white text-[#1E0A4E] hover:border-[#1E6FD9]/40 hover:bg-[#F8FAFF]"
+      : "border-[#E6DBFF] bg-white text-[#1E0A4E] hover:border-[#7A4FD6]/40 hover:bg-[#FBF8FF]";
 
   const badgeStyles =
-    accent === 'blue'
-      ? 'bg-[#EEF4FF] text-[#1E6FD9]'
-      : 'bg-[#F3EEFF] text-[#7A4FD6]'
+    accent === "blue"
+      ? "bg-[#EEF4FF] text-[#1E6FD9]"
+      : "bg-[#F3EEFF] text-[#7A4FD6]";
 
   return (
     <button
@@ -1134,21 +1577,35 @@ function DaySectionSwitcher({
       className={`flex min-h-[58px] w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${styles}`}
     >
       <span className="flex items-center gap-3">
-        <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${badgeStyles}`}>
+        <span
+          className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${badgeStyles}`}
+        >
           {icon}
         </span>
         <span>
           <span className="block font-body text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
             Seccion
           </span>
-          <span className="mt-0.5 block font-heading text-sm font-bold">{label}</span>
+          <span className="mt-0.5 block font-heading text-sm font-bold">
+            {label}
+          </span>
         </span>
       </span>
-      <span className={`rounded-full px-2.5 py-1 font-body text-xs font-semibold ${badgeStyles}`}>
+      <span
+        className={`rounded-full px-2.5 py-1 font-body text-xs font-semibold ${badgeStyles}`}
+      >
         {count}
       </span>
     </button>
-  )
+  );
+}
+
+function isPendingActivityExpired(activity: Activity): boolean {
+  if (activity.status !== "pendiente") return false;
+  const value = activity.startsAt ?? null;
+  if (!value) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.getTime() < Date.now();
 }
 
 function DaySectionModal({
@@ -1158,13 +1615,13 @@ function DaySectionModal({
   onClose,
   children,
 }: {
-  title: string
-  subtitle: string
-  open: boolean
-  onClose: () => void
-  children: ReactNode
+  title: string;
+  subtitle: string;
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
 }) {
-  if (!open) return null
+  if (!open) return null;
 
   return (
     <div
@@ -1197,17 +1654,15 @@ function DaySectionModal({
             </button>
           </div>
         </div>
-        <div className="overflow-y-auto px-6 py-5">
-          {children}
-        </div>
+        <div className="overflow-y-auto px-6 py-5">{children}</div>
       </div>
     </div>
-  )
+  );
 }
 
 // ── DayView ───────────────────────────────────────────────────────────────────
 
-void DaySectionModal
+void DaySectionModal;
 
 export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
   {
@@ -1229,28 +1684,31 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
     currentUserRole,
     renderConfirmedActions,
     renderPendingActions,
+    isPastDay = false,
   },
   ref,
 ) {
-  const rootRef = useRef<HTMLDivElement>(null)
-  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded)
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
 
-  const isControlled = controlledExpanded !== undefined
-  const expanded     = isControlled ? controlledExpanded : internalExpanded
+  const isControlled = controlledExpanded !== undefined;
+  const expanded = isControlled ? controlledExpanded : internalExpanded;
 
   useImperativeHandle(ref, () => ({
     scrollIntoView() {
-      rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     },
-  }))
+  }));
 
   function handleHeaderClick() {
-    onSelect?.(dayNumber)
-    if (!isControlled) setInternalExpanded((v) => !v)
+    onSelect?.(dayNumber);
+    if (!isControlled) setInternalExpanded((v) => !v);
   }
 
-  const pendingCount = activities.filter((a) => a.status === 'pendiente').length
-  const isEmpty      = activities.length === 0
+  const pendingCount = activities.filter(
+    (a) => a.status === "pendiente" && !isPendingActivityExpired(a),
+  ).length;
+  const isEmpty = activities.length === 0;
 
   return (
     <div ref={rootRef} className="rounded-2xl shadow-sm scroll-mt-4">
@@ -1258,12 +1716,10 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
       <button
         onClick={handleHeaderClick}
         className={[
-          'w-full bg-white flex items-center justify-between px-5 py-4 transition-colors hover:bg-gray-50/80',
-          expanded
-            ? 'rounded-t-2xl border-b border-[#E2E8F0]'
-            : 'rounded-2xl',
-          'border border-[#E2E8F0]',
-        ].join(' ')}
+          "w-full bg-white flex items-center justify-between px-5 py-4 transition-colors hover:bg-gray-50/80",
+          expanded ? "rounded-t-2xl border-b border-[#E2E8F0]" : "rounded-2xl",
+          "border border-[#E2E8F0]",
+        ].join(" ")}
         aria-expanded={expanded}
       >
         {/* Left side */}
@@ -1278,7 +1734,9 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
               {date}
             </span>
             <span className="font-body text-[13px] text-gray500 leading-none">
-              {isEmpty ? 'Sin actividades' : `${activities.length} actividad${activities.length !== 1 ? 'es' : ''}`}
+              {isEmpty
+                ? "Sin actividades"
+                : `${activities.length} actividad${activities.length !== 1 ? "es" : ""}`}
             </span>
           </div>
         </div>
@@ -1292,9 +1750,9 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
           )}
           <span
             className={[
-              'text-gray500 transition-transform duration-300',
-              expanded ? 'rotate-180' : 'rotate-0',
-            ].join(' ')}
+              "text-gray500 transition-transform duration-300",
+              expanded ? "rotate-180" : "rotate-0",
+            ].join(" ")}
             aria-hidden="true"
           >
             <IconChevron size={16} />
@@ -1305,11 +1763,20 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
       {/* ── Expandable body ── */}
       <div
         className="overflow-hidden transition-all duration-300 ease-in-out"
-        style={{ maxHeight: expanded ? '9999px' : 0 }}
+        style={{ maxHeight: expanded ? "9999px" : 0 }}
       >
         <div className="bg-white border-x border-b border-[#E2E8F0] rounded-b-2xl px-5 pb-5 pt-4">
           {isEmpty ? (
-            <EmptyDayState onClick={() => onAddActivity?.(dayNumber)} />
+            isPastDay ? (
+              <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+                <p className="font-body text-xs text-gray500">
+                  Este dia ya paso. Solo puedes consultar la linea del tiempo
+                  confirmada.
+                </p>
+              </div>
+            ) : (
+              <EmptyDayState onClick={() => onAddActivity?.(dayNumber)} />
+            )
           ) : (
             <ActivitiesBody
               activities={activities}
@@ -1323,12 +1790,15 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
               onOpenBudget={onOpenBudget}
               onOpenVault={onOpenVault}
               renderConfirmedActions={renderConfirmedActions}
-              renderPendingActions={renderPendingActions}
+              renderPendingActions={
+                isPastDay ? undefined : renderPendingActions
+              }
+              isPastDay={isPastDay}
               onAddActivity={() => onAddActivity?.(dayNumber)}
             />
           )}
         </div>
       </div>
     </div>
-  )
-})
+  );
+});

@@ -307,7 +307,7 @@ export const BudgetDashboard: FC<Props> = ({
     if (groupId) {
       localStorage.setItem(`budget-dashboard-cache:${groupId}`, JSON.stringify(nextDashboard))
     }
-  }, [onSummaryChange])
+  }, [groupId, onSummaryChange])
 
   const loadDashboard = useCallback(async () => {
     if (!groupId || !accessToken) {

@@ -1012,6 +1012,24 @@ function BottomNavbar({
   );
 }
 
+function parseCoordinate(value: unknown, axis: "lat" | "lng"): number | null {
+  if (value == null) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+
+  const min = axis === "lat" ? -90 : -180;
+  const max = axis === "lat" ? 90 : 180;
+  if (numeric < min || numeric > max) return null;
+
+  return numeric;
+}
+
+function coordinateKey(lat: number, lng: number): string {
+  return `${lat.toFixed(6)},${lng.toFixed(6)}`;
+}
+
 function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | null }) {
   const [selectedActivityId, setSelectedActivityId] = useState<string | number | null>(null);
   const [dayFilter, setDayFilter] = useState<number | "all">("all");
@@ -1028,13 +1046,13 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
     [days],
   );
 
-  const withCoords = useMemo(
-    () =>
-      activities.filter(
-        (activity) => activity.latitude != null && activity.longitude != null,
-      ),
-    [activities],
-  );
+  const withCoords = useMemo(() => {
+    return activities.filter((activity) => {
+      const lat = parseCoordinate(activity.latitude, "lat");
+      const lng = parseCoordinate(activity.longitude, "lng");
+      return lat != null && lng != null;
+    });
+  }, [activities]);
 
   const availableDays = useMemo(
     () => Array.from(new Set(withCoords.map((activity) => activity.dayNumber))).sort((a, b) => a - b),
@@ -1101,15 +1119,60 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
     );
   }
 
-  const mapCenter = hubCoordinates
-    ? `${hubCoordinates.lat},${hubCoordinates.lng}`
-    : `${withCoords[0].latitude},${withCoords[0].longitude}`;
+  const firstActivityLat = parseCoordinate(withCoords[0].latitude, "lat");
+  const firstActivityLng = parseCoordinate(withCoords[0].longitude, "lng");
+  const fallbackLat = firstActivityLat ?? 16.8531;
+  const fallbackLng = firstActivityLng ?? -99.8237;
+  const normalizedCenter = hubCoordinates
+    ? { lat: Number(hubCoordinates.lat), lng: Number(hubCoordinates.lng) }
+    : { lat: fallbackLat, lng: fallbackLng };
 
-  const mapPoints = filteredActivities
-    .map((activity) => `${activity.latitude},${activity.longitude}`)
-    .filter(Boolean);
+  const mapCenter = Number.isFinite(normalizedCenter.lat) && Number.isFinite(normalizedCenter.lng)
+    ? `${normalizedCenter.lat},${normalizedCenter.lng}`
+    : `${fallbackLat},${fallbackLng}`;
 
-  const mapQuery = [mapCenter, ...mapPoints].join("|");
+  const normalizedPoints = filteredActivities
+    .map((activity) => {
+      const lat = parseCoordinate(activity.latitude, "lat");
+      const lng = parseCoordinate(activity.longitude, "lng");
+      if (lat == null || lng == null) return null;
+      const startsAtValue =
+        typeof activity.startsAt === "string" ? activity.startsAt : null;
+      const startsAtMs = startsAtValue ? new Date(startsAtValue).getTime() : Number.POSITIVE_INFINITY;
+      return { lat, lng, dayNumber: activity.dayNumber, startsAtMs };
+    })
+    .filter(
+      (
+        point,
+      ): point is { lat: number; lng: number; dayNumber: number; startsAtMs: number } =>
+        point != null,
+    )
+    .sort((left, right) => {
+      if (left.dayNumber !== right.dayNumber) return left.dayNumber - right.dayNumber;
+      return left.startsAtMs - right.startsAtMs;
+    });
+
+  const uniqueRoutePoints = normalizedPoints.filter((point, index, allPoints) => {
+    if (index === 0) return true;
+    const prev = allPoints[index - 1];
+    return coordinateKey(point.lat, point.lng) !== coordinateKey(prev.lat, prev.lng);
+  });
+
+  const mapPoints = uniqueRoutePoints.map((point) => `${point.lat},${point.lng}`);
+  const destinationPoint = mapPoints[0] ?? mapCenter;
+  const waypointPoints = mapPoints.slice(1);
+
+  const mapParams = new URLSearchParams({
+    saddr: mapCenter,
+    daddr:
+      waypointPoints.length > 0
+        ? `${destinationPoint} to:${waypointPoints.join(" to:")}`
+        : destinationPoint,
+    dirflg: "d",
+    hl: "es",
+  });
+
+  const mapSrc = `https://maps.google.com/maps?${mapParams.toString()}&output=embed`;
 
   return (
     <>
@@ -1156,15 +1219,15 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
             </div>
             <iframe
               title="Mapa del viaje"
-              src={`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=12&output=embed`}
-              className="h-[480px] w-full rounded-xl border border-[#E2E8F0]"
+              src={mapSrc}
+              className="h-[52vh] min-h-[360px] max-h-[680px] w-full rounded-xl border border-[#E2E8F0]"
               loading="lazy"
             />
           </div>
         </section>
 
         <aside className="lg:col-span-4">
-          <div className="max-h-[580px] space-y-3 overflow-auto pr-1">
+          <div className="max-h-[52vh] min-h-[360px] space-y-3 overflow-auto pr-1">
             {filteredActivities.map((activity) => (
               <button
                 key={activity.id}

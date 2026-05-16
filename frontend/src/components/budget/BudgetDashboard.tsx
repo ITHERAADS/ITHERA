@@ -6,6 +6,7 @@ import { MyWalletView } from './MyWalletView'
 import { useAuth } from '../../context/useAuth'
 import { useSocket } from '../../hooks/useSocket'
 import { useGroupRealtimeRefresh } from '../../hooks/useGroupRealtimeRefresh'
+import { getCurrentGroup } from '../../services/groups'
 import {
   budgetService,
   type BudgetDashboardResponse,
@@ -80,6 +81,34 @@ function formatMXN(n: number): string {
     currency: 'MXN',
     maximumFractionDigits: 0,
   }).format(n)
+}
+
+const EXPENSE_WINDOW_MONTHS_BEFORE_TRIP = 2
+const EXPENSE_WINDOW_DAYS_AFTER_TRIP = 3
+
+const toDateKey = (value?: string | null): string | null => {
+  if (!value) return null
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  const date = new Date(value)
+  if (!Number.isFinite(date.getTime())) return null
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const addMonthsToDateKey = (dateKey: string, months: number): string => {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const date = new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1))
+  date.setUTCMonth(date.getUTCMonth() + months)
+  return date.toISOString().slice(0, 10)
+}
+
+const addDaysToDateKey = (dateKey: string, days: number): string => {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const date = new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1))
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
 }
 
 function buildReceiptPdfDocument(data: {
@@ -284,6 +313,7 @@ export const BudgetDashboard: FC<Props> = ({
   const [isOffline, setIsOffline] = useState<boolean>(typeof navigator !== 'undefined' ? !navigator.onLine : false)
   const [copyGroupSummaryState, setCopyGroupSummaryState] = useState<'idle' | 'loading' | 'done'>('idle')
   const [exportingGroupSummary, setExportingGroupSummary] = useState(false)
+  const currentGroup = getCurrentGroup()
 
   const toUserMessage = (err: unknown, fallback: string): string => {
     const raw = err instanceof Error ? err.message : ''
@@ -541,6 +571,20 @@ export const BudgetDashboard: FC<Props> = ({
   const canAdjustBudget = dashboard?.myRole === 'admin' && !isReadOnly && !isOffline
   const requiresBudgetSetup = totalBudget <= 0
   const groupSettlementSummary = dashboard?.groupSettlementSummary ?? { totalTransfers: 0, totalAmount: 0 }
+  const groupStartDate =
+    currentGroup && String(currentGroup.id) === String(groupId)
+      ? toDateKey(currentGroup.fecha_inicio ?? null)
+      : null
+  const groupEndDate =
+    currentGroup && String(currentGroup.id) === String(groupId)
+      ? toDateKey(currentGroup.fecha_fin ?? null)
+      : null
+  const minExpenseDate = groupStartDate
+    ? addMonthsToDateKey(groupStartDate, -EXPENSE_WINDOW_MONTHS_BEFORE_TRIP)
+    : null
+  const maxExpenseDate = groupEndDate
+    ? addDaysToDateKey(groupEndDate, EXPENSE_WINDOW_DAYS_AFTER_TRIP)
+    : null
 
   const buildGroupSettlementSummaryText = () => {
     return [
@@ -1371,6 +1415,8 @@ export const BudgetDashboard: FC<Props> = ({
         documentOptions={linkOptions.documents}
         totalBudget={totalBudget}
         comprometido={comprometido}
+        minExpenseDate={minExpenseDate}
+        maxExpenseDate={maxExpenseDate}
         isSaving={isSaving}
         onClose={() => { if (!isSaving) { setShowModal(false); setEditingExpense(null) } }}
         onSave={(expense) => void handleSaveExpense(expense)}

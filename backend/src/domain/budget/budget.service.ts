@@ -78,6 +78,34 @@ const emitBudgetDashboardUpdated = (
 
 const roundMoney = (value: number): number => Math.round(value * 100) / 100;
 
+const toDateKey = (value?: string | null): string | null => {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const EXPENSE_WINDOW_MONTHS_BEFORE_TRIP = 2;
+const EXPENSE_WINDOW_DAYS_AFTER_TRIP = 3;
+
+const addMonthsToDateKey = (dateKey: string, months: number): string => {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1));
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+};
+
+const addDaysToDateKey = (dateKey: string, days: number): string => {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
 const assertPositiveAmount = (amount: unknown): number => {
   const parsed = Number(amount);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -186,6 +214,43 @@ const getGroupBudgetRecord = async (groupId: string) => {
 
   if (error || !data) throw createError('Grupo no encontrado', 404);
   return data;
+};
+
+const assertExpenseDateWithinTripWindow = async (
+  groupId: string,
+  expenseDateRaw: string | null | undefined,
+) => {
+  const expenseDate = toDateKey(expenseDateRaw ?? null);
+  if (!expenseDate) {
+    throw createError('La fecha del gasto es invalida', 400);
+  }
+
+  const { data: group, error } = await supabaseAdmin
+    .from('grupos_viaje')
+    .select('fecha_inicio, fecha_fin')
+    .eq('id', groupId)
+    .maybeSingle();
+
+  if (error) throw createError(error.message, 500);
+  if (!group) throw createError('Grupo no encontrado', 404);
+
+  const start = toDateKey(String((group as any).fecha_inicio ?? ''));
+  const end = toDateKey(String((group as any).fecha_fin ?? ''));
+  if (!start || !end) {
+    throw createError('No se pudo validar el rango de fechas del viaje', 500);
+  }
+
+  const minDate = addMonthsToDateKey(
+    start,
+    -EXPENSE_WINDOW_MONTHS_BEFORE_TRIP,
+  );
+  const maxDate = addDaysToDateKey(end, EXPENSE_WINDOW_DAYS_AFTER_TRIP);
+  if (expenseDate < minDate || expenseDate > maxDate) {
+    throw createError(
+      `La fecha del gasto debe estar entre ${minDate} y ${maxDate}`,
+      400,
+    );
+  }
 };
 
 const getExpenses = async (groupId: string): Promise<RawExpenseRow[]> => {
@@ -471,6 +536,8 @@ export const createExpense = async (
   const splitType = normalizeSplitType(payload.split_type);
   const paidByUserId = String(payload.paid_by_user_id);
   assertUserInGroup(members, paidByUserId, 'El pagador no pertenece al grupo');
+  const expenseDate = payload.expense_date ?? new Date().toISOString().split('T')[0];
+  await assertExpenseDateWithinTripWindow(groupId, expenseDate);
 
   const { data: expense, error } = await supabaseAdmin
     .from('expenses')
@@ -482,7 +549,7 @@ export const createExpense = async (
       description: String(payload.description ?? '').trim(),
       category,
       split_type: splitType,
-      expense_date: payload.expense_date ?? new Date().toISOString().split('T')[0],
+      expense_date: expenseDate,
     })
     .select()
     .single();
@@ -529,6 +596,8 @@ export const updateExpense = async (
   const splitType = normalizeSplitType(payload.split_type);
   const paidByUserId = String(payload.paid_by_user_id);
   assertUserInGroup(members, paidByUserId, 'El pagador no pertenece al grupo');
+  const expenseDate = payload.expense_date ?? new Date().toISOString().split('T')[0];
+  await assertExpenseDateWithinTripWindow(groupId, expenseDate);
 
   const { error } = await supabaseAdmin
     .from('expenses')
@@ -538,7 +607,7 @@ export const updateExpense = async (
       description: String(payload.description ?? '').trim(),
       category,
       split_type: splitType,
-      expense_date: payload.expense_date ?? new Date().toISOString().split('T')[0],
+      expense_date: expenseDate,
       updated_at: new Date().toISOString(),
     })
     .eq('id', expenseId)

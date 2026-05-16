@@ -1068,6 +1068,7 @@ export function SubgroupSchedulePanel({
     setNewSlotTitle("");
     setNewSlotStart("");
     setNewSlotEnd("");
+    setError(null);
     setSlotModal({ mode: "create" });
   };
 
@@ -1079,6 +1080,7 @@ export function SubgroupSchedulePanel({
     setNewSlotTitle(slot.title);
     setNewSlotStart(toLocalInputValue(slot.starts_at));
     setNewSlotEnd(toLocalInputValue(slot.ends_at));
+    setError(null);
     setSlotModal({ mode: "edit", slotId: slot.id });
   };
 
@@ -1130,7 +1132,10 @@ export function SubgroupSchedulePanel({
     }, 120);
   }, [focusRequest, handledFocusRequestNonce, slots]);
 
-  const closeSlotModal = () => setSlotModal(null);
+  const closeSlotModal = () => {
+    setSlotModal(null);
+    setError(null);
+  };
 
   const openCreateSubgroupModal = (slot: SubgroupSlot) => {
     if (isSlotInPastDay(slot)) {
@@ -3029,6 +3034,11 @@ export function SubgroupSchedulePanel({
         onClose={slotModalSaving ? () => {} : closeSlotModal}
         onConfirm={() => void submitSlotModal()}
       >
+        {error && (
+          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
         <div className="grid gap-4 md:grid-cols-2">
           <label className="grid gap-2 md:col-span-2">
             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[#64748B]">

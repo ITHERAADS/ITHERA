@@ -268,6 +268,33 @@ const isSubgroupActivityContextType = (
   type: ContextEntityRef["type"],
 ): boolean => type === "expense" || type === "document";
 
+const pickCreatedExpenseId = (
+  expenses: Array<{
+    id: string;
+    description: string;
+    amount: number;
+    createdAt: string | null;
+  }>,
+  previousExpenseIds: Set<string>,
+  expectedDescription: string,
+  expectedAmount: number,
+): string | null => {
+  const newlyCreated = expenses.filter(
+    (expense) => !previousExpenseIds.has(String(expense.id)),
+  );
+  const pool = newlyCreated.length > 0 ? newlyCreated : expenses;
+  const candidates = pool.filter(
+    (expense) =>
+      expense.description === expectedDescription &&
+      Number(expense.amount) === expectedAmount,
+  );
+  const sorted = [...(candidates.length > 0 ? candidates : pool)].sort(
+    (a, b) =>
+      new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime(),
+  );
+  return sorted[0]?.id ?? null;
+};
+
 const dt = (value?: string | null) => {
   if (!value) return "Sin hora";
   const d = new Date(value);
@@ -1227,6 +1254,7 @@ export function SubgroupSchedulePanel({
     }
     setError(null);
     if (!groupId || !accessToken) return null;
+    const previousExpenseIds = new Set(linkOptions.expenses.map((item) => item.id));
 
     const budgetResponse = await budgetService.createExpense(
       groupId,
@@ -1252,19 +1280,12 @@ export function SubgroupSchedulePanel({
       accessToken,
     );
 
-    const candidates = budgetResponse.expenses.filter(
-      (expense) =>
-        expense.description === draft.quickExpenseDescription.trim() &&
-        Number(expense.amount) === amount,
+    return pickCreatedExpenseId(
+      budgetResponse.expenses,
+      previousExpenseIds,
+      draft.quickExpenseDescription.trim(),
+      amount,
     );
-    const sorted = [
-      ...(candidates.length > 0 ? candidates : budgetResponse.expenses),
-    ].sort(
-      (a, b) =>
-        new Date(b.createdAt ?? 0).getTime() -
-        new Date(a.createdAt ?? 0).getTime(),
-    );
-    return sorted[0]?.id ?? null;
   };
 
   const confirmDraftExpense = async (slotId: number) => {
@@ -1626,23 +1647,15 @@ export function SubgroupSchedulePanel({
                 accessToken,
               )
               .then((budgetResponse) => {
-                const expectedDescription =
-                  draft.quickExpenseDescription.trim();
-                const candidates = budgetResponse.expenses.filter(
-                  (expense) =>
-                    expense.description === expectedDescription &&
-                    Number(expense.amount) === quickExpenseValue,
+                const previousExpenseIds = new Set(
+                  linkOptions.expenses.map((item) => item.id),
                 );
-                const sorted = [
-                  ...(candidates.length > 0
-                    ? candidates
-                    : budgetResponse.expenses),
-                ].sort(
-                  (a, b) =>
-                    new Date(b.createdAt ?? 0).getTime() -
-                    new Date(a.createdAt ?? 0).getTime(),
+                return pickCreatedExpenseId(
+                  budgetResponse.expenses,
+                  previousExpenseIds,
+                  draft.quickExpenseDescription.trim(),
+                  quickExpenseValue,
                 );
-                return sorted[0]?.id ?? null;
               })
           : null;
 
@@ -3381,8 +3394,18 @@ export function SubgroupSchedulePanel({
                     proponer.
                   </div>
                 ) : (
-                  <div className="max-h-[320px] overflow-y-auto rounded-2xl border border-[#E2E8F0] bg-white">
-                    {subgroupModalDraft.results.map((place) => {
+                  <>
+                    {subgroupModalDraft.selectedPlace && (
+                      <p className="mb-2 text-xs text-[#64748B]">
+                        Opcion seleccionada. Si quieres cambiarla, realiza una
+                        nueva busqueda.
+                      </p>
+                    )}
+                    <div className="max-h-[320px] overflow-y-auto rounded-2xl border border-[#E2E8F0] bg-white">
+                    {(subgroupModalDraft.selectedPlace
+                      ? [subgroupModalDraft.selectedPlace]
+                      : subgroupModalDraft.results
+                    ).map((place) => {
                       const isSelected =
                         subgroupModalDraft.selectedPlace?.id === place.id;
                       return (
@@ -3454,7 +3477,8 @@ export function SubgroupSchedulePanel({
                         </button>
                       );
                     })}
-                  </div>
+                    </div>
+                  </>
                 )}
               </div>
             </div>

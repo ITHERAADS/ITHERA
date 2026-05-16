@@ -48,7 +48,7 @@ type ActivityProposalModalProps = {
     email?: string | null
   }>
   onClose: () => void
-  onCreated: () => void
+  onCreated: () => void | Promise<void>
 }
 
 const EMPTY_LINK_OPTIONS: ContextLinkOptions = {
@@ -68,6 +68,29 @@ const documentCategoryLabels: Record<TripDocumentCategory, string> = {
 
 const todayValue = () => new Date().toISOString().split('T')[0]
 const activityContextKey = (entity: { type: 'expense' | 'document'; id: string }) => `${entity.type}:${entity.id}`
+
+const pickCreatedExpenseId = (
+  expenses: Array<{
+    id: string
+    description: string
+    amount: number
+    createdAt: string | null
+  }>,
+  previousExpenseIds: Set<string>,
+  expectedDescription: string,
+  expectedAmount: number,
+): string | null => {
+  const newlyCreated = expenses.filter((expense) => !previousExpenseIds.has(String(expense.id)))
+  const pool = newlyCreated.length > 0 ? newlyCreated : expenses
+  const candidates = pool.filter((expense) =>
+    expense.description === expectedDescription &&
+    Number(expense.amount) === expectedAmount
+  )
+  const sorted = [...(candidates.length > 0 ? candidates : pool)].sort((a, b) =>
+    new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+  )
+  return sorted[0]?.id ?? null
+}
 const PLACE_SEARCH_RADIUS_METERS = 50000
 const LONG_ROUTE_THRESHOLD_SECONDS = 60 * 60
 
@@ -718,6 +741,7 @@ export function ActivityProposalModal({
       }
 
       if (activityId) {
+        const previousExpenseIds = new Set(linkOptions.expenses.map((item) => item.id))
         const createdExpenseId = shouldCreateExpense
           ? await budgetService.createExpense(String(group.id), {
             paid_by_user_id: quickExpensePaidBy,
@@ -736,15 +760,12 @@ export function ActivityProposalModal({
               : undefined,
             expense_date: quickExpenseDate || (getActivityDate()?.slice(0, 10) ?? null),
           }, token).then((response) => {
-            const expectedDescription = quickExpenseDescription.trim()
-            const candidates = response.expenses.filter((expense) =>
-              expense.description === expectedDescription &&
-              Number(expense.amount) === quickExpenseValue
+            return pickCreatedExpenseId(
+              response.expenses,
+              previousExpenseIds,
+              quickExpenseDescription.trim(),
+              quickExpenseValue,
             )
-            const sorted = [...(candidates.length > 0 ? candidates : response.expenses)].sort((a, b) =>
-              new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
-            )
-            return sorted[0]?.id ?? null
           })
           : null
 
@@ -792,7 +813,7 @@ export function ActivityProposalModal({
       setSelectedPlace(null)
       setLongRouteConfirmation(null)
       resetContextDraft()
-      onCreated()
+      await onCreated()
       onClose()
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {

@@ -116,6 +116,35 @@ const EMPTY_LINK_OPTIONS: ContextLinkOptions = {
   subgroupActivities: [],
 };
 
+const SUBGROUP_SCHEDULE_CACHE_TTL_MS = 2 * 60 * 1000;
+const subgroupScheduleCache = new Map<
+  string,
+  { slots: SubgroupSlot[]; myUserId: number | null; savedAt: number }
+>();
+const subgroupContextLinksCache = new Map<
+  string,
+  { links: ContextLink[]; savedAt: number }
+>();
+const placeAutocompleteCache = new Map<
+  string,
+  { items: EnrichedPlaceAutocompleteResult[]; savedAt: number }
+>();
+const PLACE_AUTOCOMPLETE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function getFreshCache<T extends { savedAt: number }>(
+  cache: Map<string, T>,
+  key: string,
+  ttlMs: number,
+): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.savedAt > ttlMs) {
+    cache.delete(key);
+    return null;
+  }
+  return entry;
+}
+
 const documentCategoryLabels: Record<TripDocumentCategory, string> = {
   vuelo: "Vuelo",
   hospedaje: "Hospedaje",
@@ -505,10 +534,14 @@ export function SubgroupSchedulePanel({
   const [scheduleConflictMessage, setScheduleConflictMessage] = useState<
     string | null
   >(null);
+  const scheduleRefreshTimerRef = useRef<number | null>(null);
+  const photoLookupQueueRef = useRef<Set<number>>(new Set());
   const didInitializeExpandedDayRef = useRef(false);
   const autocompleteBoxRef = useRef<HTMLDivElement | null>(null);
   const slotCardRefs = useRef<Record<number, HTMLElement | null>>({});
   const subgroupCardRefs = useRef<Record<string, HTMLElement | null>>({});
+  const lastScheduleCacheKeyRef = useRef<string | null>(null);
+  const slotsLengthRef = useRef(0);
 
   const memberOptions = useMemo(
     () =>
@@ -575,6 +608,10 @@ export function SubgroupSchedulePanel({
       ? "tu hospedaje"
       : "el destino del viaje";
 
+  useEffect(() => {
+    slotsLengthRef.current = slots.length;
+  }, [slots.length]);
+
   // Chat drawer state
   const [chatSubgroup, setChatSubgroup] = useState<{
     slotId: number;
@@ -582,13 +619,27 @@ export function SubgroupSchedulePanel({
     name: string;
   } | null>(null);
 
-  const loadContextLinks = useCallback(async () => {
+  const loadContextLinks = useCallback(async (silent = false) => {
     if (!groupId || !accessToken) {
       setContextLinks([]);
       return;
     }
 
+    const cacheKey = String(groupId);
+    const cached = getFreshCache(
+      subgroupContextLinksCache,
+      cacheKey,
+      SUBGROUP_SCHEDULE_CACHE_TTL_MS,
+    );
+    if (cached && !silent) {
+      setContextLinks(cached.links);
+    }
+
     const linksResponse = await contextLinksService.list(groupId, accessToken);
+    subgroupContextLinksCache.set(cacheKey, {
+      links: linksResponse.links,
+      savedAt: Date.now(),
+    });
     setContextLinks(linksResponse.links);
   }, [accessToken, groupId]);
 
@@ -616,32 +667,63 @@ export function SubgroupSchedulePanel({
     setLinkOptionsLoaded(false);
   }, [groupId]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!groupId || !accessToken) return;
+
+    const cacheKey = String(groupId);
+    const cached = getFreshCache(
+      subgroupScheduleCache,
+      cacheKey,
+      SUBGROUP_SCHEDULE_CACHE_TTL_MS,
+    );
+
+    if (cached && !silent) {
+      setSlots(cached.slots);
+      setMyUserId(cached.myUserId);
+      onScheduleChanged?.(cached.slots);
+    }
+
+    const hasVisibleData = (cached?.slots.length ?? slotsLengthRef.current) > 0;
+
     try {
-      setLoading(true);
+      if (!silent && !hasVisibleData) setLoading(true);
       setError(null);
-      const [response] = await Promise.all([
-        subgroupScheduleService.getSchedule(groupId, accessToken),
-        loadContextLinks(),
-      ]);
-      setSlots(response.slots ?? []);
-      onScheduleChanged?.(response.slots ?? []);
+      const response = await subgroupScheduleService.getSchedule(
+        groupId,
+        accessToken,
+      );
+      const nextSlots = response.slots ?? [];
+      subgroupScheduleCache.set(cacheKey, {
+        slots: nextSlots,
+        myUserId: response.myUserId ?? null,
+        savedAt: Date.now(),
+      });
+      setSlots(nextSlots);
+      onScheduleChanged?.(nextSlots);
       setMyUserId(response.myUserId ?? null);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudo cargar el horario de subgrupos",
-      );
+      if (!cached) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "No se pudo cargar el horario de subgrupos",
+        );
+      }
     } finally {
       setLoading(false);
     }
-  }, [accessToken, groupId, loadContextLinks, onScheduleChanged]);
+  }, [accessToken, groupId, onScheduleChanged]);
 
   useEffect(() => {
+    const cacheKey = groupId ? String(groupId) : null;
+    if (cacheKey !== lastScheduleCacheKeyRef.current) {
+      lastScheduleCacheKeyRef.current = cacheKey;
+      setSlots([]);
+      setContextLinks([]);
+    }
     void load();
-  }, [load]);
+    void loadContextLinks().catch(() => setContextLinks([]));
+  }, [groupId, load, loadContextLinks]);
 
   useEffect(() => {
     if (!socket || !groupId) return;
@@ -659,24 +741,39 @@ export function SubgroupSchedulePanel({
         return;
 
       const tipo = String(payload.tipo ?? "");
-      if (
-        tipo.startsWith("subgrupo_") ||
-        tipo.startsWith("subgroup_") ||
+      const shouldRefreshSchedule =
+        tipo.startsWith("subgrupo_") || tipo.startsWith("subgroup_");
+      const shouldRefreshLinks =
         tipo === "documento_subido" ||
         tipo === "documento_eliminado" ||
         tipo === "gasto_creado" ||
         tipo === "gasto_actualizado" ||
-        tipo === "gasto_eliminado"
-      ) {
-        void load();
+        tipo === "gasto_eliminado";
+
+      if (shouldRefreshSchedule) {
+        if (scheduleRefreshTimerRef.current !== null) {
+          window.clearTimeout(scheduleRefreshTimerRef.current);
+        }
+        scheduleRefreshTimerRef.current = window.setTimeout(() => {
+          scheduleRefreshTimerRef.current = null;
+          void load(true);
+        }, 400);
+      }
+
+      if (shouldRefreshLinks) {
+        void loadContextLinks().catch(() => undefined);
       }
     };
 
     socket.on("dashboard_updated", handleDashboardUpdate);
     return () => {
+      if (scheduleRefreshTimerRef.current !== null) {
+        window.clearTimeout(scheduleRefreshTimerRef.current);
+        scheduleRefreshTimerRef.current = null;
+      }
       socket.off("dashboard_updated", handleDashboardUpdate);
     };
-  }, [groupId, load, socket]);
+  }, [groupId, load, loadContextLinks, socket]);
 
   useEffect(() => {
     if (!accessToken || slots.length === 0 || group?.destino_photo_url) return;
@@ -687,14 +784,20 @@ export function SubgroupSchedulePanel({
         Boolean(
           activity &&
           activity.id != null &&
-          !subgroupPhotoByActivityId[activity.id],
+          !subgroupPhotoByActivityId[activity.id] &&
+          !photoLookupQueueRef.current.has(activity.id),
         ),
-      );
+      )
+      .slice(0, 3);
 
     if (missingActivities.length === 0) return;
 
     let cancelled = false;
-    void Promise.all(
+    for (const activity of missingActivities) {
+      photoLookupQueueRef.current.add(activity.id);
+    }
+
+    void Promise.allSettled(
       missingActivities.map(async (activity) => {
         try {
           const response = await mapsService.searchPlacesByText(
@@ -716,6 +819,8 @@ export function SubgroupSchedulePanel({
           }
         } catch {
           // optional enrichment only
+        } finally {
+          photoLookupQueueRef.current.delete(activity.id);
         }
       }),
     );
@@ -843,6 +948,35 @@ export function SubgroupSchedulePanel({
       return enrichedPlace;
     },
     [accessToken, routeOrigin],
+  );
+
+  const enrichAutocompleteSuggestionWithRoute = useCallback(
+    async (suggestion: PlaceAutocompleteResult): Promise<EnrichedPlaceAutocompleteResult> => {
+      if (!accessToken || !routeOrigin || !suggestion.placeId) {
+        return suggestion;
+      }
+
+      try {
+        const detailResponse = await mapsService.getPlaceDetails(
+          suggestion.placeId,
+          accessToken,
+        );
+        const place = detailResponse.data;
+        if (!place) return suggestion;
+
+        const enrichedPlace = await enrichPlaceWithRoute(place);
+        return {
+          ...suggestion,
+          routeDistanceText: enrichedPlace.routeDistanceText ?? null,
+          routeDurationText: enrichedPlace.routeDurationText ?? null,
+          routeDistanceMeters: enrichedPlace.routeDistanceMeters ?? null,
+          routeDurationSeconds: enrichedPlace.routeDurationSeconds ?? null,
+        };
+      } catch {
+        return suggestion;
+      }
+    },
+    [accessToken, enrichPlaceWithRoute, routeOrigin],
   );
 
   const buildEmptyDraft = useCallback(
@@ -2059,6 +2193,25 @@ export function SubgroupSchedulePanel({
     let cancelled = false;
     const timeoutId = window.setTimeout(async () => {
       try {
+        const autocompleteCacheKey = [
+          trimmedQuery.toLowerCase(),
+          routeOrigin?.lat?.toFixed(3) ?? "",
+          routeOrigin?.lng?.toFixed(3) ?? "",
+        ].join("|");
+        const cachedAutocomplete = getFreshCache(
+          placeAutocompleteCache,
+          autocompleteCacheKey,
+          PLACE_AUTOCOMPLETE_CACHE_TTL_MS,
+        );
+        if (cachedAutocomplete) {
+          setActivityDraft(slotId, {
+            suggestions: cachedAutocomplete.items.slice(0, 6),
+            showSuggestions: cachedAutocomplete.items.length > 0,
+            suggestionsLoading: false,
+          });
+          return;
+        }
+
         setActivityDraft(slotId, { suggestionsLoading: true });
         const response = await mapsService.autocompletePlaces(
           trimmedQuery,
@@ -2070,38 +2223,42 @@ export function SubgroupSchedulePanel({
           },
         );
         const rawSuggestions = response.data ?? [];
-        const nextSuggestions: EnrichedPlaceAutocompleteResult[] = routeOrigin
-          ? await Promise.all(
-              rawSuggestions.slice(0, 6).map(async (suggestion) => {
-                try {
-                  const detailResponse = await mapsService.getPlaceDetails(
-                    suggestion.placeId,
-                    accessToken,
-                  );
-                  const place = detailResponse.data;
-                  if (!place) return suggestion;
-                  const enrichedPlace = await enrichPlaceWithRoute(place);
-                  return {
-                    ...suggestion,
-                    routeDistanceText: enrichedPlace.routeDistanceText ?? null,
-                    routeDurationText: enrichedPlace.routeDurationText ?? null,
-                    routeDistanceMeters:
-                      enrichedPlace.routeDistanceMeters ?? null,
-                    routeDurationSeconds:
-                      enrichedPlace.routeDurationSeconds ?? null,
-                  };
-                } catch {
-                  return suggestion;
-                }
-              }),
-            )
-          : rawSuggestions;
+        const nextSuggestions: EnrichedPlaceAutocompleteResult[] = rawSuggestions.slice(0, 6);
+        placeAutocompleteCache.set(autocompleteCacheKey, {
+          items: nextSuggestions,
+          savedAt: Date.now(),
+        });
         if (cancelled) return;
         setActivityDraft(slotId, {
           suggestions: nextSuggestions,
           showSuggestions: nextSuggestions.length > 0,
           suggestionsLoading: false,
         });
+
+        if (routeOrigin && nextSuggestions.length > 0) {
+          void Promise.all(
+            nextSuggestions
+              .slice(0, 4)
+              .map((suggestion) => enrichAutocompleteSuggestionWithRoute(suggestion)),
+          ).then((enrichedSuggestions) => {
+            if (cancelled) return;
+            const mergedSuggestions = nextSuggestions.map((suggestion) => {
+              const enriched = enrichedSuggestions.find(
+                (item) => item.placeId === suggestion.placeId,
+              );
+              return enriched ?? suggestion;
+            });
+            placeAutocompleteCache.set(autocompleteCacheKey, {
+              items: mergedSuggestions,
+              savedAt: Date.now(),
+            });
+            setActivityDraft(slotId, {
+              suggestions: mergedSuggestions,
+              showSuggestions: mergedSuggestions.length > 0,
+              suggestionsLoading: false,
+            });
+          });
+        }
       } catch {
         if (cancelled) return;
         setActivityDraft(slotId, {
@@ -2119,8 +2276,8 @@ export function SubgroupSchedulePanel({
   }, [
     accessToken,
     buildEmptyDraft,
+    enrichAutocompleteSuggestionWithRoute,
     routeOrigin,
-    enrichPlaceWithRoute,
     setActivityDraft,
     subgroupModal?.mode,
     subgroupModal?.slotId,
@@ -2268,8 +2425,26 @@ export function SubgroupSchedulePanel({
             {error}
           </div>
         )}
-        {loading && (
-          <p className="px-1 text-sm text-[#64748B]">Cargando subgrupos...</p>
+        {loading && slots.length === 0 && (
+          <div className="space-y-3" aria-busy="true" aria-live="polite">
+            {[0, 1, 2].map((item) => (
+              <section
+                key={item}
+                className="overflow-hidden rounded-[22px] border border-[#E2E8F0] bg-white shadow-[0_14px_34px_rgba(30,10,78,0.05)]"
+              >
+                <div className="flex items-center gap-3 border-b border-[#E2E8F0] px-5 py-4">
+                  <div className="h-7 w-14 animate-pulse rounded-full bg-[#E8EEF7]" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-44 animate-pulse rounded-full bg-[#E8EEF7]" />
+                    <div className="h-3 w-28 animate-pulse rounded-full bg-[#F1F5F9]" />
+                  </div>
+                </div>
+                <div className="px-5 py-5">
+                  <div className="h-28 animate-pulse rounded-2xl bg-[#F8FAFC]" />
+                </div>
+              </section>
+            ))}
+          </div>
         )}
 
         {!loading && slots.length === 0 && (

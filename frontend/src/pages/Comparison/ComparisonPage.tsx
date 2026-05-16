@@ -1012,9 +1012,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
     socket,
     groupId,
     events: ["dashboard_updated", "vote_updated", "checkout_updated"],
-    debounceMs: 250,
+    debounceMs: 700,
     onRefresh: async (payload) => {
-      await loadData();
       const tipo = String(payload.tipo ?? "");
       const proposalId =
         payload.entidadTipo === "propuesta" && payload.entidadId != null
@@ -1022,6 +1021,15 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           : null;
       const isCommentEvent =
         tipo.startsWith("comentario_") || payload.entidadTipo === "comentario";
+      const shouldRefreshComparison =
+        tipo.startsWith("propuesta_") ||
+        tipo.startsWith("voto_") ||
+        tipo.includes("checkout") ||
+        tipo.startsWith("gasto_") ||
+        tipo.startsWith("presupuesto_") ||
+        payload.entidadTipo === "propuesta";
+
+      if (shouldRefreshComparison) await loadData();
       if (
         isCommentEvent &&
         openCommentsFor &&

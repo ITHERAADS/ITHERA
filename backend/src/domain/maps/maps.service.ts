@@ -128,6 +128,38 @@ interface GoogleTextSearchResponse {
   }>;
 }
 
+type TimedCacheEntry<T> = { expiresAt: number; value: T };
+
+const MAPS_CACHE_TTL_MS = Number(process.env['MAPS_CACHE_TTL_MS'] ?? 10 * 60 * 1000);
+const placeDetailsCache = new Map<string, TimedCacheEntry<PlaceResult | null>>();
+const autocompleteCache = new Map<string, TimedCacheEntry<Array<{
+  description: string;
+  placeId: string;
+  mainText: string;
+  secondaryText: string;
+}>>>();
+const textSearchCache = new Map<string, TimedCacheEntry<PlaceResult[]>>();
+const routeCache = new Map<string, TimedCacheEntry<RouteResult | null>>();
+
+function getCache<T>(cache: Map<string, TimedCacheEntry<T>>, key: string): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function setCache<T>(cache: Map<string, TimedCacheEntry<T>>, key: string, value: T): T {
+  cache.set(key, { value, expiresAt: Date.now() + MAPS_CACHE_TTL_MS });
+  return value;
+}
+
+function roundedCoord(value?: number): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(4) : '';
+}
+
 async function resolvePhotoUrl(photoName?: string | null): Promise<string | null> {
   if (!photoName) return null;
 
@@ -154,6 +186,16 @@ export async function geocodeAddress(address: string): Promise<GeocodingResult |
 }
 
 export async function computeRoute(params: ComputeRouteParams): Promise<RouteResult | null> {
+  const routeKey = [
+    roundedCoord(params.originLat),
+    roundedCoord(params.originLng),
+    roundedCoord(params.destinationLat),
+    roundedCoord(params.destinationLng),
+    params.travelMode ?? 'DRIVE',
+  ].join('|');
+  const cachedRoute = getCache(routeCache, routeKey);
+  if (cachedRoute !== null) return cachedRoute;
+
   const response = await googleComputeRoute<GoogleRoutesResponse>({
     origin: { location: { latLng: { latitude: params.originLat, longitude: params.originLng } } },
     destination: { location: { latLng: { latitude: params.destinationLat, longitude: params.destinationLng } } },
@@ -165,7 +207,7 @@ export async function computeRoute(params: ComputeRouteParams): Promise<RouteRes
   const route = response.routes?.[0];
   const leg = route?.legs?.[0];
 
-  if (!route || !leg) return null;
+  if (!route || !leg) return setCache(routeCache, routeKey, null);
 
   const steps: RouteStep[] = (leg.steps ?? []).map((step) => ({
     distanceMeters: step.distanceMeters ?? null,
@@ -177,7 +219,7 @@ export async function computeRoute(params: ComputeRouteParams): Promise<RouteRes
     durationText: step.localizedValues?.staticDuration?.text ?? null,
   }));
 
-  return {
+  return setCache(routeCache, routeKey, {
     distanceMeters: route.distanceMeters ?? null,
     duration: route.duration ?? null,
     encodedPolyline: route.polyline?.encodedPolyline ?? null,
@@ -190,7 +232,7 @@ export async function computeRoute(params: ComputeRouteParams): Promise<RouteRes
     durationText: leg.localizedValues?.duration?.text ?? null,
     staticDurationText: leg.localizedValues?.staticDuration?.text ?? null,
     steps,
-  };
+  });
 }
 
 export async function searchNearbyPlaces(params: NearbyPlacesParams): Promise<PlaceResult[]> {
@@ -233,9 +275,19 @@ export async function searchNearbyPlaces(params: NearbyPlacesParams): Promise<Pl
 }
 
 export async function autocompletePlaces(input: string, options?: { latitude?: number; longitude?: number; radius?: number }) {
+  const normalizedInput = input.trim().toLowerCase();
+  const cacheKey = [
+    normalizedInput,
+    roundedCoord(options?.latitude),
+    roundedCoord(options?.longitude),
+    options?.radius ?? '',
+  ].join('|');
+  const cached = getCache(autocompleteCache, cacheKey);
+  if (cached !== null) return cached;
+
   const response = await googlePlaceAutocomplete<GoogleAutocompleteResponse>(input, options);
 
-  return (response.suggestions ?? [])
+  const value = (response.suggestions ?? [])
     .map((suggestion) => suggestion.placePrediction)
     .filter(Boolean)
     .map((prediction) => ({
@@ -245,16 +297,22 @@ export async function autocompletePlaces(input: string, options?: { latitude?: n
       secondaryText: prediction?.structuredFormat?.secondaryText?.text ?? '',
     }))
     .filter((item) => item.placeId && item.description);
+
+  return setCache(autocompleteCache, cacheKey, value);
 }
 
 export async function getPlaceDetails(placeId: string): Promise<PlaceResult | null> {
+  const cacheKey = placeId.trim();
+  const cached = getCache(placeDetailsCache, cacheKey);
+  if (cached !== null) return cached;
+
   const place = await googlePlaceDetails<GooglePlaceDetailsResponse>(placeId);
 
-  if (!place) return null;
+  if (!place) return setCache(placeDetailsCache, cacheKey, null);
 
   const photoName = place.photos?.[0]?.name ?? null;
 
-  return {
+  return setCache(placeDetailsCache, cacheKey, {
     id: place.id ?? placeId,
     name: place.displayName?.text ?? null,
     formattedAddress: place.formattedAddress ?? place.displayName?.text ?? null,
@@ -272,7 +330,7 @@ export async function getPlaceDetails(placeId: string): Promise<PlaceResult | nu
     regularOpeningHours: place.regularOpeningHours ?? null,
     editorialSummary: place.editorialSummary?.text ?? null,
     googleMapsUri: place.googleMapsUri ?? null,
-  };
+  });
 }
 
 function mapGooglePlacesResponse(response: GoogleTextSearchResponse): Promise<PlaceResult[]> {
@@ -340,6 +398,16 @@ export async function searchPlacesByText(params: {
   maxResultCount?: number;
 }): Promise<PlaceResult[]> {
   const normalizedQuery = params.textQuery.trim();
+  const cacheKey = [
+    normalizedQuery.toLowerCase(),
+    roundedCoord(params.latitude),
+    roundedCoord(params.longitude),
+    params.radius ?? '',
+    params.maxResultCount ?? '',
+  ].join('|');
+  const cached = getCache(textSearchCache, cacheKey);
+  if (cached !== null) return cached;
+
   const localizedQuery = params.latitude !== undefined && params.longitude !== undefined
     ? `${normalizedQuery} cerca del destino`
     : normalizedQuery;
@@ -349,7 +417,7 @@ export async function searchPlacesByText(params: {
       buildTextSearchBody({ ...params, textQuery: localizedQuery }, true)
     );
     const places = await mapGooglePlacesResponse(response);
-    if (places.length > 0) return places;
+    if (places.length > 0) return setCache(textSearchCache, cacheKey, places);
   } catch {
     // Si Google rechaza el sesgo por ubicación o la consulta genérica falla, hacemos un segundo intento sin filtro.
   }
@@ -358,7 +426,7 @@ export async function searchPlacesByText(params: {
     buildTextSearchBody({ ...params, textQuery: normalizedQuery }, false)
   );
 
-  return mapGooglePlacesResponse(fallbackResponse);
+  return setCache(textSearchCache, cacheKey, await mapGooglePlacesResponse(fallbackResponse));
 }
 
 

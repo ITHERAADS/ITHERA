@@ -83,6 +83,47 @@ export function GroupPanelPage() {
   const maxMembers = Number(group?.maximo_miembros ?? 0);
   const hasReachedCapacity = maxMembers > 0 && members.length >= maxMembers;
   const canInviteGroup = canManageGroup && !hasReachedCapacity;
+  const loadAdminData = useCallback(
+    async (targetGroup: Group | null, targetMembers: GroupMember[]) => {
+      if (!accessToken || !groupId) return;
+
+      const memberRole = targetMembers.find(
+        (member) => String(member.usuario_id) === String(localUser?.id_usuario),
+      )?.rol;
+      const effectiveMaxMembers = Number(targetGroup?.maximo_miembros ?? 0);
+      const reachedCapacity =
+        effectiveMaxMembers > 0 && targetMembers.length >= effectiveMaxMembers;
+      const canManage =
+        (memberRole === "admin" || targetGroup?.myRole === "admin") &&
+        !isClosedGroup(targetGroup);
+
+      if (!canManage || reachedCapacity) {
+        setInviteLink("");
+        setQrBase64("");
+        setInvitations([]);
+        setJoinRequests([]);
+        return;
+      }
+
+      const effectiveIsPrivate = targetGroup?.es_publico !== true;
+      const [inviteRes, qrRes, invitationsRes, joinRequestsRes] =
+        await Promise.all([
+          groupsService.getInvite(groupId, accessToken),
+          groupsService.getQr(groupId, accessToken),
+          groupsService.getInvitations(groupId, accessToken),
+          effectiveIsPrivate
+            ? groupsService.getJoinRequests(groupId, accessToken)
+            : Promise.resolve({ requests: [] }),
+        ]);
+
+      setInviteLink(inviteRes.inviteLink);
+      setQrBase64(qrRes.qrBase64);
+      setInvitations(invitationsRes.invitations);
+      setJoinRequests(joinRequestsRes.requests);
+    },
+    [accessToken, groupId, localUser?.id_usuario],
+  );
+
   const goToItinerary = () => {
     const targetGroup = group ?? getCurrentGroup();
     const targetGroupId = String(targetGroup?.id ?? groupId ?? "");
@@ -142,54 +183,21 @@ export function GroupPanelPage() {
       const membersRes = await groupsService.getMembers(groupId, accessToken);
       setMembers(membersRes.members);
 
-      const memberRole = membersRes.members.find(
-        (member) => String(member.usuario_id) === String(localUser?.id_usuario),
-      )?.rol;
-
-      const effectiveMaxMembers = Number(
-        (loadedGroup || currentGroup)?.maximo_miembros ?? 0,
-      );
-      const reachedCapacity =
-        effectiveMaxMembers > 0 &&
-        membersRes.members.length >= effectiveMaxMembers;
-      const canManage =
-        (memberRole === "admin" || currentGroup?.myRole === "admin") &&
-        !isClosedGroup(loadedGroup || currentGroup);
-
-      if (canManage && !reachedCapacity) {
-        const fallbackGroup = getCurrentGroup();
-        const effectiveGroup =
-          loadedGroup ||
-          (fallbackGroup && String(fallbackGroup.id) === String(groupId)
-            ? fallbackGroup
-            : null);
-        const effectiveIsPrivate = effectiveGroup?.es_publico !== true;
-
-        const [inviteRes, qrRes, invitationsRes, joinRequestsRes] =
-          await Promise.all([
-            groupsService.getInvite(groupId, accessToken),
-            groupsService.getQr(groupId, accessToken),
-            groupsService.getInvitations(groupId, accessToken),
-            effectiveIsPrivate
-              ? groupsService.getJoinRequests(groupId, accessToken)
-              : Promise.resolve({ requests: [] }),
-          ]);
-
-        setInviteLink(inviteRes.inviteLink);
-        setQrBase64(qrRes.qrBase64);
-        setInvitations(invitationsRes.invitations);
-        setJoinRequests(joinRequestsRes.requests);
-      } else {
-        setInviteLink("");
-        setQrBase64("");
-        setInvitations([]);
-        setJoinRequests([]);
-      }
-
       const fallbackGroup = getCurrentGroup();
+      const effectiveGroup =
+        loadedGroup ||
+        (fallbackGroup && String(fallbackGroup.id) === String(groupId)
+          ? fallbackGroup
+          : null);
+
       if (fallbackGroup && String(fallbackGroup.id) === String(groupId)) {
         setGroup((prev) => prev ?? fallbackGroup);
       }
+
+      void loadAdminData(effectiveGroup, membersRes.members).catch(() => {
+        setInvitations([]);
+        setJoinRequests([]);
+      });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "No se pudo cargar el grupo",
@@ -197,7 +205,7 @@ export function GroupPanelPage() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, groupId, localUser?.id_usuario]);
+  }, [accessToken, groupId, loadAdminData]);
 
   useEffect(() => {
     void loadData();
@@ -225,7 +233,17 @@ export function GroupPanelPage() {
         return;
       }
 
-      void loadData();
+      if (
+        payload.tipo === "miembro_agregado" ||
+        payload.tipo === "miembro_eliminado" ||
+        payload.tipo === "rol_actualizado" ||
+        payload.tipo === "solicitud_union_creada" ||
+        payload.tipo === "solicitud_union_resuelta" ||
+        payload.tipo === "grupo_actualizado" ||
+        payload.tipo === undefined
+      ) {
+        void loadData();
+      }
     };
 
     socket.emit("join_room", { tripId: groupId });

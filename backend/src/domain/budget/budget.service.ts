@@ -146,15 +146,14 @@ const getMembers = async (groupId: string): Promise<BudgetMember[]> => {
     .map((item: any) => Number(item.usuario_id))
     .filter((id) => Number.isFinite(id))));
 
-  const users = await Promise.all(userIds.map(async (userId) => {
-    const { data, error: userError } = await supabaseAdmin
+  const { data: users, error: usersError } = userIds.length > 0
+    ? await supabaseAdmin
       .from('usuarios')
       .select('id_usuario, nombre, email, avatar_url')
-      .eq('id_usuario', userId)
-      .maybeSingle();
-    if (userError) throw createError(userError.message, 500);
-    return data;
-  }));
+      .in('id_usuario', userIds)
+    : { data: [], error: null };
+
+  if (usersError) throw createError(usersError.message, 500);
 
   const usersById = new Map((users ?? []).map((user: any) => [String(user.id_usuario), user]));
 

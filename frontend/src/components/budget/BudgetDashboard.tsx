@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FC } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { RegisterExpenseModal } from './RegisterExpenseModal'
@@ -73,6 +73,29 @@ const EMPTY_LINK_OPTIONS: ContextLinkOptions = {
   documents: [],
   activities: [],
   subgroupActivities: [],
+}
+
+const BUDGET_DASHBOARD_CACHE_PREFIX = 'budget-dashboard-cache:'
+
+function getBudgetDashboardCacheKey(groupId: string): string {
+  return `${BUDGET_DASHBOARD_CACHE_PREFIX}${groupId}`
+}
+
+function readBudgetDashboardCache(groupId: string | null): BudgetDashboardResponse | null {
+  if (!groupId || typeof localStorage === 'undefined') return null
+  const cachedRaw = localStorage.getItem(getBudgetDashboardCacheKey(groupId))
+  if (!cachedRaw) return null
+  try {
+    return JSON.parse(cachedRaw) as BudgetDashboardResponse
+  } catch {
+    localStorage.removeItem(getBudgetDashboardCacheKey(groupId))
+    return null
+  }
+}
+
+function writeBudgetDashboardCache(groupId: string, dashboard: BudgetDashboardResponse): void {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(getBudgetDashboardCacheKey(groupId), JSON.stringify(dashboard))
 }
 
 function formatMXN(n: number): string {
@@ -268,16 +291,28 @@ export const BudgetDashboard: FC<Props> = ({
 }) => {
   const { accessToken, localUser } = useAuth()
   const { socket } = useSocket(accessToken)
-  const [dashboard, setDashboard] = useState<BudgetDashboardResponse | null>(null)
-  const [expenses, setExpenses] = useState<Expense[]>([])
-  const [members, setMembers] = useState<BudgetMember[]>([])
+  const initialDashboardRef = useRef<BudgetDashboardResponse | null>(
+    readBudgetDashboardCache(groupId),
+  )
+  const [dashboard, setDashboard] = useState<BudgetDashboardResponse | null>(
+    initialDashboardRef.current,
+  )
+  const dashboardRef = useRef<BudgetDashboardResponse | null>(
+    initialDashboardRef.current,
+  )
+  const [expenses, setExpenses] = useState<Expense[]>(() =>
+    initialDashboardRef.current?.expenses.map(normalizeExpense) ?? [],
+  )
+  const [members, setMembers] = useState<BudgetMember[]>(() =>
+    initialDashboardRef.current?.members ?? [],
+  )
   const [showModal, setShowModal] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [view, setView] = useState<'dashboard' | 'wallet'>('dashboard')
   const [showAdjustModal, setShowAdjustModal] = useState(false)
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null)
   const [adjustValue, setAdjustValue] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(!initialDashboardRef.current)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [contextLinks, setContextLinks] = useState<ContextLink[]>([])
@@ -285,6 +320,28 @@ export const BudgetDashboard: FC<Props> = ({
   const [isOffline, setIsOffline] = useState<boolean>(typeof navigator !== 'undefined' ? !navigator.onLine : false)
   const [copyGroupSummaryState, setCopyGroupSummaryState] = useState<'idle' | 'loading' | 'done'>('idle')
   const [exportingGroupSummary, setExportingGroupSummary] = useState(false)
+
+  useEffect(() => {
+    const cached = readBudgetDashboardCache(groupId)
+    if (!cached) {
+      if (!groupId) {
+        dashboardRef.current = null
+        setDashboard(null)
+        setExpenses([])
+        setMembers([])
+        onSummaryChange?.(null)
+        setIsLoading(false)
+      }
+      return
+    }
+
+    dashboardRef.current = cached
+    setDashboard(cached)
+    setExpenses(cached.expenses.map(normalizeExpense))
+    setMembers(cached.members)
+    onSummaryChange?.(cached.summary)
+    setIsLoading(false)
+  }, [groupId, onSummaryChange])
 
   const toUserMessage = (err: unknown, fallback: string): string => {
     const raw = err instanceof Error ? err.message : ''
@@ -301,37 +358,32 @@ export const BudgetDashboard: FC<Props> = ({
   }
 
   const applyDashboard = useCallback((nextDashboard: BudgetDashboardResponse) => {
+    dashboardRef.current = nextDashboard
     setDashboard(nextDashboard)
     setExpenses(nextDashboard.expenses.map(normalizeExpense))
     setMembers(nextDashboard.members)
     onSummaryChange?.(nextDashboard.summary)
     if (groupId) {
-      localStorage.setItem(`budget-dashboard-cache:${groupId}`, JSON.stringify(nextDashboard))
+      writeBudgetDashboardCache(groupId, nextDashboard)
     }
   }, [groupId, onSummaryChange])
 
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async (silent = false) => {
     if (!groupId || !accessToken) {
       setIsLoading(false)
       onSummaryChange?.(null)
       return
     }
 
-    setIsLoading(true)
+    if (!silent || !dashboardRef.current) setIsLoading(true)
     setError(null)
     try {
       applyDashboard(await budgetService.getDashboard(groupId, accessToken))
     } catch (err) {
-      const cachedRaw = localStorage.getItem(`budget-dashboard-cache:${groupId}`)
-      if (cachedRaw) {
-        try {
-          const cached = JSON.parse(cachedRaw) as BudgetDashboardResponse
-          applyDashboard(cached)
-          setError('Mostrando el ultimo estado sincronizado (modo offline).')
-        } catch {
-          setError(toUserMessage(err, 'No se pudo cargar el presupuesto'))
-          onSummaryChange?.(null)
-        }
+      const cached = readBudgetDashboardCache(groupId)
+      if (cached) {
+        applyDashboard(cached)
+        setError('Mostrando el ultimo estado sincronizado (modo offline).')
       } else {
         setError(toUserMessage(err, 'No se pudo cargar el presupuesto'))
         onSummaryChange?.(null)
@@ -368,7 +420,7 @@ export const BudgetDashboard: FC<Props> = ({
   }, [accessToken, groupId])
 
   useEffect(() => {
-    void loadDashboard()
+    void loadDashboard(dashboardRef.current !== null)
   }, [loadDashboard])
 
   useEffect(() => {
@@ -382,22 +434,19 @@ export const BudgetDashboard: FC<Props> = ({
     socket,
     groupId,
     events: ['dashboard_updated', 'checkout_updated'],
-    debounceMs: 250,
+    debounceMs: 700,
     onRefresh: async (payload) => {
       const tipo = String(payload.tipo ?? '')
-      if (
+      const shouldRefreshDashboard =
         tipo.startsWith('gasto_') ||
         tipo.startsWith('presupuesto_') ||
         tipo.startsWith('pago_') ||
         tipo.includes('checkout') ||
-        tipo.includes('documento') ||
         tipo.includes('liquidacion')
-      ) {
-        await Promise.all([
-          loadDashboard(),
-          loadContextLinks().catch(() => undefined),
-        ])
-      }
+      const shouldRefreshLinks = shouldRefreshDashboard || tipo.includes('documento')
+
+      if (shouldRefreshDashboard) await loadDashboard(true)
+      if (shouldRefreshLinks) await loadContextLinks().catch(() => undefined)
     },
   })
 

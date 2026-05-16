@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, FC, ReactNode, SetStateAction } from 'react'
 import { useAuth } from '../../context/useAuth'
 import { useSocket } from '../../hooks/useSocket'
@@ -79,6 +79,40 @@ const EMPTY_LINK_OPTIONS: ContextLinkOptions = {
   documents: [],
   activities: [],
   subgroupActivities: [],
+}
+
+const VAULT_CACHE_TTL_MS = 2 * 60 * 1000
+const vaultDataCache = new Map<
+  string,
+  { items: TripDocument[]; links: ContextLink[]; options: ContextLinkOptions; savedAt: number }
+>()
+
+function getVaultCache(groupId: string) {
+  const cached = vaultDataCache.get(groupId)
+  if (!cached) return null
+  if (Date.now() - cached.savedAt > VAULT_CACHE_TTL_MS) {
+    vaultDataCache.delete(groupId)
+    return null
+  }
+  return cached
+}
+
+function VaultSkeleton() {
+  return (
+    <div className="space-y-3" aria-busy="true" aria-live="polite">
+      {[0, 1, 2].map((item) => (
+        <div key={item} className="rounded-2xl border border-[#E2E8F0] bg-[#FCFDFE] px-4 py-4">
+          <div className="h-4 w-56 animate-pulse rounded-full bg-[#E8EEF7]" />
+          <div className="mt-3 flex gap-2">
+            <div className="h-7 w-20 animate-pulse rounded-full bg-[#F1F5F9]" />
+            <div className="h-7 w-16 animate-pulse rounded-full bg-[#F1F5F9]" />
+            <div className="h-7 w-28 animate-pulse rounded-full bg-[#F1F5F9]" />
+          </div>
+          <div className="mt-4 h-10 animate-pulse rounded-xl bg-[#F8FAFC]" />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 const entityKey = (entity: ContextEntityRef): string => `${entity.type}:${entity.id}`
@@ -196,6 +230,12 @@ export const DocumentVaultPanel: FC<Props> = ({
   const [draftExpenseSplitAmounts, setDraftExpenseSplitAmounts] = useState<Record<string, string>>({})
   const [draftExpenseMemberIds, setDraftExpenseMemberIds] = useState<string[]>([])
   const [expenseModalTab, setExpenseModalTab] = useState<VaultActionTab>('associate')
+  const lastVaultCacheKeyRef = useRef<string | null>(null)
+  const itemsLengthRef = useRef(0)
+
+  useEffect(() => {
+    itemsLengthRef.current = items.length
+  }, [items.length])
 
   const memberOptions = useMemo(
     () =>
@@ -238,7 +278,7 @@ export const DocumentVaultPanel: FC<Props> = ({
     }
   }, [defaultExpensePayer, draftExpenseMemberIds.length, draftExpensePaidBy, memberOptionsSafe])
 
-  const loadContextLinks = async () => {
+  const loadContextLinks = useCallback(async () => {
     if (!groupId || !accessToken) {
       setContextLinks([])
       setLinkOptions(EMPTY_LINK_OPTIONS)
@@ -251,7 +291,17 @@ export const DocumentVaultPanel: FC<Props> = ({
     ])
     setContextLinks(linksResponse.links)
     setLinkOptions(optionsResponse.options)
-  }
+
+    const cached = getVaultCache(String(groupId))
+    if (cached) {
+      vaultDataCache.set(String(groupId), {
+        ...cached,
+        links: linksResponse.links,
+        options: optionsResponse.options,
+        savedAt: Date.now(),
+      })
+    }
+  }, [accessToken, groupId])
 
   const getLinksForDocument = (documentId: string) =>
     contextLinks
@@ -389,28 +439,55 @@ export const DocumentVaultPanel: FC<Props> = ({
     setActionModal({ target: 'document', docId: item.id, mode })
   }
 
-  const load = async () => {
+  const load = useCallback(async (silent = false) => {
     if (!groupId || !accessToken) return
-    setIsLoading(true)
+
+    const cacheKey = String(groupId)
+    const cached = getVaultCache(cacheKey)
+    if (cached && !silent) {
+      setItems(cached.items)
+      setContextLinks(cached.links)
+      setLinkOptions(cached.options)
+    }
+
+    const hasVisibleData = (cached?.items.length ?? itemsLengthRef.current) > 0
+    if (!silent && !hasVisibleData) setIsLoading(true)
     setError(null)
     try {
-      const [documents] = await Promise.all([
+      const [documents, linksResponse, optionsResponse] = await Promise.all([
         documentsService.list(groupId, accessToken),
-        loadContextLinks(),
+        contextLinksService.list(groupId, accessToken),
+        contextLinksService.options(groupId, accessToken),
       ])
+      vaultDataCache.set(cacheKey, {
+        items: documents,
+        links: linksResponse.links,
+        options: optionsResponse.options,
+        savedAt: Date.now(),
+      })
       setItems(documents)
+      setContextLinks(linksResponse.links)
+      setLinkOptions(optionsResponse.options)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudieron cargar los documentos')
+      if (!cached) {
+        setError(err instanceof Error ? err.message : 'No se pudieron cargar los documentos')
+      }
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [accessToken, groupId])
 
 
   useEffect(() => {
+    const cacheKey = groupId ? String(groupId) : null
+    if (cacheKey !== lastVaultCacheKeyRef.current) {
+      lastVaultCacheKeyRef.current = cacheKey
+      setItems([])
+      setContextLinks([])
+      setLinkOptions(EMPTY_LINK_OPTIONS)
+    }
     void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId, accessToken])
+  }, [groupId, accessToken, load])
 
   useGroupRealtimeRefresh({
     socket,
@@ -420,7 +497,7 @@ export const DocumentVaultPanel: FC<Props> = ({
     onRefresh: async (payload) => {
       const tipo = String(payload.tipo ?? '')
       if (tipo.includes('documento') || tipo.includes('gasto') || tipo.includes('actividad')) {
-        await load()
+        await load(true)
       }
     },
   })
@@ -499,7 +576,19 @@ export const DocumentVaultPanel: FC<Props> = ({
         Array.from(new Set(nextActivityKeys)),
       )
       await loadContextLinks()
-      setItems((prev) => [created, ...prev])
+      setItems((prev) => {
+        const nextItems = [created, ...prev]
+        if (groupId) {
+          const cached = getVaultCache(String(groupId))
+          vaultDataCache.set(String(groupId), {
+            items: nextItems,
+            links: cached?.links ?? contextLinks,
+            options: cached?.options ?? linkOptions,
+            savedAt: Date.now(),
+          })
+        }
+        return nextItems
+      })
       resetExpenseDraft()
       resetUploadDraft()
     } catch (err) {
@@ -681,7 +770,9 @@ export const DocumentVaultPanel: FC<Props> = ({
           ))}
         </div>
 
-        {filteredItems.length === 0 ? (
+        {isLoading && items.length === 0 ? (
+          <VaultSkeleton />
+        ) : filteredItems.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-4 py-12 text-center">
             <p className="font-body text-sm font-semibold text-[#1E0A4E]">
               {activeFilter === 'todos' ? 'Todavía no hay documentos guardados.' : 'No hay documentos en esta categoría.'}

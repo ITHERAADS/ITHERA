@@ -1,17 +1,20 @@
-import { supabase } from '../../infrastructure/db/supabase.client';
-import { getLocalUserId } from '../groups/groups.service';
+import { supabase } from "../../infrastructure/db/supabase.client";
+import { getLocalUserId } from "../groups/groups.service";
 import {
   SaveFlightProposalPayload,
   SaveHotelProposalPayload,
   UpdateProposalPayload,
-	CreateCommentPayload,
-	CreateVotePayload,
-	ProposalVoteType,
-	ProposalVoteResult,
-	UpdateCommentPayload,
-} from './proposals.entity';
-import * as NotificationsService from '../notifications/notifications.service';
-import { emitDashboardUpdated, emitProposalCommentChanged } from '../../infrastructure/sockets/socket.gateway';
+  CreateCommentPayload,
+  CreateVotePayload,
+  ProposalVoteType,
+  ProposalVoteResult,
+  UpdateCommentPayload,
+} from "./proposals.entity";
+import * as NotificationsService from "../notifications/notifications.service";
+import {
+  emitDashboardUpdated,
+  emitProposalCommentChanged,
+} from "../../infrastructure/sockets/socket.gateway";
 
 const isPresent = (value: unknown): boolean => value !== undefined;
 const dbText = (value: string | null | undefined, max = 190): string | null => {
@@ -19,13 +22,33 @@ const dbText = (value: string | null | undefined, max = 190): string | null => {
   return value.length > max ? value.slice(0, max) : value;
 };
 
+const assertProposalActivityIsNotExpired = async (
+  groupId: string,
+  proposalId: string,
+): Promise<void> => {
+  const { data: activity, error } = await supabase
+    .from("actividades")
+    .select("id_actividad, fecha_inicio, itinerarios!inner(grupo_id)")
+    .eq("propuesta_id", proposalId)
+    .eq("itinerarios.grupo_id", groupId)
+    .maybeSingle();
 
-const getVoteLabel = (voteType: ProposalVoteType): string => {
-  if (voteType === 'a_favor') return 'a favor';
-  if (voteType === 'en_contra') return 'en contra';
-  return 'en abstención';
+  if (error) throw createError(error.message, 500);
+  const startsAt = (activity as any)?.fecha_inicio ?? null;
+  const startsAtTime = startsAt ? new Date(String(startsAt)).getTime() : NaN;
+  if (Number.isFinite(startsAtTime) && startsAtTime < Date.now()) {
+    throw createError(
+      "Esta propuesta ya vencio. Solo el administrador puede editarla para reprogramarla.",
+      409,
+    );
+  }
 };
 
+const getVoteLabel = (voteType: ProposalVoteType): string => {
+  if (voteType === "a_favor") return "a favor";
+  if (voteType === "en_contra") return "en contra";
+  return "en abstención";
+};
 
 const notifyProposalVote = async (
   groupId: string | number,
@@ -34,25 +57,30 @@ const notifyProposalVote = async (
   voteType: ProposalVoteType,
 ): Promise<void> => {
   const { data: proposal, error } = await supabase
-    .from('propuestas')
-    .select('id_propuesta, grupo_id, tipo_item, titulo, creado_por')
-    .eq('id_propuesta', proposalId)
+    .from("propuestas")
+    .select("id_propuesta, grupo_id, tipo_item, titulo, creado_por")
+    .eq("id_propuesta", proposalId)
     .maybeSingle();
 
   if (error || !proposal) {
-    console.error('[Proposals] No se pudo consultar la propuesta para notificar voto:', error?.message);
+    console.error(
+      "[Proposals] No se pudo consultar la propuesta para notificar voto:",
+      error?.message,
+    );
     return;
   }
 
-  const actorName = await NotificationsService.getUserDisplayName(actorUsuarioId);
-  const itemType = String(proposal.tipo_item ?? 'propuesta');
-  const itemTypeLabel = itemType === 'vuelo'
-    ? 'vuelo'
-    : itemType === 'hospedaje'
-      ? 'hospedaje'
-      : 'propuesta';
+  const actorName =
+    await NotificationsService.getUserDisplayName(actorUsuarioId);
+  const itemType = String(proposal.tipo_item ?? "propuesta");
+  const itemTypeLabel =
+    itemType === "vuelo"
+      ? "vuelo"
+      : itemType === "hospedaje"
+        ? "hospedaje"
+        : "propuesta";
   const voteLabel = getVoteLabel(voteType);
-  const itemTitle = String(proposal.titulo ?? 'Sin título');
+  const itemTitle = String(proposal.titulo ?? "Sin título");
 
   await NotificationsService.createNotificationForGroupMembers(
     Number(groupId),
@@ -61,7 +89,7 @@ const notifyProposalVote = async (
       tipo: `voto_${itemTypeLabel}_nuevo`,
       titulo: `Nuevo voto en ${itemTypeLabel}`,
       mensaje: `${actorName} votó ${voteLabel} en la propuesta de ${itemTypeLabel} "${itemTitle}".`,
-      entidadTipo: 'propuesta',
+      entidadTipo: "propuesta",
       entidadId: Number(proposalId),
       metadata: {
         actorName,
@@ -72,37 +100,39 @@ const notifyProposalVote = async (
         voteLabel,
         proposalCreatorId: Number(proposal.creado_por),
       },
-    }
+    },
   );
 };
 
 const buildProposalResponse = async (proposalId: number) => {
   const { data: proposal, error } = await supabase
-    .from('propuestas')
-    .select('*')
-    .eq('id_propuesta', proposalId)
+    .from("propuestas")
+    .select("*")
+    .eq("id_propuesta", proposalId)
     .single();
 
   if (error || !proposal) {
-    throw Object.assign(new Error('Propuesta no encontrada'), { statusCode: 404 });
+    throw Object.assign(new Error("Propuesta no encontrada"), {
+      statusCode: 404,
+    });
   }
 
   let detalle: Record<string, unknown> | null = null;
 
-  if (proposal.tipo_item === 'vuelo') {
+  if (proposal.tipo_item === "vuelo") {
     const { data } = await supabase
-      .from('vuelos')
-      .select('*')
-      .eq('propuesta_id', proposalId)
+      .from("vuelos")
+      .select("*")
+      .eq("propuesta_id", proposalId)
       .single();
     detalle = (data as Record<string, unknown> | null) ?? null;
   }
 
-  if (proposal.tipo_item === 'hospedaje') {
+  if (proposal.tipo_item === "hospedaje") {
     const { data } = await supabase
-      .from('hospedajes')
-      .select('*')
-      .eq('propuesta_id', proposalId)
+      .from("hospedajes")
+      .select("*")
+      .eq("propuesta_id", proposalId)
       .single();
     detalle = (data as Record<string, unknown> | null) ?? null;
   }
@@ -117,15 +147,17 @@ const assertGroupMembership = async (grupoId: string, authUserId: string) => {
   const usuarioId = await getLocalUserId(authUserId);
 
   const { data: membership, error } = await supabase
-    .from('grupo_miembros')
-    .select('id, grupo_id, usuario_id, rol')
-    .eq('grupo_id', grupoId)
-    .eq('usuario_id', usuarioId)
+    .from("grupo_miembros")
+    .select("id, grupo_id, usuario_id, rol")
+    .eq("grupo_id", grupoId)
+    .eq("usuario_id", usuarioId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
   if (!membership) {
-    throw Object.assign(new Error('No tienes acceso a este grupo'), { statusCode: 403 });
+    throw Object.assign(new Error("No tienes acceso a este grupo"), {
+      statusCode: 403,
+    });
   }
 
   return { usuarioId, membership };
@@ -135,89 +167,113 @@ const assertProposalAccess = async (proposalId: number, authUserId: string) => {
   const usuarioId = await getLocalUserId(authUserId);
 
   const { data: proposal, error } = await supabase
-    .from('propuestas')
-    .select('*')
-    .eq('id_propuesta', proposalId)
+    .from("propuestas")
+    .select("*")
+    .eq("id_propuesta", proposalId)
     .single();
 
   if (error || !proposal) {
-    throw Object.assign(new Error('Propuesta no encontrada'), { statusCode: 404 });
+    throw Object.assign(new Error("Propuesta no encontrada"), {
+      statusCode: 404,
+    });
   }
 
   const { data: membership, error: membershipError } = await supabase
-    .from('grupo_miembros')
-    .select('id, rol')
-    .eq('grupo_id', proposal.grupo_id)
-    .eq('usuario_id', usuarioId)
+    .from("grupo_miembros")
+    .select("id, rol")
+    .eq("grupo_id", proposal.grupo_id)
+    .eq("usuario_id", usuarioId)
     .maybeSingle();
 
   if (membershipError) throw new Error(membershipError.message);
   if (!membership) {
-    throw Object.assign(new Error('No tienes acceso a esta propuesta'), { statusCode: 403 });
+    throw Object.assign(new Error("No tienes acceso a esta propuesta"), {
+      statusCode: 403,
+    });
   }
 
   return { usuarioId, proposal, membership };
 };
 
-const assertCanManageProposal = async (proposalId: number, authUserId: string) => {
+const assertCanManageProposal = async (
+  proposalId: number,
+  authUserId: string,
+) => {
   const access = await assertProposalAccess(proposalId, authUserId);
-  const isCreator = String(access.proposal.creado_por) === String(access.usuarioId);
-  const role = String(access.membership.rol ?? '').toLowerCase();
-  const isAdmin = role === 'admin' || role === 'organizador';
+  const isCreator =
+    String(access.proposal.creado_por) === String(access.usuarioId);
+  const role = String(access.membership.rol ?? "").toLowerCase();
+  const isAdmin = role === "admin" || role === "organizador";
 
   if (!isCreator && !isAdmin) {
-    throw Object.assign(new Error('Solo el creador o el organizador pueden modificar esta propuesta'), { statusCode: 403 });
+    throw Object.assign(
+      new Error(
+        "Solo el creador o el organizador pueden modificar esta propuesta",
+      ),
+      { statusCode: 403 },
+    );
   }
 
   return access;
 };
 
-export const createFlightProposal = async (authUserId: string, payload: SaveFlightProposalPayload) => {
-  const { usuarioId } = await assertGroupMembership(payload.grupoId, authUserId);
+export const createFlightProposal = async (
+  authUserId: string,
+  payload: SaveFlightProposalPayload,
+) => {
+  const { usuarioId } = await assertGroupMembership(
+    payload.grupoId,
+    authUserId,
+  );
 
   const { data: proposal, error: proposalError } = await supabase
-    .from('propuestas')
+    .from("propuestas")
     .insert({
       grupo_id: payload.grupoId,
-      tipo_item: 'vuelo',
+      tipo_item: "vuelo",
       titulo: dbText(payload.titulo) ?? payload.titulo,
       descripcion: payload.descripcion ?? null,
       referencia_externa: dbText(payload.vuelo.numeroVuelo ?? null),
       fuente: payload.fuente,
       payload: payload.payload ?? null,
-      estado: 'guardada',
+      estado: "guardada",
       creado_por: usuarioId,
       fecha_apertura: new Date().toISOString(),
       fecha_cierre: null,
     })
-    .select('*')
+    .select("*")
     .single();
 
   if (proposalError || !proposal) {
-    throw new Error(proposalError?.message ?? 'No se pudo guardar la propuesta de vuelo');
+    throw new Error(
+      proposalError?.message ?? "No se pudo guardar la propuesta de vuelo",
+    );
   }
 
-  const { error: flightError } = await supabase
-    .from('vuelos')
-    .insert({
-      propuesta_id: proposal.id_propuesta,
-      aerolinea: dbText(payload.vuelo.aerolinea) ?? payload.vuelo.aerolinea,
-      numero_vuelo: dbText(payload.vuelo.numeroVuelo ?? null),
-      origen_codigo: dbText(payload.vuelo.origenCodigo, 20) ?? payload.vuelo.origenCodigo,
-      origen_nombre: payload.vuelo.origenNombre ?? null,
-      destino_codigo: dbText(payload.vuelo.destinoCodigo, 20) ?? payload.vuelo.destinoCodigo,
-      destino_nombre: payload.vuelo.destinoNombre ?? null,
-      salida: payload.vuelo.salida,
-      llegada: payload.vuelo.llegada,
-      duracion: payload.vuelo.duracion ?? null,
-      precio: payload.vuelo.precio,
-      moneda: payload.vuelo.moneda,
-      escalas: payload.vuelo.escalas ?? 0,
-      payload: payload.vuelo.payload ?? null,
-    });
+  const { error: flightError } = await supabase.from("vuelos").insert({
+    propuesta_id: proposal.id_propuesta,
+    aerolinea: dbText(payload.vuelo.aerolinea) ?? payload.vuelo.aerolinea,
+    numero_vuelo: dbText(payload.vuelo.numeroVuelo ?? null),
+    origen_codigo:
+      dbText(payload.vuelo.origenCodigo, 20) ?? payload.vuelo.origenCodigo,
+    origen_nombre: payload.vuelo.origenNombre ?? null,
+    destino_codigo:
+      dbText(payload.vuelo.destinoCodigo, 20) ?? payload.vuelo.destinoCodigo,
+    destino_nombre: payload.vuelo.destinoNombre ?? null,
+    salida: payload.vuelo.salida,
+    llegada: payload.vuelo.llegada,
+    duracion: payload.vuelo.duracion ?? null,
+    precio: payload.vuelo.precio,
+    moneda: payload.vuelo.moneda,
+    escalas: payload.vuelo.escalas ?? 0,
+    payload: payload.vuelo.payload ?? null,
+  });
 
   if (flightError) {
-    await supabase.from('propuestas').delete().eq('id_propuesta', proposal.id_propuesta);
+    await supabase
+      .from("propuestas")
+      .delete()
+      .eq("id_propuesta", proposal.id_propuesta);
     throw new Error(flightError.message);
   }
 
@@ -226,79 +282,94 @@ export const createFlightProposal = async (authUserId: string, payload: SaveFlig
     Number(payload.grupoId),
     Number(usuarioId),
     {
-      tipo: 'propuesta_vuelo_creada',
-      titulo: 'Nueva propuesta de vuelo',
+      tipo: "propuesta_vuelo_creada",
+      titulo: "Nueva propuesta de vuelo",
       mensaje: `${actorName} propuso el vuelo "${payload.titulo}".`,
-      entidadTipo: 'propuesta',
+      entidadTipo: "propuesta",
       entidadId: proposal.id_propuesta,
       metadata: {
         actorName,
         actorUsuarioId: Number(usuarioId),
         itemTitle: payload.titulo,
-        itemType: 'vuelo',
+        itemType: "vuelo",
         scheduledAt: payload.vuelo.salida ?? null,
         scheduledEndAt: payload.vuelo.llegada ?? null,
-        origin: payload.vuelo.origenNombre ?? payload.vuelo.origenCodigo ?? null,
-        destination: payload.vuelo.destinoNombre ?? payload.vuelo.destinoCodigo ?? null,
+        origin:
+          payload.vuelo.origenNombre ?? payload.vuelo.origenCodigo ?? null,
+        destination:
+          payload.vuelo.destinoNombre ?? payload.vuelo.destinoCodigo ?? null,
       },
-    }
+    },
   );
 
   return buildProposalResponse(proposal.id_propuesta);
 };
 
-export const createHotelProposal = async (authUserId: string, payload: SaveHotelProposalPayload) => {
-  const { usuarioId } = await assertGroupMembership(payload.grupoId, authUserId);
+export const createHotelProposal = async (
+  authUserId: string,
+  payload: SaveHotelProposalPayload,
+) => {
+  const { usuarioId } = await assertGroupMembership(
+    payload.grupoId,
+    authUserId,
+  );
 
   const { data: proposal, error: proposalError } = await supabase
-    .from('propuestas')
+    .from("propuestas")
     .insert({
       grupo_id: payload.grupoId,
-      tipo_item: 'hospedaje',
+      tipo_item: "hospedaje",
       titulo: dbText(payload.titulo) ?? payload.titulo,
       descripcion: payload.descripcion ?? null,
       referencia_externa: dbText(payload.hospedaje.referenciaExterna ?? null),
       fuente: payload.fuente,
       payload: payload.payload ?? null,
-      estado: 'guardada',
+      estado: "guardada",
       creado_por: usuarioId,
       fecha_apertura: new Date().toISOString(),
       fecha_cierre: null,
     })
-    .select('*')
+    .select("*")
     .single();
 
   if (proposalError || !proposal) {
-    throw new Error(proposalError?.message ?? 'No se pudo guardar la propuesta de hospedaje');
+    throw new Error(
+      proposalError?.message ?? "No se pudo guardar la propuesta de hospedaje",
+    );
   }
 
-  const { error: hotelError } = await supabase
-    .from('hospedajes')
-    .insert({
-      propuesta_id: proposal.id_propuesta,
-      nombre: dbText(payload.hospedaje.nombre) ?? payload.hospedaje.nombre,
-      proveedor: dbText(payload.hospedaje.proveedor ?? null),
-      referencia_externa: dbText(payload.hospedaje.referenciaExterna ?? null),
-      direccion: payload.hospedaje.direccion ?? null,
-      latitud: payload.hospedaje.latitud ?? null,
-      longitud: payload.hospedaje.longitud ?? null,
-      check_in: payload.hospedaje.checkIn ?? null,
-      check_out: payload.hospedaje.checkOut ?? null,
-      precio_total: payload.hospedaje.precioTotal ?? null,
-      moneda: payload.hospedaje.moneda ?? null,
-      calificacion: payload.hospedaje.calificacion ?? null,
-      liteapi_hotel_id: dbText(payload.hospedaje.liteapiHotelId ?? null),
-      liteapi_offer_id: dbText(payload.hospedaje.liteapiOfferId ?? payload.hospedaje.referenciaExterna ?? null),
-      liteapi_prebook_id: dbText(payload.hospedaje.liteapiPrebookId ?? null),
-      google_place_id: dbText(payload.hospedaje.googlePlaceId ?? null),
-      foto_url: payload.hospedaje.fotoUrl ?? null,
-      reserva_estado: payload.hospedaje.reservaEstado ?? 'pendiente',
-      reserva_simulada_payload: payload.hospedaje.reservaSimuladaPayload ?? {},
-      payload: payload.hospedaje.payload ?? null,
-    });
+  const { error: hotelError } = await supabase.from("hospedajes").insert({
+    propuesta_id: proposal.id_propuesta,
+    nombre: dbText(payload.hospedaje.nombre) ?? payload.hospedaje.nombre,
+    proveedor: dbText(payload.hospedaje.proveedor ?? null),
+    referencia_externa: dbText(payload.hospedaje.referenciaExterna ?? null),
+    direccion: payload.hospedaje.direccion ?? null,
+    latitud: payload.hospedaje.latitud ?? null,
+    longitud: payload.hospedaje.longitud ?? null,
+    check_in: payload.hospedaje.checkIn ?? null,
+    check_out: payload.hospedaje.checkOut ?? null,
+    precio_total: payload.hospedaje.precioTotal ?? null,
+    moneda: payload.hospedaje.moneda ?? null,
+    calificacion: payload.hospedaje.calificacion ?? null,
+    liteapi_hotel_id: dbText(payload.hospedaje.liteapiHotelId ?? null),
+    liteapi_offer_id: dbText(
+      payload.hospedaje.liteapiOfferId ??
+        payload.hospedaje.referenciaExterna ??
+        null,
+    ),
+    liteapi_prebook_id: dbText(payload.hospedaje.liteapiPrebookId ?? null),
+    google_place_id: dbText(payload.hospedaje.googlePlaceId ?? null),
+    foto_url: payload.hospedaje.fotoUrl ?? null,
+    reserva_estado: payload.hospedaje.reservaEstado ?? "pendiente",
+    reserva_simulada_payload: payload.hospedaje.reservaSimuladaPayload ?? {},
+    payload: payload.hospedaje.payload ?? null,
+  });
 
   if (hotelError) {
-    await supabase.from('propuestas').delete().eq('id_propuesta', proposal.id_propuesta);
+    await supabase
+      .from("propuestas")
+      .delete()
+      .eq("id_propuesta", proposal.id_propuesta);
     throw new Error(hotelError.message);
   }
 
@@ -307,70 +378,86 @@ export const createHotelProposal = async (authUserId: string, payload: SaveHotel
     Number(payload.grupoId),
     Number(usuarioId),
     {
-      tipo: 'propuesta_hospedaje_creada',
-      titulo: 'Nueva propuesta de hospedaje',
+      tipo: "propuesta_hospedaje_creada",
+      titulo: "Nueva propuesta de hospedaje",
       mensaje: `${actorName} propuso el hospedaje "${payload.titulo}".`,
-      entidadTipo: 'propuesta',
+      entidadTipo: "propuesta",
       entidadId: proposal.id_propuesta,
       metadata: {
         actorName,
         actorUsuarioId: Number(usuarioId),
         itemTitle: payload.titulo,
-        itemType: 'hospedaje',
+        itemType: "hospedaje",
         scheduledAt: payload.hospedaje.checkIn ?? null,
         scheduledEndAt: payload.hospedaje.checkOut ?? null,
         location: payload.hospedaje.direccion ?? null,
       },
-    }
+    },
   );
 
   return buildProposalResponse(proposal.id_propuesta);
 };
 
-export const listGroupProposals = async (groupId: string, authUserId: string) => {
+export const listGroupProposals = async (
+  groupId: string,
+  authUserId: string,
+) => {
   await assertGroupMembership(groupId, authUserId);
 
   const { data: proposals, error } = await supabase
-    .from('propuestas')
-    .select('*')
-    .eq('grupo_id', groupId)
-    .order('id_propuesta', { ascending: false });
+    .from("propuestas")
+    .select("*")
+    .eq("grupo_id", groupId)
+    .order("id_propuesta", { ascending: false });
 
   if (error) throw new Error(error.message);
 
   const enriched = await Promise.all(
     (proposals ?? []).map((item: { id_propuesta: number }) =>
-      buildProposalResponse(item.id_propuesta)
-    )
+      buildProposalResponse(item.id_propuesta),
+    ),
   );
   return enriched;
 };
 
-export const getProposalById = async (proposalId: number, authUserId: string) => {
+export const getProposalById = async (
+  proposalId: number,
+  authUserId: string,
+) => {
   await assertProposalAccess(proposalId, authUserId);
   return buildProposalResponse(proposalId);
 };
 
-export const updateProposal = async (proposalId: number, authUserId: string, payload: UpdateProposalPayload) => {
+export const updateProposal = async (
+  proposalId: number,
+  authUserId: string,
+  payload: UpdateProposalPayload,
+) => {
   const { proposal } = await assertCanManageProposal(proposalId, authUserId);
 
   if (payload.updatedAt && proposal.ultima_actualizacion) {
     const dbDate = new Date(proposal.ultima_actualizacion).getTime();
     const payloadDate = new Date(payload.updatedAt).getTime();
-    
+
     if (Number.isNaN(payloadDate)) {
-      const err = new Error('Invalid updatedAt timestamp.') as Error & { statusCode: number };
+      const err = new Error("Invalid updatedAt timestamp.") as Error & {
+        statusCode: number;
+      };
       err.statusCode = 400;
       throw err;
     }
     if (Number.isNaN(dbDate)) {
-      const err = new Error('Invalid proposal update timestamp in storage.') as Error & { statusCode: number };
+      const err = new Error(
+        "Invalid proposal update timestamp in storage.",
+      ) as Error & { statusCode: number };
       err.statusCode = 500;
       throw err;
     }
-    
+
     if (payloadDate < dbDate) {
-      const err = new Error('Conflict: The entity has been modified. Refresh and try again.') as Error & { statusCode: number };
+      const err = new Error(
+        "Conflict: The entity has been modified. Refresh and try again.",
+      ) as Error & { statusCode: number };
       err.statusCode = 409;
       throw err;
     }
@@ -381,93 +468,137 @@ export const updateProposal = async (proposalId: number, authUserId: string, pay
   };
 
   if (isPresent(payload.titulo)) proposalPatch.titulo = payload.titulo;
-  if (isPresent(payload.descripcion)) proposalPatch.descripcion = payload.descripcion ?? null;
+  if (isPresent(payload.descripcion))
+    proposalPatch.descripcion = payload.descripcion ?? null;
   if (isPresent(payload.estado)) proposalPatch.estado = payload.estado;
-  if (isPresent(payload.payload)) proposalPatch.payload = payload.payload ?? null;
+  if (isPresent(payload.payload))
+    proposalPatch.payload = payload.payload ?? null;
 
   if (Object.keys(proposalPatch).length > 1) {
     const { error } = await supabase
-      .from('propuestas')
+      .from("propuestas")
       .update(proposalPatch)
-      .eq('id_propuesta', proposalId);
+      .eq("id_propuesta", proposalId);
 
     if (error) throw new Error(error.message);
   }
 
   if (payload.detalle && Object.keys(payload.detalle).length > 0) {
-    if (proposal.tipo_item === 'vuelo') {
+    if (proposal.tipo_item === "vuelo") {
       const flightPatch: Record<string, unknown> = {
         ultima_actualizacion: new Date().toISOString(),
       };
 
-      if (isPresent(payload.detalle.aerolinea)) flightPatch.aerolinea = payload.detalle.aerolinea;
-      if (isPresent(payload.detalle.numeroVuelo)) flightPatch.numero_vuelo = payload.detalle.numeroVuelo ?? null;
-      if (isPresent(payload.detalle.origenCodigo)) flightPatch.origen_codigo = payload.detalle.origenCodigo;
-      if (isPresent(payload.detalle.origenNombre)) flightPatch.origen_nombre = payload.detalle.origenNombre ?? null;
-      if (isPresent(payload.detalle.destinoCodigo)) flightPatch.destino_codigo = payload.detalle.destinoCodigo;
-      if (isPresent(payload.detalle.destinoNombre)) flightPatch.destino_nombre = payload.detalle.destinoNombre ?? null;
-      if (isPresent(payload.detalle.salida)) flightPatch.salida = payload.detalle.salida;
-      if (isPresent(payload.detalle.llegada)) flightPatch.llegada = payload.detalle.llegada;
-      if (isPresent(payload.detalle.duracion)) flightPatch.duracion = payload.detalle.duracion ?? null;
-      if (isPresent(payload.detalle.precio)) flightPatch.precio = payload.detalle.precio;
-      if (isPresent(payload.detalle.moneda)) flightPatch.moneda = payload.detalle.moneda;
-      if (isPresent(payload.detalle.escalas)) flightPatch.escalas = payload.detalle.escalas;
-      if (isPresent(payload.detalle.payload)) flightPatch.payload = payload.detalle.payload ?? null;
+      if (isPresent(payload.detalle.aerolinea))
+        flightPatch.aerolinea = payload.detalle.aerolinea;
+      if (isPresent(payload.detalle.numeroVuelo))
+        flightPatch.numero_vuelo = payload.detalle.numeroVuelo ?? null;
+      if (isPresent(payload.detalle.origenCodigo))
+        flightPatch.origen_codigo = payload.detalle.origenCodigo;
+      if (isPresent(payload.detalle.origenNombre))
+        flightPatch.origen_nombre = payload.detalle.origenNombre ?? null;
+      if (isPresent(payload.detalle.destinoCodigo))
+        flightPatch.destino_codigo = payload.detalle.destinoCodigo;
+      if (isPresent(payload.detalle.destinoNombre))
+        flightPatch.destino_nombre = payload.detalle.destinoNombre ?? null;
+      if (isPresent(payload.detalle.salida))
+        flightPatch.salida = payload.detalle.salida;
+      if (isPresent(payload.detalle.llegada))
+        flightPatch.llegada = payload.detalle.llegada;
+      if (isPresent(payload.detalle.duracion))
+        flightPatch.duracion = payload.detalle.duracion ?? null;
+      if (isPresent(payload.detalle.precio))
+        flightPatch.precio = payload.detalle.precio;
+      if (isPresent(payload.detalle.moneda))
+        flightPatch.moneda = payload.detalle.moneda;
+      if (isPresent(payload.detalle.escalas))
+        flightPatch.escalas = payload.detalle.escalas;
+      if (isPresent(payload.detalle.payload))
+        flightPatch.payload = payload.detalle.payload ?? null;
 
       const { error } = await supabase
-        .from('vuelos')
+        .from("vuelos")
         .update(flightPatch)
-        .eq('propuesta_id', proposalId);
+        .eq("propuesta_id", proposalId);
 
       if (error) throw new Error(error.message);
 
       if (isPresent(payload.detalle.numeroVuelo)) {
         const { error: proposalRefError } = await supabase
-          .from('propuestas')
-          .update({ referencia_externa: payload.detalle.numeroVuelo ?? null, ultima_actualizacion: new Date().toISOString() })
-          .eq('id_propuesta', proposalId);
+          .from("propuestas")
+          .update({
+            referencia_externa: payload.detalle.numeroVuelo ?? null,
+            ultima_actualizacion: new Date().toISOString(),
+          })
+          .eq("id_propuesta", proposalId);
 
         if (proposalRefError) throw new Error(proposalRefError.message);
       }
     }
 
-    if (proposal.tipo_item === 'hospedaje') {
+    if (proposal.tipo_item === "hospedaje") {
       const hotelPatch: Record<string, unknown> = {
         ultima_actualizacion: new Date().toISOString(),
       };
 
-      if (isPresent(payload.detalle.nombre)) hotelPatch.nombre = payload.detalle.nombre;
-      if (isPresent(payload.detalle.proveedor)) hotelPatch.proveedor = payload.detalle.proveedor ?? null;
-      if (isPresent(payload.detalle.referenciaExterna)) hotelPatch.referencia_externa = payload.detalle.referenciaExterna ?? null;
-      if (isPresent(payload.detalle.direccion)) hotelPatch.direccion = payload.detalle.direccion ?? null;
-      if (isPresent(payload.detalle.latitud)) hotelPatch.latitud = payload.detalle.latitud;
-      if (isPresent(payload.detalle.longitud)) hotelPatch.longitud = payload.detalle.longitud;
-      if (isPresent(payload.detalle.checkIn)) hotelPatch.check_in = payload.detalle.checkIn ?? null;
-      if (isPresent(payload.detalle.checkOut)) hotelPatch.check_out = payload.detalle.checkOut ?? null;
-      if (isPresent(payload.detalle.precioTotal)) hotelPatch.precio_total = payload.detalle.precioTotal;
-      if (isPresent(payload.detalle.moneda)) hotelPatch.moneda = payload.detalle.moneda;
-      if (isPresent(payload.detalle.calificacion)) hotelPatch.calificacion = payload.detalle.calificacion;
-      if (isPresent(payload.detalle.liteapiHotelId)) hotelPatch.liteapi_hotel_id = payload.detalle.liteapiHotelId ?? null;
-      if (isPresent(payload.detalle.liteapiOfferId)) hotelPatch.liteapi_offer_id = payload.detalle.liteapiOfferId ?? null;
-      if (isPresent(payload.detalle.liteapiPrebookId)) hotelPatch.liteapi_prebook_id = payload.detalle.liteapiPrebookId ?? null;
-      if (isPresent(payload.detalle.googlePlaceId)) hotelPatch.google_place_id = payload.detalle.googlePlaceId ?? null;
-      if (isPresent(payload.detalle.fotoUrl)) hotelPatch.foto_url = payload.detalle.fotoUrl ?? null;
-      if (isPresent(payload.detalle.reservaEstado)) hotelPatch.reserva_estado = payload.detalle.reservaEstado ?? 'pendiente';
-      if (isPresent(payload.detalle.reservaSimuladaPayload)) hotelPatch.reserva_simulada_payload = payload.detalle.reservaSimuladaPayload ?? {};
-      if (isPresent(payload.detalle.payload)) hotelPatch.payload = payload.detalle.payload ?? null;
+      if (isPresent(payload.detalle.nombre))
+        hotelPatch.nombre = payload.detalle.nombre;
+      if (isPresent(payload.detalle.proveedor))
+        hotelPatch.proveedor = payload.detalle.proveedor ?? null;
+      if (isPresent(payload.detalle.referenciaExterna))
+        hotelPatch.referencia_externa =
+          payload.detalle.referenciaExterna ?? null;
+      if (isPresent(payload.detalle.direccion))
+        hotelPatch.direccion = payload.detalle.direccion ?? null;
+      if (isPresent(payload.detalle.latitud))
+        hotelPatch.latitud = payload.detalle.latitud;
+      if (isPresent(payload.detalle.longitud))
+        hotelPatch.longitud = payload.detalle.longitud;
+      if (isPresent(payload.detalle.checkIn))
+        hotelPatch.check_in = payload.detalle.checkIn ?? null;
+      if (isPresent(payload.detalle.checkOut))
+        hotelPatch.check_out = payload.detalle.checkOut ?? null;
+      if (isPresent(payload.detalle.precioTotal))
+        hotelPatch.precio_total = payload.detalle.precioTotal;
+      if (isPresent(payload.detalle.moneda))
+        hotelPatch.moneda = payload.detalle.moneda;
+      if (isPresent(payload.detalle.calificacion))
+        hotelPatch.calificacion = payload.detalle.calificacion;
+      if (isPresent(payload.detalle.liteapiHotelId))
+        hotelPatch.liteapi_hotel_id = payload.detalle.liteapiHotelId ?? null;
+      if (isPresent(payload.detalle.liteapiOfferId))
+        hotelPatch.liteapi_offer_id = payload.detalle.liteapiOfferId ?? null;
+      if (isPresent(payload.detalle.liteapiPrebookId))
+        hotelPatch.liteapi_prebook_id =
+          payload.detalle.liteapiPrebookId ?? null;
+      if (isPresent(payload.detalle.googlePlaceId))
+        hotelPatch.google_place_id = payload.detalle.googlePlaceId ?? null;
+      if (isPresent(payload.detalle.fotoUrl))
+        hotelPatch.foto_url = payload.detalle.fotoUrl ?? null;
+      if (isPresent(payload.detalle.reservaEstado))
+        hotelPatch.reserva_estado =
+          payload.detalle.reservaEstado ?? "pendiente";
+      if (isPresent(payload.detalle.reservaSimuladaPayload))
+        hotelPatch.reserva_simulada_payload =
+          payload.detalle.reservaSimuladaPayload ?? {};
+      if (isPresent(payload.detalle.payload))
+        hotelPatch.payload = payload.detalle.payload ?? null;
 
       const { error } = await supabase
-        .from('hospedajes')
+        .from("hospedajes")
         .update(hotelPatch)
-        .eq('propuesta_id', proposalId);
+        .eq("propuesta_id", proposalId);
 
       if (error) throw new Error(error.message);
 
       if (isPresent(payload.detalle.referenciaExterna)) {
         const { error: proposalRefError } = await supabase
-          .from('propuestas')
-          .update({ referencia_externa: payload.detalle.referenciaExterna ?? null, ultima_actualizacion: new Date().toISOString() })
-          .eq('id_propuesta', proposalId);
+          .from("propuestas")
+          .update({
+            referencia_externa: payload.detalle.referenciaExterna ?? null,
+            ultima_actualizacion: new Date().toISOString(),
+          })
+          .eq("id_propuesta", proposalId);
 
         if (proposalRefError) throw new Error(proposalRefError.message);
       }
@@ -479,42 +610,63 @@ export const updateProposal = async (proposalId: number, authUserId: string, pay
     proposal.grupo_id,
     Number(usuarioId),
     {
-      tipo: 'propuesta_actualizada',
-      titulo: 'Propuesta actualizada',
+      tipo: "propuesta_actualizada",
+      titulo: "Propuesta actualizada",
       mensaje: `La propuesta "${proposal.titulo}" ha sido modificada.`,
-      entidadTipo: 'propuesta',
+      entidadTipo: "propuesta",
       entidadId: proposalId,
-    }
+    },
   );
 
   return buildProposalResponse(proposalId);
 };
 
-export const deleteProposal = async (proposalId: number, authUserId: string) => {
+export const deleteProposal = async (
+  proposalId: number,
+  authUserId: string,
+) => {
   const { proposal } = await assertCanManageProposal(proposalId, authUserId);
 
-  const { error: voteError } = await supabase.from('voto').delete().eq('id_propuesta', proposalId);
+  const { error: voteError } = await supabase
+    .from("voto")
+    .delete()
+    .eq("id_propuesta", proposalId);
   if (voteError) throw new Error(voteError.message);
 
-  const { error: commentError } = await supabase.from('comentario').delete().eq('id_propuesta', proposalId);
+  const { error: commentError } = await supabase
+    .from("comentario")
+    .delete()
+    .eq("id_propuesta", proposalId);
   if (commentError) throw new Error(commentError.message);
 
-  if (proposal.tipo_item === 'vuelo') {
-    const { error } = await supabase.from('vuelos').delete().eq('propuesta_id', proposalId);
+  if (proposal.tipo_item === "vuelo") {
+    const { error } = await supabase
+      .from("vuelos")
+      .delete()
+      .eq("propuesta_id", proposalId);
     if (error) throw new Error(error.message);
   }
 
-  if (proposal.tipo_item === 'hospedaje') {
-    const { error } = await supabase.from('hospedajes').delete().eq('propuesta_id', proposalId);
+  if (proposal.tipo_item === "hospedaje") {
+    const { error } = await supabase
+      .from("hospedajes")
+      .delete()
+      .eq("propuesta_id", proposalId);
     if (error) throw new Error(error.message);
   }
 
-  if (proposal.tipo_item === 'actividad') {
-    const { error } = await supabase.from('actividades').delete().eq('propuesta_id', proposalId);
+  if (proposal.tipo_item === "actividad") {
+    const { error } = await supabase
+      .from("actividades")
+      .delete()
+      .eq("propuesta_id", proposalId);
     if (error) throw new Error(error.message);
   }
 
-  const { error } = await supabase.from('propuestas').delete().eq('id_propuesta', proposalId);
+  const { error } = await supabase
+    .from("propuestas")
+    .delete()
+    .eq("id_propuesta", proposalId);
   if (error) throw new Error(error.message);
 
   return true;
@@ -522,693 +674,816 @@ export const deleteProposal = async (proposalId: number, authUserId: string) => 
 type ServiceError = Error & { statusCode?: number };
 
 const createError = (message: string, statusCode: number): ServiceError => {
-	const err = new Error(message) as ServiceError;
-	err.statusCode = statusCode;
-	return err;
+  const err = new Error(message) as ServiceError;
+  err.statusCode = statusCode;
+  return err;
 };
 
 type RawCommentRow = {
-	id_comentario: string | number;
-	id_propuesta: string | number;
-	id_usuario: string | number;
-	contenido: string;
-	created_at: string;
-	updated_at: string;
+  id_comentario: string | number;
+  id_propuesta: string | number;
+  id_usuario: string | number;
+  contenido: string;
+  created_at: string;
+  updated_at: string;
 };
 
 const attachCommentAuthorNames = async (comments: RawCommentRow[]) => {
-	if (comments.length === 0) return [];
+  if (comments.length === 0) return [];
 
-	const uniqueUserIds = Array.from(new Set(comments.map((comment) => String(comment.id_usuario))));
+  const uniqueUserIds = Array.from(
+    new Set(comments.map((comment) => String(comment.id_usuario))),
+  );
 
-	const { data: users, error: usersError } = await supabase
-		.from('usuarios')
-		.select('id_usuario, nombre')
-		.in('id_usuario', uniqueUserIds);
+  const { data: users, error: usersError } = await supabase
+    .from("usuarios")
+    .select("id_usuario, nombre")
+    .in("id_usuario", uniqueUserIds);
 
-	if (usersError) throw createError(usersError.message, 500);
+  if (usersError) throw createError(usersError.message, 500);
 
-	const nameByUserId = new Map(
-		(users ?? []).map((user: any) => [String(user.id_usuario), String(user.nombre ?? '')])
-	);
+  const nameByUserId = new Map(
+    (users ?? []).map((user: any) => [
+      String(user.id_usuario),
+      String(user.nombre ?? ""),
+    ]),
+  );
 
-	return comments.map((comment) => ({
-		...comment,
-		authorName: nameByUserId.get(String(comment.id_usuario)) ?? null,
-	}));
+  return comments.map((comment) => ({
+    ...comment,
+    authorName: nameByUserId.get(String(comment.id_usuario)) ?? null,
+  }));
 };
 
-const ensureProposalBelongsToGroup = async (groupId: string, proposalId: string): Promise<void> => {
-	const { data, error } = await supabase
-		.from('propuestas')
-		.select('id_propuesta, grupo_id')
-		.eq('id_propuesta', proposalId)
-		.eq('grupo_id', groupId)
-		.maybeSingle();
+const ensureProposalBelongsToGroup = async (
+  groupId: string,
+  proposalId: string,
+): Promise<void> => {
+  const { data, error } = await supabase
+    .from("propuestas")
+    .select("id_propuesta, grupo_id")
+    .eq("id_propuesta", proposalId)
+    .eq("grupo_id", groupId)
+    .maybeSingle();
 
-	if (error) throw createError(error.message, 500);
-	if (!data) throw createError('La propuesta no existe en el viaje/grupo indicado', 404);
+  if (error) throw createError(error.message, 500);
+  if (!data)
+    throw createError("La propuesta no existe en el viaje/grupo indicado", 404);
 };
 
-const ensureUserBelongsToGroup = async (groupId: string, localUserId: string): Promise<void> => {
-	const { data, error } = await supabase
-		.from('grupo_miembros')
-		.select('id')
-		.eq('grupo_id', groupId)
-		.eq('usuario_id', localUserId)
-		.maybeSingle();
+const ensureUserBelongsToGroup = async (
+  groupId: string,
+  localUserId: string,
+): Promise<void> => {
+  const { data, error } = await supabase
+    .from("grupo_miembros")
+    .select("id")
+    .eq("grupo_id", groupId)
+    .eq("usuario_id", localUserId)
+    .maybeSingle();
 
-	if (error) throw createError(error.message, 500);
-	if (!data) throw createError('No autorizado: no perteneces a este viaje/grupo', 403);
+  if (error) throw createError(error.message, 500);
+  if (!data)
+    throw createError("No autorizado: no perteneces a este viaje/grupo", 403);
 };
 
-const ensureUserIsAdmin = async (groupId: string, localUserId: string): Promise<void> => {
-	const { data, error } = await supabase
-		.from('grupo_miembros')
-		.select('id, rol')
-		.eq('grupo_id', groupId)
-		.eq('usuario_id', localUserId)
-		.maybeSingle();
+const ensureUserIsAdmin = async (
+  groupId: string,
+  localUserId: string,
+): Promise<void> => {
+  const { data, error } = await supabase
+    .from("grupo_miembros")
+    .select("id, rol")
+    .eq("grupo_id", groupId)
+    .eq("usuario_id", localUserId)
+    .maybeSingle();
 
-	if (error) throw createError(error.message, 500);
-	if (!data) throw createError('No autorizado: no perteneces a este viaje/grupo', 403);
+  if (error) throw createError(error.message, 500);
+  if (!data)
+    throw createError("No autorizado: no perteneces a este viaje/grupo", 403);
 
-	const role = String((data as any).rol ?? '').toLowerCase();
-	if (role !== 'admin' && role !== 'organizador') {
-		throw createError('Solo el organizador puede tomar esta decision', 403);
-	}
+  const role = String((data as any).rol ?? "").toLowerCase();
+  if (role !== "admin" && role !== "organizador") {
+    throw createError("Solo el organizador puede tomar esta decision", 403);
+  }
 };
 
 const getUniqueGroupMemberCount = async (groupId: string): Promise<number> => {
-	const { data, error } = await supabase
-		.from('grupo_miembros')
-		.select('usuario_id')
-		.eq('grupo_id', groupId);
+  const { data, error } = await supabase
+    .from("grupo_miembros")
+    .select("usuario_id")
+    .eq("grupo_id", groupId);
 
-	if (error) throw createError(error.message, 500);
+  if (error) throw createError(error.message, 500);
 
-	const unique = new Set((data ?? []).map((row: any) => String(row.usuario_id)));
-	return unique.size;
+  const unique = new Set(
+    (data ?? []).map((row: any) => String(row.usuario_id)),
+  );
+  return unique.size;
 };
 
 const normalizeVoteType = (voteType: unknown): ProposalVoteType => {
-	if (voteType === 'en_contra' || voteType === 'abstencion' || voteType === 'a_favor') {
-		return voteType;
-	}
-	return 'a_favor';
+  if (
+    voteType === "en_contra" ||
+    voteType === "abstencion" ||
+    voteType === "a_favor"
+  ) {
+    return voteType;
+  }
+  return "a_favor";
 };
 
-const isMissingVoteTypeColumnError = (error: { message?: string } | null | undefined): boolean => {
-	const message = String(error?.message ?? '').toLowerCase();
-	return message.includes("voto_tipo") && message.includes("could not find");
+const isMissingVoteTypeColumnError = (
+  error: { message?: string } | null | undefined,
+): boolean => {
+  const message = String(error?.message ?? "").toLowerCase();
+  return message.includes("voto_tipo") && message.includes("could not find");
 };
 
 const fetchVotesWithFallback = async (proposalIds: string[] | number[]) => {
-	const voteTable = supabase.from('voto') as any;
-	const selectWithType = voteTable.select('id_propuesta, voto_tipo, id_usuario') as any;
+  const voteTable = supabase.from("voto") as any;
+  const selectWithType = voteTable.select(
+    "id_propuesta, voto_tipo, id_usuario",
+  ) as any;
 
-	let voteQueryResult: { data: any; error: any } = { data: null, error: null };
+  let voteQueryResult: { data: any; error: any } = { data: null, error: null };
 
-	if (proposalIds.length === 1 && typeof selectWithType?.eq === 'function') {
-		voteQueryResult = await selectWithType.eq('id_propuesta', proposalIds[0]);
-	} else if (typeof selectWithType?.in === 'function') {
-		voteQueryResult = await selectWithType.in('id_propuesta', proposalIds as any);
-	} else if (typeof selectWithType?.eq === 'function') {
-		// Fallback de compatibilidad para mocks o clientes sin `.in`
-		voteQueryResult = await selectWithType.eq('id_propuesta', proposalIds[0]);
-	} else {
-		throw createError('No se pudo construir la consulta de votos', 500);
-	}
+  if (proposalIds.length === 1 && typeof selectWithType?.eq === "function") {
+    voteQueryResult = await selectWithType.eq("id_propuesta", proposalIds[0]);
+  } else if (typeof selectWithType?.in === "function") {
+    voteQueryResult = await selectWithType.in(
+      "id_propuesta",
+      proposalIds as any,
+    );
+  } else if (typeof selectWithType?.eq === "function") {
+    // Fallback de compatibilidad para mocks o clientes sin `.in`
+    voteQueryResult = await selectWithType.eq("id_propuesta", proposalIds[0]);
+  } else {
+    throw createError("No se pudo construir la consulta de votos", 500);
+  }
 
-	const { data, error } = voteQueryResult;
+  const { data, error } = voteQueryResult;
 
-	if (!error) {
-		return {
-			rows: (data ?? []).map((row: any) => ({
-				id_propuesta: row.id_propuesta,
-				id_usuario: row.id_usuario,
-				voto_tipo: normalizeVoteType(row.voto_tipo),
-			})),
-		};
-	}
+  if (!error) {
+    return {
+      rows: (data ?? []).map((row: any) => ({
+        id_propuesta: row.id_propuesta,
+        id_usuario: row.id_usuario,
+        voto_tipo: normalizeVoteType(row.voto_tipo),
+      })),
+    };
+  }
 
-	if (!isMissingVoteTypeColumnError(error)) {
-		throw createError(error.message, 500);
-	}
+  if (!isMissingVoteTypeColumnError(error)) {
+    throw createError(error.message, 500);
+  }
 
-	const fallbackTable = supabase.from('voto') as any;
-	const fallbackSelect = fallbackTable.select('id_propuesta, id_usuario') as any;
+  const fallbackTable = supabase.from("voto") as any;
+  const fallbackSelect = fallbackTable.select(
+    "id_propuesta, id_usuario",
+  ) as any;
 
-	let fallback: { data: any; error: any } = { data: null, error: null };
+  let fallback: { data: any; error: any } = { data: null, error: null };
 
-	if (proposalIds.length === 1 && typeof fallbackSelect?.eq === 'function') {
-		fallback = await fallbackSelect.eq('id_propuesta', proposalIds[0]);
-	} else if (typeof fallbackSelect?.in === 'function') {
-		fallback = await fallbackSelect.in('id_propuesta', proposalIds as any);
-	} else if (typeof fallbackSelect?.eq === 'function') {
-		fallback = await fallbackSelect.eq('id_propuesta', proposalIds[0]);
-	} else {
-		throw createError('No se pudo construir la consulta de votos (fallback)', 500);
-	}
+  if (proposalIds.length === 1 && typeof fallbackSelect?.eq === "function") {
+    fallback = await fallbackSelect.eq("id_propuesta", proposalIds[0]);
+  } else if (typeof fallbackSelect?.in === "function") {
+    fallback = await fallbackSelect.in("id_propuesta", proposalIds as any);
+  } else if (typeof fallbackSelect?.eq === "function") {
+    fallback = await fallbackSelect.eq("id_propuesta", proposalIds[0]);
+  } else {
+    throw createError(
+      "No se pudo construir la consulta de votos (fallback)",
+      500,
+    );
+  }
 
-	if (fallback.error) throw createError(fallback.error.message, 500);
+  if (fallback.error) throw createError(fallback.error.message, 500);
 
-	return {
-		rows: (fallback.data ?? []).map((row: any) => ({
-			id_propuesta: row.id_propuesta,
-			id_usuario: row.id_usuario,
-			voto_tipo: 'a_favor' as ProposalVoteType,
-		})),
-	};
+  return {
+    rows: (fallback.data ?? []).map((row: any) => ({
+      id_propuesta: row.id_propuesta,
+      id_usuario: row.id_usuario,
+      voto_tipo: "a_favor" as ProposalVoteType,
+    })),
+  };
 };
 
 const evaluateProposalOutcome = async (groupId: string, proposalId: string) => {
-	const totalMembers = await getUniqueGroupMemberCount(groupId);
-	const votesRequired = Math.floor(totalMembers / 2) + 1;
+  const totalMembers = await getUniqueGroupMemberCount(groupId);
+  const votesRequired = Math.floor(totalMembers / 2) + 1;
 
-	const { rows: votes } = await fetchVotesWithFallback([proposalId]);
+  const { rows: votes } = await fetchVotesWithFallback([proposalId]);
 
-	let votesFor = 0;
-	let votesAgainst = 0;
-	let abstentions = 0;
+  let votesFor = 0;
+  let votesAgainst = 0;
+  let abstentions = 0;
 
-	for (const row of votes ?? []) {
-		const t = normalizeVoteType((row as any).voto_tipo);
-		if (t === 'a_favor') votesFor += 1;
-		else if (t === 'en_contra') votesAgainst += 1;
-		else abstentions += 1;
-	}
+  for (const row of votes ?? []) {
+    const t = normalizeVoteType((row as any).voto_tipo);
+    if (t === "a_favor") votesFor += 1;
+    else if (t === "en_contra") votesAgainst += 1;
+    else abstentions += 1;
+  }
 
-	const totalVotes = votes.length;
-	const pendingVotes = Math.max(totalMembers - totalVotes, 0);
-	const approved = votesFor >= votesRequired;
-	const rejected = votesAgainst >= votesRequired;
-	const tied = totalVotes >= totalMembers && votesFor === votesAgainst && !approved && !rejected;
+  const totalVotes = votes.length;
+  const pendingVotes = Math.max(totalMembers - totalVotes, 0);
+  const approved = votesFor >= votesRequired;
+  const rejected = votesAgainst >= votesRequired;
+  const tied =
+    totalVotes >= totalMembers &&
+    votesFor === votesAgainst &&
+    !approved &&
+    !rejected;
 
-	return {
-		totalMembers,
-		votesRequired,
-		totalVotes,
-		votesFor,
-		votesAgainst,
-		abstentions,
-		pendingVotes,
-		approved,
-		rejected,
-		tied,
-	};
+  return {
+    totalMembers,
+    votesRequired,
+    totalVotes,
+    votesFor,
+    votesAgainst,
+    abstentions,
+    pendingVotes,
+    approved,
+    rejected,
+    tied,
+  };
 };
 
 const applyProposalResolution = async (
-	groupId: string,
-	proposalId: string,
-	resolution: 'aprobada' | 'descartada',
-	meta?: Record<string, unknown>,
+  groupId: string,
+  proposalId: string,
+  resolution: "aprobada" | "descartada",
+  meta?: Record<string, unknown>,
 ) => {
-	const nowIso = new Date().toISOString();
-	let resolvedActivityDateStart: string | null = null;
-	let resolvedItineraryId: string | number | null = null;
+  const nowIso = new Date().toISOString();
+  let resolvedActivityDateStart: string | null = null;
+  let resolvedItineraryId: string | number | null = null;
 
-	const { data: currentProposal, error: currentProposalError } = await supabase
-		.from('propuestas')
-		.select('payload, titulo, creado_por, tipo_item')
-		.eq('id_propuesta', proposalId)
-		.eq('grupo_id', groupId)
-		.maybeSingle();
+  const { data: currentProposal, error: currentProposalError } = await supabase
+    .from("propuestas")
+    .select("payload, titulo, creado_por, tipo_item")
+    .eq("id_propuesta", proposalId)
+    .eq("grupo_id", groupId)
+    .maybeSingle();
 
-	if (currentProposalError) throw createError(currentProposalError.message, 500);
+  if (currentProposalError)
+    throw createError(currentProposalError.message, 500);
 
-	const mergedPayload = {
-		...(typeof (currentProposal as any)?.payload === 'object' && (currentProposal as any)?.payload !== null
-			? (currentProposal as any).payload
-			: {}),
-		...(meta ?? {}),
-	};
+  const mergedPayload = {
+    ...(typeof (currentProposal as any)?.payload === "object" &&
+    (currentProposal as any)?.payload !== null
+      ? (currentProposal as any).payload
+      : {}),
+    ...(meta ?? {}),
+  };
 
-	const currentType = String((currentProposal as any)?.tipo_item ?? '');
-	if (resolution === 'aprobada' && (currentType === 'vuelo' || currentType === 'hospedaje')) {
-		const { error: discardSameTypeError } = await supabase
-			.from('propuestas')
-			.update({
-				estado: 'descartada',
-				fecha_cierre: nowIso,
-				ultima_actualizacion: nowIso,
-			})
-			.eq('grupo_id', groupId)
-			.eq('tipo_item', currentType)
-			.neq('id_propuesta', proposalId)
-			.neq('estado', 'descartada');
+  const currentType = String((currentProposal as any)?.tipo_item ?? "");
+  if (
+    resolution === "aprobada" &&
+    (currentType === "vuelo" || currentType === "hospedaje")
+  ) {
+    const { error: discardSameTypeError } = await supabase
+      .from("propuestas")
+      .update({
+        estado: "descartada",
+        fecha_cierre: nowIso,
+        ultima_actualizacion: nowIso,
+      })
+      .eq("grupo_id", groupId)
+      .eq("tipo_item", currentType)
+      .neq("id_propuesta", proposalId)
+      .neq("estado", "descartada");
 
-		if (discardSameTypeError) throw createError(discardSameTypeError.message, 500);
-	}
+    if (discardSameTypeError)
+      throw createError(discardSameTypeError.message, 500);
+  }
 
-	const { error: proposalUpdateError } = await supabase
-		.from('propuestas')
-		.update({
-			estado: resolution,
-			fecha_cierre: nowIso,
-			ultima_actualizacion: nowIso,
-			payload: mergedPayload,
-		})
-		.eq('id_propuesta', proposalId)
-		.eq('grupo_id', groupId);
+  const { error: proposalUpdateError } = await supabase
+    .from("propuestas")
+    .update({
+      estado: resolution,
+      fecha_cierre: nowIso,
+      ultima_actualizacion: nowIso,
+      payload: mergedPayload,
+    })
+    .eq("id_propuesta", proposalId)
+    .eq("grupo_id", groupId);
 
-	if (proposalUpdateError) throw createError(proposalUpdateError.message, 500);
+  if (proposalUpdateError) throw createError(proposalUpdateError.message, 500);
 
-	const { error: activityUpdateError } = await supabase
-		.from('actividades')
-		.update({
-			estado: resolution === 'aprobada' ? 'confirmada' : 'cancelada',
-			ultima_actualizacion: nowIso,
-		})
-		.eq('propuesta_id', proposalId);
+  const { error: activityUpdateError } = await supabase
+    .from("actividades")
+    .update({
+      estado: resolution === "aprobada" ? "confirmada" : "cancelada",
+      ultima_actualizacion: nowIso,
+    })
+    .eq("propuesta_id", proposalId);
 
-	if (activityUpdateError) throw createError(activityUpdateError.message, 500);
+  if (activityUpdateError) throw createError(activityUpdateError.message, 500);
 
-	const { data: resolvedActivity, error: resolvedActivityError } = await supabase
-		.from('actividades')
-		.select('id_actividad, itinerario_id, fecha_inicio')
-		.eq('propuesta_id', proposalId)
-		.limit(1)
-		.maybeSingle();
+  const { data: resolvedActivity, error: resolvedActivityError } =
+    await supabase
+      .from("actividades")
+      .select("id_actividad, itinerario_id, fecha_inicio")
+      .eq("propuesta_id", proposalId)
+      .limit(1)
+      .maybeSingle();
 
-	if (resolvedActivityError) throw createError(resolvedActivityError.message, 500);
+  if (resolvedActivityError)
+    throw createError(resolvedActivityError.message, 500);
 
-	resolvedActivityDateStart = (resolvedActivity as any)?.fecha_inicio
-		? String((resolvedActivity as any).fecha_inicio)
-		: null;
-	resolvedItineraryId = (resolvedActivity as any)?.itinerario_id ?? null;
+  resolvedActivityDateStart = (resolvedActivity as any)?.fecha_inicio
+    ? String((resolvedActivity as any).fecha_inicio)
+    : null;
+  resolvedItineraryId = (resolvedActivity as any)?.itinerario_id ?? null;
 
   await NotificationsService.createNotificationForGroupMembers(
     Number(groupId),
     null,
     {
-      tipo: resolution === 'aprobada' ? 'propuesta_aprobada' : 'propuesta_descartada',
-      titulo: resolution === 'aprobada' ? 'Propuesta aprobada' : 'Propuesta descartada',
-      mensaje: `La propuesta "${currentProposal?.titulo || 'Desconocida'}" fue ${resolution === 'aprobada' ? 'aprobada' : 'descartada'}.`,
-      entidadTipo: 'propuesta',
+      tipo:
+        resolution === "aprobada"
+          ? "propuesta_aprobada"
+          : "propuesta_descartada",
+      titulo:
+        resolution === "aprobada"
+          ? "Propuesta aprobada"
+          : "Propuesta descartada",
+      mensaje: `La propuesta "${currentProposal?.titulo || "Desconocida"}" fue ${resolution === "aprobada" ? "aprobada" : "descartada"}.`,
+      entidadTipo: "propuesta",
       entidadId: Number(proposalId),
       metadata: {
-        itemTitle: currentProposal?.titulo ?? 'Propuesta',
-        itemType: 'propuesta',
+        itemTitle: currentProposal?.titulo ?? "Propuesta",
+        itemType: "propuesta",
         status: resolution,
         scheduledAt: resolvedActivityDateStart,
         itineraryId: resolvedItineraryId,
       },
-    }
+    },
   );
 
   emitDashboardUpdated({
     groupId: Number(groupId),
-    tipo: resolution === 'aprobada' ? 'propuesta_aprobada' : 'propuesta_descartada',
-    entidadTipo: 'propuesta',
+    tipo:
+      resolution === "aprobada" ? "propuesta_aprobada" : "propuesta_descartada",
+    entidadTipo: "propuesta",
     entidadId: Number(proposalId),
     metadata: {
-      itemTitle: currentProposal?.titulo ?? 'Propuesta',
-      itemType: String((currentProposal as any)?.tipo_item ?? 'propuesta'),
+      itemTitle: currentProposal?.titulo ?? "Propuesta",
+      itemType: String((currentProposal as any)?.tipo_item ?? "propuesta"),
       status: resolution,
     },
   });
 
-	if (resolution !== 'aprobada' || !resolvedActivityDateStart || !resolvedItineraryId) {
-		return;
-	}
+  if (
+    resolution !== "aprobada" ||
+    !resolvedActivityDateStart ||
+    !resolvedItineraryId
+  ) {
+    return;
+  }
 
-	const { data: conflictingActivities, error: conflictingActivitiesError } = await supabase
-		.from('actividades')
-		.select('id_actividad, propuesta_id')
-		.eq('itinerario_id', resolvedItineraryId)
-		.eq('fecha_inicio', resolvedActivityDateStart)
-		.eq('estado', 'pendiente')
-		.neq('propuesta_id', proposalId)
-		.not('propuesta_id', 'is', null);
+  const { data: conflictingActivities, error: conflictingActivitiesError } =
+    await supabase
+      .from("actividades")
+      .select("id_actividad, propuesta_id")
+      .eq("itinerario_id", resolvedItineraryId)
+      .eq("fecha_inicio", resolvedActivityDateStart)
+      .eq("estado", "pendiente")
+      .neq("propuesta_id", proposalId)
+      .not("propuesta_id", "is", null);
 
-	if (conflictingActivitiesError) throw createError(conflictingActivitiesError.message, 500);
+  if (conflictingActivitiesError)
+    throw createError(conflictingActivitiesError.message, 500);
 
-	if (!conflictingActivities || conflictingActivities.length === 0) {
-		return;
-	}
+  if (!conflictingActivities || conflictingActivities.length === 0) {
+    return;
+  }
 
-	const conflictingActivityIds = conflictingActivities
-		.map((row: any) => row.id_actividad)
-		.filter(Boolean);
+  const conflictingActivityIds = conflictingActivities
+    .map((row: any) => row.id_actividad)
+    .filter(Boolean);
 
-	if (conflictingActivityIds.length > 0) {
-		const { error: cancelConflictActivitiesError } = await supabase
-			.from('actividades')
-			.update({
-				estado: 'cancelada',
-				ultima_actualizacion: nowIso,
-			})
-			.in('id_actividad', conflictingActivityIds);
-		if (cancelConflictActivitiesError) throw createError(cancelConflictActivitiesError.message, 500);
-	}
+  if (conflictingActivityIds.length > 0) {
+    const { error: cancelConflictActivitiesError } = await supabase
+      .from("actividades")
+      .update({
+        estado: "cancelada",
+        ultima_actualizacion: nowIso,
+      })
+      .in("id_actividad", conflictingActivityIds);
+    if (cancelConflictActivitiesError)
+      throw createError(cancelConflictActivitiesError.message, 500);
+  }
 
-	const conflictingProposalIds = conflictingActivities
-		.map((row: any) => row.propuesta_id)
-		.filter(Boolean);
+  const conflictingProposalIds = conflictingActivities
+    .map((row: any) => row.propuesta_id)
+    .filter(Boolean);
 
-	if (conflictingProposalIds.length > 0) {
-		const { error: discardConflictProposalsError } = await supabase
-			.from('propuestas')
-			.update({
-				estado: 'descartada',
-				fecha_cierre: nowIso,
-				ultima_actualizacion: nowIso,
-			})
-			.in('id_propuesta', conflictingProposalIds)
-			.eq('grupo_id', groupId);
-		if (discardConflictProposalsError) throw createError(discardConflictProposalsError.message, 500);
-	}
+  if (conflictingProposalIds.length > 0) {
+    const { error: discardConflictProposalsError } = await supabase
+      .from("propuestas")
+      .update({
+        estado: "descartada",
+        fecha_cierre: nowIso,
+        ultima_actualizacion: nowIso,
+      })
+      .in("id_propuesta", conflictingProposalIds)
+      .eq("grupo_id", groupId);
+    if (discardConflictProposalsError)
+      throw createError(discardConflictProposalsError.message, 500);
+  }
 };
 
 export const castSingleVote = async (
-	authUserId: string,
-	groupId: string,
-	proposalId: string,
-	payload: CreateVotePayload,
+  authUserId: string,
+  groupId: string,
+  proposalId: string,
+  payload: CreateVotePayload,
 ) => {
-	const localUserId = await getLocalUserId(authUserId);
-	await ensureUserBelongsToGroup(groupId, localUserId);
-	await ensureProposalBelongsToGroup(groupId, proposalId);
+  const localUserId = await getLocalUserId(authUserId);
+  await ensureUserBelongsToGroup(groupId, localUserId);
+  await ensureProposalBelongsToGroup(groupId, proposalId);
+  await assertProposalActivityIsNotExpired(groupId, proposalId);
 
-	const { data: proposal, error: proposalError } = await supabase
-		.from('propuestas')
-		.select('estado, fecha_cierre')
-		.eq('id_propuesta', proposalId)
-		.eq('grupo_id', groupId)
-		.maybeSingle();
+  const { data: proposal, error: proposalError } = await supabase
+    .from("propuestas")
+    .select("estado, fecha_cierre")
+    .eq("id_propuesta", proposalId)
+    .eq("grupo_id", groupId)
+    .maybeSingle();
 
-	if (proposalError) throw createError(proposalError.message, 500);
-	if (!proposal) throw createError('La propuesta no existe en el viaje/grupo indicado', 404);
+  if (proposalError) throw createError(proposalError.message, 500);
+  if (!proposal)
+    throw createError("La propuesta no existe en el viaje/grupo indicado", 404);
 
-	const proposalState = String((proposal as any).estado ?? '').toLowerCase();
-	if ((proposal as any).fecha_cierre || proposalState === 'aprobada' || proposalState === 'descartada') {
-		throw createError('La votacion ya cerro para esta propuesta', 409);
-	}
+  const proposalState = String((proposal as any).estado ?? "").toLowerCase();
+  if (
+    (proposal as any).fecha_cierre ||
+    proposalState === "aprobada" ||
+    proposalState === "descartada"
+  ) {
+    throw createError("La votacion ya cerro para esta propuesta", 409);
+  }
 
-	const desiredVoteType = normalizeVoteType(payload?.voto);
-	const { data: existingVote, error: existingVoteError } = await supabase
-		.from('voto')
-		.select('id_voto, voto_tipo')
-		.eq('id_propuesta', proposalId)
-		.eq('id_usuario', localUserId)
-		.maybeSingle();
+  const desiredVoteType = normalizeVoteType(payload?.voto);
+  const { data: existingVote, error: existingVoteError } = await supabase
+    .from("voto")
+    .select("id_voto, voto_tipo")
+    .eq("id_propuesta", proposalId)
+    .eq("id_usuario", localUserId)
+    .maybeSingle();
 
-	if (existingVoteError) throw createError(existingVoteError.message, 500);
-	if (existingVote) {
-		if (normalizeVoteType((existingVote as any).voto_tipo) === desiredVoteType) {
-			const outcome = await evaluateProposalOutcome(groupId, proposalId);
-			return {
-				vote: existingVote,
-				message: 'Tu voto se mantiene igual',
-				votesCount: outcome.votesFor,
-				votesRequired: outcome.votesRequired,
-				approved: outcome.approved,
-				rejected: outcome.rejected,
-				requiresAdminTieBreak: outcome.tied,
-				votesFor: outcome.votesFor,
-				votesAgainst: outcome.votesAgainst,
-				abstentions: outcome.abstentions,
-				pendingVotes: outcome.pendingVotes,
-			};
-		}
+  if (existingVoteError) throw createError(existingVoteError.message, 500);
+  if (existingVote) {
+    if (
+      normalizeVoteType((existingVote as any).voto_tipo) === desiredVoteType
+    ) {
+      const outcome = await evaluateProposalOutcome(groupId, proposalId);
+      return {
+        vote: existingVote,
+        message: "Tu voto se mantiene igual",
+        votesCount: outcome.votesFor,
+        votesRequired: outcome.votesRequired,
+        approved: outcome.approved,
+        rejected: outcome.rejected,
+        requiresAdminTieBreak: outcome.tied,
+        votesFor: outcome.votesFor,
+        votesAgainst: outcome.votesAgainst,
+        abstentions: outcome.abstentions,
+        pendingVotes: outcome.pendingVotes,
+      };
+    }
 
-		const { data: updatedVote, error: updateError } = await supabase
-			.from('voto')
-			.update({ voto_tipo: desiredVoteType })
-			.eq('id_voto', (existingVote as any).id_voto)
-			.select('id_voto, id_propuesta, id_usuario, voto_tipo, created_at')
-			.single();
+    const { data: updatedVote, error: updateError } = await supabase
+      .from("voto")
+      .update({ voto_tipo: desiredVoteType })
+      .eq("id_voto", (existingVote as any).id_voto)
+      .select("id_voto, id_propuesta, id_usuario, voto_tipo, created_at")
+      .single();
 
-		if (updateError) {
-			if (isMissingVoteTypeColumnError(updateError)) {
-				throw createError('La base de datos aun no permite cambiar el tipo de voto', 409);
-			}
-			throw createError(updateError.message, 500);
-		}
+    if (updateError) {
+      if (isMissingVoteTypeColumnError(updateError)) {
+        throw createError(
+          "La base de datos aun no permite cambiar el tipo de voto",
+          409,
+        );
+      }
+      throw createError(updateError.message, 500);
+    }
 
-		await notifyProposalVote(groupId, proposalId, Number(localUserId), desiredVoteType);
+    await notifyProposalVote(
+      groupId,
+      proposalId,
+      Number(localUserId),
+      desiredVoteType,
+    );
 
-		const outcome = await evaluateProposalOutcome(groupId, proposalId);
+    const outcome = await evaluateProposalOutcome(groupId, proposalId);
 
-		if (outcome.approved) {
-			await applyProposalResolution(groupId, proposalId, 'aprobada', { decisionType: 'B', resolution: 'majority_for' });
-		}
+    if (outcome.approved) {
+      await applyProposalResolution(groupId, proposalId, "aprobada", {
+        decisionType: "B",
+        resolution: "majority_for",
+      });
+    }
 
-		if (outcome.rejected) {
-			await applyProposalResolution(groupId, proposalId, 'descartada', { decisionType: 'B', resolution: 'majority_against' });
-		}
+    if (outcome.rejected) {
+      await applyProposalResolution(groupId, proposalId, "descartada", {
+        decisionType: "B",
+        resolution: "majority_against",
+      });
+    }
 
-		return {
-			vote: updatedVote,
-			message: outcome.approved
-				? 'Voto actualizado y propuesta aprobada'
-				: outcome.rejected
-					? 'Voto actualizado y propuesta descartada'
-					: outcome.tied
-						? 'Votacion empatada: requiere desempate del organizador'
-						: 'Voto actualizado correctamente',
-			votesCount: outcome.votesFor,
-			votesRequired: outcome.votesRequired,
-			approved: outcome.approved,
-			rejected: outcome.rejected,
-			requiresAdminTieBreak: outcome.tied,
-			votesFor: outcome.votesFor,
-			votesAgainst: outcome.votesAgainst,
-			abstentions: outcome.abstentions,
-			pendingVotes: outcome.pendingVotes,
-		};
-	}
+    return {
+      vote: updatedVote,
+      message: outcome.approved
+        ? "Voto actualizado y propuesta aprobada"
+        : outcome.rejected
+          ? "Voto actualizado y propuesta descartada"
+          : outcome.tied
+            ? "Votacion empatada: requiere desempate del organizador"
+            : "Voto actualizado correctamente",
+      votesCount: outcome.votesFor,
+      votesRequired: outcome.votesRequired,
+      approved: outcome.approved,
+      rejected: outcome.rejected,
+      requiresAdminTieBreak: outcome.tied,
+      votesFor: outcome.votesFor,
+      votesAgainst: outcome.votesAgainst,
+      abstentions: outcome.abstentions,
+      pendingVotes: outcome.pendingVotes,
+    };
+  }
 
-	const { data: newVote, error: insertError } = await supabase
-		.from('voto')
-		.insert({
-			id_propuesta: proposalId,
-			id_usuario: localUserId,
-			voto_tipo: desiredVoteType,
-		})
-		.select('id_voto, id_propuesta, id_usuario, voto_tipo, created_at')
-		.single();
+  const { data: newVote, error: insertError } = await supabase
+    .from("voto")
+    .insert({
+      id_propuesta: proposalId,
+      id_usuario: localUserId,
+      voto_tipo: desiredVoteType,
+    })
+    .select("id_voto, id_propuesta, id_usuario, voto_tipo, created_at")
+    .single();
 
-	if (insertError) {
-		if (isMissingVoteTypeColumnError(insertError)) {
-			const fallbackInsert = await supabase
-				.from('voto')
-				.insert({
-					id_propuesta: proposalId,
-					id_usuario: localUserId,
-				})
-				.select('id_voto, id_propuesta, id_usuario, created_at')
-				.single();
+  if (insertError) {
+    if (isMissingVoteTypeColumnError(insertError)) {
+      const fallbackInsert = await supabase
+        .from("voto")
+        .insert({
+          id_propuesta: proposalId,
+          id_usuario: localUserId,
+        })
+        .select("id_voto, id_propuesta, id_usuario, created_at")
+        .single();
 
-			if (fallbackInsert.error) throw createError(fallbackInsert.error.message, 500);
+      if (fallbackInsert.error)
+        throw createError(fallbackInsert.error.message, 500);
 
-      await notifyProposalVote(groupId, proposalId, Number(localUserId), desiredVoteType);
+      await notifyProposalVote(
+        groupId,
+        proposalId,
+        Number(localUserId),
+        desiredVoteType,
+      );
 
-			const outcome = await evaluateProposalOutcome(groupId, proposalId);
+      const outcome = await evaluateProposalOutcome(groupId, proposalId);
 
-			if (outcome.approved) {
-				await applyProposalResolution(groupId, proposalId, 'aprobada', { decisionType: 'B', resolution: 'majority_for' });
-			}
+      if (outcome.approved) {
+        await applyProposalResolution(groupId, proposalId, "aprobada", {
+          decisionType: "B",
+          resolution: "majority_for",
+        });
+      }
 
-			if (outcome.rejected) {
-				await applyProposalResolution(groupId, proposalId, 'descartada', { decisionType: 'B', resolution: 'majority_against' });
-			}
+      if (outcome.rejected) {
+        await applyProposalResolution(groupId, proposalId, "descartada", {
+          decisionType: "B",
+          resolution: "majority_against",
+        });
+      }
 
-			return {
-				vote: { ...(fallbackInsert.data as any), voto_tipo: desiredVoteType },
-				message: outcome.approved
-					? 'Voto registrado y propuesta aprobada'
-					: outcome.rejected
-						? 'Voto registrado y propuesta descartada'
-						: outcome.tied
-							? 'Votacion empatada: requiere desempate del organizador'
-							: 'Voto registrado correctamente',
-				votesCount: outcome.votesFor,
-				votesRequired: outcome.votesRequired,
-				approved: outcome.approved,
-				rejected: outcome.rejected,
-				requiresAdminTieBreak: outcome.tied,
-				votesFor: outcome.votesFor,
-				votesAgainst: outcome.votesAgainst,
-				abstentions: outcome.abstentions,
-				pendingVotes: outcome.pendingVotes,
-			};
-		}
-		throw createError(insertError.message, 500);
-	}
+      return {
+        vote: { ...(fallbackInsert.data as any), voto_tipo: desiredVoteType },
+        message: outcome.approved
+          ? "Voto registrado y propuesta aprobada"
+          : outcome.rejected
+            ? "Voto registrado y propuesta descartada"
+            : outcome.tied
+              ? "Votacion empatada: requiere desempate del organizador"
+              : "Voto registrado correctamente",
+        votesCount: outcome.votesFor,
+        votesRequired: outcome.votesRequired,
+        approved: outcome.approved,
+        rejected: outcome.rejected,
+        requiresAdminTieBreak: outcome.tied,
+        votesFor: outcome.votesFor,
+        votesAgainst: outcome.votesAgainst,
+        abstentions: outcome.abstentions,
+        pendingVotes: outcome.pendingVotes,
+      };
+    }
+    throw createError(insertError.message, 500);
+  }
 
-  await notifyProposalVote(groupId, proposalId, Number(localUserId), desiredVoteType);
+  await notifyProposalVote(
+    groupId,
+    proposalId,
+    Number(localUserId),
+    desiredVoteType,
+  );
 
-	const outcome = await evaluateProposalOutcome(groupId, proposalId);
+  const outcome = await evaluateProposalOutcome(groupId, proposalId);
 
-	if (outcome.approved) {
-		await applyProposalResolution(groupId, proposalId, 'aprobada', { decisionType: 'B', resolution: 'majority_for' });
-	}
+  if (outcome.approved) {
+    await applyProposalResolution(groupId, proposalId, "aprobada", {
+      decisionType: "B",
+      resolution: "majority_for",
+    });
+  }
 
-	if (outcome.rejected) {
-		await applyProposalResolution(groupId, proposalId, 'descartada', { decisionType: 'B', resolution: 'majority_against' });
-	}
+  if (outcome.rejected) {
+    await applyProposalResolution(groupId, proposalId, "descartada", {
+      decisionType: "B",
+      resolution: "majority_against",
+    });
+  }
 
-	return {
-		vote: newVote,
-		message: outcome.approved
-			? 'Voto registrado y propuesta aprobada'
-			: outcome.rejected
-				? 'Voto registrado y propuesta descartada'
-				: outcome.tied
-					? 'Votacion empatada: requiere desempate del organizador'
-					: 'Voto registrado correctamente',
-		votesCount: outcome.votesFor,
-		votesRequired: outcome.votesRequired,
-		approved: outcome.approved,
-		rejected: outcome.rejected,
-		requiresAdminTieBreak: outcome.tied,
-		votesFor: outcome.votesFor,
-		votesAgainst: outcome.votesAgainst,
-		abstentions: outcome.abstentions,
-		pendingVotes: outcome.pendingVotes,
-	};
+  return {
+    vote: newVote,
+    message: outcome.approved
+      ? "Voto registrado y propuesta aprobada"
+      : outcome.rejected
+        ? "Voto registrado y propuesta descartada"
+        : outcome.tied
+          ? "Votacion empatada: requiere desempate del organizador"
+          : "Voto registrado correctamente",
+    votesCount: outcome.votesFor,
+    votesRequired: outcome.votesRequired,
+    approved: outcome.approved,
+    rejected: outcome.rejected,
+    requiresAdminTieBreak: outcome.tied,
+    votesFor: outcome.votesFor,
+    votesAgainst: outcome.votesAgainst,
+    abstentions: outcome.abstentions,
+    pendingVotes: outcome.pendingVotes,
+  };
 };
 
 export const applyAdminDecisionToProposal = async (
-	authUserId: string,
-	groupId: string,
-	proposalId: string,
-	payload: { decision: 'aprobar' | 'rechazar'; reason?: string },
+  authUserId: string,
+  groupId: string,
+  proposalId: string,
+  payload: { decision: "aprobar" | "rechazar"; reason?: string },
 ) => {
-	const localUserId = await getLocalUserId(authUserId);
-	await ensureUserBelongsToGroup(groupId, localUserId);
-	await ensureUserIsAdmin(groupId, localUserId);
-	await ensureProposalBelongsToGroup(groupId, proposalId);
+  const localUserId = await getLocalUserId(authUserId);
+  await ensureUserBelongsToGroup(groupId, localUserId);
+  await ensureUserIsAdmin(groupId, localUserId);
+  await ensureProposalBelongsToGroup(groupId, proposalId);
+  await assertProposalActivityIsNotExpired(groupId, proposalId);
 
-	const decision = payload.decision === 'rechazar' ? 'descartada' : 'aprobada';
-	await applyProposalResolution(groupId, proposalId, decision, {
-		decisionType: 'A',
-		adminDecisionBy: localUserId,
-		adminDecisionAt: new Date().toISOString(),
-		adminDecisionReason: payload.reason ?? null,
-	});
+  const decision = payload.decision === "rechazar" ? "descartada" : "aprobada";
+  await applyProposalResolution(groupId, proposalId, decision, {
+    decisionType: "A",
+    adminDecisionBy: localUserId,
+    adminDecisionAt: new Date().toISOString(),
+    adminDecisionReason: payload.reason ?? null,
+  });
 
-	return {
-		decisionType: 'A',
-		resolution: decision,
-		message: decision === 'aprobada'
-			? 'Decision administrativa aplicada: propuesta aprobada'
-			: 'Decision administrativa aplicada: propuesta descartada',
-	};
+  return {
+    decisionType: "A",
+    resolution: decision,
+    message:
+      decision === "aprobada"
+        ? "Decision administrativa aplicada: propuesta aprobada"
+        : "Decision administrativa aplicada: propuesta descartada",
+  };
 };
 
 export const getProposalVoteResults = async (
-	authUserId: string,
-	groupId: string,
+  authUserId: string,
+  groupId: string,
 ) => {
-	const localUserId = await getLocalUserId(authUserId);
-	await ensureUserBelongsToGroup(groupId, localUserId);
+  const localUserId = await getLocalUserId(authUserId);
+  await ensureUserBelongsToGroup(groupId, localUserId);
 
-	const { data: proposals, error: proposalsError } = await supabase
-		.from('propuestas')
-		.select('id_propuesta, tipo_item, titulo, estado')
-		.eq('grupo_id', groupId);
+  const { data: proposals, error: proposalsError } = await supabase
+    .from("propuestas")
+    .select("id_propuesta, tipo_item, titulo, estado")
+    .eq("grupo_id", groupId);
 
-	if (proposalsError) throw createError(proposalsError.message, 500);
+  if (proposalsError) throw createError(proposalsError.message, 500);
 
-	if (!proposals || proposals.length === 0) {
-		return {
-			tripId: groupId,
-			totalVotes: 0,
-			results: [] as ProposalVoteResult[],
-		};
-	}
+  if (!proposals || proposals.length === 0) {
+    return {
+      tripId: groupId,
+      totalVotes: 0,
+      results: [] as ProposalVoteResult[],
+    };
+  }
 
-	const proposalIds = proposals.map((p: any) => p.id_propuesta);
-	const { rows: votes } = await fetchVotesWithFallback(proposalIds);
+  const proposalIds = proposals.map((p: any) => p.id_propuesta);
+  const { rows: votes } = await fetchVotesWithFallback(proposalIds);
 
-	const totalMembers = await getUniqueGroupMemberCount(groupId);
-	const countsFor = new Map<string, number>();
-	const countsAgainst = new Map<string, number>();
-	const countsAbstention = new Map<string, number>();
-	const myVoteByProposal = new Map<string, ProposalVoteType>();
+  const totalMembers = await getUniqueGroupMemberCount(groupId);
+  const countsFor = new Map<string, number>();
+  const countsAgainst = new Map<string, number>();
+  const countsAbstention = new Map<string, number>();
+  const myVoteByProposal = new Map<string, ProposalVoteType>();
 
-	for (const row of votes ?? []) {
-		const idPropuesta = String((row as { id_propuesta: string | number }).id_propuesta);
-		const voteType = normalizeVoteType((row as any).voto_tipo);
-		if (voteType === 'a_favor') countsFor.set(idPropuesta, (countsFor.get(idPropuesta) ?? 0) + 1);
-		else if (voteType === 'en_contra') countsAgainst.set(idPropuesta, (countsAgainst.get(idPropuesta) ?? 0) + 1);
-		else countsAbstention.set(idPropuesta, (countsAbstention.get(idPropuesta) ?? 0) + 1);
+  for (const row of votes ?? []) {
+    const idPropuesta = String(
+      (row as { id_propuesta: string | number }).id_propuesta,
+    );
+    const voteType = normalizeVoteType((row as any).voto_tipo);
+    if (voteType === "a_favor")
+      countsFor.set(idPropuesta, (countsFor.get(idPropuesta) ?? 0) + 1);
+    else if (voteType === "en_contra")
+      countsAgainst.set(idPropuesta, (countsAgainst.get(idPropuesta) ?? 0) + 1);
+    else
+      countsAbstention.set(
+        idPropuesta,
+        (countsAbstention.get(idPropuesta) ?? 0) + 1,
+      );
 
-		if (String((row as any).id_usuario) === String(localUserId)) {
-			myVoteByProposal.set(idPropuesta, voteType);
-		}
-	}
+    if (String((row as any).id_usuario) === String(localUserId)) {
+      myVoteByProposal.set(idPropuesta, voteType);
+    }
+  }
 
-	const results: ProposalVoteResult[] = proposals
-		.map((proposal: any) => ({
-			id_propuesta: String(proposal.id_propuesta),
-			tipo_item: proposal.tipo_item as 'vuelo' | 'hospedaje',
-			titulo: String(proposal.titulo ?? ''),
-			votos: countsFor.get(String(proposal.id_propuesta)) ?? 0,
-			votos_a_favor: countsFor.get(String(proposal.id_propuesta)) ?? 0,
-			votos_en_contra: countsAgainst.get(String(proposal.id_propuesta)) ?? 0,
-			abstenciones: countsAbstention.get(String(proposal.id_propuesta)) ?? 0,
-			votos_pendientes: Math.max(
-				totalMembers -
-					((countsFor.get(String(proposal.id_propuesta)) ?? 0) +
-					(countsAgainst.get(String(proposal.id_propuesta)) ?? 0) +
-					(countsAbstention.get(String(proposal.id_propuesta)) ?? 0)),
-				0,
-			),
-			requiere_desempate_admin:
-				((countsFor.get(String(proposal.id_propuesta)) ?? 0) +
-					(countsAgainst.get(String(proposal.id_propuesta)) ?? 0) +
-					(countsAbstention.get(String(proposal.id_propuesta)) ?? 0)) >= totalMembers &&
-				(countsFor.get(String(proposal.id_propuesta)) ?? 0) ===
-					(countsAgainst.get(String(proposal.id_propuesta)) ?? 0),
-			estado_actual: String(proposal.estado ?? 'en_votacion'),
-			mi_voto: myVoteByProposal.get(String(proposal.id_propuesta)) ?? null,
-		}))
-		.sort((a, b) => b.votos - a.votos || a.id_propuesta.localeCompare(b.id_propuesta));
+  const results: ProposalVoteResult[] = proposals
+    .map((proposal: any) => ({
+      id_propuesta: String(proposal.id_propuesta),
+      tipo_item: proposal.tipo_item as "vuelo" | "hospedaje",
+      titulo: String(proposal.titulo ?? ""),
+      votos: countsFor.get(String(proposal.id_propuesta)) ?? 0,
+      votos_a_favor: countsFor.get(String(proposal.id_propuesta)) ?? 0,
+      votos_en_contra: countsAgainst.get(String(proposal.id_propuesta)) ?? 0,
+      abstenciones: countsAbstention.get(String(proposal.id_propuesta)) ?? 0,
+      votos_pendientes: Math.max(
+        totalMembers -
+          ((countsFor.get(String(proposal.id_propuesta)) ?? 0) +
+            (countsAgainst.get(String(proposal.id_propuesta)) ?? 0) +
+            (countsAbstention.get(String(proposal.id_propuesta)) ?? 0)),
+        0,
+      ),
+      requiere_desempate_admin:
+        (countsFor.get(String(proposal.id_propuesta)) ?? 0) +
+          (countsAgainst.get(String(proposal.id_propuesta)) ?? 0) +
+          (countsAbstention.get(String(proposal.id_propuesta)) ?? 0) >=
+          totalMembers &&
+        (countsFor.get(String(proposal.id_propuesta)) ?? 0) ===
+          (countsAgainst.get(String(proposal.id_propuesta)) ?? 0),
+      estado_actual: String(proposal.estado ?? "en_votacion"),
+      mi_voto: myVoteByProposal.get(String(proposal.id_propuesta)) ?? null,
+    }))
+    .sort(
+      (a, b) =>
+        b.votos - a.votos || a.id_propuesta.localeCompare(b.id_propuesta),
+    );
 
-	return {
-		tripId: groupId,
-		totalVotes: votes.length,
-		results,
-	};
+  return {
+    tripId: groupId,
+    totalVotes: votes.length,
+    results,
+  };
 };
 
 export const createComment = async (
-	authUserId: string,
-	groupId: string,
-	proposalId: string,
-	payload: CreateCommentPayload,
+  authUserId: string,
+  groupId: string,
+  proposalId: string,
+  payload: CreateCommentPayload,
 ) => {
-	if (!payload.contenido || !payload.contenido.trim()) {
-		throw createError('contenido es requerido', 400);
-	}
+  if (!payload.contenido || !payload.contenido.trim()) {
+    throw createError("contenido es requerido", 400);
+  }
 
-	const localUserId = await getLocalUserId(authUserId);
-	const localUserIdStr = String(localUserId);
-	await ensureUserBelongsToGroup(groupId, localUserId);
-	await ensureProposalBelongsToGroup(groupId, proposalId);
+  const localUserId = await getLocalUserId(authUserId);
+  const localUserIdStr = String(localUserId);
+  await ensureUserBelongsToGroup(groupId, localUserId);
+  await ensureProposalBelongsToGroup(groupId, proposalId);
 
-	const { data, error } = await supabase
-		.from('comentario')
-		.insert({
-			id_propuesta: proposalId,
-			id_usuario: localUserId,
-			contenido: payload.contenido.trim(),
-		})
-		.select('id_comentario, id_propuesta, id_usuario, contenido, created_at, updated_at')
-		.single();
+  const { data, error } = await supabase
+    .from("comentario")
+    .insert({
+      id_propuesta: proposalId,
+      id_usuario: localUserId,
+      contenido: payload.contenido.trim(),
+    })
+    .select(
+      "id_comentario, id_propuesta, id_usuario, contenido, created_at, updated_at",
+    )
+    .single();
 
-	if (error) throw createError(error.message, 500);
-	const [enriched] = await attachCommentAuthorNames([data as RawCommentRow]);
+  if (error) throw createError(error.message, 500);
+  const [enriched] = await attachCommentAuthorNames([data as RawCommentRow]);
 
   const { data: proposalAuthor } = await supabase
-    .from('propuestas')
-    .select('creado_por, titulo')
-    .eq('id_propuesta', proposalId)
+    .from("propuestas")
+    .select("creado_por, titulo")
+    .eq("id_propuesta", proposalId)
     .maybeSingle();
   const actorName = await NotificationsService.getUserDisplayName(localUserId);
 
@@ -1216,123 +1491,143 @@ export const createComment = async (
     await NotificationsService.createNotification({
       usuarioId: Number(proposalAuthor.creado_por),
       grupoId: Number(groupId),
-      tipo: 'comentario_nuevo',
-      titulo: 'Nuevo comentario',
+      tipo: "comentario_nuevo",
+      titulo: "Nuevo comentario",
       mensaje: `${actorName} comentó en tu propuesta "${proposalAuthor.titulo}".`,
-      entidadTipo: 'propuesta',
+      entidadTipo: "propuesta",
       entidadId: Number(proposalId),
       metadata: {
         actorName,
         actorUsuarioId: Number(localUserId),
         itemTitle: proposalAuthor.titulo,
-        itemType: 'propuesta',
+        itemType: "propuesta",
         commentPreview: payload.contenido.trim().slice(0, 120),
       },
     });
   }
 
   NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
-    tipo: 'comentario_nuevo',
-    entidadTipo: 'propuesta',
+    tipo: "comentario_nuevo",
+    entidadTipo: "propuesta",
     entidadId: Number(proposalId),
     actorUsuarioId: Number(localUserId),
-    metadata: { actorName, commentPreview: payload.contenido.trim().slice(0, 120) },
+    metadata: {
+      actorName,
+      commentPreview: payload.contenido.trim().slice(0, 120),
+    },
   });
 
   emitProposalCommentChanged({
     groupId,
     proposalId,
-    action: 'created',
+    action: "created",
     comment: enriched as Record<string, unknown>,
     actorUsuarioId: Number(localUserId),
   });
 
-	return enriched;
+  return enriched;
 };
 
 export const listComments = async (
-	authUserId: string,
-	groupId: string,
-	proposalId: string,
+  authUserId: string,
+  groupId: string,
+  proposalId: string,
 ) => {
-	const localUserId = await getLocalUserId(authUserId);
-	await ensureUserBelongsToGroup(groupId, localUserId);
-	await ensureProposalBelongsToGroup(groupId, proposalId);
+  const localUserId = await getLocalUserId(authUserId);
+  await ensureUserBelongsToGroup(groupId, localUserId);
+  await ensureProposalBelongsToGroup(groupId, proposalId);
 
-	const { data, error } = await supabase
-		.from('comentario')
-		.select('id_comentario, id_propuesta, id_usuario, contenido, created_at, updated_at')
-		.eq('id_propuesta', proposalId)
-		.order('created_at', { ascending: true });
+  const { data, error } = await supabase
+    .from("comentario")
+    .select(
+      "id_comentario, id_propuesta, id_usuario, contenido, created_at, updated_at",
+    )
+    .eq("id_propuesta", proposalId)
+    .order("created_at", { ascending: true });
 
-	if (error) throw createError(error.message, 500);
-	return attachCommentAuthorNames((data ?? []) as RawCommentRow[]);
+  if (error) throw createError(error.message, 500);
+  return attachCommentAuthorNames((data ?? []) as RawCommentRow[]);
 };
 
 export const updateComment = async (
-	authUserId: string,
-	groupId: string,
-	proposalId: string,
-	commentId: string,
-	payload: UpdateCommentPayload,
+  authUserId: string,
+  groupId: string,
+  proposalId: string,
+  commentId: string,
+  payload: UpdateCommentPayload,
 ) => {
-	if (!payload.contenido || !payload.contenido.trim()) {
-		throw createError('contenido es requerido', 400);
-	}
+  if (!payload.contenido || !payload.contenido.trim()) {
+    throw createError("contenido es requerido", 400);
+  }
 
-	const localUserId = await getLocalUserId(authUserId);
-	const localUserIdStr = String(localUserId);
-	await ensureUserBelongsToGroup(groupId, localUserId);
-	await ensureProposalBelongsToGroup(groupId, proposalId);
+  const localUserId = await getLocalUserId(authUserId);
+  const localUserIdStr = String(localUserId);
+  await ensureUserBelongsToGroup(groupId, localUserId);
+  await ensureProposalBelongsToGroup(groupId, proposalId);
 
-	const { data: existing, error: existingError } = await supabase
-		.from('comentario')
-		.select('id_comentario, id_usuario, id_propuesta')
-		.eq('id_comentario', commentId)
-		.maybeSingle();
+  const { data: existing, error: existingError } = await supabase
+    .from("comentario")
+    .select("id_comentario, id_usuario, id_propuesta")
+    .eq("id_comentario", commentId)
+    .maybeSingle();
 
-	if (existingError) throw createError(existingError.message, 500);
-	if (!existing || String((existing as { id_propuesta: string | number }).id_propuesta) !== proposalId) {
-		throw createError('Comentario no encontrado', 404);
-	}
-	const { data: membershipForComment } = await supabase
-		.from('grupo_miembros')
-		.select('rol')
-		.eq('grupo_id', groupId)
-		.eq('usuario_id', localUserId)
-		.maybeSingle();
-	const roleForComment = String((membershipForComment as { rol?: string } | null)?.rol ?? '').toLowerCase();
-	const canManageComment = String((existing as { id_usuario: string | number }).id_usuario) === localUserIdStr || roleForComment === 'admin' || roleForComment === 'organizador';
-	if (!canManageComment) {
-		throw createError('No puedes editar comentarios de otro usuario', 403);
-	}
+  if (existingError) throw createError(existingError.message, 500);
+  if (
+    !existing ||
+    String((existing as { id_propuesta: string | number }).id_propuesta) !==
+      proposalId
+  ) {
+    throw createError("Comentario no encontrado", 404);
+  }
+  const { data: membershipForComment } = await supabase
+    .from("grupo_miembros")
+    .select("rol")
+    .eq("grupo_id", groupId)
+    .eq("usuario_id", localUserId)
+    .maybeSingle();
+  const roleForComment = String(
+    (membershipForComment as { rol?: string } | null)?.rol ?? "",
+  ).toLowerCase();
+  const canManageComment =
+    String((existing as { id_usuario: string | number }).id_usuario) ===
+      localUserIdStr ||
+    roleForComment === "admin" ||
+    roleForComment === "organizador";
+  if (!canManageComment) {
+    throw createError("No puedes editar comentarios de otro usuario", 403);
+  }
 
-	const { data, error } = await supabase
-		.from('comentario')
-		.update({ contenido: payload.contenido.trim(), updated_at: new Date().toISOString() })
-		.eq('id_comentario', commentId)
-		.select('id_comentario, id_propuesta, id_usuario, contenido, created_at, updated_at')
-		.single();
+  const { data, error } = await supabase
+    .from("comentario")
+    .update({
+      contenido: payload.contenido.trim(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id_comentario", commentId)
+    .select(
+      "id_comentario, id_propuesta, id_usuario, contenido, created_at, updated_at",
+    )
+    .single();
 
-	if (error) throw createError(error.message, 500);
-	const [enriched] = await attachCommentAuthorNames([data as RawCommentRow]);
+  if (error) throw createError(error.message, 500);
+  const [enriched] = await attachCommentAuthorNames([data as RawCommentRow]);
 
   const { data: proposalAuthor } = await supabase
-    .from('propuestas')
-    .select('creado_por, titulo')
-    .eq('id_propuesta', proposalId)
+    .from("propuestas")
+    .select("creado_por, titulo")
+    .eq("id_propuesta", proposalId)
     .maybeSingle();
   const actorName = await NotificationsService.getUserDisplayName(localUserId);
 
   NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
-    tipo: 'comentario_actualizado',
-    entidadTipo: 'propuesta',
+    tipo: "comentario_actualizado",
+    entidadTipo: "propuesta",
     entidadId: Number(proposalId),
     actorUsuarioId: Number(localUserId),
     metadata: {
       actorName,
       actorUsuarioId: Number(localUserId),
-      itemTitle: proposalAuthor?.titulo ?? 'Propuesta',
+      itemTitle: proposalAuthor?.titulo ?? "Propuesta",
       commentId: Number(commentId),
       commentPreview: payload.contenido.trim().slice(0, 120),
     },
@@ -1341,59 +1636,69 @@ export const updateComment = async (
   emitProposalCommentChanged({
     groupId,
     proposalId,
-    action: 'updated',
+    action: "updated",
     comment: enriched as Record<string, unknown>,
     commentId,
     actorUsuarioId: Number(localUserId),
   });
 
-	return enriched;
+  return enriched;
 };
 
 export const deleteComment = async (
-	authUserId: string,
-	groupId: string,
-	proposalId: string,
-	commentId: string,
+  authUserId: string,
+  groupId: string,
+  proposalId: string,
+  commentId: string,
 ) => {
-	const localUserId = await getLocalUserId(authUserId);
-	const localUserIdStr = String(localUserId);
-	await ensureUserBelongsToGroup(groupId, localUserId);
-	await ensureProposalBelongsToGroup(groupId, proposalId);
+  const localUserId = await getLocalUserId(authUserId);
+  const localUserIdStr = String(localUserId);
+  await ensureUserBelongsToGroup(groupId, localUserId);
+  await ensureProposalBelongsToGroup(groupId, proposalId);
 
-	const { data: existing, error: existingError } = await supabase
-		.from('comentario')
-		.select('id_comentario, id_usuario, id_propuesta')
-		.eq('id_comentario', commentId)
-		.maybeSingle();
+  const { data: existing, error: existingError } = await supabase
+    .from("comentario")
+    .select("id_comentario, id_usuario, id_propuesta")
+    .eq("id_comentario", commentId)
+    .maybeSingle();
 
-	if (existingError) throw createError(existingError.message, 500);
-	if (!existing || String((existing as { id_propuesta: string | number }).id_propuesta) !== proposalId) {
-		throw createError('Comentario no encontrado', 404);
-	}
-	const { data: membershipForComment } = await supabase
-		.from('grupo_miembros')
-		.select('rol')
-		.eq('grupo_id', groupId)
-		.eq('usuario_id', localUserId)
-		.maybeSingle();
-	const roleForComment = String((membershipForComment as { rol?: string } | null)?.rol ?? '').toLowerCase();
-	const canManageComment = String((existing as { id_usuario: string | number }).id_usuario) === localUserIdStr || roleForComment === 'admin' || roleForComment === 'organizador';
-	if (!canManageComment) {
-		throw createError('No puedes eliminar comentarios de otro usuario', 403);
-	}
+  if (existingError) throw createError(existingError.message, 500);
+  if (
+    !existing ||
+    String((existing as { id_propuesta: string | number }).id_propuesta) !==
+      proposalId
+  ) {
+    throw createError("Comentario no encontrado", 404);
+  }
+  const { data: membershipForComment } = await supabase
+    .from("grupo_miembros")
+    .select("rol")
+    .eq("grupo_id", groupId)
+    .eq("usuario_id", localUserId)
+    .maybeSingle();
+  const roleForComment = String(
+    (membershipForComment as { rol?: string } | null)?.rol ?? "",
+  ).toLowerCase();
+  const canManageComment =
+    String((existing as { id_usuario: string | number }).id_usuario) ===
+      localUserIdStr ||
+    roleForComment === "admin" ||
+    roleForComment === "organizador";
+  if (!canManageComment) {
+    throw createError("No puedes eliminar comentarios de otro usuario", 403);
+  }
 
-	const { error } = await supabase
-		.from('comentario')
-		.delete()
-		.eq('id_comentario', commentId);
+  const { error } = await supabase
+    .from("comentario")
+    .delete()
+    .eq("id_comentario", commentId);
 
-	if (error) throw createError(error.message, 500);
+  if (error) throw createError(error.message, 500);
 
   const actorName = await NotificationsService.getUserDisplayName(localUserId);
   NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
-    tipo: 'comentario_eliminado',
-    entidadTipo: 'propuesta',
+    tipo: "comentario_eliminado",
+    entidadTipo: "propuesta",
     entidadId: Number(proposalId),
     actorUsuarioId: Number(localUserId),
     metadata: {
@@ -1406,10 +1711,10 @@ export const deleteComment = async (
   emitProposalCommentChanged({
     groupId,
     proposalId,
-    action: 'deleted',
+    action: "deleted",
     commentId,
     actorUsuarioId: Number(localUserId),
   });
 
-	return { deleted: true, commentId };
+  return { deleted: true, commentId };
 };

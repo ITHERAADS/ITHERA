@@ -1,9 +1,8 @@
-import { supabase } from '../../infrastructure/db/supabase.client';
-import { getLocalUserId } from '../groups/groups.service';
-import * as NotificationsService from '../notifications/notifications.service';
+import { supabase } from "../../infrastructure/db/supabase.client";
+import { getLocalUserId } from "../groups/groups.service";
+import * as NotificationsService from "../notifications/notifications.service";
 
-type Role = 'admin' | 'viajero';
-
+type Role = "admin" | "viajero";
 
 const emitSubgroupScheduleUpdated = (
   groupId: string,
@@ -18,25 +17,47 @@ const emitSubgroupScheduleUpdated = (
     entidadTipo,
     entidadId: entidadId !== null ? Number(entidadId) : null,
     actorUsuarioId: actorUsuarioId !== null ? Number(actorUsuarioId) : null,
-    metadata: { itemType: 'subgrupo', ...metadata },
+    metadata: { itemType: "subgrupo", ...metadata },
   });
 };
 
 const isThirtyMinuteBoundary = (value: string): boolean => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return false;
-  return date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0 && date.getUTCMinutes() % 30 === 0;
+  return (
+    date.getUTCSeconds() === 0 &&
+    date.getUTCMilliseconds() === 0 &&
+    date.getUTCMinutes() % 30 === 0
+  );
 };
 
 const getMexicoDateOnly = (date: Date): string => {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Mexico_City',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   }).formatToParts(date);
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const byType = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
   return `${byType.year}-${byType.month}-${byType.day}`;
+};
+
+const getTodayDateOnly = (): string => getMexicoDateOnly(new Date());
+
+const assertDateIsNotInPast = (
+  value?: string | null,
+  message = "No puedes crear o modificar elementos en dias anteriores al actual.",
+): void => {
+  if (!value) return;
+  const parsed = new Date(value);
+  const day = Number.isNaN(parsed.getTime())
+    ? String(value).slice(0, 10)
+    : getMexicoDateOnly(parsed);
+  if (day && day < getTodayDateOnly()) {
+    throw Object.assign(new Error(message), { statusCode: 400 });
+  }
 };
 
 const toScheduleRange = (startsAt?: string | null, endsAt?: string | null) => {
@@ -46,9 +67,10 @@ const toScheduleRange = (startsAt?: string | null, endsAt?: string | null) => {
   if (!Number.isFinite(startMs)) return null;
 
   const endCandidateMs = endsAt ? new Date(endsAt).getTime() : NaN;
-  const endMs = Number.isFinite(endCandidateMs) && endCandidateMs > startMs
-    ? endCandidateMs
-    : startMs;
+  const endMs =
+    Number.isFinite(endCandidateMs) && endCandidateMs > startMs
+      ? endCandidateMs
+      : startMs;
 
   return {
     day: String(startsAt).slice(0, 10),
@@ -62,16 +84,18 @@ const getScheduleMinuteKey = (value?: string | null): string | null => {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return null;
 
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Mexico_City',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
   }).formatToParts(date);
-  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const byType = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
   return `${byType.year}-${byType.month}-${byType.day}T${byType.hour}:${byType.minute}`;
 };
 
@@ -81,8 +105,10 @@ const scheduleRangesOverlap = (
 ): boolean => {
   if (left.day !== right.day) return false;
 
-  const leftEndExclusive = left.endMs > left.startMs ? left.endMs : left.startMs + 1;
-  const rightEndExclusive = right.endMs > right.startMs ? right.endMs : right.startMs + 1;
+  const leftEndExclusive =
+    left.endMs > left.startMs ? left.endMs : left.startMs + 1;
+  const rightEndExclusive =
+    right.endMs > right.startMs ? right.endMs : right.startMs + 1;
 
   return left.startMs < rightEndExclusive && right.startMs < leftEndExclusive;
 };
@@ -92,34 +118,59 @@ const validateSlotDateRules = async (
   startsAt: string,
   endsAt: string,
 ) => {
+  assertDateIsNotInPast(
+    startsAt,
+    "No puedes crear o modificar horarios de subgrupos en dias anteriores al actual.",
+  );
+
   const starts = new Date(startsAt);
   const ends = new Date(endsAt);
   if (Number.isNaN(starts.getTime()) || Number.isNaN(ends.getTime())) {
-    throw Object.assign(new Error('Fechas inválidas para horario de subgrupos'), { statusCode: 400 });
+    throw Object.assign(
+      new Error("Fechas inválidas para horario de subgrupos"),
+      { statusCode: 400 },
+    );
   }
   if (ends.getTime() <= starts.getTime()) {
-    throw Object.assign(new Error('La fecha fin debe ser mayor a la fecha inicio'), { statusCode: 400 });
+    throw Object.assign(
+      new Error("La fecha fin debe ser mayor a la fecha inicio"),
+      { statusCode: 400 },
+    );
   }
   if (!isThirtyMinuteBoundary(startsAt) || !isThirtyMinuteBoundary(endsAt)) {
-    throw Object.assign(new Error('Los horarios deben estar en intervalos de 30 minutos exactos'), { statusCode: 400 });
+    throw Object.assign(
+      new Error("Los horarios deben estar en intervalos de 30 minutos exactos"),
+      { statusCode: 400 },
+    );
   }
 
   const { data: group, error } = await supabase
-    .from('grupos_viaje')
-    .select('fecha_inicio, fecha_fin')
-    .eq('id', groupId)
+    .from("grupos_viaje")
+    .select("fecha_inicio, fecha_fin")
+    .eq("id", groupId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!group) throw Object.assign(new Error('Grupo no encontrado'), { statusCode: 404 });
+  if (!group)
+    throw Object.assign(new Error("Grupo no encontrado"), { statusCode: 404 });
   if (!group.fecha_inicio || !group.fecha_fin) {
-    throw Object.assign(new Error('El viaje debe tener fecha de inicio y fin para usar subgrupos'), { statusCode: 400 });
+    throw Object.assign(
+      new Error(
+        "El viaje debe tener fecha de inicio y fin para usar subgrupos",
+      ),
+      { statusCode: 400 },
+    );
   }
 
   const startDay = getMexicoDateOnly(starts);
   const endDay = getMexicoDateOnly(ends);
-  if (startDay < String(group.fecha_inicio) || endDay > String(group.fecha_fin)) {
+  if (
+    startDay < String(group.fecha_inicio) ||
+    endDay > String(group.fecha_fin)
+  ) {
     throw Object.assign(
-      new Error(`El horario debe estar dentro del rango del viaje (${group.fecha_inicio} a ${group.fecha_fin})`),
+      new Error(
+        `El horario debe estar dentro del rango del viaje (${group.fecha_inicio} a ${group.fecha_fin})`,
+      ),
       { statusCode: 400 },
     );
   }
@@ -135,13 +186,14 @@ const ensureSlotHasNoScheduleCollision = async (
   if (!candidateRange) return;
 
   const { data: slots, error: slotsError } = await supabase
-    .from('subgroup_slots')
-    .select('id, title, starts_at, ends_at')
-    .eq('group_id', groupId);
+    .from("subgroup_slots")
+    .select("id, title, starts_at, ends_at")
+    .eq("group_id", groupId);
   if (slotsError) throw new Error(slotsError.message);
 
   const conflictingSlot = (slots ?? []).find((slot: any) => {
-    if (excludeSlotId && String(slot.id) === String(excludeSlotId)) return false;
+    if (excludeSlotId && String(slot.id) === String(excludeSlotId))
+      return false;
     const slotRange = toScheduleRange(
       slot.starts_at ? String(slot.starts_at) : null,
       slot.ends_at ? String(slot.ends_at) : null,
@@ -151,37 +203,43 @@ const ensureSlotHasNoScheduleCollision = async (
 
   if (conflictingSlot) {
     throw Object.assign(
-      new Error(`Este horario de subgrupos se empalma con "${String((conflictingSlot as any).title ?? 'otro horario de subgrupos')}"`),
+      new Error(
+        `Este horario de subgrupos se empalma con "${String((conflictingSlot as any).title ?? "otro horario de subgrupos")}"`,
+      ),
       { statusCode: 409 },
     );
   }
 
   const { data: itinerary, error: itineraryError } = await supabase
-    .from('itinerarios')
-    .select('id_itinerario')
-    .eq('grupo_id', groupId)
+    .from("itinerarios")
+    .select("id_itinerario")
+    .eq("grupo_id", groupId)
     .maybeSingle();
   if (itineraryError) throw new Error(itineraryError.message);
   if (!itinerary) return;
 
   const { data: activities, error: activitiesError } = await supabase
-    .from('actividades')
-    .select('id_actividad, titulo, fecha_inicio, fecha_fin, estado')
-    .eq('itinerario_id', (itinerary as any).id_itinerario);
+    .from("actividades")
+    .select("id_actividad, titulo, fecha_inicio, fecha_fin, estado")
+    .eq("itinerario_id", (itinerary as any).id_itinerario);
   if (activitiesError) throw new Error(activitiesError.message);
 
   const conflictingActivity = (activities ?? []).find((activity: any) => {
-    if (String(activity.estado ?? '') === 'cancelada') return false;
+    if (String(activity.estado ?? "") === "cancelada") return false;
     const activityRange = toScheduleRange(
       activity.fecha_inicio ? String(activity.fecha_inicio) : null,
       activity.fecha_fin ? String(activity.fecha_fin) : null,
     );
-    return activityRange ? scheduleRangesOverlap(candidateRange, activityRange) : false;
+    return activityRange
+      ? scheduleRangesOverlap(candidateRange, activityRange)
+      : false;
   });
 
   if (conflictingActivity) {
     throw Object.assign(
-      new Error(`Este horario de subgrupos se empalma con la actividad "${String((conflictingActivity as any).titulo ?? 'Actividad existente')}"`),
+      new Error(
+        `Este horario de subgrupos se empalma con la actividad "${String((conflictingActivity as any).titulo ?? "Actividad existente")}"`,
+      ),
       { statusCode: 409 },
     );
   }
@@ -190,61 +248,76 @@ const ensureSlotHasNoScheduleCollision = async (
 const ensureGroupMember = async (authUserId: string, groupId: string) => {
   const userId = await getLocalUserId(authUserId);
   const { data, error } = await supabase
-    .from('grupo_miembros')
-    .select('id, rol')
-    .eq('grupo_id', groupId)
-    .eq('usuario_id', userId)
+    .from("grupo_miembros")
+    .select("id, rol")
+    .eq("grupo_id", groupId)
+    .eq("usuario_id", userId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  if (!data) throw Object.assign(new Error('No perteneces a este grupo'), { statusCode: 403 });
+  if (!data)
+    throw Object.assign(new Error("No perteneces a este grupo"), {
+      statusCode: 403,
+    });
 
   return {
     userId: Number(userId),
-    role: String((data as any).rol ?? 'viajero') as Role,
+    role: String((data as any).rol ?? "viajero") as Role,
   };
 };
 
 const ensureGroupAdmin = async (authUserId: string, groupId: string) => {
   const member = await ensureGroupMember(authUserId, groupId);
-  if (member.role !== 'admin') {
-    throw Object.assign(new Error('Solo admin puede administrar horarios de subgrupos'), { statusCode: 403 });
+  if (member.role !== "admin") {
+    throw Object.assign(
+      new Error("Solo admin puede administrar horarios de subgrupos"),
+      { statusCode: 403 },
+    );
   }
   return member;
 };
 
 const ensureSlotInGroup = async (slotId: string, groupId: string) => {
   const { data, error } = await supabase
-    .from('subgroup_slots')
-    .select('*')
-    .eq('id', slotId)
-    .eq('group_id', groupId)
+    .from("subgroup_slots")
+    .select("*")
+    .eq("id", slotId)
+    .eq("group_id", groupId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) throw Object.assign(new Error('Horario de subgrupos no encontrado'), { statusCode: 404 });
+  if (!data)
+    throw Object.assign(new Error("Horario de subgrupos no encontrado"), {
+      statusCode: 404,
+    });
   return data;
 };
 
 const ensureSubgroupInSlot = async (subgroupId: string, slotId: string) => {
   const { data, error } = await supabase
-    .from('subgroups')
-    .select('*')
-    .eq('id', subgroupId)
-    .eq('slot_id', slotId)
+    .from("subgroups")
+    .select("*")
+    .eq("id", subgroupId)
+    .eq("slot_id", slotId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!data) throw Object.assign(new Error('Subgrupo no encontrado en este horario'), { statusCode: 404 });
+  if (!data)
+    throw Object.assign(new Error("Subgrupo no encontrado en este horario"), {
+      statusCode: 404,
+    });
   return data;
 };
 
-export const getSubgroupSchedule = async (authUserId: string, groupId: string) => {
+export const getSubgroupSchedule = async (
+  authUserId: string,
+  groupId: string,
+) => {
   const member = await ensureGroupMember(authUserId, groupId);
 
   const { data: slots, error: slotsError } = await supabase
-    .from('subgroup_slots')
-    .select('*')
-    .eq('group_id', groupId)
-    .order('starts_at', { ascending: true });
+    .from("subgroup_slots")
+    .select("*")
+    .eq("group_id", groupId)
+    .order("starts_at", { ascending: true });
   if (slotsError) throw new Error(slotsError.message);
 
   const slotIds = (slots ?? []).map((slot: any) => slot.id);
@@ -252,10 +325,25 @@ export const getSubgroupSchedule = async (authUserId: string, groupId: string) =
     return { slots: [], myUserId: member.userId };
   }
 
-  const [{ data: subgroups, error: subgroupsError }, { data: activities, error: activitiesError }, { data: memberships, error: membershipsError }] = await Promise.all([
-    supabase.from('subgroups').select('*').in('slot_id', slotIds).order('created_at', { ascending: true }),
-    supabase.from('subgroup_activities').select('*').in('slot_id', slotIds).order('created_at', { ascending: true }),
-    supabase.from('subgroup_memberships').select('*, usuarios!user_id(id_usuario, nombre, email, avatar_url)').in('slot_id', slotIds),
+  const [
+    { data: subgroups, error: subgroupsError },
+    { data: activities, error: activitiesError },
+    { data: memberships, error: membershipsError },
+  ] = await Promise.all([
+    supabase
+      .from("subgroups")
+      .select("*")
+      .in("slot_id", slotIds)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("subgroup_activities")
+      .select("*")
+      .in("slot_id", slotIds)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("subgroup_memberships")
+      .select("*, usuarios!user_id(id_usuario, nombre, email, avatar_url)")
+      .in("slot_id", slotIds),
   ]);
 
   if (subgroupsError) throw new Error(subgroupsError.message);
@@ -295,19 +383,31 @@ export const getSubgroupSchedule = async (authUserId: string, groupId: string) =
     const slotSubgroups = (subgroupsBySlot.get(Number(slot.id)) ?? [])
       .map((subgroup: any) => ({
         ...subgroup,
-        activities: [...(activitiesBySubgroup.get(Number(subgroup.id)) ?? [])].sort((left: any, right: any) => {
-          const leftTime = left?.starts_at ? new Date(String(left.starts_at)).getTime() : Number.MAX_SAFE_INTEGER;
-          const rightTime = right?.starts_at ? new Date(String(right.starts_at)).getTime() : Number.MAX_SAFE_INTEGER;
+        activities: [
+          ...(activitiesBySubgroup.get(Number(subgroup.id)) ?? []),
+        ].sort((left: any, right: any) => {
+          const leftTime = left?.starts_at
+            ? new Date(String(left.starts_at)).getTime()
+            : Number.MAX_SAFE_INTEGER;
+          const rightTime = right?.starts_at
+            ? new Date(String(right.starts_at)).getTime()
+            : Number.MAX_SAFE_INTEGER;
           if (leftTime !== rightTime) return leftTime - rightTime;
           return Number(left?.id ?? 0) - Number(right?.id ?? 0);
         }),
         members: (membershipsBySlot.get(Number(slot.id)) ?? []).filter(
-          (m: any) => m.subgroup_id != null && Number(m.subgroup_id) === Number(subgroup.id),
+          (m: any) =>
+            m.subgroup_id != null &&
+            Number(m.subgroup_id) === Number(subgroup.id),
         ),
       }))
       .sort((left: any, right: any) => {
-        const leftPrimary = left.activities[0]?.starts_at ? new Date(String(left.activities[0].starts_at)).getTime() : Number.MAX_SAFE_INTEGER;
-        const rightPrimary = right.activities[0]?.starts_at ? new Date(String(right.activities[0].starts_at)).getTime() : Number.MAX_SAFE_INTEGER;
+        const leftPrimary = left.activities[0]?.starts_at
+          ? new Date(String(left.activities[0].starts_at)).getTime()
+          : Number.MAX_SAFE_INTEGER;
+        const rightPrimary = right.activities[0]?.starts_at
+          ? new Date(String(right.activities[0].starts_at)).getTime()
+          : Number.MAX_SAFE_INTEGER;
         if (leftPrimary !== rightPrimary) return leftPrimary - rightPrimary;
         return Number(left?.id ?? 0) - Number(right?.id ?? 0);
       });
@@ -325,14 +425,23 @@ export const getSubgroupSchedule = async (authUserId: string, groupId: string) =
 export const createSlot = async (
   authUserId: string,
   groupId: string,
-  payload: { title: string; description?: string | null; starts_at: string; ends_at: string },
+  payload: {
+    title: string;
+    description?: string | null;
+    starts_at: string;
+    ends_at: string;
+  },
 ) => {
   const admin = await ensureGroupAdmin(authUserId, groupId);
   await validateSlotDateRules(groupId, payload.starts_at, payload.ends_at);
-  await ensureSlotHasNoScheduleCollision(groupId, payload.starts_at, payload.ends_at);
+  await ensureSlotHasNoScheduleCollision(
+    groupId,
+    payload.starts_at,
+    payload.ends_at,
+  );
 
   const { data, error } = await supabase
-    .from('subgroup_slots')
+    .from("subgroup_slots")
     .insert({
       group_id: Number(groupId),
       title: payload.title,
@@ -341,14 +450,22 @@ export const createSlot = async (
       ends_at: payload.ends_at,
       created_by: admin.userId,
     })
-    .select('*')
+    .select("*")
     .single();
-  if (error || !data) throw new Error(error?.message ?? 'No se pudo crear horario');
-  emitSubgroupScheduleUpdated(groupId, 'subgrupo_horario_creado', 'subgroup_slot', ((data as { id?: string | number | null }).id ?? null), admin.userId, {
-    itemTitle: payload.title,
-    startsAt: payload.starts_at,
-    endsAt: payload.ends_at,
-  });
+  if (error || !data)
+    throw new Error(error?.message ?? "No se pudo crear horario");
+  emitSubgroupScheduleUpdated(
+    groupId,
+    "subgrupo_horario_creado",
+    "subgroup_slot",
+    (data as { id?: string | number | null }).id ?? null,
+    admin.userId,
+    {
+      itemTitle: payload.title,
+      startsAt: payload.starts_at,
+      endsAt: payload.ends_at,
+    },
+  );
   return data;
 };
 
@@ -356,45 +473,81 @@ export const updateSlot = async (
   authUserId: string,
   groupId: string,
   slotId: string,
-  payload: Partial<{ title: string; description: string | null; starts_at: string; ends_at: string }>,
+  payload: Partial<{
+    title: string;
+    description: string | null;
+    starts_at: string;
+    ends_at: string;
+  }>,
 ) => {
   await ensureGroupAdmin(authUserId, groupId);
   const current = await ensureSlotInGroup(slotId, groupId);
   const nextStartsAt = payload.starts_at ?? String((current as any).starts_at);
   const nextEndsAt = payload.ends_at ?? String((current as any).ends_at);
   await validateSlotDateRules(groupId, nextStartsAt, nextEndsAt);
-  await ensureSlotHasNoScheduleCollision(groupId, nextStartsAt, nextEndsAt, slotId);
+  await ensureSlotHasNoScheduleCollision(
+    groupId,
+    nextStartsAt,
+    nextEndsAt,
+    slotId,
+  );
 
   const { data, error } = await supabase
-    .from('subgroup_slots')
+    .from("subgroup_slots")
     .update({
       ...(payload.title !== undefined ? { title: payload.title } : {}),
-      ...(payload.description !== undefined ? { description: payload.description } : {}),
-      ...(payload.starts_at !== undefined ? { starts_at: payload.starts_at } : {}),
+      ...(payload.description !== undefined
+        ? { description: payload.description }
+        : {}),
+      ...(payload.starts_at !== undefined
+        ? { starts_at: payload.starts_at }
+        : {}),
       ...(payload.ends_at !== undefined ? { ends_at: payload.ends_at } : {}),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', slotId)
-    .eq('group_id', groupId)
-    .select('*')
+    .eq("id", slotId)
+    .eq("group_id", groupId)
+    .select("*")
     .single();
-  if (error || !data) throw new Error(error?.message ?? 'No se pudo actualizar horario');
+  if (error || !data)
+    throw new Error(error?.message ?? "No se pudo actualizar horario");
   const actor = await ensureGroupMember(authUserId, groupId);
-  emitSubgroupScheduleUpdated(groupId, 'subgrupo_horario_actualizado', 'subgroup_slot', slotId, actor.userId, {
-    itemTitle: (data as any).title,
-    startsAt: (data as any).starts_at,
-    endsAt: (data as any).ends_at,
-  });
+  emitSubgroupScheduleUpdated(
+    groupId,
+    "subgrupo_horario_actualizado",
+    "subgroup_slot",
+    slotId,
+    actor.userId,
+    {
+      itemTitle: (data as any).title,
+      startsAt: (data as any).starts_at,
+      endsAt: (data as any).ends_at,
+    },
+  );
   return data;
 };
 
-export const deleteSlot = async (authUserId: string, groupId: string, slotId: string) => {
+export const deleteSlot = async (
+  authUserId: string,
+  groupId: string,
+  slotId: string,
+) => {
   await ensureGroupAdmin(authUserId, groupId);
   await ensureSlotInGroup(slotId, groupId);
-  const { error } = await supabase.from('subgroup_slots').delete().eq('id', slotId).eq('group_id', groupId);
+  const { error } = await supabase
+    .from("subgroup_slots")
+    .delete()
+    .eq("id", slotId)
+    .eq("group_id", groupId);
   if (error) throw new Error(error.message);
   const actor = await ensureGroupMember(authUserId, groupId);
-  emitSubgroupScheduleUpdated(groupId, 'subgrupo_horario_eliminado', 'subgroup_slot', slotId, actor.userId);
+  emitSubgroupScheduleUpdated(
+    groupId,
+    "subgrupo_horario_eliminado",
+    "subgroup_slot",
+    slotId,
+    actor.userId,
+  );
 };
 
 export const createSubgroup = async (
@@ -407,35 +560,51 @@ export const createSubgroup = async (
   await ensureSlotInGroup(slotId, groupId);
 
   const { data, error } = await supabase
-    .from('subgroups')
+    .from("subgroups")
     .insert({
       slot_id: Number(slotId),
       name: payload.name,
       description: payload.description ?? null,
       created_by: member.userId,
     })
-    .select('*')
+    .select("*")
     .single();
-  if (error || !data) throw new Error(error?.message ?? 'No se pudo crear subgrupo');
+  if (error || !data)
+    throw new Error(error?.message ?? "No se pudo crear subgrupo");
 
   const { error: membershipError } = await supabase
-    .from('subgroup_memberships')
-    .upsert({
-      slot_id: Number(slotId),
-      subgroup_id: Number(((data as { id?: string | number | null }).id ?? null)),
-      user_id: member.userId,
-      assigned_by: member.userId,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'slot_id,user_id' });
+    .from("subgroup_memberships")
+    .upsert(
+      {
+        slot_id: Number(slotId),
+        subgroup_id: Number(
+          (data as { id?: string | number | null }).id ?? null,
+        ),
+        user_id: member.userId,
+        assigned_by: member.userId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "slot_id,user_id" },
+    );
   if (membershipError) {
-    await supabase.from('subgroups').delete().eq('id', ((data as { id?: string | number | null }).id ?? null));
+    await supabase
+      .from("subgroups")
+      .delete()
+      .eq("id", (data as { id?: string | number | null }).id ?? null);
     throw new Error(membershipError.message);
   }
 
-  emitSubgroupScheduleUpdated(groupId, 'subgrupo_creado', 'subgroup', ((data as { id?: string | number | null }).id ?? null), member.userId, {
-    itemTitle: payload.name,
-    slotId: Number(slotId),
-  });
+  emitSubgroupScheduleUpdated(
+    groupId,
+    "subgrupo_creado",
+    "subgroup",
+    (data as { id?: string | number | null }).id ?? null,
+    member.userId,
+    {
+      itemTitle: payload.name,
+      slotId: Number(slotId),
+    },
+  );
 
   return data;
 };
@@ -450,27 +619,40 @@ export const updateSubgroup = async (
   const member = await ensureGroupMember(authUserId, groupId);
   const subgroup = await ensureSubgroupInSlot(subgroupId, slotId);
   const isOwner = Number((subgroup as any).created_by) === member.userId;
-  const isAdmin = member.role === 'admin';
+  const isAdmin = member.role === "admin";
   if (!isOwner && !isAdmin) {
-    throw Object.assign(new Error('Solo creador o admin puede editar subgrupos'), { statusCode: 403 });
+    throw Object.assign(
+      new Error("Solo creador o admin puede editar subgrupos"),
+      { statusCode: 403 },
+    );
   }
 
   const { data, error } = await supabase
-    .from('subgroups')
+    .from("subgroups")
     .update({
       ...(payload.name !== undefined ? { name: payload.name } : {}),
-      ...(payload.description !== undefined ? { description: payload.description } : {}),
+      ...(payload.description !== undefined
+        ? { description: payload.description }
+        : {}),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', subgroupId)
-    .eq('slot_id', slotId)
-    .select('*')
+    .eq("id", subgroupId)
+    .eq("slot_id", slotId)
+    .select("*")
     .single();
-  if (error || !data) throw new Error(error?.message ?? 'No se pudo actualizar subgrupo');
-  emitSubgroupScheduleUpdated(groupId, 'subgrupo_actualizado', 'subgroup', subgroupId, member.userId, {
-    itemTitle: (data as any).name,
-    slotId: Number(slotId),
-  });
+  if (error || !data)
+    throw new Error(error?.message ?? "No se pudo actualizar subgrupo");
+  emitSubgroupScheduleUpdated(
+    groupId,
+    "subgrupo_actualizado",
+    "subgroup",
+    subgroupId,
+    member.userId,
+    {
+      itemTitle: (data as any).name,
+      slotId: Number(slotId),
+    },
+  );
   return data;
 };
 
@@ -483,16 +665,30 @@ export const deleteSubgroup = async (
   const member = await ensureGroupMember(authUserId, groupId);
   const subgroup = await ensureSubgroupInSlot(subgroupId, slotId);
   const isOwner = Number((subgroup as any).created_by) === member.userId;
-  const isAdmin = member.role === 'admin';
+  const isAdmin = member.role === "admin";
   if (!isOwner && !isAdmin) {
-    throw Object.assign(new Error('Solo creador o admin puede eliminar subgrupos'), { statusCode: 403 });
+    throw Object.assign(
+      new Error("Solo creador o admin puede eliminar subgrupos"),
+      { statusCode: 403 },
+    );
   }
 
-  const { error } = await supabase.from('subgroups').delete().eq('id', subgroupId).eq('slot_id', slotId);
+  const { error } = await supabase
+    .from("subgroups")
+    .delete()
+    .eq("id", subgroupId)
+    .eq("slot_id", slotId);
   if (error) throw new Error(error.message);
-  emitSubgroupScheduleUpdated(groupId, 'subgrupo_eliminado', 'subgroup', subgroupId, member.userId, {
-    slotId: Number(slotId),
-  });
+  emitSubgroupScheduleUpdated(
+    groupId,
+    "subgrupo_eliminado",
+    "subgroup",
+    subgroupId,
+    member.userId,
+    {
+      slotId: Number(slotId),
+    },
+  );
 };
 
 export const joinSubgroup = async (
@@ -505,26 +701,29 @@ export const joinSubgroup = async (
   await ensureSlotInGroup(slotId, groupId);
   if (subgroupId) await ensureSubgroupInSlot(subgroupId, slotId);
 
-  const { data: currentMembership, error: currentMembershipError } = await supabase
-    .from('subgroup_memberships')
-    .select('subgroup_id')
-    .eq('slot_id', slotId)
-    .eq('user_id', member.userId)
-    .maybeSingle();
+  const { data: currentMembership, error: currentMembershipError } =
+    await supabase
+      .from("subgroup_memberships")
+      .select("subgroup_id")
+      .eq("slot_id", slotId)
+      .eq("user_id", member.userId)
+      .maybeSingle();
   if (currentMembershipError) throw new Error(currentMembershipError.message);
 
   const currentSubgroupId = (currentMembership as any)?.subgroup_id;
   if (currentSubgroupId && Number(currentSubgroupId) !== Number(subgroupId)) {
     const { count, error: countError } = await supabase
-      .from('subgroup_memberships')
-      .select('id', { count: 'exact', head: true })
-      .eq('slot_id', slotId)
-      .eq('subgroup_id', currentSubgroupId)
-      .neq('user_id', member.userId);
+      .from("subgroup_memberships")
+      .select("id", { count: "exact", head: true })
+      .eq("slot_id", slotId)
+      .eq("subgroup_id", currentSubgroupId)
+      .neq("user_id", member.userId);
     if (countError) throw new Error(countError.message);
     if ((count ?? 0) === 0) {
       throw Object.assign(
-        new Error('El subgrupo debe tener al menos una persona. Eliminalo o espera a que alguien mas se una.'),
+        new Error(
+          "El subgrupo debe tener al menos una persona. Eliminalo o espera a que alguien mas se una.",
+        ),
         { statusCode: 400 },
       );
     }
@@ -532,23 +731,34 @@ export const joinSubgroup = async (
 
   const now = new Date().toISOString();
   const { data, error } = await supabase
-    .from('subgroup_memberships')
-    .upsert({
-      slot_id: Number(slotId),
-      subgroup_id: subgroupId ? Number(subgroupId) : null,
-      user_id: member.userId,
-      assigned_by: member.userId,
-      updated_at: now,
-    }, { onConflict: 'slot_id,user_id' })
-    .select('*')
+    .from("subgroup_memberships")
+    .upsert(
+      {
+        slot_id: Number(slotId),
+        subgroup_id: subgroupId ? Number(subgroupId) : null,
+        user_id: member.userId,
+        assigned_by: member.userId,
+        updated_at: now,
+      },
+      { onConflict: "slot_id,user_id" },
+    )
+    .select("*")
     .single();
-  if (error || !data) throw new Error(error?.message ?? 'No se pudo actualizar tu subgrupo');
+  if (error || !data)
+    throw new Error(error?.message ?? "No se pudo actualizar tu subgrupo");
 
-  emitSubgroupScheduleUpdated(groupId, 'subgrupo_miembro_actualizado', 'subgroup_membership', ((data as { id?: string | number | null }).id ?? null), member.userId, {
-    slotId: Number(slotId),
-    subgroupId: subgroupId ? Number(subgroupId) : null,
-    previousSubgroupId: currentSubgroupId ? Number(currentSubgroupId) : null,
-  });
+  emitSubgroupScheduleUpdated(
+    groupId,
+    "subgrupo_miembro_actualizado",
+    "subgroup_membership",
+    (data as { id?: string | number | null }).id ?? null,
+    member.userId,
+    {
+      slotId: Number(slotId),
+      subgroupId: subgroupId ? Number(subgroupId) : null,
+      previousSubgroupId: currentSubgroupId ? Number(currentSubgroupId) : null,
+    },
+  );
 
   return data;
 };
@@ -562,19 +772,26 @@ const ensureSubgroupActivityHasNoTimeCollision = async (
   if (!candidateMinuteKey) return;
 
   const { data: activities, error } = await supabase
-    .from('subgroup_activities')
-    .select('id, title, starts_at')
-    .eq('slot_id', slotId);
+    .from("subgroup_activities")
+    .select("id, title, starts_at")
+    .eq("slot_id", slotId);
   if (error) throw new Error(error.message);
 
   const conflictingActivity = (activities ?? []).find((activity: any) => {
-    if (excludeActivityId && String(activity.id) === String(excludeActivityId)) return false;
-    return getScheduleMinuteKey(activity.starts_at ? String(activity.starts_at) : null) === candidateMinuteKey;
+    if (excludeActivityId && String(activity.id) === String(excludeActivityId))
+      return false;
+    return (
+      getScheduleMinuteKey(
+        activity.starts_at ? String(activity.starts_at) : null,
+      ) === candidateMinuteKey
+    );
   });
 
   if (conflictingActivity) {
     throw Object.assign(
-      new Error(`Ya existe una actividad en este horario: "${String((conflictingActivity as any).title ?? 'Actividad existente')}"`),
+      new Error(
+        `Ya existe una actividad en este horario: "${String((conflictingActivity as any).title ?? "Actividad existente")}"`,
+      ),
       { statusCode: 409 },
     );
   }
@@ -585,31 +802,62 @@ export const createSubgroupActivity = async (
   groupId: string,
   slotId: string,
   subgroupId: string,
-  payload: { title: string; description?: string | null; location?: string | null; starts_at?: string | null; ends_at?: string | null },
+  payload: {
+    title: string;
+    description?: string | null;
+    location?: string | null;
+    starts_at?: string | null;
+    ends_at?: string | null;
+  },
 ) => {
   const member = await ensureGroupMember(authUserId, groupId);
   const slot = await ensureSlotInGroup(slotId, groupId);
   await ensureSubgroupInSlot(subgroupId, slotId);
 
+  assertDateIsNotInPast(
+    String((slot as any).starts_at),
+    "Este horario corresponde a un dia anterior. Solo puede consultarse.",
+  );
+
   const startsAt = payload.starts_at ?? null;
   if (startsAt) {
+    assertDateIsNotInPast(
+      startsAt,
+      "No puedes crear actividades de subgrupo en dias anteriores al actual.",
+    );
+    assertDateIsNotInPast(
+      startsAt,
+      "No puedes crear o modificar horarios de subgrupos en dias anteriores al actual.",
+    );
+
     const starts = new Date(startsAt);
     const slotStarts = new Date(String((slot as any).starts_at));
     const slotEnds = new Date(String((slot as any).ends_at));
-    if (Number.isNaN(starts.getTime()) || starts < slotStarts || starts >= slotEnds) {
+    if (
+      Number.isNaN(starts.getTime()) ||
+      starts < slotStarts ||
+      starts >= slotEnds
+    ) {
       throw Object.assign(
-        new Error('La hora estimada debe estar dentro del horario de subgrupos y antes de la hora de termino'),
+        new Error(
+          "La hora estimada debe estar dentro del horario de subgrupos y antes de la hora de termino",
+        ),
         { statusCode: 400 },
       );
     }
     if (!isThirtyMinuteBoundary(startsAt)) {
-      throw Object.assign(new Error('La hora estimada debe estar en intervalos de 30 minutos exactos'), { statusCode: 400 });
+      throw Object.assign(
+        new Error(
+          "La hora estimada debe estar en intervalos de 30 minutos exactos",
+        ),
+        { statusCode: 400 },
+      );
     }
     await ensureSubgroupActivityHasNoTimeCollision(slotId, startsAt);
   }
 
   const { data, error } = await supabase
-    .from('subgroup_activities')
+    .from("subgroup_activities")
     .insert({
       slot_id: Number(slotId),
       subgroup_id: Number(subgroupId),
@@ -617,18 +865,27 @@ export const createSubgroupActivity = async (
       description: payload.description ?? null,
       location: payload.location ?? null,
       starts_at: payload.starts_at ?? null,
-      ends_at: payload.ends_at ?? (startsAt ? String((slot as any).ends_at) : null),
+      ends_at:
+        payload.ends_at ?? (startsAt ? String((slot as any).ends_at) : null),
       created_by: member.userId,
     })
-    .select('*')
+    .select("*")
     .single();
-  if (error || !data) throw new Error(error?.message ?? 'No se pudo crear actividad');
-  emitSubgroupScheduleUpdated(groupId, 'subgrupo_actividad_creada', 'subgroup_activity', ((data as { id?: string | number | null }).id ?? null), member.userId, {
-    itemTitle: payload.title,
-    slotId: Number(slotId),
-    subgroupId: Number(subgroupId),
-    startsAt: payload.starts_at ?? null,
-  });
+  if (error || !data)
+    throw new Error(error?.message ?? "No se pudo crear actividad");
+  emitSubgroupScheduleUpdated(
+    groupId,
+    "subgrupo_actividad_creada",
+    "subgroup_activity",
+    (data as { id?: string | number | null }).id ?? null,
+    member.userId,
+    {
+      itemTitle: payload.title,
+      slotId: Number(slotId),
+      subgroupId: Number(subgroupId),
+      startsAt: payload.starts_at ?? null,
+    },
+  );
   return data;
 };
 
@@ -637,24 +894,41 @@ export const updateSubgroupActivity = async (
   groupId: string,
   slotId: string,
   activityId: string,
-  payload: Partial<{ title: string; description: string | null; location: string | null; starts_at: string | null; ends_at: string | null }>,
+  payload: Partial<{
+    title: string;
+    description: string | null;
+    location: string | null;
+    starts_at: string | null;
+    ends_at: string | null;
+  }>,
 ) => {
   const member = await ensureGroupMember(authUserId, groupId);
   const slot = await ensureSlotInGroup(slotId, groupId);
 
   const { data: activity, error: activityError } = await supabase
-    .from('subgroup_activities')
-    .select('*')
-    .eq('id', activityId)
-    .eq('slot_id', slotId)
+    .from("subgroup_activities")
+    .select("*")
+    .eq("id", activityId)
+    .eq("slot_id", slotId)
     .maybeSingle();
   if (activityError) throw new Error(activityError.message);
-  if (!activity) throw Object.assign(new Error('Actividad de subgrupo no encontrada'), { statusCode: 404 });
+  if (!activity)
+    throw Object.assign(new Error("Actividad de subgrupo no encontrada"), {
+      statusCode: 404,
+    });
+
+  assertDateIsNotInPast(
+    String((slot as any).starts_at),
+    "Este horario corresponde a un dia anterior. Solo puede consultarse.",
+  );
 
   const isOwner = Number((activity as any).created_by) === member.userId;
-  const isAdmin = member.role === 'admin';
+  const isAdmin = member.role === "admin";
   if (!isOwner && !isAdmin) {
-    throw Object.assign(new Error('Solo creador o admin puede editar actividades'), { statusCode: 403 });
+    throw Object.assign(
+      new Error("Solo creador o admin puede editar actividades"),
+      { statusCode: 403 },
+    );
   }
 
   if (payload.starts_at !== undefined) {
@@ -663,39 +937,66 @@ export const updateSubgroupActivity = async (
       const starts = new Date(nextStartsAt);
       const slotStarts = new Date(String((slot as any).starts_at));
       const slotEnds = new Date(String((slot as any).ends_at));
-      if (Number.isNaN(starts.getTime()) || starts < slotStarts || starts >= slotEnds) {
+      if (
+        Number.isNaN(starts.getTime()) ||
+        starts < slotStarts ||
+        starts >= slotEnds
+      ) {
         throw Object.assign(
-          new Error('La hora estimada debe estar dentro del horario de subgrupos y antes de la hora de termino'),
+          new Error(
+            "La hora estimada debe estar dentro del horario de subgrupos y antes de la hora de termino",
+          ),
           { statusCode: 400 },
         );
       }
       if (!isThirtyMinuteBoundary(nextStartsAt)) {
-        throw Object.assign(new Error('La hora estimada debe estar en intervalos de 30 minutos exactos'), { statusCode: 400 });
+        throw Object.assign(
+          new Error(
+            "La hora estimada debe estar en intervalos de 30 minutos exactos",
+          ),
+          { statusCode: 400 },
+        );
       }
-      await ensureSubgroupActivityHasNoTimeCollision(slotId, nextStartsAt, activityId);
+      await ensureSubgroupActivityHasNoTimeCollision(
+        slotId,
+        nextStartsAt,
+        activityId,
+      );
     }
   }
 
   const { data, error } = await supabase
-    .from('subgroup_activities')
+    .from("subgroup_activities")
     .update({
       ...(payload.title !== undefined ? { title: payload.title } : {}),
-      ...(payload.description !== undefined ? { description: payload.description } : {}),
+      ...(payload.description !== undefined
+        ? { description: payload.description }
+        : {}),
       ...(payload.location !== undefined ? { location: payload.location } : {}),
-      ...(payload.starts_at !== undefined ? { starts_at: payload.starts_at } : {}),
+      ...(payload.starts_at !== undefined
+        ? { starts_at: payload.starts_at }
+        : {}),
       ...(payload.ends_at !== undefined ? { ends_at: payload.ends_at } : {}),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', activityId)
-    .eq('slot_id', slotId)
-    .select('*')
+    .eq("id", activityId)
+    .eq("slot_id", slotId)
+    .select("*")
     .single();
-  if (error || !data) throw new Error(error?.message ?? 'No se pudo actualizar actividad');
-  emitSubgroupScheduleUpdated(groupId, 'subgrupo_actividad_actualizada', 'subgroup_activity', activityId, member.userId, {
-    itemTitle: (data as any).title,
-    slotId: Number(slotId),
-    startsAt: (data as any).starts_at ?? null,
-  });
+  if (error || !data)
+    throw new Error(error?.message ?? "No se pudo actualizar actividad");
+  emitSubgroupScheduleUpdated(
+    groupId,
+    "subgrupo_actividad_actualizada",
+    "subgroup_activity",
+    activityId,
+    member.userId,
+    {
+      itemTitle: (data as any).title,
+      slotId: Number(slotId),
+      startsAt: (data as any).starts_at ?? null,
+    },
+  );
   return data;
 };
 
@@ -706,26 +1007,48 @@ export const deleteSubgroupActivity = async (
   activityId: string,
 ) => {
   const member = await ensureGroupMember(authUserId, groupId);
-  await ensureSlotInGroup(slotId, groupId);
+  const slot = await ensureSlotInGroup(slotId, groupId);
 
   const { data: activity, error: activityError } = await supabase
-    .from('subgroup_activities')
-    .select('*')
-    .eq('id', activityId)
-    .eq('slot_id', slotId)
+    .from("subgroup_activities")
+    .select("*")
+    .eq("id", activityId)
+    .eq("slot_id", slotId)
     .maybeSingle();
   if (activityError) throw new Error(activityError.message);
-  if (!activity) throw Object.assign(new Error('Actividad de subgrupo no encontrada'), { statusCode: 404 });
+  if (!activity)
+    throw Object.assign(new Error("Actividad de subgrupo no encontrada"), {
+      statusCode: 404,
+    });
+
+  assertDateIsNotInPast(
+    String((slot as any).starts_at),
+    "Este horario corresponde a un dia anterior. Solo puede consultarse.",
+  );
 
   const isOwner = Number((activity as any).created_by) === member.userId;
-  const isAdmin = member.role === 'admin';
+  const isAdmin = member.role === "admin";
   if (!isOwner && !isAdmin) {
-    throw Object.assign(new Error('Solo creador o admin puede eliminar actividades'), { statusCode: 403 });
+    throw Object.assign(
+      new Error("Solo creador o admin puede eliminar actividades"),
+      { statusCode: 403 },
+    );
   }
 
-  const { error } = await supabase.from('subgroup_activities').delete().eq('id', activityId).eq('slot_id', slotId);
+  const { error } = await supabase
+    .from("subgroup_activities")
+    .delete()
+    .eq("id", activityId)
+    .eq("slot_id", slotId);
   if (error) throw new Error(error.message);
-  emitSubgroupScheduleUpdated(groupId, 'subgrupo_actividad_eliminada', 'subgroup_activity', activityId, member.userId, {
-    slotId: Number(slotId),
-  });
+  emitSubgroupScheduleUpdated(
+    groupId,
+    "subgrupo_actividad_eliminada",
+    "subgroup_activity",
+    activityId,
+    member.userId,
+    {
+      slotId: Number(slotId),
+    },
+  );
 };

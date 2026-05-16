@@ -850,7 +850,7 @@ function normalizeRealtimeProposalComment(
 function TableRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-stretch border-t border-[#E2E8F0]">
-      <div className="flex w-24 shrink-0 items-center bg-[#F8FAFC]/70 py-3 pl-4 pr-2 font-body text-[11px] font-semibold text-[#94A3B8]">
+      <div className="sticky left-0 z-10 flex w-36 shrink-0 items-center border-r border-[#DCE5F3] bg-[#F2F5FC] py-3 pl-4 pr-3 font-body text-[11px] font-semibold text-[#94A3B8]">
         {label}
       </div>
       <div className="flex min-w-0 flex-1 gap-3 px-4">{children}</div>
@@ -1374,9 +1374,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-4 px-1">
-      <div className="relative overflow-hidden rounded-[26px] border border-white/70 bg-gradient-to-br from-white via-[#F8FAFC] to-[#F0EEF8] p-4 shadow-xl shadow-[#1E0A4E]/10">
-        <div className="pointer-events-none absolute right-0 top-0 h-28 w-28 rounded-bl-[48px] bg-[#7A4FD6]/10 blur-2xl" />
+    <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-3 px-2">
+      <div className="relative border-b border-[#D9E2F2] pb-3">
         <div className="relative flex flex-wrap items-center justify-between gap-3 pr-0 sm:pr-2">
           <div className="flex min-w-0 items-start gap-3">
             <button
@@ -1479,7 +1478,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
         </div>
       )}
 
-      <div className="inline-flex w-fit flex-wrap gap-1.5 rounded-2xl border border-white bg-white/80 p-1.5 shadow-sm">
+      <div className="inline-flex w-fit flex-wrap gap-1.5 rounded-2xl border border-[#D5DEEE] bg-[#EEF2FB] p-1.5">
         {(["todas", "vuelo", "hospedaje"] as ProposalFilter[]).map((item) => (
           <button
             key={item}
@@ -1515,13 +1514,13 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-2xl shadow-[#1E0A4E]/10 ring-1 ring-[#E2E8F0]/70">
-          <div className="overflow-x-auto">
-            <div className="min-w-max">
-              <div className="flex items-stretch gap-3 bg-gradient-to-b from-[#F8FAFC] to-white p-4">
-                <div className="w-24 shrink-0" />
+        <div className="overflow-hidden rounded-2xl border border-[#D5DEEE] bg-[#F7F8FD]">
+        <div className="overflow-x-auto overscroll-x-contain pb-2">
+          <div className="min-w-max">
+            <div className="flex items-stretch gap-3 bg-[#F2F5FC] p-4">
+                <div className="sticky left-0 z-10 w-36 shrink-0 border-r border-[#DCE5F3] bg-[#F2F5FC]" />
                 {filteredProposals.map((proposal, index) => (
-                  <div key={proposal.id} className="w-[380px] shrink-0 pr-0">
+                  <div key={proposal.id} className="w-[332px] shrink-0 pr-0">
                     <div className="group relative overflow-hidden rounded-2xl shadow-lg shadow-[#1E0A4E]/10">
                       <img
                         src={getImageUrl(proposal, index)}
@@ -1572,7 +1571,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     filteredProposals.length > 1;
 
                   return (
-                    <div key={proposal.id} className="w-[380px] shrink-0 py-3">
+                    <div key={proposal.id} className="w-[332px] shrink-0 py-3">
                       <span className="font-heading text-base font-bold leading-none text-[#1E0A4E]">
                         {formatMoney(price, getCurrency(proposal))}
                       </span>
@@ -1588,7 +1587,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
               <TableRow label="Tipo">
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
+                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
                     <span className="font-body text-sm text-[#1E0A4E]">
                       {proposal.tipo === "vuelo"
                         ? getSlice(proposal, "returnSlice")
@@ -1610,7 +1609,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
+                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
                     <span className="font-body text-xs text-[#6B7280]">
                       {getHotelOccupancyText(proposal)}
                     </span>
@@ -1628,7 +1627,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
+                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
                     <span className="font-body text-xs text-[#6B7280]">
                       {getRouteOrLocation(proposal)}
                     </span>
@@ -1646,7 +1645,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
+                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
                     <span className="font-body text-xs text-[#6B7280]">
                       {getOutboundText(proposal)}
                     </span>
@@ -1664,7 +1663,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
+                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
                     <span className="font-body text-xs text-[#6B7280]">
                       {getStayOrReturnText(proposal)}
                     </span>
@@ -1686,7 +1685,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     {filteredProposals.map((proposal) => (
                       <div
                         key={proposal.id}
-                        className="w-[380px] shrink-0 py-3"
+                        className="w-[332px] shrink-0 py-3"
                       >
                         <span className="font-body text-xs text-[#6B7280]">
                           {proposal.tipo === "hospedaje"
@@ -1709,7 +1708,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     {filteredProposals.map((proposal) => (
                       <div
                         key={proposal.id}
-                        className="w-[380px] shrink-0 py-3"
+                        className="w-[332px] shrink-0 py-3"
                       >
                         <span className="font-body text-xs text-[#6B7280]">
                           {proposal.tipo === "hospedaje"
@@ -1728,7 +1727,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     {filteredProposals.map((proposal) => (
                       <div
                         key={proposal.id}
-                        className="w-[380px] shrink-0 py-3"
+                        className="w-[332px] shrink-0 py-3"
                       >
                         <span className="font-body text-xs text-[#6B7280]">
                           {proposal.tipo === "hospedaje"
@@ -1743,7 +1742,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
               <TableRow label="Proveedor">
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[380px] shrink-0 py-3">
+                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
                     <span className="inline-flex rounded-full bg-[#F0F4FF] px-2 py-1 font-body text-[11px] font-semibold text-[#1E0A4E]/70">
                       {getProviderText(proposal)}
                     </span>
@@ -1755,7 +1754,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 {filteredProposals.map((proposal) => {
                   const result = resultsByProposalId.get(proposal.id);
                   return (
-                    <div key={proposal.id} className="w-[380px] shrink-0 py-3">
+                    <div key={proposal.id} className="w-[332px] shrink-0 py-3">
                       <p className="font-body text-xs font-semibold text-[#1E0A4E]">
                         {result
                           ? `${result.votos_a_favor} a favor · ${result.votos_en_contra} en contra`
@@ -1777,7 +1776,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                   return (
                     <div
                       key={proposal.id}
-                      className="w-[380px] shrink-0 space-y-3 py-4"
+                      className="w-[332px] shrink-0 space-y-3 py-4"
                     >
                       <div className="min-h-[126px] rounded-[28px] border border-[#E2E8F0] bg-white/95 p-3.5 shadow-sm shadow-[#1E0A4E]/5">
                         <div className="grid grid-cols-2 gap-2.5">

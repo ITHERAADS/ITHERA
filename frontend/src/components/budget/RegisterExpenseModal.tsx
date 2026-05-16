@@ -13,6 +13,8 @@ interface Props {
   editingExpense?: Expense | null
   totalBudget?: number
   comprometido?: number
+  minExpenseDate?: string | null
+  maxExpenseDate?: string | null
   isSaving?: boolean
   onClose: () => void
   onSave: (expense: Expense) => void | Promise<void>
@@ -117,6 +119,8 @@ export const RegisterExpenseModal: FC<Props> = ({
   editingExpense,
   totalBudget = 0,
   comprometido = 0,
+  minExpenseDate = null,
+  maxExpenseDate = null,
   isSaving = false,
   onClose,
   onSave,
@@ -204,6 +208,13 @@ export const RegisterExpenseModal: FC<Props> = ({
       : null
 
   const isValid = totalAmount > 0 && description.trim().length > 0 && selectedMemberIds.length > 0 && splitError === null && budgetError === null
+  const isDateOutOfRange =
+    (Boolean(minExpenseDate) && date < String(minExpenseDate)) ||
+    (Boolean(maxExpenseDate) && date > String(maxExpenseDate))
+  const dateRangeError = isDateOutOfRange
+    ? `La fecha del gasto debe estar entre ${minExpenseDate} y ${maxExpenseDate}.`
+    : null
+  const canSave = isValid && !isDateOutOfRange
 
   const toggleMember = (memberId: string) => {
     setSelectedMemberIds((prev) => {
@@ -235,7 +246,7 @@ export const RegisterExpenseModal: FC<Props> = ({
   }
 
   const handleSave = async () => {
-    if (isSaving || !isValid) return
+    if (isSaving || !canSave) return
     if (draftDocumentFile && !draftDocumentNotes.trim()) return
 
     const parsedSplitAmounts: Record<string, number> | undefined =
@@ -352,8 +363,18 @@ export const RegisterExpenseModal: FC<Props> = ({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                min={minExpenseDate ?? undefined}
+                max={maxExpenseDate ?? undefined}
                 className="w-full rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
               />
+              {(minExpenseDate || maxExpenseDate) && (
+                <p className="mt-1 font-body text-xs text-[#64748B]">
+                  Rango permitido: {minExpenseDate ?? '...'} a {maxExpenseDate ?? '...'}
+                </p>
+              )}
+              {dateRangeError && (
+                <p className="mt-1 font-body text-xs text-[#EF4444]">{dateRangeError}</p>
+              )}
             </div>
 
             <div>
@@ -521,7 +542,7 @@ export const RegisterExpenseModal: FC<Props> = ({
             <button
               type="button"
               onClick={() => void handleSave()}
-              disabled={isSaving || !isValid}
+              disabled={isSaving || !canSave}
               aria-busy={isSaving}
               className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#1E6FD9] py-3.5 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
             >

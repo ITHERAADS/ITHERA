@@ -1013,18 +1013,98 @@ function BottomNavbar({
   );
 }
 
-function MapsTabView({ days }: { days: ItineraryDay[] }) {
-  const activities = days.flatMap((day) =>
-    day.activities.map((activity) => ({
-      ...activity,
-      dayNumber: day.dayNumber,
-      dayDate: day.date,
-    })),
+function parseCoordinate(value: unknown, axis: "lat" | "lng"): number | null {
+  if (value == null) return null;
+  if (typeof value === "string" && value.trim() === "") return null;
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+
+  const min = axis === "lat" ? -90 : -180;
+  const max = axis === "lat" ? 90 : 180;
+  if (numeric < min || numeric > max) return null;
+
+  return numeric;
+}
+
+function coordinateKey(lat: number, lng: number): string {
+  return `${lat.toFixed(6)},${lng.toFixed(6)}`;
+}
+
+function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | null }) {
+  const [selectedActivityId, setSelectedActivityId] = useState<string | number | null>(null);
+  const [dayFilter, setDayFilter] = useState<number | "all">("all");
+
+  const activities = useMemo(
+    () =>
+      days.flatMap((day) =>
+        day.activities.map((activity) => ({
+          ...activity,
+          dayNumber: day.dayNumber,
+          dayDate: day.date,
+        })),
+      ),
+    [days],
   );
 
-  const withCoords = activities.filter(
-    (activity) => activity.latitude != null && activity.longitude != null,
+  const withCoords = useMemo(() => {
+    return activities.filter((activity) => {
+      const lat = parseCoordinate(activity.latitude, "lat");
+      const lng = parseCoordinate(activity.longitude, "lng");
+      return lat != null && lng != null;
+    });
+  }, [activities]);
+
+  const availableDays = useMemo(
+    () => Array.from(new Set(withCoords.map((activity) => activity.dayNumber))).sort((a, b) => a - b),
+    [withCoords],
   );
+
+  const filteredActivities = useMemo(
+    () =>
+      dayFilter === "all"
+        ? withCoords
+        : withCoords.filter((activity) => activity.dayNumber === dayFilter),
+    [dayFilter, withCoords],
+  );
+
+  const hubLabel =
+    (group?.punto_partida_tipo === "hotel_reservado" && group?.punto_partida_direccion) ||
+    group?.destino ||
+    "Punto de partida";
+
+  const hubCoordinates = useMemo(() => {
+    if (
+      group?.punto_partida_tipo === "hotel_reservado" &&
+      group.punto_partida_latitud != null &&
+      group.punto_partida_longitud != null
+    ) {
+      return {
+        lat: Number(group.punto_partida_latitud),
+        lng: Number(group.punto_partida_longitud),
+      };
+    }
+
+    if (group?.destino_latitud != null && group.destino_longitud != null) {
+      return {
+        lat: Number(group.destino_latitud),
+        lng: Number(group.destino_longitud),
+      };
+    }
+
+    return null;
+  }, [group]);
+
+  const activeCardId =
+    selectedActivityId != null &&
+    filteredActivities.some((activity) => activity.id === selectedActivityId)
+      ? selectedActivityId
+      : (filteredActivities[0]?.id ?? null);
+
+  const selectedActivity =
+    selectedActivityId != null
+      ? filteredActivities.find((activity) => activity.id === selectedActivityId) ?? null
+      : null;
 
   if (withCoords.length === 0) {
     return (
@@ -1036,42 +1116,201 @@ function MapsTabView({ days }: { days: ItineraryDay[] }) {
     );
   }
 
+  const firstActivityLat = parseCoordinate(withCoords[0].latitude, "lat");
+  const firstActivityLng = parseCoordinate(withCoords[0].longitude, "lng");
+  const fallbackLat = firstActivityLat ?? 16.8531;
+  const fallbackLng = firstActivityLng ?? -99.8237;
+  const normalizedCenter = hubCoordinates
+    ? { lat: Number(hubCoordinates.lat), lng: Number(hubCoordinates.lng) }
+    : { lat: fallbackLat, lng: fallbackLng };
+
+  const mapCenter = Number.isFinite(normalizedCenter.lat) && Number.isFinite(normalizedCenter.lng)
+    ? `${normalizedCenter.lat},${normalizedCenter.lng}`
+    : `${fallbackLat},${fallbackLng}`;
+
+  const normalizedPoints = filteredActivities
+    .map((activity) => {
+      const lat = parseCoordinate(activity.latitude, "lat");
+      const lng = parseCoordinate(activity.longitude, "lng");
+      if (lat == null || lng == null) return null;
+      const startsAtValue =
+        typeof activity.startsAt === "string" ? activity.startsAt : null;
+      const startsAtMs = startsAtValue ? new Date(startsAtValue).getTime() : Number.POSITIVE_INFINITY;
+      return { lat, lng, dayNumber: activity.dayNumber, startsAtMs };
+    })
+    .filter(
+      (
+        point,
+      ): point is { lat: number; lng: number; dayNumber: number; startsAtMs: number } =>
+        point != null,
+    )
+    .sort((left, right) => {
+      if (left.dayNumber !== right.dayNumber) return left.dayNumber - right.dayNumber;
+      return left.startsAtMs - right.startsAtMs;
+    });
+
+  const uniqueRoutePoints = normalizedPoints.filter((point, index, allPoints) => {
+    if (index === 0) return true;
+    const prev = allPoints[index - 1];
+    return coordinateKey(point.lat, point.lng) !== coordinateKey(prev.lat, prev.lng);
+  });
+
+  const mapPoints = uniqueRoutePoints.map((point) => `${point.lat},${point.lng}`);
+  const destinationPoint = mapPoints[0] ?? mapCenter;
+  const waypointPoints = mapPoints.slice(1);
+
+  const mapParams = new URLSearchParams({
+    saddr: mapCenter,
+    daddr:
+      waypointPoints.length > 0
+        ? `${destinationPoint} to:${waypointPoints.join(" to:")}`
+        : destinationPoint,
+    dirflg: "d",
+    hl: "es",
+  });
+
+  const mapSrc = `https://maps.google.com/maps?${mapParams.toString()}&output=embed`;
+
   return (
-    <div className="flex flex-col gap-3">
-      {withCoords.map((activity) => (
-        <div
-          key={activity.id}
-          className="rounded-2xl border border-[#E2E8F0] bg-white p-4"
+    <>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setDayFilter("all")}
+          className={[
+            "rounded-full border px-3 py-1.5 font-body text-xs font-semibold transition",
+            dayFilter === "all"
+              ? "border-bluePrimary bg-bluePrimary text-white"
+              : "border-[#D5DEEE] bg-white text-[#334155] hover:border-[#93B3FF]",
+          ].join(" ")}
         >
-          <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-bluePrimary">
-            Dia {activity.dayNumber} · {activity.dayDate}
-          </p>
-          <h3 className="mt-1 font-heading text-base font-bold text-purpleNavbar">
-            {activity.title}
-          </h3>
-          <p className="mt-1 font-body text-sm text-gray500">
-            {activity.location || "Ubicacion no disponible"}
-          </p>
-          {activity.routeDistanceText && activity.routeDurationText && (
-            <p className="mt-2 font-body text-xs text-gray700">
-              Ruta estimada: {activity.routeDistanceText} ·{" "}
-              {activity.routeDurationText}
-            </p>
-          )}
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${activity.latitude},${activity.longitude}`}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 inline-block font-body text-xs font-semibold text-bluePrimary hover:underline"
+          Todos los dias
+        </button>
+        {availableDays.map((dayNumber) => (
+          <button
+            key={dayNumber}
+            type="button"
+            onClick={() => setDayFilter(dayNumber)}
+            className={[
+              "rounded-full border px-3 py-1.5 font-body text-xs font-semibold transition",
+              dayFilter === dayNumber
+                ? "border-bluePrimary bg-bluePrimary text-white"
+                : "border-[#D5DEEE] bg-white text-[#334155] hover:border-[#93B3FF]",
+            ].join(" ")}
           >
-            Abrir en Google Maps →
-          </a>
+            Dia {dayNumber}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <section className="lg:col-span-8">
+          <div className="rounded-2xl border border-[#E2E8F0] bg-white p-3">
+            <div className="mb-3 rounded-xl border border-[#D9E2FF] bg-[#F6F8FF] p-3">
+              <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-bluePrimary">
+                Centro del viaje
+              </p>
+              <p className="mt-1 font-heading text-base font-bold text-purpleNavbar">
+                {hubLabel}
+              </p>
+            </div>
+            <iframe
+              title="Mapa del viaje"
+              src={mapSrc}
+              className="h-[52vh] min-h-[360px] max-h-[680px] w-full rounded-xl border border-[#E2E8F0]"
+              loading="lazy"
+            />
+          </div>
+        </section>
+
+        <aside className="lg:col-span-4">
+          <div className="max-h-[52vh] min-h-[360px] space-y-3 overflow-auto pr-1">
+            {filteredActivities.map((activity) => (
+              <button
+                key={activity.id}
+                type="button"
+                onClick={() => setSelectedActivityId(activity.id)}
+                className={[
+                  "w-full rounded-2xl border bg-white p-4 text-left transition",
+                  activeCardId === activity.id
+                    ? "border-bluePrimary shadow-[0_0_0_2px_rgba(40,109,255,0.12)]"
+                    : "border-[#E2E8F0] hover:border-[#BFD0FF]",
+                ].join(" ")}
+              >
+                <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-bluePrimary">
+                  Dia {activity.dayNumber} - {activity.dayDate}
+                </p>
+                <h3 className="mt-1 font-heading text-sm font-bold text-purpleNavbar">
+                  {activity.title}
+                </h3>
+                <p className="mt-1 line-clamp-2 font-body text-xs text-gray500">
+                  {activity.location || "Ubicacion no disponible"}
+                </p>
+                {activity.routeDistanceText && activity.routeDurationText && (
+                  <p className="mt-2 font-body text-xs text-gray700">
+                    {activity.routeDistanceText} - {activity.routeDurationText}
+                  </p>
+                )}
+              </button>
+            ))}
+          </div>
+        </aside>
+      </div>
+
+      {selectedActivity ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#1A114B]/50 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-bluePrimary">
+                  Dia {selectedActivity.dayNumber} - {selectedActivity.dayDate}
+                </p>
+                <h3 className="mt-1 font-heading text-xl font-bold text-purpleNavbar">
+                  {selectedActivity.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedActivityId(null)}
+                className="rounded-lg border border-[#D9E2FF] px-3 py-1.5 font-body text-xs font-semibold text-bluePrimary hover:bg-[#F3F6FF]"
+              >
+                Cerrar
+              </button>
+            </div>
+            <p className="mt-3 font-body text-sm text-gray600">
+              {selectedActivity.location || "Ubicacion no disponible"}
+            </p>
+            {selectedActivity.routeDistanceText && selectedActivity.routeDurationText ? (
+              <p className="mt-2 font-body text-xs text-gray700">
+                Ruta estimada: {selectedActivity.routeDistanceText} - {selectedActivity.routeDurationText}
+              </p>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${selectedActivity.latitude},${selectedActivity.longitude}`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-xl bg-bluePrimary px-3 py-2 font-body text-xs font-semibold text-white hover:bg-[#1E5EEA]"
+              >
+                Abrir en Google Maps
+              </a>
+              {hubCoordinates ? (
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&origin=${hubCoordinates.lat},${hubCoordinates.lng}&destination=${selectedActivity.latitude},${selectedActivity.longitude}&travelmode=driving`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-xl border border-[#BFD0FF] px-3 py-2 font-body text-xs font-semibold text-bluePrimary hover:bg-[#F3F6FF]"
+                >
+                  Ver ruta desde hospedaje
+                </a>
+              ) : null}
+            </div>
+          </div>
         </div>
-      ))}
-    </div>
+      ) : null}
+    </>
   );
 }
-
 const ROUTE_TRAVEL_MODE = "DRIVE" as const;
 const ROUTE_REQUEST_TIMEOUT_MS = 4500;
 const DASHBOARD_AUX_REQUEST_TIMEOUT_MS = 6500;
@@ -2832,7 +3071,7 @@ export function DashboardPage() {
         </div>
       ) : activeTab === "mapas" ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
-          <MapsTabView days={days} />
+          <MapsTabView days={days} group={group} />
         </div>
       ) : activeTab === "pagar" ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
@@ -3738,3 +3977,8 @@ export function DashboardPage() {
     </AppLayout>
   );
 }
+
+
+
+
+

@@ -71,6 +71,7 @@ export const MyWalletView: FC<Props> = ({
   const [receiptBusyPairId, setReceiptBusyPairId] = useState<string | null>(null)
   const [receiptDonePairIds, setReceiptDonePairIds] = useState<Set<string>>(new Set())
   const [receiptModalEntry, setReceiptModalEntry] = useState<WalletEntry | null>(null)
+  const [receiptDuplicateNotice, setReceiptDuplicateNotice] = useState<string | null>(null)
   const [historialOpen, setHistorialOpen] = useState(false)
   const [rejectReasonByPayment, setRejectReasonByPayment] = useState<Record<string, string>>({})
 
@@ -602,7 +603,14 @@ export const MyWalletView: FC<Props> = ({
                     })
                     setReceiptModalEntry(null)
                   } catch (err) {
-                    setError(err instanceof Error ? err.message : 'No se pudo generar el recibo.')
+                    const message = err instanceof Error ? err.message : 'No se pudo generar el recibo.'
+                    if (message.includes('ya esta en la boveda de documentos')) {
+                      setReceiptDonePairIds((prev) => new Set(prev).add(e.pairId))
+                      setReceiptModalEntry(null)
+                      setReceiptDuplicateNotice(message)
+                    } else {
+                      setError(message)
+                    }
                   } finally {
                     setReceiptBusyPairId(null)
                   }
@@ -644,7 +652,14 @@ export const MyWalletView: FC<Props> = ({
                     setReceiptDonePairIds((prev) => new Set(prev).add(e.pairId))
                     setReceiptModalEntry(null)
                   } catch (err) {
-                    setError(err instanceof Error ? err.message : 'No se pudo generar el recibo.')
+                    const message = err instanceof Error ? err.message : 'No se pudo generar el recibo.'
+                    if (message.includes('ya esta en la boveda de documentos')) {
+                      setReceiptDonePairIds((prev) => new Set(prev).add(e.pairId))
+                      setReceiptModalEntry(null)
+                      setReceiptDuplicateNotice(message)
+                    } else {
+                      setError(message)
+                    }
                   } finally {
                     setReceiptBusyPairId(null)
                   }
@@ -652,6 +667,22 @@ export const MyWalletView: FC<Props> = ({
                 className="rounded-lg bg-[#1E6FD9] px-3 py-1.5 text-sm font-semibold text-white"
               >
                 Vista previa + guardar en boveda
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {receiptDuplicateNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-4">
+            <h3 className="mb-2 text-base font-bold text-[#1E0A4E]">Recibo ya guardado</h3>
+            <p className="text-sm text-[#475569]">{receiptDuplicateNotice}</p>
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={() => setReceiptDuplicateNotice(null)}
+                className="rounded-lg bg-[#1E6FD9] px-3 py-1.5 text-sm font-semibold text-white"
+              >
+                Entendido
               </button>
             </div>
           </div>

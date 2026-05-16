@@ -39,6 +39,7 @@ import {
 } from "../../services/context-links";
 import { DocumentVaultPanel } from "../../components/documents/DocumentVaultPanel";
 import { SubgroupSchedulePanel } from "../../components/subgroups/SubgroupSchedulePanel";
+import { HelpButton } from "../../components/ui/HelpButton";
 import {
   subgroupScheduleService,
   type SubgroupSlot,
@@ -2942,9 +2943,16 @@ export function DashboardPage() {
         </div>
       ) : activeTab === "buscar" ? (
         <div className="flex-1 overflow-y-auto bg-surface px-6 py-8">
-          <h2 className="font-heading font-bold text-[#1E0A4E] text-xl mb-1">
+          <div className="mb-1 flex items-center justify-between gap-3">
+          <h2 className="font-heading font-bold text-[#1E0A4E] text-xl">
             Buscar
           </h2>
+          <HelpButton
+            title="Búsqueda y propuestas"
+            description="Busca vuelos, hospedajes o actividades para proponerlas al grupo. En días pasados o elementos vencidos, el sistema bloquea nuevas propuestas para conservar la lógica del itinerario."
+            placement="right"
+          />
+        </div>
           <p className="font-body text-sm text-gray-500 mb-6">
             {group?.destino
               ? `Opciones para ${group.destino}`

@@ -10,6 +10,7 @@ import {
   saveCurrentGroup,
   clearCurrentGroup,
 } from "../../services/groups";
+import { HelpButton } from "../../components/ui/HelpButton";
 import type {
   Group,
   GroupInvitation,
@@ -519,9 +520,16 @@ export function GroupPanelPage() {
               }
             >
               <div className="rounded-2xl border border-[#E2E8F0] bg-white p-6 shadow-sm">
-                <h2 className="mb-4 font-heading text-lg font-semibold text-[#1E0A4E]">
-                  Miembros del grupo
-                </h2>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h2 className="font-heading text-lg font-semibold text-[#1E0A4E]">
+                    Miembros del grupo
+                  </h2>
+                  <HelpButton
+                    title="Miembros y roles"
+                    description="Consulta quién forma parte del viaje y su rol. Solo el organizador puede cambiar roles o expulsar integrantes; los viajeros solo ven la lista."
+                    placement="right"
+                  />
+                </div>
 
                 <div className="space-y-3">
                   {members.map((member) => {
@@ -585,9 +593,16 @@ export function GroupPanelPage() {
               {canInviteGroup && (
                 <div className="rounded-3xl border border-[#E2E8F0] bg-white p-6 shadow-sm">
                   <div className="mb-5">
-                    <h2 className="font-heading text-xl font-bold text-[#1E0A4E]">
-                      Invitación del grupo
-                    </h2>
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="font-heading text-xl font-bold text-[#1E0A4E]">
+                        Invitación del grupo
+                      </h2>
+                      <HelpButton
+                        title="Invitaciones"
+                        description="Comparte el acceso solo cuando el grupo tenga cupo. En grupos privados, las solicitudes quedan pendientes hasta que el organizador las apruebe."
+                        placement="right"
+                      />
+                    </div>
 
                     <p className="mt-1 font-body text-sm text-[#7A8799]">
                       Comparte el QR, el enlace o envía invitaciones por correo.

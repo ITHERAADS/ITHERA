@@ -2,6 +2,7 @@
 import type { FC } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { RegisterExpenseModal } from './RegisterExpenseModal'
+import { HelpButton } from '../ui/HelpButton'
 import { MyWalletView } from './MyWalletView'
 import { useAuth } from '../../context/useAuth'
 import { useSocket } from '../../hooks/useSocket'
@@ -855,7 +856,14 @@ export const BudgetDashboard: FC<Props> = ({
       <div className="bg-[#1E0A4E] px-6 pt-6 pb-8">
         <p className="mb-1 font-body text-sm text-white/60">Presupuesto del viaje</p>
         <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
           <h1 className="font-heading text-2xl font-bold text-white">Finanzas del Grupo</h1>
+          <HelpButton
+            title="Finanzas del grupo"
+            description="Registra gastos, consulta saldos y valida pagos. Los montos deben ser positivos y las divisiones personalizadas deben cuadrar con el total."
+            placement="right"
+          />
+        </div>
           {canAdjustBudget && (
             <button
               onClick={() => { setAdjustValue(String(totalBudget)); setShowAdjustModal(true) }}
@@ -1242,7 +1250,14 @@ export const BudgetDashboard: FC<Props> = ({
         </div>
 
         <div>
-          <h2 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Gastos del grupo</h2>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="font-heading text-sm font-bold text-[#3D4A5C]">Gastos del grupo</h2>
+            <HelpButton
+              title="Gastos"
+              description="Cada gasto conserva quién pagó, fecha, categoría y forma de división. Solo el creador o el organizador pueden modificarlo o eliminarlo."
+              placement="right"
+            />
+          </div>
           <div className="flex flex-col gap-2">
             {expenses.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-4 py-8 text-center font-body text-sm text-[#7A8799]">

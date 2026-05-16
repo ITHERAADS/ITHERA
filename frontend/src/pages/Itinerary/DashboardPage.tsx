@@ -1094,20 +1094,16 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
     return null;
   }, [group]);
 
-  useEffect(() => {
-    if (filteredActivities.length === 0) {
-      setSelectedActivityId(null);
-      return;
-    }
-
-    setSelectedActivityId((current) => {
-      if (current && filteredActivities.some((item) => item.id === current)) return current;
-      return filteredActivities[0].id;
-    });
-  }, [filteredActivities]);
+  const activeCardId =
+    selectedActivityId != null &&
+    filteredActivities.some((activity) => activity.id === selectedActivityId)
+      ? selectedActivityId
+      : (filteredActivities[0]?.id ?? null);
 
   const selectedActivity =
-    filteredActivities.find((activity) => activity.id === selectedActivityId) ?? null;
+    selectedActivityId != null
+      ? filteredActivities.find((activity) => activity.id === selectedActivityId) ?? null
+      : null;
 
   if (withCoords.length === 0) {
     return (
@@ -1235,7 +1231,7 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
                 onClick={() => setSelectedActivityId(activity.id)}
                 className={[
                   "w-full rounded-2xl border bg-white p-4 text-left transition",
-                  selectedActivityId === activity.id
+                  activeCardId === activity.id
                     ? "border-bluePrimary shadow-[0_0_0_2px_rgba(40,109,255,0.12)]"
                     : "border-[#E2E8F0] hover:border-[#BFD0FF]",
                 ].join(" ")}

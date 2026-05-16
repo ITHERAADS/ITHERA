@@ -471,6 +471,33 @@ export const BudgetDashboard: FC<Props> = ({
     ])
   }
 
+  const findReceiptRelatedExpenseId = useCallback((
+    debtorUserId: string,
+    creditorUserId: string,
+    receiptAmount: number,
+  ): string | null => {
+    const entries = (dashboard?.expenses ?? [])
+      .map((expense) => {
+        if (String(expense.paidByUserId) !== String(creditorUserId)) return null
+        const splitShare = Number(expense.splitAmounts?.[debtorUserId] ?? 0)
+        if (!Number.isFinite(splitShare) || splitShare <= 0) return null
+        const createdAt = new Date(expense.createdAt ?? expense.expenseDate ?? 0).getTime()
+        return {
+          id: String(expense.id),
+          splitShare,
+          createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+        }
+      })
+      .filter((item): item is { id: string; splitShare: number; createdAt: number } => item !== null)
+      .sort((left, right) => {
+        const amountDiff = Math.abs(left.splitShare - receiptAmount) - Math.abs(right.splitShare - receiptAmount)
+        if (amountDiff !== 0) return amountDiff
+        return right.createdAt - left.createdAt
+      })
+
+    return entries[0]?.id ?? null
+  }, [dashboard?.expenses])
+
 
   const totalBudget = dashboard?.summary.totalBudget ?? 0
   const comprometido = dashboard?.summary.committed ?? 0
@@ -809,7 +836,7 @@ export const BudgetDashboard: FC<Props> = ({
 
             const pdfName = payload.fileName.replace(/\.txt$/i, '.pdf')
             const file = new File([receiptBlob], pdfName, { type: 'application/pdf' })
-            await documentsService.upload(
+            const uploadedDocument = await documentsService.upload(
               groupId,
               file,
               'otro',
@@ -828,7 +855,18 @@ export const BudgetDashboard: FC<Props> = ({
               },
               accessToken,
             )
-            await loadDashboard()
+            const relatedExpenseId = findReceiptRelatedExpenseId(
+              payload.debtor_user_id,
+              payload.creditor_user_id,
+              payload.amount,
+            )
+            if (relatedExpenseId) {
+              await contextLinksService.create(groupId, {
+                source: { type: 'document', id: uploadedDocument.id },
+                target: { type: 'expense', id: relatedExpenseId },
+              }, accessToken)
+            }
+            await Promise.all([loadDashboard(), loadContextLinks()])
           } catch (err) {
             setError(toUserMessage(err, 'No se pudo generar el recibo de cobro'))
           } finally {

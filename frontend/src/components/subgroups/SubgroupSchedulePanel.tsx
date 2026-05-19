@@ -453,6 +453,14 @@ const memberName = (membership: SubgroupMembership) =>
   membership.usuarios?.email ||
   `Usuario ${membership.user_id}`;
 
+const membershipUserId = (membership: SubgroupMembership) =>
+  String(
+    membership.user_id ??
+      membership.user?.id_usuario ??
+      membership.usuarios?.id_usuario ??
+      "",
+  );
+
 const initials = (name: string) => {
   const parts = name.trim().split(/\s+/).slice(0, 2);
   return parts.map((part) => part[0]?.toUpperCase()).join("") || "?";
@@ -1161,6 +1169,20 @@ export function SubgroupSchedulePanel({
     const linked =
       activityId != null ? getLinksForSubgroupActivity(activityId) : [];
     const slot = slots.find((item) => item.id === slotId);
+    const activitySubgroup =
+      activityId != null && slot
+        ? slot.subgroups.find((subgroup) =>
+            subgroup.activities.some((activity) => activity.id === activityId),
+          ) ?? null
+        : null;
+    const scopedMemberIds =
+      activitySubgroup?.members
+        .map((membership) => membershipUserId(membership))
+        .filter((id) => id.length > 0) ?? [];
+    const initialMemberIds =
+      scopedMemberIds.length > 0
+        ? scopedMemberIds
+        : safeMemberOptions.map((member) => member.id);
     setActivityDraft(slotId, {
       selectedExpenseIds:
         activityId != null
@@ -1182,10 +1204,12 @@ export function SubgroupSchedulePanel({
       quickExpenseDate: slot
         ? toLocalInputValue(slot.starts_at).slice(0, 10)
         : todayValue(),
-      quickExpensePaidBy: defaultExpensePayer,
+      quickExpensePaidBy: initialMemberIds.includes(defaultExpensePayer)
+        ? defaultExpensePayer
+        : (initialMemberIds[0] ?? defaultExpensePayer),
       quickExpenseSplitType: "equitativa",
       quickExpenseSplitAmounts: {},
-      quickExpenseMemberIds: safeMemberOptions.map((member) => member.id),
+      quickExpenseMemberIds: initialMemberIds,
       quickDocumentFile: null,
       quickDocumentCategory: "actividad",
       quickDocumentNotes: "",
@@ -1363,6 +1387,26 @@ export function SubgroupSchedulePanel({
     slotId: number,
   ): Promise<string | null> => {
     const draft = activityDraftBySlot[slotId];
+    const slot = slots.find((item) => item.id === slotId);
+    const scopedSubgroup =
+      draftActionModal?.activityId != null
+        ? slot?.subgroups.find((item) =>
+            item.activities.some(
+              (activity) => activity.id === draftActionModal.activityId,
+            ),
+          ) ?? null
+        : null;
+    const scopedMemberIds = new Set(
+      (scopedSubgroup?.members ?? [])
+        .map((membership) => membershipUserId(membership))
+        .filter((id) => id.length > 0),
+    );
+    const selectedMemberIds =
+      scopedMemberIds.size > 0
+        ? (draft?.quickExpenseMemberIds ?? []).filter((memberId) =>
+            scopedMemberIds.has(memberId),
+          )
+        : (draft?.quickExpenseMemberIds ?? []);
     const shouldCreateExpense =
       (draft?.quickExpenseAmount ?? "").trim().length > 0 ||
       (draft?.quickExpenseDescription ?? "").trim().length > 0;
@@ -1383,8 +1427,15 @@ export function SubgroupSchedulePanel({
       setError("Selecciona quien pagara el gasto.");
       return null;
     }
-    if ((draft?.quickExpenseMemberIds ?? []).length === 0) {
+    if (selectedMemberIds.length === 0) {
       setError("Selecciona al menos una persona para el gasto.");
+      return null;
+    }
+    if (
+      scopedMemberIds.size > 0 &&
+      !scopedMemberIds.has(String(draft?.quickExpensePaidBy ?? ""))
+    ) {
+      setError("El pagador debe pertenecer al subgrupo de la actividad.");
       return null;
     }
     const splitError = getDraftExpenseSplitError(draft);
@@ -1404,11 +1455,11 @@ export function SubgroupSchedulePanel({
         description: draft.quickExpenseDescription.trim(),
         category: draft.quickExpenseCategory,
         split_type: draft.quickExpenseSplitType,
-        member_ids: draft.quickExpenseMemberIds,
+        member_ids: selectedMemberIds,
         split_amounts:
           draft.quickExpenseSplitType === "personalizada"
             ? Object.fromEntries(
-                draft.quickExpenseMemberIds.map((memberId) => [
+                selectedMemberIds.map((memberId) => [
                   memberId,
                   parseFloat(draft.quickExpenseSplitAmounts[memberId] ?? "0") ||
                     0,
@@ -1416,6 +1467,8 @@ export function SubgroupSchedulePanel({
               )
             : undefined,
         expense_date: draft.quickExpenseDate || todayValue(),
+        subgroup_id:
+          scopedSubgroup?.id != null ? String(scopedSubgroup.id) : undefined,
       },
       accessToken,
     );
@@ -2070,6 +2123,30 @@ export function SubgroupSchedulePanel({
   const modalSlotId = draftActionModal?.slotId ?? null;
   const modalDraft =
     modalSlotId != null ? activityDraftBySlot[modalSlotId] : null;
+  const expenseScopeMembers = useMemo(() => {
+    if (modalSlotId == null) return safeMemberOptions;
+    const slot = slots.find((item) => item.id === modalSlotId);
+    if (!slot) return safeMemberOptions;
+
+    const subgroup =
+      draftActionModal?.activityId != null
+        ? slot.subgroups.find((item) =>
+            item.activities.some(
+              (activity) => activity.id === draftActionModal.activityId,
+            ),
+          ) ?? null
+        : null;
+
+    const scopedIds = new Set(
+      (subgroup?.members ?? [])
+        .map((membership) => membershipUserId(membership))
+        .filter((id) => id.length > 0),
+    );
+    const scopedMembers = safeMemberOptions.filter((member) =>
+      scopedIds.has(member.id),
+    );
+    return scopedMembers.length > 0 ? scopedMembers : safeMemberOptions;
+  }, [draftActionModal?.activityId, modalSlotId, safeMemberOptions, slots]);
   const slotModalSaving = actionBusyKey === "slot";
   const subgroupCreateSaving =
     subgroupModal?.mode === "create" &&
@@ -3986,9 +4063,9 @@ export function SubgroupSchedulePanel({
             splitAmounts={modalDraft?.quickExpenseSplitAmounts ?? {}}
             selectedMemberIds={
               modalDraft?.quickExpenseMemberIds ??
-              safeMemberOptions.map((member) => member.id)
+              expenseScopeMembers.map((member) => member.id)
             }
-            members={safeMemberOptions}
+            members={expenseScopeMembers}
             onAmountChange={(value) =>
               modalSlotId != null &&
               setActivityDraft(modalSlotId, { quickExpenseAmount: value })

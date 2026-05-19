@@ -5,6 +5,7 @@ const EMAIL_REGEX = /^(?!.*\.\.)(?!.*@.*\.\.)(?!.*@-)(?!.*-\.)[A-Za-z0-9](?:[A-Z
 const PASSWORD_REGEX = /^(?=.*[a-záéíóúñ])(?=.*[A-ZÁÉÍÓÚÑ])(?=.*\d).{8,}$/;
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
+const FORGOT_PASSWORD_MIN_RESPONSE_MS = 1200;
 
 type LoginAttemptState = {
   failedAttempts: number;
@@ -37,6 +38,14 @@ function clearExpiredLoginLock(key: string, state?: LoginAttemptState): void {
     loginAttempts.delete(key);
   }
 }
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const enforceForgotPasswordConstantTime = async (startedAt: number): Promise<void> => {
+  const elapsed = Date.now() - startedAt;
+  const remaining = FORGOT_PASSWORD_MIN_RESPONSE_MS - elapsed;
+  if (remaining > 0) await sleep(remaining);
+};
 
 const multer = require('multer');
 
@@ -348,6 +357,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 });
 
 router.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
+  const startedAt = Date.now();
   try {
     const { email } = req.body as { email?: string };
 
@@ -374,6 +384,7 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
     const { error } = await AuthService.forgotPassword({ email: normalizedEmail });
 
     if (error) {
+      await enforceForgotPasswordConstantTime(startedAt);
       res.status(400).json({
         ok: false,
         error: error.message,
@@ -381,6 +392,7 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
       return;
     }
 
+    await enforceForgotPasswordConstantTime(startedAt);
     res.status(200).json({
       ok: true,
       message:
@@ -388,6 +400,7 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
+    await enforceForgotPasswordConstantTime(startedAt);
     res.status(500).json({
       ok: false,
       error: 'Error interno del servidor',

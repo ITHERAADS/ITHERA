@@ -61,6 +61,17 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
+function toSpanishSecurityCooldownMessage(message: string) {
+  const normalized = message.trim();
+  const match = normalized.match(
+    /For security purposes, you can only request this after (\d+) seconds\.?/i,
+  );
+  if (match) {
+    return `Por seguridad, solo puedes solicitarlo de nuevo en ${match[1]} segundos.`;
+  }
+  return message;
+}
+
 const REGISTER_DRAFT_STORAGE_KEY = "ithera_register_step_1_draft";
 const REGISTER_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -417,10 +428,11 @@ export function RegisterPage() {
           7000,
         );
       } else {
-        const message =
+        const message = toSpanishSecurityCooldownMessage(
           err instanceof ApiError
             ? (err.payload?.error ?? err.message)
-            : "No se pudo registrar la cuenta. Inténtalo de nuevo.";
+            : "No se pudo registrar la cuenta. Inténtalo de nuevo.",
+        );
         setIsSuccessMessage(false);
         setServerMessage(message);
       }
@@ -504,7 +516,7 @@ export function RegisterPage() {
                     setServerMessage("");
                     await loginWithGoogle();
                   } catch (err) {
-                    const message = err instanceof Error ? err.message : "No se pudo iniciar sesión con Google";
+                    const message = toSpanishSecurityCooldownMessage(err instanceof Error ? err.message : "No se pudo iniciar sesión con Google");
                     setIsSuccessMessage(false);
                     setServerMessage(message);
                   }
@@ -522,7 +534,7 @@ export function RegisterPage() {
                     setServerMessage("");
                     await loginWithFacebook();
                   } catch (err) {
-                    const message = err instanceof Error ? err.message : "No se pudo iniciar sesión con Facebook";
+                    const message = toSpanishSecurityCooldownMessage(err instanceof Error ? err.message : "No se pudo iniciar sesión con Facebook");
                     setIsSuccessMessage(false);
                     setServerMessage(message);
                   }
@@ -759,3 +771,7 @@ export function RegisterPage() {
     </div>
   );
 }
+
+
+
+

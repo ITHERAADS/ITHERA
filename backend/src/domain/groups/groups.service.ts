@@ -69,6 +69,34 @@ const daysBetweenISO = (startDate: string, endDate: string): number | null => {
   return Math.round((end.getTime() - start.getTime()) / millisecondsPerDay);
 };
 
+
+const normalizeComparableTripName = (value: string): string =>
+  value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('es-MX');
+
+const ensureUserHasNoTripWithSameName = async (usuarioId: string | number, nombre: string): Promise<void> => {
+  const comparableName = normalizeComparableTripName(nombre);
+
+  const { data, error } = await supabase
+    .from('grupos_viaje')
+    .select('id,nombre,estado')
+    .eq('creado_por', Number(usuarioId))
+    .in('estado', ['activo', 'borrador']);
+
+  if (error) throw new Error(error.message);
+
+  const duplicate = (data ?? []).find((group) =>
+    typeof group.nombre === 'string' &&
+    normalizeComparableTripName(group.nombre) === comparableName
+  );
+
+  if (duplicate) {
+    throw Object.assign(
+      new Error('ERR-23-005: Ya tienes un viaje con ese nombre. Elige un nombre diferente para distinguirlos.'),
+      { statusCode: 409, code: 'DUPLICATE_TRIP_NAME', errorCode: 'ERR-23-005' }
+    );
+  }
+};
+
 const validateTripDateRange = (startDate?: string | null, endDate?: string | null) => {
   if (!startDate || !endDate) return;
 
@@ -616,6 +644,7 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
   }
 
   validateTripDateRange(payload.fecha_inicio ?? null, payload.fecha_fin ?? null);
+  await ensureUserHasNoTripWithSameName(usuarioId, nombre);
   await ensureUserHasAvailableDates(usuarioId, payload.fecha_inicio ?? null, payload.fecha_fin ?? null, 'create');
 
   const { data: grupo, error: groupError } = await supabase

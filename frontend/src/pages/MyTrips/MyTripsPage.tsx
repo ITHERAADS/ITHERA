@@ -4,6 +4,7 @@ import { AppLayout } from '../../components/layout/AppLayout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { useSocket } from '../../hooks/useSocket'
 import { groupsService, saveCurrentGroup } from '../../services/groups'
+import { isNetworkError } from '../../services/apiClient'
 import type { GroupHistoryItem } from '../../types/groups'
 
 // ── Date helper ───────────────────────────────────────────────────────────────
@@ -162,9 +163,22 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
   const [info, setInfo]       = useState('')
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
   const { accessToken }       = useAuth()
 
+  useEffect(() => {
+    const updateOnlineState = () => setIsOffline(typeof navigator !== 'undefined' && !navigator.onLine)
+    window.addEventListener('online', updateOnlineState)
+    window.addEventListener('offline', updateOnlineState)
+    updateOnlineState()
+    return () => {
+      window.removeEventListener('online', updateOnlineState)
+      window.removeEventListener('offline', updateOnlineState)
+    }
+  }, [])
+
   const handleJoin = async () => {
+    if (isOffline) return setError('Sin conexión. Podrás unirte con código cuando recuperes internet.')
     if (!code.trim()) return setError('Ingresa un código de invitación.')
     setError('')
     setInfo('')
@@ -186,7 +200,7 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
       saveCurrentGroup(response.group)
       onJoined()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Código inválido o expirado.')
+      setError(isNetworkError(e) ? 'Sin conexión. Podrás unirte con código cuando recuperes internet.' : e instanceof Error ? e.message : 'Código inválido o expirado.')
     } finally {
       setLoading(false)
     }
@@ -199,19 +213,25 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
           type="text"
           value={code}
           onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(''); setInfo('') }}
-          onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+          onKeyDown={(e) => e.key === 'Enter' && !isOffline && handleJoin()}
+          disabled={isOffline}
           placeholder="Ej: ABCD1234"
           maxLength={8}
           className="flex-1 font-body text-sm text-[#1E0A4E] placeholder-gray-400 border border-[#E2E8F0] rounded-xl px-4 py-2.5 outline-none focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10 tracking-widest uppercase bg-white"
         />
         <button
           onClick={handleJoin}
-          disabled={loading}
+          disabled={loading || isOffline}
           className="font-body text-sm font-semibold bg-[#1E0A4E] text-white rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity disabled:opacity-50 whitespace-nowrap"
         >
           {loading ? 'Uniéndome…' : 'Unirme'}
         </button>
       </div>
+      {isOffline && (
+        <p className="rounded-xl bg-[#FFFBEB] px-4 py-3 font-body text-xs text-[#92400E]">
+          Sin conexión — modo lectura activo. Esta acción estará disponible al recuperar conexión.
+        </p>
+      )}
       {error && <p className="font-body text-xs text-red-500">{error}</p>}
       {info && (
         <p className="rounded-xl bg-[#FFF8E6] px-4 py-3 font-body text-xs text-[#8A5A00]">

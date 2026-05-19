@@ -40,16 +40,22 @@ export class ApiError extends Error {
  * Usado para implementar el comportamiento ERR-NET-02.
  */
 export function isNetworkError(err: unknown): boolean {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return true;
   if (!(err instanceof Error)) return false;
-  // TypeError es lo que lanza fetch cuando no hay red ("Failed to fetch", "NetworkError", etc.)
-  if (!(err instanceof TypeError)) return false;
-  // Verificación adicional por nombre de mensaje para mayor robustez entre navegadores
   const msg = err.message.toLowerCase();
   return (
+    err instanceof TypeError ||
     msg.includes("failed to fetch") ||
     msg.includes("network") ||
-    msg.includes("networkerror") ||
-    !navigator.onLine
+    msg.includes("networkerror")
+  );
+}
+
+function buildNetworkError(): ApiError {
+  return new ApiError(
+    "Sin conexión. Verifica tu red e inténtalo de nuevo.",
+    0,
+    { ok: false, code: "ERR-NET", error: "Sin conexión. Verifica tu red e inténtalo de nuevo." },
   );
 }
 
@@ -105,11 +111,18 @@ async function request<T>(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    if (isNetworkError(err)) throw buildNetworkError();
+    throw err;
+  }
 
   const parsed = await parseResponseBody(response);
 
@@ -137,11 +150,18 @@ async function upload<T>(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    method: "PATCH",
-    headers,
-    body: formData,
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method: "PATCH",
+      headers,
+      body: formData,
+    });
+  } catch (err) {
+    if (isNetworkError(err)) throw buildNetworkError();
+    throw err;
+  }
 
   const parsed = await parseResponseBody(response);
 

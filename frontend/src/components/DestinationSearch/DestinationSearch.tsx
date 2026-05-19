@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { isNetworkError } from '../../services/apiClient'
 import {
   mapsService,
   type GeocodingResult,
@@ -32,7 +33,23 @@ export function DestinationSearch({
   const [selecting, setSelecting] = useState(false)
   const [localError, setLocalError] = useState('')
   const [selected, setSelected] = useState(false)
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
   const debounceRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const updateOnlineState = () => {
+      const offline = typeof navigator !== 'undefined' && !navigator.onLine
+      setIsOffline(offline)
+      if (!offline) setLocalError((current) => current.startsWith('Sin conexión') ? '' : current)
+    }
+    window.addEventListener('online', updateOnlineState)
+    window.addEventListener('offline', updateOnlineState)
+    updateOnlineState()
+    return () => {
+      window.removeEventListener('online', updateOnlineState)
+      window.removeEventListener('offline', updateOnlineState)
+    }
+  }, [])
 
   useEffect(() => {
     setSearch(value)
@@ -50,6 +67,13 @@ export function DestinationSearch({
       return
     }
 
+    if (isOffline) {
+      setSuggestions([])
+      setLoading(false)
+      setLocalError('Sin conexión. El destino se podrá buscar cuando recuperes internet.')
+      return
+    }
+
     if (disabled) return
     if (!token) {
       setSuggestions([])
@@ -64,7 +88,7 @@ export function DestinationSearch({
         const response = await mapsService.autocompletePlaces(search.trim(), token)
         setSuggestions(response.data ?? [])
       } catch (err) {
-        setLocalError(err instanceof Error ? err.message : 'No se pudieron cargar sugerencias.')
+        setLocalError(isNetworkError(err) ? 'Sin conexión. El destino se podrá buscar cuando recuperes internet.' : err instanceof Error ? err.message : 'No se pudieron cargar sugerencias.')
         setSuggestions([])
       } finally {
         setLoading(false)
@@ -74,12 +98,17 @@ export function DestinationSearch({
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current)
     }
-  }, [search, selected, token, disabled, lockedValue])
+  }, [search, selected, token, disabled, lockedValue, isOffline])
 
   const handleSelectSuggestion = async (suggestion: PlaceAutocompleteResult) => {
     if (disabled || lockedValue) return
     if (!token) {
       setLocalError('Tu sesión expiró. Vuelve a iniciar sesión.')
+      return
+    }
+
+    if (isOffline) {
+      setLocalError('Sin conexión. Selecciona el destino cuando recuperes internet.')
       return
     }
 
@@ -106,7 +135,7 @@ export function DestinationSearch({
       setSuggestions([])
       onChange(finalValue, geo)
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'No se pudo seleccionar el destino.')
+      setLocalError(isNetworkError(err) ? 'Sin conexión. Selecciona el destino cuando recuperes internet.' : err instanceof Error ? err.message : 'No se pudo seleccionar el destino.')
     } finally {
       setSelecting(false)
     }

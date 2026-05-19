@@ -26,7 +26,19 @@ export function OTPPage() {
   const [showSpamHelp, setShowSpamHelp] = useState(false);
   const [resendCooldownLeft, setResendCooldownLeft] = useState(0);
   const [resendAttemptsUsed, setResendAttemptsUsed] = useState(0);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
   const inputRefs = useRef<(HTMLInputElement | null)[]>(Array(6).fill(null));
+
+  useEffect(() => {
+    const updateOnlineState = () => setIsOffline(typeof navigator !== "undefined" && !navigator.onLine);
+    window.addEventListener("online", updateOnlineState);
+    window.addEventListener("offline", updateOnlineState);
+    updateOnlineState();
+    return () => {
+      window.removeEventListener("online", updateOnlineState);
+      window.removeEventListener("offline", updateOnlineState);
+    };
+  }, []);
 
   useEffect(() => {
     if (!email) {
@@ -42,12 +54,12 @@ export function OTPPage() {
   }, [verified, accessToken, navigate]);
 
   useEffect(() => {
-    if (secondsLeft <= 0) return;
+    if (secondsLeft <= 0 || isOffline) return;
     const id = window.setInterval(() => {
       setSecondsLeft((s) => (s <= 1 ? 0 : s - 1));
     }, 1000);
     return () => window.clearInterval(id);
-  }, [secondsLeft]);
+  }, [secondsLeft, isOffline]);
 
   useEffect(() => {
     if (resendCooldownLeft <= 0) return;
@@ -137,7 +149,12 @@ export function OTPPage() {
   };
 
   const handleSubmit = async () => {
-    if (!isComplete || loading || inputsDisabled) return;
+    if (!isComplete || loading || inputsDisabled || isOffline) {
+      if (isOffline) {
+        setError("Sin conexión. El código se verificará cuando vuelvas a tener internet.");
+      }
+      return;
+    }
 
     if (otpExpired) {
       setError("El código ha expirado. Solicita uno nuevo para continuar.");
@@ -155,7 +172,15 @@ export function OTPPage() {
       });
       if (otpError) throw otpError;
       setVerified(true);
-    } catch {
+    } catch (err) {
+      const networkError = !navigator.onLine || (err instanceof Error && err.message.toLowerCase().includes("failed to fetch"));
+
+      if (networkError) {
+        setError("Sin conexión. El código se verificará cuando vuelvas a tener internet.");
+        setLoading(false);
+        return;
+      }
+
       const nextAttemptsLeft = Math.max(0, attemptsLeft - 1);
 
       setAttemptsLeft(nextAttemptsLeft);
@@ -181,6 +206,11 @@ export function OTPPage() {
 
   const handleResend = async () => {
     if (!canRequestNewCode) return;
+
+    if (isOffline) {
+      setError("Sin conexión. No se pudo reenviar el código. Inténtalo de nuevo cuando recuperes internet.");
+      return;
+    }
 
     setError("");
     setResendCooldownLeft(RESEND_COOLDOWN_SECONDS);
@@ -347,6 +377,13 @@ export function OTPPage() {
             </div>
 
             {/* Inline error */}
+            {isOffline && (
+              <div className="mb-4 rounded-2xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-center">
+                <p className="text-[12px] font-semibold text-[#92400E]">Sin conexión — modo lectura activo</p>
+                <p className="mt-1 text-[12px] text-[#92400E]">Conservamos el código ingresado y pausamos el contador hasta recuperar internet.</p>
+              </div>
+            )}
+
             {error && (
               <p className="mb-4 text-center text-[12px] text-[#EF4444]">
                 {error}
@@ -357,7 +394,7 @@ export function OTPPage() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={!isComplete || loading || verified || otpLocked || otpExpired}
+              disabled={!isComplete || loading || verified || otpLocked || otpExpired || isOffline}
               className="h-[54px] w-full rounded-full bg-[linear-gradient(90deg,#7A4FD6_0%,#6D46D4_35%,#6E45E6_65%,#5B35D5_100%)] text-[18px] font-bold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {loading || verified ? "Verificando..." : "Verificar"}
@@ -368,9 +405,9 @@ export function OTPPage() {
               <button
                 type="button"
                 onClick={handleResend}
-                disabled={!canRequestNewCode}
+                disabled={!canRequestNewCode || isOffline}
                 className={`text-[14px] font-medium transition ${
-                  canRequestNewCode
+                  canRequestNewCode && !isOffline
                     ? "text-[#7A4FD6] hover:opacity-80"
                     : "cursor-not-allowed text-[#C4C9D4]"
                 }`}

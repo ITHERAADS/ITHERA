@@ -722,7 +722,7 @@ export function CreateGroupPage() {
 
         <div className="relative max-w-2xl mx-auto px-4 py-8">
           <button
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate("/my-trips")}
             className="flex items-center gap-1.5 font-body text-sm text-[#1E6FD9] hover:underline mb-6"
           >
             <svg
@@ -1043,7 +1043,17 @@ export function CreateGroupPage() {
               </div>
             )}
 
-            {/* Create Button */}
+            {/* Actions */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[0.8fr_1.2fr]">
+              <button
+                type="button"
+                onClick={() => navigate("/my-trips")}
+                disabled={loading}
+                className="w-full rounded-xl border border-[#E2E8F0] bg-white px-6 py-4 font-body text-sm font-medium text-[#1E0A4E] transition hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
             <button
               onClick={handleCreate}
               disabled={loading || !isFormValid || isOffline}
@@ -1123,6 +1133,7 @@ export function CreateGroupPage() {
                 </>
               )}
             </button>
+            </div>
             {serverError && (
               <StandardInlineAlert
                 title="No se puede crear el grupo"

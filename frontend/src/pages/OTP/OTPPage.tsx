@@ -165,12 +165,44 @@ export function OTPPage() {
     setError("");
     try {
       setLoading(true);
-      const { error: otpError } = await supabase.auth.verifyOtp({
+      const token = digits.join("");
+      const { data: signupData, error: signupError } = await supabase.auth.verifyOtp({
         email,
-        token: digits.join(""),
+        token,
         type: "signup",
       });
-      if (otpError) throw otpError;
+
+      if (signupError) {
+        const message = signupError.message?.toLowerCase?.() ?? "";
+        const canRetryAsEmailOtp =
+          message.includes("invalid") ||
+          message.includes("expired") ||
+          message.includes("token") ||
+          message.includes("otp");
+
+        if (!canRetryAsEmailOtp) throw signupError;
+
+        const { data: emailData, error: emailError } = await supabase.auth.verifyOtp({
+          email,
+          token,
+          type: "email",
+        });
+
+        if (emailError) throw emailError;
+
+        if (emailData.session) {
+          await supabase.auth.setSession({
+            access_token: emailData.session.access_token,
+            refresh_token: emailData.session.refresh_token,
+          });
+        }
+      } else if (signupData.session) {
+        await supabase.auth.setSession({
+          access_token: signupData.session.access_token,
+          refresh_token: signupData.session.refresh_token,
+        });
+      }
+
       setVerified(true);
     } catch (err) {
       const networkError = !navigator.onLine || (err instanceof Error && err.message.toLowerCase().includes("failed to fetch"));

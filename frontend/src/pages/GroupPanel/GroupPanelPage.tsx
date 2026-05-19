@@ -218,6 +218,11 @@ export function GroupPanelPage() {
       grupoId?: string | number;
       groupId?: string | number;
       tipo?: string;
+      metadata?: {
+        targetUsuarioId?: string | number;
+        memberId?: string | number;
+        [key: string]: unknown;
+      };
     }) => {
       const payloadGroupId = payload.grupoId ?? payload.groupId;
       if (
@@ -233,9 +238,22 @@ export function GroupPanelPage() {
         return;
       }
 
+      const targetUsuarioId = payload.metadata?.targetUsuarioId;
+      const affectsCurrentUser =
+        targetUsuarioId !== undefined &&
+        String(targetUsuarioId) === String(localUser?.id_usuario);
+
+      if (payload.tipo === "miembro_eliminado" && affectsCurrentUser) {
+        clearCurrentGroup();
+        alert("Fuiste removido de este viaje. Te regresamos a Mis viajes.");
+        navigate("/my-trips");
+        return;
+      }
+
       if (
         payload.tipo === "miembro_agregado" ||
         payload.tipo === "miembro_eliminado" ||
+        payload.tipo === "miembro_actualizado" ||
         payload.tipo === "rol_actualizado" ||
         payload.tipo === "solicitud_union_creada" ||
         payload.tipo === "solicitud_union_resuelta" ||
@@ -257,7 +275,7 @@ export function GroupPanelPage() {
       socket.off("group_members_updated", handleRealtime);
       socket.off("group_deleted", handleRealtime);
     };
-  }, [groupId, loadData, navigate, socket]);
+  }, [groupId, loadData, localUser?.id_usuario, navigate, socket]);
 
   const inviteMembers: InviteMember[] = useMemo(
     () =>
@@ -283,6 +301,7 @@ export function GroupPanelPage() {
     try {
       setRoleChangeLoading(true);
       const nextRole = member.rol === "admin" ? "viajero" : "admin";
+
       await groupsService.updateMemberRole(member.id, nextRole, accessToken);
 
       const refreshed = await groupsService.getMembers(group.id, accessToken);
@@ -805,11 +824,11 @@ export function GroupPanelPage() {
             </h3>
             <p className="mt-2 font-body text-sm leading-relaxed text-[#475569]">
               {roleChangeTarget.rol === "admin"
-                ? `Confirmas que quieres cambiar a ${roleChangeTarget.nombre || roleChangeTarget.email} a viajero?`
-                : `Confirmas que quieres hacer admin a ${roleChangeTarget.nombre || roleChangeTarget.email}?`}
+                ? `¿Confirmas que quieres cambiar a ${roleChangeTarget.nombre || roleChangeTarget.email} a viajero?`
+                : `¿Confirmas que quieres delegar la administración a ${roleChangeTarget.nombre || roleChangeTarget.email}? Tu rol cambiará a Viajero para mantener un único organizador activo.`}
             </p>
             <p className="mt-2 font-body text-xs text-[#64748B]">
-              Este cambio afecta permisos de administracion del grupo.
+              Este cambio afecta los permisos de administración del grupo y se sincroniza para todos los integrantes.
             </p>
 
             <div className="mt-5 flex items-center justify-end gap-2">

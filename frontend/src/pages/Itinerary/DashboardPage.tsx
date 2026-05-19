@@ -1598,6 +1598,18 @@ interface ProposalCommentSocketPayload {
   commentId?: number | string | null;
 }
 
+const isAccessDeniedError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const status = (error as { status?: number }).status;
+  const message = error.message.toLowerCase();
+  return (
+    status === 403 ||
+    message.includes("no perteneces") ||
+    message.includes("acceso") ||
+    message.includes("forbidden")
+  );
+};
+
 const normalizeRealtimeProposalComment = (
   raw: Record<string, unknown> | null | undefined,
 ): ProposalComment | null => {
@@ -1932,6 +1944,11 @@ export function DashboardPage() {
       try {
         setIsLoading(true);
 
+        await withTimeout(
+          groupsService.getGroupDetails(resolvedGroupId, accessToken),
+          DASHBOARD_AUX_REQUEST_TIMEOUT_MS,
+        );
+
         const itineraryRes = await withTimeout(
           groupsService.getItinerary(resolvedGroupId, accessToken),
           DASHBOARD_MAIN_REQUEST_TIMEOUT_MS,
@@ -2035,6 +2052,12 @@ export function DashboardPage() {
         }
       } catch (error) {
         console.error("Error cargando dashboard:", error);
+        if (isAccessDeniedError(error)) {
+          clearCurrentGroup();
+          alert("Ya no tienes acceso a este viaje. Te regresamos a Mis viajes.");
+          navigate("/my-trips");
+          return;
+        }
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -2064,6 +2087,11 @@ export function DashboardPage() {
       (currentGroup?.id ? String(currentGroup.id) : null);
 
     if (!resolvedGroupId || !accessToken) return;
+
+    await withTimeout(
+      groupsService.getGroupDetails(resolvedGroupId, accessToken),
+      DASHBOARD_AUX_REQUEST_TIMEOUT_MS,
+    );
 
     const itineraryRes = await withTimeout(
       groupsService.getItinerary(resolvedGroupId, accessToken),
@@ -2253,6 +2281,15 @@ export function DashboardPage() {
         navigate("/my-trips");
         return;
       }
+
+      const targetUsuarioId = payload?.metadata?.targetUsuarioId;
+      if (tipo === "miembro_eliminado" && targetUsuarioId !== undefined && String(targetUsuarioId) === String(localUser?.id_usuario)) {
+        clearCurrentGroup();
+        alert("Fuiste removido de este viaje. Te regresamos a Mis viajes.");
+        navigate("/my-trips");
+        return;
+      }
+
       scheduleCollaborativeRefresh(payload);
     };
 
@@ -2283,6 +2320,7 @@ export function DashboardPage() {
     expandedCommentsProposalId,
     refreshCommentsForProposal,
     navigate,
+    localUser?.id_usuario,
   ]);
 
   useEffect(() => {

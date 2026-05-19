@@ -10,6 +10,7 @@ import type {
   GroupInvitation,
   GroupJoinRequest,
   GroupTravelContext,
+  AdminDelegationRequest,
 } from '../types/groups'
 import type { Activity } from '../components/ui/DayView/DayView'
 
@@ -122,7 +123,7 @@ export const groupsService = {
   },
 
   updateMemberRole: async (memberId: string, rol: 'admin' | 'viajero', token: string) => {
-    return apiClient.patch<{ ok: boolean }>(
+    return apiClient.patch<{ ok: boolean; member?: GroupMember & { pendingDelegation?: boolean; delegationRequest?: AdminDelegationRequest } }>(
       `/groups/members/${memberId}/role`,
       { rol },
       token
@@ -132,6 +133,27 @@ export const groupsService = {
   removeMember: async (groupId: string, memberId: string, token: string) => {
     return apiClient.delete<{ ok: boolean; message: string }>(
       `/groups/${groupId}/members/${memberId}`,
+      token
+    )
+  },
+
+
+  getAdminDelegations: async (groupId: string, token: string) => {
+    return apiClient.get<{ ok: boolean; requests: AdminDelegationRequest[] }>(
+      `/groups/${groupId}/admin-delegations`,
+      token
+    )
+  },
+
+  resolveAdminDelegation: async (
+    groupId: string,
+    requestId: string,
+    action: 'accept' | 'reject',
+    token: string
+  ) => {
+    return apiClient.patch<{ ok: boolean; message: string; request: AdminDelegationRequest; member?: GroupMember | null }>(
+      `/groups/${groupId}/admin-delegations/${requestId}`,
+      { action },
       token
     )
   },

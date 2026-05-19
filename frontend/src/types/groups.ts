@@ -130,6 +130,22 @@ export interface GroupJoinRequest {
   avatar_url?: string | null
 }
 
+
+export interface AdminDelegationRequest {
+  id: string
+  group_id: string
+  from_user_id: string
+  to_user_id: string
+  status: 'pendiente' | 'aceptada' | 'rechazada' | 'expirada' | 'cancelada'
+  expires_at: string
+  created_at?: string
+  updated_at?: string
+  from_nombre?: string | null
+  from_email?: string | null
+  to_nombre?: string | null
+  to_email?: string | null
+}
+
 export interface GroupInvitation {
   id: string
   email: string

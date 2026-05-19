@@ -16,6 +16,7 @@ import type {
   GroupInvitation,
   GroupJoinRequest,
   GroupMember,
+  AdminDelegationRequest,
 } from "../../types/groups";
 
 type InviteMember = {
@@ -69,6 +70,9 @@ export function GroupPanelPage() {
     null,
   );
   const [roleChangeLoading, setRoleChangeLoading] = useState(false);
+  const [adminDelegations, setAdminDelegations] = useState<AdminDelegationRequest[]>([]);
+  const [delegationActionLoading, setDelegationActionLoading] = useState<string | null>(null);
+  const [joinRequestActionLoading, setJoinRequestActionLoading] = useState<string | null>(null);
 
   const groupId = searchParams.get("groupId") || group?.id || "";
 
@@ -76,13 +80,19 @@ export function GroupPanelPage() {
     (member) => String(member.usuario_id) === String(localUser?.id_usuario),
   );
 
-  const isAdmin = currentMember?.rol === "admin" || group?.myRole === "admin";
+  const isAdmin = currentMember ? currentMember.rol === "admin" : group?.myRole === "admin";
   const isReadOnly = isClosedGroup(group);
   const canManageGroup = isAdmin && !isReadOnly;
   const isPrivateGroup = group?.es_publico !== true;
   const maxMembers = Number(group?.maximo_miembros ?? 0);
   const hasReachedCapacity = maxMembers > 0 && members.length >= maxMembers;
   const canInviteGroup = canManageGroup && !hasReachedCapacity;
+  const incomingAdminDelegation = adminDelegations.find(
+    (request) => String(request.to_user_id) === String(localUser?.id_usuario),
+  );
+  const outgoingAdminDelegation = adminDelegations.find(
+    (request) => String(request.from_user_id) === String(localUser?.id_usuario),
+  );
   const loadAdminData = useCallback(
     async (targetGroup: Group | null, targetMembers: GroupMember[]) => {
       if (!accessToken || !groupId) return;
@@ -150,62 +160,49 @@ export function GroupPanelPage() {
       setLoading(true);
       setError("");
 
-      const currentGroup = getCurrentGroup();
-      let loadedGroup: Group | null = null;
+      const [groupRes, membersRes] = await Promise.all([
+        groupsService.getGroupDetails(groupId, accessToken),
+        groupsService.getMembers(groupId, accessToken),
+      ]);
 
-      if (currentGroup && String(currentGroup.id) === String(groupId)) {
-        loadedGroup = currentGroup;
-        setGroup(currentGroup);
-      } else {
-        try {
-          const history = await groupsService.getMyHistory(accessToken);
-          const allGroups = [...history.activos, ...history.pasados].map(
-            (item) => ({
-              ...item.grupos_viaje,
-              myRole: item.rol,
-            }),
-          );
+      const loadedCurrentMember = membersRes.members.find(
+        (member) => String(member.usuario_id) === String(localUser?.id_usuario),
+      );
 
-          const foundGroup =
-            allGroups.find((item) => String(item.id) === String(groupId)) ||
-            null;
-
-          if (foundGroup) {
-            loadedGroup = foundGroup;
-            saveCurrentGroup(foundGroup);
-            setGroup(foundGroup);
-          }
-        } catch {
-          // No detenemos la carga si falla el respaldo por historial.
-        }
+      if (!loadedCurrentMember) {
+        clearCurrentGroup();
+        navigate("/my-trips", { replace: true });
+        return;
       }
 
-      const membersRes = await groupsService.getMembers(groupId, accessToken);
+      const loadedGroup = { ...groupRes.group, myRole: loadedCurrentMember.rol };
+      setGroup(loadedGroup);
+      saveCurrentGroup(loadedGroup);
       setMembers(membersRes.members);
 
-      const fallbackGroup = getCurrentGroup();
-      const effectiveGroup =
-        loadedGroup ||
-        (fallbackGroup && String(fallbackGroup.id) === String(groupId)
-          ? fallbackGroup
-          : null);
-
-      if (fallbackGroup && String(fallbackGroup.id) === String(groupId)) {
-        setGroup((prev) => prev ?? fallbackGroup);
+      try {
+        const delegationRes = await groupsService.getAdminDelegations(groupId, accessToken);
+        setAdminDelegations(delegationRes.requests ?? []);
+      } catch {
+        setAdminDelegations([]);
       }
 
-      void loadAdminData(effectiveGroup, membersRes.members).catch(() => {
+      void loadAdminData(loadedGroup, membersRes.members).catch(() => {
         setInvitations([]);
         setJoinRequests([]);
       });
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "No se pudo cargar el grupo",
-      );
+      const message = err instanceof Error ? err.message : "No se pudo cargar el grupo";
+      if (/no perteneces|permisos|forbidden|403/i.test(message)) {
+        clearCurrentGroup();
+        navigate("/my-trips", { replace: true });
+        return;
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
-  }, [accessToken, groupId, loadAdminData]);
+  }, [accessToken, groupId, loadAdminData, localUser?.id_usuario, navigate]);
 
   useEffect(() => {
     void loadData();
@@ -258,6 +255,9 @@ export function GroupPanelPage() {
         payload.tipo === "solicitud_union_creada" ||
         payload.tipo === "solicitud_union_resuelta" ||
         payload.tipo === "grupo_actualizado" ||
+        payload.tipo === "delegacion_admin_pendiente" ||
+        payload.tipo === "delegacion_admin_aceptada" ||
+        payload.tipo === "delegacion_admin_rechazada" ||
         payload.tipo === undefined
       ) {
         void loadData();
@@ -302,10 +302,16 @@ export function GroupPanelPage() {
       setRoleChangeLoading(true);
       const nextRole = member.rol === "admin" ? "viajero" : "admin";
 
-      await groupsService.updateMemberRole(member.id, nextRole, accessToken);
+      const response = await groupsService.updateMemberRole(member.id, nextRole, accessToken);
 
-      const refreshed = await groupsService.getMembers(group.id, accessToken);
-      setMembers(refreshed.members);
+      if (nextRole === "admin" && response.member?.pendingDelegation) {
+        const delegationRes = await groupsService.getAdminDelegations(group.id, accessToken);
+        setAdminDelegations(delegationRes.requests ?? []);
+        alert("Solicitud de administración enviada. El integrante debe aceptarla antes de que cambien los roles.");
+      } else {
+        const refreshed = await groupsService.getMembers(group.id, accessToken);
+        setMembers(refreshed.members);
+      }
       setRoleChangeTarget(null);
     } catch (err) {
       alert(
@@ -322,7 +328,10 @@ export function GroupPanelPage() {
   ) => {
     if (!accessToken || !group || !canManageGroup) return;
 
+    const loadingKey = `${request.id}:${action}`;
+
     try {
+      setJoinRequestActionLoading(loadingKey);
       await groupsService.resolveJoinRequest(
         group.id,
         request.id,
@@ -339,6 +348,43 @@ export function GroupPanelPage() {
       alert(
         err instanceof Error ? err.message : "No se pudo atender la solicitud",
       );
+    } finally {
+      setJoinRequestActionLoading(null);
+    }
+  };
+
+  const handleResolveAdminDelegation = async (
+    request: AdminDelegationRequest,
+    action: "accept" | "reject",
+  ) => {
+    if (!accessToken || !group) return;
+
+    try {
+      setDelegationActionLoading(`${request.id}:${action}`);
+      await groupsService.resolveAdminDelegation(
+        group.id,
+        request.id,
+        action,
+        accessToken,
+      );
+
+      const [membersRes, delegationRes, groupRes] = await Promise.all([
+        groupsService.getMembers(group.id, accessToken),
+        groupsService.getAdminDelegations(group.id, accessToken),
+        groupsService.getGroupDetails(group.id, accessToken),
+      ]);
+      setMembers(membersRes.members);
+      setAdminDelegations(delegationRes.requests ?? []);
+      setGroup(groupRes.group);
+      saveCurrentGroup(groupRes.group);
+    } catch (err) {
+      alert(
+        err instanceof Error
+          ? err.message
+          : "No se pudo responder la solicitud de administración",
+      );
+    } finally {
+      setDelegationActionLoading(null);
     }
   };
 
@@ -532,6 +578,28 @@ export function GroupPanelPage() {
               </div>
             )}
 
+            {outgoingAdminDelegation && (
+              <div className="rounded-2xl border border-[#F7D37A] bg-[#FFF8E5] px-5 py-4">
+                <p className="font-heading text-sm font-semibold text-[#8A5A00]">
+                  Delegación de administración pendiente
+                </p>
+                <p className="mt-1 font-body text-sm leading-relaxed text-[#8A5A00]">
+                  Esperando respuesta de {outgoingAdminDelegation.to_nombre || outgoingAdminDelegation.to_email || "el integrante"}. La solicitud expira a las {new Date(outgoingAdminDelegation.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+                </p>
+              </div>
+            )}
+
+            {incomingAdminDelegation && (
+              <div className="rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] px-5 py-4">
+                <p className="font-heading text-sm font-semibold text-[#1D4ED8]">
+                  Tienes una solicitud para ser organizador
+                </p>
+                <p className="mt-1 font-body text-sm leading-relaxed text-[#1E40AF]">
+                  {incomingAdminDelegation.from_nombre || incomingAdminDelegation.from_email || "El organizador"} quiere delegarte la administración de este viaje. Puedes aceptarla o rechazarla desde el aviso emergente.
+                </p>
+              </div>
+            )}
+
             {canManageGroup && hasReachedCapacity && (
               <div className="rounded-2xl border border-red-100 bg-red-50 px-5 py-4">
                 <p className="font-heading text-sm font-semibold text-red-600">
@@ -717,20 +785,28 @@ export function GroupPanelPage() {
                               </div>
                               <div className="mt-3 grid grid-cols-2 gap-2">
                                 <button
+                                  type="button"
+                                  disabled={joinRequestActionLoading !== null}
                                   onClick={() =>
                                     handleResolveJoinRequest(request, "approve")
                                   }
-                                  className="rounded-lg bg-[#1E6FD9] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2C8BE6]"
+                                  className="rounded-lg bg-[#1E6FD9] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  Aprobar
+                                  {joinRequestActionLoading === `${request.id}:approve`
+                                    ? "Aprobando..."
+                                    : "Aprobar"}
                                 </button>
                                 <button
+                                  type="button"
+                                  disabled={joinRequestActionLoading !== null}
                                   onClick={() =>
                                     handleResolveJoinRequest(request, "reject")
                                   }
-                                  className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-50"
+                                  className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  Rechazar
+                                  {joinRequestActionLoading === `${request.id}:reject`
+                                    ? "Rechazando..."
+                                    : "Rechazar"}
                                 </button>
                               </div>
                             </div>
@@ -825,10 +901,12 @@ export function GroupPanelPage() {
             <p className="mt-2 font-body text-sm leading-relaxed text-[#475569]">
               {roleChangeTarget.rol === "admin"
                 ? `¿Confirmas que quieres cambiar a ${roleChangeTarget.nombre || roleChangeTarget.email} a viajero?`
-                : `¿Confirmas que quieres delegar la administración a ${roleChangeTarget.nombre || roleChangeTarget.email}? Tu rol cambiará a Viajero para mantener un único organizador activo.`}
+                : `Se enviará una solicitud a ${roleChangeTarget.nombre || roleChangeTarget.email}. La transferencia solo se completará si esa persona acepta ser organizadora.`}
             </p>
             <p className="mt-2 font-body text-xs text-[#64748B]">
-              Este cambio afecta los permisos de administración del grupo y se sincroniza para todos los integrantes.
+              {roleChangeTarget.rol === "admin"
+                ? "Este cambio afecta los permisos de administración del grupo y se sincroniza para todos los integrantes."
+                : "La delegación requiere aceptación activa del receptor y expira en 5 minutos. Mientras esté pendiente, tú sigues siendo organizador."}
             </p>
 
             <div className="mt-5 flex items-center justify-end gap-2">
@@ -846,12 +924,48 @@ export function GroupPanelPage() {
                 onClick={() => handleToggleRole(roleChangeTarget)}
                 className="rounded-lg bg-[#1E6FD9] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2C8BE6] disabled:opacity-60"
               >
-                {roleChangeLoading ? "Guardando..." : "Confirmar"}
+                {roleChangeLoading ? "Procesando..." : roleChangeTarget.rol === "admin" ? "Confirmar" : "Enviar solicitud"}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {incomingAdminDelegation && (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/45 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-xl">
+            <h3 className="font-heading text-lg font-bold text-[#1E0A4E]">
+              ¿Aceptar administración del viaje?
+            </h3>
+            <p className="mt-2 font-body text-sm leading-relaxed text-[#475569]">
+              {incomingAdminDelegation.from_nombre || incomingAdminDelegation.from_email || "El organizador"} quiere transferirte el rol de organizador. Si aceptas, tendrás permisos de administración y el organizador actual pasará a viajero.
+            </p>
+            <p className="mt-2 font-body text-xs text-[#64748B]">
+              Esta solicitud expira a las {new Date(incomingAdminDelegation.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+            </p>
+
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={delegationActionLoading !== null}
+                onClick={() => handleResolveAdminDelegation(incomingAdminDelegation, "reject")}
+                className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs font-semibold text-[#1E0A4E] hover:bg-[#F8FAFC] disabled:opacity-60"
+              >
+                {delegationActionLoading === `${incomingAdminDelegation.id}:reject` ? "Rechazando..." : "Rechazar"}
+              </button>
+              <button
+                type="button"
+                disabled={delegationActionLoading !== null}
+                onClick={() => handleResolveAdminDelegation(incomingAdminDelegation, "accept")}
+                className="rounded-lg bg-[#1E6FD9] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2C8BE6] disabled:opacity-60"
+              >
+                {delegationActionLoading === `${incomingAdminDelegation.id}:accept` ? "Aceptando..." : "Aceptar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </>
   );
 }

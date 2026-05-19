@@ -400,6 +400,26 @@ const throwGroupAtCapacity = (): never => {
   });
 };
 
+const releasePreviousJoinRequestsWithStatus = async (
+  groupId: string | number,
+  usuarioId: string | number,
+  currentRequestId: string | number,
+  status: 'aprobada' | 'rechazada'
+): Promise<void> => {
+  const { error } = await supabase
+    .from('grupo_solicitudes_union')
+    .update({
+      estado: 'cancelada',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('grupo_id', Number(groupId))
+    .eq('usuario_id', Number(usuarioId))
+    .eq('estado', status)
+    .neq('id', Number(currentRequestId));
+
+  if (error) throw new Error(error.message);
+};
+
 const normalizeMaxMembers = (value?: number | null): number | null => {
   if (value === undefined || value === null) return null;
 
@@ -915,6 +935,292 @@ export const getGroupMembers = async (authUserId: string, groupId: string) => {
   });
 };
 
+
+type AdminDelegationStatus = 'pendiente' | 'aceptada' | 'rechazada' | 'expirada' | 'cancelada';
+
+type AdminDelegationRequest = {
+  id: string;
+  group_id: string;
+  from_user_id: string;
+  to_user_id: string;
+  status: AdminDelegationStatus;
+  expires_at: string;
+  created_at?: string;
+  updated_at?: string;
+  from_nombre?: string | null;
+  from_email?: string | null;
+  to_nombre?: string | null;
+  to_email?: string | null;
+};
+
+const ADMIN_DELEGATION_TTL_MINUTES = 5;
+
+const getUserSummaryByLocalId = async (usuarioId: string | number) => {
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('id_usuario, nombre, email, avatar_url')
+    .eq('id_usuario', Number(usuarioId))
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data ?? null;
+};
+
+const decorateAdminDelegationRequest = async (request: any): Promise<AdminDelegationRequest> => {
+  const [fromUser, toUser] = await Promise.all([
+    getUserSummaryByLocalId(request.from_user_id),
+    getUserSummaryByLocalId(request.to_user_id),
+  ]);
+
+  return {
+    id: String(request.id),
+    group_id: String(request.group_id),
+    from_user_id: String(request.from_user_id),
+    to_user_id: String(request.to_user_id),
+    status: request.status,
+    expires_at: request.expires_at,
+    created_at: request.created_at,
+    updated_at: request.updated_at,
+    from_nombre: fromUser?.nombre ?? null,
+    from_email: fromUser?.email ?? null,
+    to_nombre: toUser?.nombre ?? null,
+    to_email: toUser?.email ?? null,
+  };
+};
+
+const expireStaleAdminDelegations = async (groupId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('admin_delegation_requests')
+    .update({ status: 'expirada', updated_at: new Date().toISOString() })
+    .eq('group_id', Number(groupId))
+    .eq('status', 'pendiente')
+    .lt('expires_at', new Date().toISOString());
+
+  if (error && !String(error.message).includes('admin_delegation_requests')) {
+    throw new Error(error.message);
+  }
+};
+
+const createAdminDelegationRequest = async (
+  groupId: string,
+  fromUserId: string | number,
+  toUserId: string | number,
+  targetMemberId: string | number
+): Promise<AdminDelegationRequest> => {
+  await expireStaleAdminDelegations(groupId);
+
+  const targetMembership = await getMembership(groupId, String(toUserId));
+  if (!targetMembership || String(targetMembership.id) !== String(targetMemberId)) {
+    throw Object.assign(new Error('El integrante seleccionado ya no pertenece al viaje.'), { statusCode: 404 });
+  }
+
+  if (targetMembership.rol === 'admin') {
+    throw Object.assign(new Error('Este integrante ya es administrador del viaje.'), { statusCode: 409 });
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from('admin_delegation_requests')
+    .select('*')
+    .eq('group_id', Number(groupId))
+    .eq('status', 'pendiente')
+    .maybeSingle();
+
+  if (existingError) throw new Error(existingError.message);
+
+  if (existing) {
+    return decorateAdminDelegationRequest(existing);
+  }
+
+  const expiresAt = new Date(Date.now() + ADMIN_DELEGATION_TTL_MINUTES * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('admin_delegation_requests')
+    .insert({
+      group_id: Number(groupId),
+      from_user_id: Number(fromUserId),
+      to_user_id: Number(toUserId),
+      status: 'pendiente',
+      expires_at: expiresAt,
+    })
+    .select('*')
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  const decorated = await decorateAdminDelegationRequest(data);
+  const actorName = await NotificationsService.getUserDisplayName(fromUserId);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'delegacion_admin_pendiente',
+    entidadTipo: 'admin_delegation_request',
+    entidadId: Number(data.id),
+    actorUsuarioId: Number(fromUserId),
+    metadata: {
+      actorName,
+      requestId: Number(data.id),
+      targetUsuarioId: Number(toUserId),
+      fromUsuarioId: Number(fromUserId),
+      expiresAt,
+    },
+  });
+
+  await NotificationsService.createNotification({
+    usuarioId: Number(toUserId),
+    grupoId: Number(groupId),
+    tipo: 'delegacion_admin_pendiente',
+    titulo: 'Solicitud de administración pendiente',
+    mensaje: `${actorName} quiere delegarte la administración del viaje. Acepta o rechaza la solicitud antes de que expire.`,
+    entidadTipo: 'admin_delegation_request',
+    entidadId: Number(data.id),
+    metadata: { requestId: Number(data.id), groupId: Number(groupId), expiresAt },
+  });
+
+  return decorated;
+};
+
+export const getAdminDelegationRequests = async (authUserId: string, groupId: string) => {
+  const { usuarioId } = await ensureGroupMember(authUserId, groupId);
+  await expireStaleAdminDelegations(groupId);
+
+  const { data, error } = await supabase
+    .from('admin_delegation_requests')
+    .select('*')
+    .eq('group_id', Number(groupId))
+    .eq('status', 'pendiente')
+    .or(`from_user_id.eq.${Number(usuarioId)},to_user_id.eq.${Number(usuarioId)}`)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return Promise.all((data ?? []).map(decorateAdminDelegationRequest));
+};
+
+export const resolveAdminDelegationRequest = async (
+  authUserId: string,
+  groupId: string,
+  requestId: string,
+  action: 'accept' | 'reject'
+) => {
+  const { usuarioId } = await ensureGroupMember(authUserId, groupId);
+  await expireStaleAdminDelegations(groupId);
+
+  const { data: request, error: requestError } = await supabase
+    .from('admin_delegation_requests')
+    .select('*')
+    .eq('id', Number(requestId))
+    .eq('group_id', Number(groupId))
+    .maybeSingle();
+
+  if (requestError) throw new Error(requestError.message);
+  if (!request) throw Object.assign(new Error('Solicitud de delegación no encontrada.'), { statusCode: 404 });
+  if (String(request.to_user_id) !== String(usuarioId)) {
+    throw Object.assign(new Error('Solo el receptor puede responder esta solicitud.'), { statusCode: 403 });
+  }
+  if (request.status !== 'pendiente') {
+    throw Object.assign(new Error('Esta solicitud de delegación ya no está pendiente.'), { statusCode: 409 });
+  }
+  if (new Date(request.expires_at).getTime() <= Date.now()) {
+    await supabase
+      .from('admin_delegation_requests')
+      .update({ status: 'expirada', updated_at: new Date().toISOString() })
+      .eq('id', Number(requestId));
+    throw Object.assign(new Error('ERR-28-001: La solicitud de delegación expiró.'), { statusCode: 409, errorCode: 'ERR-28-001' });
+  }
+
+  if (action === 'reject') {
+    const { data, error } = await supabase
+      .from('admin_delegation_requests')
+      .update({ status: 'rechazada', updated_at: new Date().toISOString() })
+      .eq('id', Number(requestId))
+      .eq('status', 'pendiente')
+      .select('*')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+      tipo: 'delegacion_admin_rechazada',
+      entidadTipo: 'admin_delegation_request',
+      entidadId: Number(requestId),
+      actorUsuarioId: Number(usuarioId),
+      metadata: {
+        requestId: Number(requestId),
+        targetUsuarioId: Number(request.to_user_id),
+        fromUsuarioId: Number(request.from_user_id),
+      },
+    });
+
+    return { request: await decorateAdminDelegationRequest(data), member: null };
+  }
+
+  const currentReceiverMembership = await getMembership(groupId, String(request.to_user_id));
+  const currentAdminMembership = await getMembership(groupId, String(request.from_user_id));
+
+  if (!currentReceiverMembership || !currentAdminMembership || currentAdminMembership.rol !== 'admin') {
+    await supabase
+      .from('admin_delegation_requests')
+      .update({ status: 'cancelada', updated_at: new Date().toISOString() })
+      .eq('id', Number(requestId));
+    throw Object.assign(
+      new Error('ERR-28-002: La transferencia fue cancelada porque los roles del viaje cambiaron.'),
+      { statusCode: 409, errorCode: 'ERR-28-002' }
+    );
+  }
+
+  const { error: demoteError } = await supabase
+    .from('grupo_miembros')
+    .update({ rol: 'viajero' })
+    .eq('grupo_id', Number(groupId))
+    .eq('usuario_id', Number(request.from_user_id))
+    .eq('rol', 'admin');
+
+  if (demoteError) throw new Error(demoteError.message);
+
+  const { data: promotedMember, error: promoteError } = await supabase
+    .from('grupo_miembros')
+    .update({ rol: 'admin' })
+    .eq('grupo_id', Number(groupId))
+    .eq('usuario_id', Number(request.to_user_id))
+    .select('*')
+    .single();
+
+  if (promoteError) {
+    await supabase
+      .from('grupo_miembros')
+      .update({ rol: 'admin' })
+      .eq('grupo_id', Number(groupId))
+      .eq('usuario_id', Number(request.from_user_id));
+    throw new Error(promoteError.message);
+  }
+
+  const { data: resolvedRequest, error: resolveError } = await supabase
+    .from('admin_delegation_requests')
+    .update({ status: 'aceptada', updated_at: new Date().toISOString(), responded_at: new Date().toISOString() })
+    .eq('id', Number(requestId))
+    .eq('status', 'pendiente')
+    .select('*')
+    .single();
+
+  if (resolveError) throw new Error(resolveError.message);
+
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'delegacion_admin_aceptada',
+    entidadTipo: 'admin_delegation_request',
+    entidadId: Number(requestId),
+    actorUsuarioId: Number(usuarioId),
+    metadata: {
+      actorName,
+      requestId: Number(requestId),
+      targetUsuarioId: Number(request.to_user_id),
+      fromUsuarioId: Number(request.from_user_id),
+      memberId: Number(promotedMember.id),
+      rol: 'admin',
+      previousRole: 'viajero',
+      transferType: 'admin_delegation',
+    },
+  });
+
+  return { request: await decorateAdminDelegationRequest(resolvedRequest), member: promotedMember };
+};
+
 export const updateMemberRole = async (
   authUserId: string,
   memberId: string,
@@ -936,65 +1242,45 @@ export const updateMemberRole = async (
     throw Object.assign(new Error('No puedes cambiar tu propio rol desde este panel'), { statusCode: 400 });
   }
 
-  let data: unknown;
-
   if (rol === 'admin') {
-    // RNB-2.1: debe existir un único Admin activo por viaje.
-    // Al delegar, el Admin actual pasa a viajero y el integrante receptor queda como Admin.
-    const { error: demoteError } = await supabase
-      .from('grupo_miembros')
-      .update({ rol: 'viajero' })
-      .eq('grupo_id', targetMember.grupo_id)
-      .eq('rol', 'admin');
+    const request = await createAdminDelegationRequest(
+      String(targetMember.grupo_id),
+      actorUsuarioId,
+      targetMember.usuario_id,
+      memberId
+    );
 
-    if (demoteError) throw new Error(demoteError.message);
-
-    const { data: promotedMember, error: promoteError } = await supabase
-      .from('grupo_miembros')
-      .update({ rol: 'admin' })
-      .eq('id', memberId)
-      .eq('grupo_id', targetMember.grupo_id)
-      .select()
-      .single();
-
-    if (promoteError) {
-      // Recuperación conservadora: si falla la promoción, restauramos al actor como Admin.
-      await supabase
-        .from('grupo_miembros')
-        .update({ rol: 'admin' })
-        .eq('grupo_id', targetMember.grupo_id)
-        .eq('usuario_id', Number(actorUsuarioId));
-      throw new Error(promoteError.message);
-    }
-
-    data = promotedMember;
-  } else {
-    const { count: adminCount, error: countError } = await supabase
-      .from('grupo_miembros')
-      .select('id', { count: 'exact', head: true })
-      .eq('grupo_id', targetMember.grupo_id)
-      .eq('rol', 'admin');
-
-    if (countError) throw new Error(countError.message);
-
-    if (targetMember.rol === 'admin' && (adminCount ?? 0) <= 1) {
-      throw Object.assign(new Error('El viaje debe mantener un administrador activo'), {
-        statusCode: 409,
-        code: 'GROUP_REQUIRES_ADMIN',
-        errorCode: 'ERR-28-002',
-      });
-    }
-
-    const { data: updatedMember, error } = await supabase
-      .from('grupo_miembros')
-      .update({ rol })
-      .eq('id', memberId)
-      .select()
-      .single();
-
-    if (error) throw new Error(error.message);
-    data = updatedMember;
+    return {
+      ...targetMember,
+      delegationRequest: request,
+      pendingDelegation: true,
+    };
   }
+
+  const { count: adminCount, error: countError } = await supabase
+    .from('grupo_miembros')
+    .select('id', { count: 'exact', head: true })
+    .eq('grupo_id', targetMember.grupo_id)
+    .eq('rol', 'admin');
+
+  if (countError) throw new Error(countError.message);
+
+  if (targetMember.rol === 'admin' && (adminCount ?? 0) <= 1) {
+    throw Object.assign(new Error('El viaje debe mantener un administrador activo'), {
+      statusCode: 409,
+      code: 'GROUP_REQUIRES_ADMIN',
+      errorCode: 'ERR-28-002',
+    });
+  }
+
+  const { data: updatedMember, error } = await supabase
+    .from('grupo_miembros')
+    .update({ rol })
+    .eq('id', memberId)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
 
   const actorName = await NotificationsService.getUserDisplayName(actorUsuarioId);
   NotificationsService.emitGroupDashboardUpdated(Number(targetMember.grupo_id), {
@@ -1008,11 +1294,11 @@ export const updateMemberRole = async (
       memberId: Number(memberId),
       rol,
       previousRole: targetMember.rol,
-      transferType: rol === 'admin' ? 'admin_delegation' : 'role_update',
+      transferType: 'role_update',
     },
   });
 
-  return data;
+  return updatedMember;
 };
 
 export const removeMember = async (
@@ -1363,6 +1649,8 @@ export const resolveJoinRequest = async (
   const grupo = await getGroupById(groupId);
 
   if (action === 'reject') {
+    await releasePreviousJoinRequestsWithStatus(groupId, request.usuario_id, requestId, 'rechazada');
+
     const { data, error } = await supabase
       .from('grupo_solicitudes_union')
       .update({
@@ -1414,6 +1702,7 @@ export const resolveJoinRequest = async (
   }
 
   await ensureUserHasAvailableDates(request.usuario_id, grupo.fecha_inicio ?? null, grupo.fecha_fin ?? null, 'approve');
+  await releasePreviousJoinRequestsWithStatus(groupId, request.usuario_id, requestId, 'aprobada');
 
   const membership = await getMembership(groupId, String(request.usuario_id));
   if (membership) {

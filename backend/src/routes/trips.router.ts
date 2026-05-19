@@ -376,6 +376,46 @@ router.get('/:groupId/members', requireAuth, async (req: Request, res: Response)
   }
 });
 
+
+router.get('/:groupId/admin-delegations', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const requests = await GroupsService.getAdminDelegationRequests(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, requests });
+  } catch (err: unknown) {
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
+  }
+});
+
+router.patch('/:groupId/admin-delegations/:requestId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { action } = req.body as { action?: 'accept' | 'reject' };
+
+    if (!action || !['accept', 'reject'].includes(action)) {
+      res.status(400).json({ ok: false, error: 'Acción inválida. Usa accept o reject.' });
+      return;
+    }
+
+    const result = await GroupsService.resolveAdminDelegationRequest(
+      req.user!.id,
+      req.params.groupId,
+      req.params.requestId,
+      action
+    );
+
+    res.status(200).json({
+      ok: true,
+      message: action === 'accept'
+        ? 'Ahora eres administrador del viaje.'
+        : 'Solicitud de administración rechazada.',
+      ...result,
+    });
+  } catch (err: unknown) {
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
+  }
+});
+
 router.patch('/members/:memberId/role', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { rol } = req.body as { rol?: string };

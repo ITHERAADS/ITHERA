@@ -20,6 +20,8 @@ type SettingsForm = {
   maxMembers: string
   description: string
   isPublic: boolean
+  itineraryLocked: boolean
+  budgetLocked: boolean
 }
 
 function buildForm(group: Group): SettingsForm {
@@ -31,6 +33,8 @@ function buildForm(group: Group): SettingsForm {
     maxMembers: group.maximo_miembros ? String(group.maximo_miembros) : '10',
     description: group.descripcion || '',
     isPublic: group.es_publico === true,
+    itineraryLocked: group.modulo_itinerario_bloqueado === true,
+    budgetLocked: group.modulo_presupuesto_bloqueado === true,
   }
 }
 
@@ -58,9 +62,9 @@ const getValidationError = (form: SettingsForm) => {
   const maxMembers = Number(form.maxMembers)
   const today = todayISO()
 
-  if (!form.name.trim()) return 'El nombre del grupo es obligatorio.'
+  if (!form.name.trim()) return 'El nombre del viaje es obligatorio.'
   if (form.name.trim().length > GROUP_NAME_MAX_LENGTH) {
-    return `El nombre del grupo permite máximo ${GROUP_NAME_MAX_LENGTH} caracteres.`
+    return `El nombre del viaje permite máximo ${GROUP_NAME_MAX_LENGTH} caracteres.`
   }
   if (!form.destination.trim()) return 'Selecciona un destino válido.'
   if (form.description.trim().length > GROUP_DESCRIPTION_MAX_LENGTH) {
@@ -96,10 +100,14 @@ export function GroupSettingsPage() {
     maxMembers: '10',
     description: '',
     isPublic: false,
+    itineraryLocked: false,
+    budgetLocked: false,
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [closing, setClosing] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<'close' | 'delete' | null>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [destinationData, setDestinationData] = useState<GeocodingResult | null>(null)
@@ -110,7 +118,7 @@ export function GroupSettingsPage() {
   const effectiveGroupId = String(group?.id ?? currentGroupFallback?.id ?? groupId ?? '')
   const formError = getValidationError(form)
   const minEndDate = form.startDate ? addDaysISO(form.startDate, 1) : todayISO()
-  const isReadOnly = isClosedGroup(group)
+  const isReadOnly = isClosedGroup(effectiveGroup)
 
   const goToGroupPanel = () => {
     if (!effectiveGroupId) {
@@ -218,6 +226,8 @@ export function GroupSettingsPage() {
           fecha_fin: form.endDate || undefined,
           maximo_miembros: Number(form.maxMembers),
           es_publico: form.isPublic,
+          modulo_itinerario_bloqueado: form.itineraryLocked,
+          modulo_presupuesto_bloqueado: form.budgetLocked,
         },
         accessToken
       )
@@ -232,20 +242,37 @@ export function GroupSettingsPage() {
     }
   }
 
-  const handleDelete = async () => {
+  const handleCloseTrip = async () => {
     if (!accessToken || !group || isReadOnly) return
 
-    const confirmed = window.confirm(`¿Seguro que quieres eliminar el grupo "${group.nombre}"?`)
-    if (!confirmed) return
+    try {
+      setClosing(true)
+      setError('')
+      const response = await groupsService.closeGroup(group.id, accessToken)
+      setGroup(response.group)
+      saveCurrentGroup(response.group)
+      setConfirmAction(null)
+      setSuccess('Viaje cerrado y archivado correctamente')
+      navigate('/my-trips#viajes-pasados')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo cerrar el viaje')
+    } finally {
+      setClosing(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!accessToken || !group || isReadOnly) return
 
     try {
       setDeleting(true)
       setError('')
       await groupsService.deleteGroup(group.id, accessToken)
       clearCurrentGroup()
+      setConfirmAction(null)
       navigate('/my-trips')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo eliminar el grupo')
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar el viaje')
     } finally {
       setDeleting(false)
     }
@@ -283,7 +310,7 @@ export function GroupSettingsPage() {
   return (
     <AppLayout
       trip={{
-        name: group?.nombre || 'Grupo',
+        name: group?.nombre || 'Viaje',
         subtitle: group?.destino || 'Sin destino',
         dates: `${group?.fecha_inicio || '—'} → ${group?.fecha_fin || '—'}`,
         people: group?.maximo_miembros ? `${group.maximo_miembros} máx.` : 'Sin límite',
@@ -302,7 +329,7 @@ export function GroupSettingsPage() {
           <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-sm">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
-                <h1 className="font-heading font-bold text-[#1E0A4E] text-2xl">Configuración del grupo</h1>
+                <h1 className="font-heading font-bold text-[#1E0A4E] text-2xl">Configuración del viaje</h1>
                 <p className="font-body text-sm text-[#7A8799]">{isReadOnly ? 'Consulta la información del viaje cerrado' : 'Edita la información principal del viaje'}</p>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
@@ -333,7 +360,7 @@ export function GroupSettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold text-[#1E0A4E]/60 uppercase tracking-wide mb-1.5">
-                  Nombre del grupo
+                  Nombre del viaje
                 </label>
                 <input
                   value={form.name}
@@ -416,9 +443,9 @@ export function GroupSettingsPage() {
               <div className="md:col-span-2 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <h3 className="font-heading text-sm font-semibold text-[#1E0A4E]">Grupo público</h3>
+                    <h3 className="font-heading text-sm font-semibold text-[#1E0A4E]">Viaje público</h3>
                     <p className="mt-1 font-body text-xs text-[#7A8799]">
-                      Activado: cualquiera con el código entra sin aprobación. Desactivado: el admin aprueba solicitudes.
+                      Activado: cualquiera con el código entra sin aprobación. Desactivado: el organizador aprueba solicitudes.
                     </p>
                   </div>
                   <button
@@ -438,6 +465,58 @@ export function GroupSettingsPage() {
                     />
                   </button>
                 </div>
+              </div>
+
+              <div className="md:col-span-2 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-4">
+                <div className="mb-4">
+                  <h3 className="font-heading text-sm font-semibold text-[#1E0A4E]">Control de módulos</h3>
+                  <p className="mt-1 font-body text-xs text-[#7A8799]">
+                    Activa o bloquea el acceso de escritura a Itinerario y Presupuesto para los viajeros.
+                  </p>
+                </div>
+
+                {[
+                  {
+                    key: 'itineraryLocked' as const,
+                    title: 'Itinerario',
+                    description: 'Bloqueado: los viajeros solo pueden consultar el itinerario.',
+                    locked: form.itineraryLocked,
+                  },
+                  {
+                    key: 'budgetLocked' as const,
+                    title: 'Presupuesto',
+                    description: 'Bloqueado: los viajeros solo pueden consultar gastos y balances.',
+                    locked: form.budgetLocked,
+                  },
+                ].map((item) => (
+                  <div key={item.key} className="flex items-center justify-between gap-4 border-t border-[#E2E8F0] py-3 first:border-t-0 first:pt-0 last:pb-0">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-heading text-sm font-semibold text-[#1E0A4E]">{item.title}</h4>
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${item.locked ? 'bg-gray-100 text-gray-600' : 'bg-[#35C56A]/15 text-[#15803D]'}`}>
+                          {item.locked ? 'Bloqueado' : 'Activo'}
+                        </span>
+                      </div>
+                      <p className="mt-1 font-body text-xs text-[#7A8799]">{item.description}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!item.locked}
+                      onClick={() => setField(item.key, !item.locked)}
+                      disabled={isReadOnly || saving}
+                      className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#1E6FD9]/30 disabled:cursor-not-allowed disabled:opacity-50 ${
+                        item.locked ? 'bg-gray-300' : 'bg-[#35C56A]'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                          item.locked ? 'translate-x-0' : 'translate-x-5'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                ))}
               </div>
 
               <div className="md:col-span-2">
@@ -484,18 +563,68 @@ export function GroupSettingsPage() {
           <div className="bg-white rounded-2xl border border-red-200 p-6 shadow-sm">
             <h2 className="font-heading text-lg text-red-600 font-semibold">Zona de peligro</h2>
             <p className="font-body text-sm text-[#7A8799] mt-1">
-              {isReadOnly ? 'Este viaje está cerrado y no puede eliminarse desde el modo historial.' : 'Eliminar el grupo borrará la configuración y la membresía asociada al grupo.'}
+              {isReadOnly ? 'Este viaje está cerrado y solo puede consultarse desde el historial.' : 'Estas acciones afectan el acceso de todos los integrantes. Revisa antes de confirmar.'}
             </p>
-            <button
-              onClick={handleDelete}
-              disabled={isReadOnly || deleting}
-              className="mt-4 bg-red-500 text-white rounded-xl px-5 py-3 text-sm disabled:opacity-50"
-            >
-              {isReadOnly ? 'No disponible en historial' : (deleting ? 'Eliminando...' : 'Eliminar grupo')}
-            </button>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+              <button
+                onClick={() => setConfirmAction('close')}
+                disabled={isReadOnly || closing || deleting}
+                className="rounded-xl border border-orange-200 bg-orange-50 px-5 py-3 text-left text-sm font-semibold text-orange-700 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {closing ? 'Cerrando viaje...' : 'Cerrar viaje (archivar)'}
+                <span className="mt-1 block text-xs font-normal text-orange-700/70">Irreversible. El viaje queda en modo solo lectura.</span>
+              </button>
+
+              <button
+                onClick={() => setConfirmAction('delete')}
+                disabled={isReadOnly || deleting || closing}
+                className="rounded-xl bg-red-500 px-5 py-3 text-left text-sm font-semibold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deleting ? 'Eliminando viaje...' : 'Eliminar viaje permanentemente'}
+                <span className="mt-1 block text-xs font-normal text-white/80">Borra la membresía y configuración asociada.</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="font-heading text-xl font-bold text-[#1E0A4E]">
+              {confirmAction === 'close' ? 'Cerrar viaje' : 'Eliminar viaje'}
+            </h2>
+            <p className="mt-2 font-body text-sm leading-relaxed text-[#64748B]">
+              {confirmAction === 'close'
+                ? 'El viaje se archivará permanentemente y todos los módulos quedarán en modo solo lectura.'
+                : 'Esta acción eliminará el viaje permanentemente. No se puede deshacer.'}
+            </p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                disabled={closing || deleting}
+                className="rounded-xl border border-[#E2E8F0] px-4 py-2.5 text-sm font-semibold text-[#1E0A4E] disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmAction === 'close' ? handleCloseTrip : handleDelete}
+                disabled={closing || deleting}
+                className={`rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 ${
+                  confirmAction === 'close' ? 'bg-orange-500' : 'bg-red-500'
+                }`}
+              >
+                {confirmAction === 'close'
+                  ? (closing ? 'Cerrando...' : 'Sí, cerrar viaje')
+                  : (deleting ? 'Eliminando...' : 'Sí, eliminar todo')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }

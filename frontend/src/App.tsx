@@ -18,6 +18,7 @@ import { JoinGroupPage } from './pages/JoinGroup'
 import FlightHotelSearchPage from './pages/Search/FlightHotelSearchPage'
 import MapPlacesPage from './pages/Search/MapPlacesPage'
 import RoutesTransportWeatherPage from './pages/Search/RoutesTransportWeatherPage'
+import SearchHistoryPage from './pages/Search/SearchHistoryPage'
 import { CheckoutPage } from './pages/Checkout'
 import { useNetworkMonitor } from './hooks'
 import { OfflineBanner } from './components/ui/OfflineBanner/OfflineBanner'
@@ -109,6 +110,15 @@ function App() {
           element={
             <ProtectedRoute>
               <RoutesTransportWeatherPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/search/history"
+          element={
+            <ProtectedRoute>
+              <SearchHistoryPage />
             </ProtectedRoute>
           }
         />

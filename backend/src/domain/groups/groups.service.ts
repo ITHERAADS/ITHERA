@@ -930,18 +930,72 @@ export const updateMemberRole = async (
     throw Object.assign(new Error('Miembro no encontrado'), { statusCode: 404 });
   }
 
-  await ensureGroupAdmin(authUserId, String(targetMember.grupo_id));
+  const { usuarioId: actorUsuarioId } = await ensureGroupAdmin(authUserId, String(targetMember.grupo_id));
 
-  const { data, error } = await supabase
-    .from('grupo_miembros')
-    .update({ rol })
-    .eq('id', memberId)
-    .select()
-    .single();
+  if (String(targetMember.usuario_id) === String(actorUsuarioId)) {
+    throw Object.assign(new Error('No puedes cambiar tu propio rol desde este panel'), { statusCode: 400 });
+  }
 
-  if (error) throw new Error(error.message);
+  let data: unknown;
 
-  const actorUsuarioId = await getLocalUserId(authUserId);
+  if (rol === 'admin') {
+    // RNB-2.1: debe existir un único Admin activo por viaje.
+    // Al delegar, el Admin actual pasa a viajero y el integrante receptor queda como Admin.
+    const { error: demoteError } = await supabase
+      .from('grupo_miembros')
+      .update({ rol: 'viajero' })
+      .eq('grupo_id', targetMember.grupo_id)
+      .eq('rol', 'admin');
+
+    if (demoteError) throw new Error(demoteError.message);
+
+    const { data: promotedMember, error: promoteError } = await supabase
+      .from('grupo_miembros')
+      .update({ rol: 'admin' })
+      .eq('id', memberId)
+      .eq('grupo_id', targetMember.grupo_id)
+      .select()
+      .single();
+
+    if (promoteError) {
+      // Recuperación conservadora: si falla la promoción, restauramos al actor como Admin.
+      await supabase
+        .from('grupo_miembros')
+        .update({ rol: 'admin' })
+        .eq('grupo_id', targetMember.grupo_id)
+        .eq('usuario_id', Number(actorUsuarioId));
+      throw new Error(promoteError.message);
+    }
+
+    data = promotedMember;
+  } else {
+    const { count: adminCount, error: countError } = await supabase
+      .from('grupo_miembros')
+      .select('id', { count: 'exact', head: true })
+      .eq('grupo_id', targetMember.grupo_id)
+      .eq('rol', 'admin');
+
+    if (countError) throw new Error(countError.message);
+
+    if (targetMember.rol === 'admin' && (adminCount ?? 0) <= 1) {
+      throw Object.assign(new Error('El viaje debe mantener un administrador activo'), {
+        statusCode: 409,
+        code: 'GROUP_REQUIRES_ADMIN',
+        errorCode: 'ERR-28-002',
+      });
+    }
+
+    const { data: updatedMember, error } = await supabase
+      .from('grupo_miembros')
+      .update({ rol })
+      .eq('id', memberId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    data = updatedMember;
+  }
+
   const actorName = await NotificationsService.getUserDisplayName(actorUsuarioId);
   NotificationsService.emitGroupDashboardUpdated(Number(targetMember.grupo_id), {
     tipo: 'miembro_actualizado',
@@ -953,6 +1007,8 @@ export const updateMemberRole = async (
       targetUsuarioId: Number(targetMember.usuario_id),
       memberId: Number(memberId),
       rol,
+      previousRole: targetMember.rol,
+      transferType: rol === 'admin' ? 'admin_delegation' : 'role_update',
     },
   });
 

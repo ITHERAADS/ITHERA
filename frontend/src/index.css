@@ -31,4 +31,48 @@ body {
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+  .landing-float {
+    animation: landing-float 7s ease-in-out infinite;
+  }
+  .landing-float-delayed {
+    animation: landing-float 8s ease-in-out infinite;
+    animation-delay: 1.2s;
+  }
+  .landing-glow {
+    animation: landing-glow 3.2s ease-in-out infinite;
+  }
+  .landing-slide {
+    animation: landing-slide 18s linear infinite;
+  }
+}
+
+@keyframes landing-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes landing-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes landing-slide {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
 }

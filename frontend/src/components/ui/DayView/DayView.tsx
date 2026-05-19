@@ -1282,12 +1282,16 @@ function AddActivityRow({ onClick }: { onClick?: () => void }) {
 
 function EmptyDayState({ onClick }: { onClick?: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-8 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-bluePrimary/10 flex items-center justify-center mb-3">
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#BFD0FF] bg-[#F8FAFF] px-5 py-8 text-center">
+      <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-bluePrimary/10">
         <IconCalendarEmpty size={28} />
       </div>
-      <p className="font-body text-sm text-gray500 mb-4">
-        No hay actividades para este día aún
+      <p className="font-heading text-base font-bold text-purpleNavbar">
+        Aún no hay actividades para este día
+      </p>
+      <p className="mb-4 mt-1 max-w-sm font-body text-xs leading-relaxed text-gray500">
+        Agrega una propuesta para reservar tiempo en el itinerario y abrir la
+        votación del grupo.
       </p>
       <button
         type="button"
@@ -1295,7 +1299,7 @@ function EmptyDayState({ onClick }: { onClick?: () => void }) {
         className="inline-flex items-center gap-1.5 font-body text-sm font-semibold text-white bg-bluePrimary rounded-xl px-4 py-2.5 hover:bg-bluePrimary/90 transition-colors"
       >
         <IconPlus size={14} />
-        Agregar primera actividad
+        Proponer actividad
       </button>
     </div>
   );
@@ -1709,6 +1713,9 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
     (a) => a.status === "pendiente" && !isPendingActivityExpired(a),
   ).length;
   const isEmpty = activities.length === 0;
+  const confirmedCount = activities.filter(
+    (a) => a.status === "confirmada",
+  ).length;
 
   return (
     <div ref={rootRef} className="rounded-2xl shadow-sm scroll-mt-4">
@@ -1735,14 +1742,22 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
             </span>
             <span className="font-body text-[13px] text-gray500 leading-none">
               {isEmpty
-                ? "Sin actividades"
-                : `${activities.length} actividad${activities.length !== 1 ? "es" : ""}`}
+                ? "Sin actividades · listo para planear"
+                : `${confirmedCount} confirmada${confirmedCount !== 1 ? "s" : ""} · ${pendingCount} por confirmar`}
             </span>
           </div>
         </div>
 
         {/* Right side */}
         <div className="flex items-center gap-2 shrink-0">
+          {isEmpty && !isPastDay && onAddActivity && (
+            <span
+              className="hidden rounded-xl bg-greenAccent/10 px-3 py-1.5 font-body text-[11px] font-bold text-greenAccent sm:inline-flex"
+              aria-hidden="true"
+            >
+              Agregar
+            </span>
+          )}
           {pendingCount > 0 && (
             <span className="font-body text-[11px] text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 leading-none">
               {pendingCount} por confirmar

@@ -100,6 +100,7 @@ export const groupsService = {
     }>(`/groups/${groupId}/qr`, token)
   },
 
+
   updateInviteSettings: async (
     groupId: string,
     payload: { expirationDays: number | null; maxUses: number | null },
@@ -124,6 +125,14 @@ export const groupsService = {
     return apiClient.patch<{ ok: boolean; message: string; group: Group }>(
       `/groups/${groupId}`,
       payload,
+      token
+    )
+  },
+
+  closeGroup: async (groupId: string, token: string) => {
+    return apiClient.patch<{ ok: boolean; message: string; group: Group }>(
+      `/groups/${groupId}/close`,
+      {},
       token
     )
   },

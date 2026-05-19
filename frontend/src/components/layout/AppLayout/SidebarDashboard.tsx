@@ -180,7 +180,7 @@ export function SidebarDashboard({
             className="flex w-full items-center justify-between rounded-xl border border-white/0 px-3 py-2 text-left transition-all duration-200 hover:border-[#35C56A]/30 hover:bg-white/10"
           >
             <div className="min-w-0">
-              <p className="font-body text-[13px] font-semibold leading-tight text-white/85">Configuracion</p>
+              <p className="font-body text-[13px] font-semibold leading-tight text-white/85">Configuración</p>
               <p className="mt-0.5 truncate font-body text-[11px] leading-tight text-white/50">Reglas y ajustes del viaje</p>
             </div>
             <span className="font-body text-xs text-white/45">›</span>

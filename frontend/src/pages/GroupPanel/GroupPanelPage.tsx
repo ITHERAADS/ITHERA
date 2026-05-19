@@ -62,6 +62,11 @@ export function GroupPanelPage() {
   const [joinRequests, setJoinRequests] = useState<GroupJoinRequest[]>([]);
   const [inviteLink, setInviteLink] = useState("");
   const [qrBase64, setQrBase64] = useState("");
+  const [inviteSettings, setInviteSettings] = useState<{ expiresAt: string | null; maxUses: number | null; usedCount: number }>({
+    expiresAt: null,
+    maxUses: null,
+    usedCount: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -110,6 +115,7 @@ export function GroupPanelPage() {
       if (!canManage || reachedCapacity) {
         setInviteLink("");
         setQrBase64("");
+        setInviteSettings({ expiresAt: null, maxUses: null, usedCount: 0 });
         setInvitations([]);
         setJoinRequests([]);
         return;
@@ -127,6 +133,7 @@ export function GroupPanelPage() {
         ]);
 
       setInviteLink(inviteRes.inviteLink);
+      setInviteSettings(inviteRes.inviteSettings ?? { expiresAt: null, maxUses: null, usedCount: 0 });
       setQrBase64(qrRes.qrBase64);
       setInvitations(invitationsRes.invitations);
       setJoinRequests(joinRequestsRes.requests);
@@ -862,9 +869,14 @@ export function GroupPanelPage() {
           isOpen={isInviteModalOpen}
           onClose={() => setIsInviteModalOpen(false)}
           inviteLink={inviteLink}
+          qrBase64={qrBase64}
+          inviteSettings={inviteSettings}
           groupId={group.id}
           accessToken={accessToken ?? ""}
           members={inviteMembers}
+          onInviteSettingsUpdated={(settings) => {
+            setInviteSettings(settings);
+          }}
           onInvitationsSent={async () => {
             if (!accessToken) return;
 

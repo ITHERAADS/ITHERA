@@ -87,6 +87,7 @@ export const groupsService = {
       groupId: string
       codigo: string
       inviteLink: string
+      inviteSettings?: { expiresAt: string | null; maxUses: number | null; usedCount: number }
     }>(`/groups/${groupId}/invite`, token)
   },
 
@@ -97,6 +98,18 @@ export const groupsService = {
       codigo: string
       qrBase64: string
     }>(`/groups/${groupId}/qr`, token)
+  },
+
+  updateInviteSettings: async (
+    groupId: string,
+    payload: { expirationDays: number | null; maxUses: number | null },
+    token: string
+  ) => {
+    return apiClient.patch<{
+      ok: boolean
+      message: string
+      inviteSettings: { expiresAt: string | null; maxUses: number | null; usedCount: number }
+    }>(`/groups/${groupId}/invite-settings`, payload, token)
   },
 
   sendInvitations: async (groupId: string, emails: string[], token: string) => {

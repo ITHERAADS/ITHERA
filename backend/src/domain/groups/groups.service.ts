@@ -12,6 +12,7 @@ import {
   JoinGroupPayload,
   MemberRole,
   UpdateGroupPayload,
+  UpdateInviteSettingsPayload,
 } from './groups.entity';
 import * as NotificationsService from '../notifications/notifications.service';
 
@@ -126,6 +127,86 @@ const generateGroupCode = (length = 8): string => {
   return Array.from({ length }, () =>
     chars.charAt(Math.floor(Math.random() * chars.length))
   ).join('');
+};
+
+
+const DEFAULT_INVITE_EXPIRATION_DAYS = 7;
+const MIN_INVITE_EXPIRATION_DAYS = 1;
+const MAX_INVITE_EXPIRATION_DAYS = 30;
+const MIN_INVITE_USES = 1;
+const MAX_INVITE_USES = 50;
+
+type InviteSettings = {
+  expiresAt: string | null;
+  maxUses: number | null;
+  usedCount: number;
+};
+
+const buildDefaultInviteExpiration = (): string =>
+  new Date(Date.now() + DEFAULT_INVITE_EXPIRATION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+const normalizeInviteSettings = (grupo: any): InviteSettings => ({
+  expiresAt: grupo?.invitacion_expires_at ?? buildDefaultInviteExpiration(),
+  maxUses: grupo?.invitacion_max_usos ?? null,
+  usedCount: Number(grupo?.invitacion_usos_actuales ?? 0),
+});
+
+const validateInviteAvailability = (grupo: any): void => {
+  const settings = normalizeInviteSettings(grupo);
+
+  if (settings.expiresAt && new Date(settings.expiresAt).getTime() <= Date.now()) {
+    throw Object.assign(
+      new Error('ERR-24-001: Esta invitación ya no es válida. Solicita al administrador que genere una nueva.'),
+      { statusCode: 410, errorCode: 'ERR-24-001', code: 'INVITE_EXPIRED' }
+    );
+  }
+
+  if (settings.maxUses !== null && settings.usedCount >= settings.maxUses) {
+    throw Object.assign(
+      new Error('ERR-24-002: Esta invitación ya alcanzó el límite de usos permitidos. Pide al administrador que genere una nueva.'),
+      { statusCode: 409, errorCode: 'ERR-24-002', code: 'INVITE_USAGE_LIMIT_REACHED' }
+    );
+  }
+};
+
+const incrementInviteUsage = async (groupId: string | number): Promise<void> => {
+  const { data: grupo, error: lookupError } = await supabase
+    .from('grupos_viaje')
+    .select('invitacion_usos_actuales')
+    .eq('id', groupId)
+    .single();
+
+  if (lookupError || !grupo) throw new Error(lookupError?.message ?? 'Grupo no encontrado');
+
+  const { error } = await supabase
+    .from('grupos_viaje')
+    .update({ invitacion_usos_actuales: Number(grupo.invitacion_usos_actuales ?? 0) + 1 })
+    .eq('id', groupId);
+
+  if (error) throw new Error(error.message);
+};
+
+const normalizeInviteExpirationDays = (value: unknown): number => {
+  const days = Number(value ?? DEFAULT_INVITE_EXPIRATION_DAYS);
+  if (!Number.isInteger(days) || days < MIN_INVITE_EXPIRATION_DAYS || days > MAX_INVITE_EXPIRATION_DAYS) {
+    throw Object.assign(
+      new Error(`La expiración debe estar entre ${MIN_INVITE_EXPIRATION_DAYS} y ${MAX_INVITE_EXPIRATION_DAYS} días.`),
+      { statusCode: 400 }
+    );
+  }
+  return days;
+};
+
+const normalizeInviteMaxUses = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === 'unlimited') return null;
+  const uses = Number(value);
+  if (!Number.isInteger(uses) || uses < MIN_INVITE_USES || uses > MAX_INVITE_USES) {
+    throw Object.assign(
+      new Error(`El límite de usos debe ser ilimitado o un número entre ${MIN_INVITE_USES} y ${MAX_INVITE_USES}.`),
+      { statusCode: 400 }
+    );
+  }
+  return uses;
 };
 
 const generateUniqueCode = async (): Promise<string> => {
@@ -727,6 +808,8 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
     throw Object.assign(new Error('Grupo no encontrado o inactivo'), { statusCode: 404 });
   }
 
+  validateInviteAvailability(grupo);
+
   const { data: existente, error: existingError } = await supabase
     .from('grupo_miembros')
     .select('id')
@@ -838,6 +921,8 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
     .insert({ grupo_id: grupo.id, usuario_id: localUser.id_usuario, rol: 'viajero' });
 
   if (insertError) throw new Error(insertError.message);
+
+  await incrementInviteUsage(grupo.id);
 
   if (localUser.email) {
     await supabase
@@ -1362,6 +1447,39 @@ export const getInviteInfo = async (authUserId: string, groupId: string) => {
     groupId: String(grupo.id),
     codigo: grupo.codigo_invitacion,
     inviteLink,
+    inviteSettings: normalizeInviteSettings(grupo),
+  };
+};
+
+export const updateInviteSettings = async (
+  authUserId: string,
+  groupId: string,
+  payload: UpdateInviteSettingsPayload
+) => {
+  await ensureGroupAdmin(authUserId, groupId);
+
+  const expirationDays = normalizeInviteExpirationDays(payload.expirationDays);
+  const maxUses = normalizeInviteMaxUses(payload.maxUses);
+  const expiresAt = new Date(Date.now() + expirationDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from('grupos_viaje')
+    .update({
+      invitacion_expires_at: expiresAt,
+      invitacion_max_usos: maxUses,
+      invitacion_usos_actuales: 0,
+    })
+    .eq('id', groupId)
+    .select('*')
+    .single();
+
+  if (error || !data) throw new Error(error?.message ?? 'No se pudo actualizar la configuración de invitación');
+
+  return {
+    groupId: String(data.id),
+    codigo: data.codigo_invitacion,
+    inviteLink: getFrontendJoinLink(data.codigo_invitacion),
+    inviteSettings: normalizeInviteSettings(data),
   };
 };
 
@@ -1382,6 +1500,8 @@ export const getInvitePreviewByCode = async (
       statusCode: 404,
     });
   }
+
+  validateInviteAvailability(grupo);
 
   const memberCount = await countMembers(String(grupo.id));
   const canJoin = grupo.maximo_miembros ? memberCount < grupo.maximo_miembros : true;
@@ -1701,6 +1821,8 @@ export const resolveJoinRequest = async (
     throwGroupAtCapacity();
   }
 
+  validateInviteAvailability(grupo);
+
   await ensureUserHasAvailableDates(request.usuario_id, grupo.fecha_inicio ?? null, grupo.fecha_fin ?? null, 'approve');
   await releasePreviousJoinRequestsWithStatus(groupId, request.usuario_id, requestId, 'aprobada');
 
@@ -1755,6 +1877,8 @@ export const resolveJoinRequest = async (
     .single();
 
   if (insertError) throw new Error(insertError.message);
+
+  await incrementInviteUsage(groupId);
 
   const { data: updatedRequest, error: updateError } = await supabase
     .from('grupo_solicitudes_union')

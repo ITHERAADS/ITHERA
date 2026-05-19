@@ -1732,72 +1732,12 @@ export function SubgroupSchedulePanel({
           },
           accessToken,
         );
-      const shouldCreateExpense =
-        draft.quickExpenseAmount.trim().length > 0 ||
-        draft.quickExpenseDescription.trim().length > 0;
-      const quickExpenseValue = Number(draft.quickExpenseAmount);
-      const payerId =
-        draft.quickExpensePaidBy ||
-        currentUserId ||
-        (myUserId != null ? String(myUserId) : null);
-
-      if (shouldCreateExpense) {
-        if (!payerId)
-          throw new Error(
-            "No se encontro tu usuario para registrar el gasto rapido.",
-          );
-        if (!Number.isFinite(quickExpenseValue) || quickExpenseValue <= 0) {
-          throw new Error("El monto del gasto rapido debe ser mayor a 0.");
-        }
-        if (!draft.quickExpenseDescription.trim()) {
-          throw new Error("La descripcion del gasto es obligatoria.");
-        }
-        if ((draft.quickExpenseMemberIds ?? []).length === 0) {
-          throw new Error("Selecciona al menos una persona para el gasto.");
-        }
-        const splitError = getDraftExpenseSplitError(draft);
-        if (splitError) throw new Error(splitError);
-      }
-
-      const createdExpenseId =
-        shouldCreateExpense && payerId
-          ? await budgetService
-              .createExpense(
-                groupId,
-                {
-                  paid_by_user_id: payerId,
-                  amount: quickExpenseValue,
-                  description: draft.quickExpenseDescription.trim(),
-                  category: draft.quickExpenseCategory,
-                  split_type: draft.quickExpenseSplitType,
-                  member_ids: draft.quickExpenseMemberIds,
-                  split_amounts:
-                    draft.quickExpenseSplitType === "personalizada"
-                      ? Object.fromEntries(
-                          draft.quickExpenseMemberIds.map((memberId) => [
-                            memberId,
-                            parseFloat(
-                              draft.quickExpenseSplitAmounts[memberId] ?? "0",
-                            ) || 0,
-                          ]),
-                        )
-                      : undefined,
-                  expense_date: draft.quickExpenseDate || slotDate,
-                },
-                accessToken,
-              )
-              .then((budgetResponse) => {
-                const previousExpenseIds = new Set(
-                  linkOptions.expenses.map((item) => item.id),
-                );
-                return pickCreatedExpenseId(
-                  budgetResponse.expenses,
-                  previousExpenseIds,
-                  draft.quickExpenseDescription.trim(),
-                  quickExpenseValue,
-                );
-              })
-          : null;
+      // Durante la creacion de una opcion de subgrupo solo se permite asociar
+      // gastos ya existentes. Crear un gasto en este punto provocaba duplicidad:
+      // primero se registraba el gasto sin actividad asociada y despues se volvia
+      // a crear al persistir la actividad del subgrupo. Los gastos nuevos deben
+      // registrarse desde la accion de una opcion ya creada, donde existe el
+      // activityId definitivo para enlazarlo en una sola operacion.
 
       const createdDocumentId = draft.quickDocumentFile
         ? await documentsService
@@ -1827,21 +1767,6 @@ export function SubgroupSchedulePanel({
             accessToken,
           ),
         ),
-        ...(createdExpenseId
-          ? [
-              contextLinksService.create(
-                groupId,
-                {
-                  source: {
-                    type: "subgroup_activity",
-                    id: String(createdActivity.activity.id),
-                  },
-                  target: { type: "expense", id: createdExpenseId },
-                },
-                accessToken,
-              ),
-            ]
-          : []),
         ...(draft.selectedDocumentIds ?? []).map((id) =>
           contextLinksService.create(
             groupId,
@@ -3682,8 +3607,9 @@ export function SubgroupSchedulePanel({
                   Agregar gasto o comprobante
                 </p>
                 <p className="mt-1 text-sm leading-6 text-[#64748B]">
-                  Relaciona gastos (taxi, entradas, comida) y comprobantes
-                  (tickets, reservaciones, recibos) para esta opcion.
+                  Asocia gastos existentes y comprobantes (tickets, reservaciones,
+                  recibos) para esta opcion. Si necesitas registrar un gasto nuevo,
+                  primero crea la opcion y despues usa su boton de gasto.
                 </p>
                 <div className="mt-4 grid gap-2">
                   <button
@@ -3694,7 +3620,7 @@ export function SubgroupSchedulePanel({
                     }}
                     className="rounded-2xl border border-[#CFE0FF] bg-white px-4 py-3 text-left text-sm font-semibold text-[#1E6FD9]"
                   >
-                    Agregar o elegir gasto
+                    Elegir gasto existente
                   </button>
                   <button
                     type="button"
@@ -3749,14 +3675,6 @@ export function SubgroupSchedulePanel({
                       </span>
                     );
                   })}
-                  {(subgroupModalDraft.quickExpenseAmount.trim() ||
-                    subgroupModalDraft.quickExpenseDescription.trim()) && (
-                    <span className="rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-3 py-1.5 text-xs font-semibold text-[#1E6FD9]">
-                      Gasto nuevo:{" "}
-                      {subgroupModalDraft.quickExpenseDescription.trim() ||
-                        "Sin descripcion"}
-                    </span>
-                  )}
                   {subgroupModalDraft.selectedDocumentIds.map((documentId) => {
                     const document = linkOptions.documents.find(
                       (item) => item.id === documentId,
@@ -3949,23 +3867,23 @@ export function SubgroupSchedulePanel({
         open={draftActionModal?.mode === "expense" && modalDraft != null}
         title={
           draftActionModal?.activityId != null
-            ? "Agregar gasto o comprobante"
-            : "Agregar gasto o comprobante"
+            ? "Agregar gasto"
+            : "Elegir gasto existente"
         }
         subtitle={
           draftActionModal?.activityId != null
             ? "Relaciona un gasto existente o crea uno nuevo para esta opcion, por ejemplo taxi, entradas o comida."
-            : "Relaciona un gasto existente o crea uno nuevo, por ejemplo taxi, entradas o comida."
+            : "Durante la creacion de la opcion solo puedes asociar gastos ya registrados. Para evitar duplicados, crea gastos nuevos despues de guardar la opcion."
         }
         confirmLabel={
-          draftExpenseTab === "associate"
+          draftExpenseTab === "associate" || draftActionModal?.activityId == null
             ? "Guardar seleccion"
             : "Guardar gasto"
         }
         confirmLoading={actionBusyKey === "draft-expense"}
         onClose={closeDraftActionModal}
         onConfirm={() => {
-          if (draftExpenseTab === "associate") {
+          if (draftExpenseTab === "associate" || draftActionModal?.activityId == null) {
             if (draftActionModal?.activityId != null && modalDraft) {
               void runAction(async () => {
                 await syncDraftLinksForActivity(
@@ -3995,16 +3913,18 @@ export function SubgroupSchedulePanel({
           >
             Asociar
           </button>
-          <button
-            type="button"
-            disabled={actionBusyKey === "draft-expense"}
-            onClick={() => setDraftExpenseTab("create")}
-            className={`rounded-md px-3 py-1.5 text-sm font-semibold ${draftExpenseTab === "create" ? "bg-[#1E6FD9] text-white" : "text-[#475569]"}`}
-          >
-            Crear
-          </button>
+          {draftActionModal?.activityId != null && (
+            <button
+              type="button"
+              disabled={actionBusyKey === "draft-expense"}
+              onClick={() => setDraftExpenseTab("create")}
+              className={`rounded-md px-3 py-1.5 text-sm font-semibold ${draftExpenseTab === "create" ? "bg-[#1E6FD9] text-white" : "text-[#475569]"}`}
+            >
+              Crear
+            </button>
+          )}
         </div>
-        {draftExpenseTab === "associate" ? (
+        {draftExpenseTab === "associate" || draftActionModal?.activityId == null ? (
           linkOptions.expenses.length === 0 ? (
             <p className="text-sm text-[#64748B]">
               No hay gastos registrados para asociar.

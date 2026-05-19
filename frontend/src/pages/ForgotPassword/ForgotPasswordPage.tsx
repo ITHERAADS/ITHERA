@@ -7,6 +7,18 @@ const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
+const toSpanishForgotPasswordError = (message: string): string => {
+  const trimmed = message.trim();
+  const rateLimitMatch = trimmed.match(
+    /For security purposes, you can only request this after (\d+) seconds\.?/i,
+  );
+  if (rateLimitMatch) {
+    const seconds = rateLimitMatch[1];
+    return `Por seguridad, solo puedes solicitarlo de nuevo en ${seconds} segundos.`;
+  }
+  return message;
+};
+
 export function ForgotPasswordPage() {
   const { forgotPassword } = useAuth();
   const [email, setEmail] = useState("");
@@ -42,7 +54,7 @@ export function ForgotPasswordPage() {
         err instanceof Error
           ? err.message
           : "No se pudo procesar la solicitud.";
-      setError(msg);
+      setError(toSpanishForgotPasswordError(msg));
     } finally {
       setLoading(false);
     }

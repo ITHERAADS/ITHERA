@@ -41,10 +41,16 @@ export interface Expense {
     category: TripDocumentCategory
     notes: string
   } | null
+  subgroupId?: string
 }
 
 interface Props {
   groupId: string | null
+  expenseSubgroupScope?: {
+    subgroupId: string
+    memberUserIds: string[]
+    label?: string | null
+  } | null
   onSummaryChange?: (summary: BudgetSummary | null) => void
   onOpenVault?: () => void
   onOpenItinerary?: () => void
@@ -312,6 +318,7 @@ const isExpenseContextType = (type: ContextEntityRef['type']): boolean =>
 
 export const BudgetDashboard: FC<Props> = ({
   groupId,
+  expenseSubgroupScope = null,
   onSummaryChange,
   onOpenVault,
   onOpenItinerary,
@@ -675,6 +682,7 @@ export const BudgetDashboard: FC<Props> = ({
         : undefined,
       split_amounts: expense.splitType === 'personalizada' ? expense.splitAmounts : undefined,
       expense_date: expense.fecha,
+      subgroup_id: expense.subgroupId ?? expenseSubgroupScope?.subgroupId ?? undefined,
     }
 
     try {
@@ -1477,6 +1485,7 @@ export const BudgetDashboard: FC<Props> = ({
       <RegisterExpenseModal
         open={showModal && !isReadOnly}
         members={members}
+        subgroupScope={expenseSubgroupScope}
         editingExpense={editingExpense}
         activityOptions={[...linkOptions.activities, ...linkOptions.subgroupActivities]}
         documentOptions={linkOptions.documents}

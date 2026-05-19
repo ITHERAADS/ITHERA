@@ -558,24 +558,24 @@ export function GroupPanelPage() {
                     return (
                       <div
                         key={member.id}
-                        className="flex flex-col gap-3 rounded-xl border border-[#F4F6F8] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                        className="grid grid-cols-1 gap-3 rounded-xl border border-[#F4F6F8] px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                       >
-                        <div>
-                          <p className="font-body text-sm font-medium text-[#1E0A4E]">
+                        <div className="min-w-0">
+                          <p className="truncate font-body text-sm font-medium text-[#1E0A4E]" title={member.nombre || member.email || ""}>
                             {member.nombre || member.email}{" "}
                             {isSelf && (
                               <span className="text-[#7A8799]">(tú)</span>
                             )}
                           </p>
 
-                          <p className="break-words font-body text-xs text-[#7A8799]">
+                          <p className="truncate font-body text-xs text-[#7A8799]" title={member.email || ""}>
                             {member.email}
                           </p>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:pl-4">
                           <span
-                            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            className={`whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${
                               member.rol === "admin"
                                 ? "bg-[#E8F0FF] text-[#1E6FD9]"
                                 : "bg-[#F4F6F8] text-[#1E0A4E]"
@@ -588,14 +588,14 @@ export function GroupPanelPage() {
                             <>
                               <button
                                 onClick={() => setRoleChangeTarget(member)}
-                                className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs text-[#1E0A4E] hover:bg-[#F8FAFC]"
+                                className="whitespace-nowrap rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs text-[#1E0A4E] hover:bg-[#F8FAFC]"
                               >
                                 Cambiar rol
                               </button>
 
                               <button
                                 onClick={() => handleRemove(member)}
-                                className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-500 hover:bg-red-50"
+                                className="whitespace-nowrap rounded-lg border border-red-200 px-3 py-2 text-xs text-red-500 hover:bg-red-50"
                               >
                                 Expulsar
                               </button>

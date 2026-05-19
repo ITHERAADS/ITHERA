@@ -44,6 +44,7 @@ Codigos comunes:
 | `/api/maps` | Mapas, lugares, rutas y clima | `backend/src/routes/maps.router.ts` |
 | `/api/proposals` | Propuestas, votos y comentarios | `backend/src/routes/proposals.router.ts`, `votesComments.router.ts` |
 | `/api/search-history` | Historial de busquedas M4 | `backend/src/routes/search-history.router.ts` |
+| `/api/export` | Enlaces compartibles de itinerario | `backend/src/routes/export.router.ts` |
 | `/api/budget` | Alias directo de presupuesto | `backend/src/routes/budget.router.ts` |
 | `/api/notifications` | Notificaciones | `backend/src/routes/notifications.router.ts` |
 | `/api/documents` | Alias directo de documentos | `backend/src/routes/documents.router.ts` |
@@ -228,6 +229,15 @@ Base: `/api/search-history`
 | --- | --- | --- | --- |
 | `GET` | `/?grupoId=:grupoId` | Si | Lista historial de resultados M4 guardados para un grupo. |
 | `POST` | `/` | Si | Registra en historial un resultado de busqueda M4 guardado (vuelo u hospedaje). |
+
+## Export y enlace compartible
+
+Base: `/api/export`
+
+| Metodo | Endpoint | Auth | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/share-link/:groupId` | Si | Genera URL compartible publica para el itinerario del grupo. |
+| `GET` | `/shared/:token` | No | Obtiene itinerario publico usando token compartido. |
 | `PATCH` | `/groups/:tripId/:proposalId/comments/:commentId` | Si | Actualiza comentario. |
 | `DELETE` | `/groups/:tripId/:proposalId/comments/:commentId` | Si | Elimina comentario. |
 

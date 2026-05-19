@@ -171,7 +171,8 @@ export function AppLayout({
 
             {trip && (
               <div className="mt-auto border-t border-white/10 pt-4">
-                <p className="mb-2 px-3 font-body text-[10px] uppercase tracking-widest text-white/40">
+                <p className="mb-2 inline-flex items-center gap-2 rounded-full bg-[#35C56A]/15 px-3 py-1 font-body text-[10px] font-bold uppercase tracking-widest text-[#9AF0B8]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#35C56A]" />
                   Viajes
                 </p>
                 <button

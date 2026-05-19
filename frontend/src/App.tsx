@@ -29,7 +29,7 @@ function App() {
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/otp" element={<PublicRoute><OTPPage /></PublicRoute>} />
+        <Route path="/otp" element={<OTPPage />} />
         <Route path="/join-group" element={<JoinGroupPage />} />
 
         <Route

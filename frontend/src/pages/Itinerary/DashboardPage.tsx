@@ -172,6 +172,54 @@ function IconInfo({ size = 16 }: { size?: number }) {
   );
 }
 
+function IconMapPinSmall({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="10" r="2.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function IconCalendarSmall({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="3"
+        y="4"
+        width="18"
+        height="18"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M8 2v4M16 2v4M3 10h18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 interface SwitchingGroupState {
   id?: string | number;
   nombre?: string | null;
@@ -327,194 +375,12 @@ function DashboardSwitchLoading({
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-bluePrimary/10">
-        <svg
-          width="36"
-          height="36"
-          viewBox="0 0 24 24"
-          fill="none"
-          className="text-bluePrimary"
-          aria-hidden="true"
-        >
-          <rect
-            x="3"
-            y="4"
-            width="18"
-            height="18"
-            rx="2"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          <line
-            x1="16"
-            y1="2"
-            x2="16"
-            y2="6"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <line
-            x1="8"
-            y1="2"
-            x2="8"
-            y2="6"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <line
-            x1="3"
-            y1="10"
-            x2="21"
-            y2="10"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          <line
-            x1="8"
-            y1="14"
-            x2="16"
-            y2="14"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <line
-            x1="8"
-            y1="18"
-            x2="12"
-            y2="18"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
-      <h3 className="mb-2 font-heading text-lg font-bold text-purpleNavbar">
-        Tu itinerario está vacío
-      </h3>
-      <p className="mb-6 max-w-xs font-body text-sm leading-relaxed text-gray500">
-        Empieza proponiendo actividades, vuelos u hoteles para este día. El
-        grupo podrá votar y confirmar.
-      </p>
-      <button
-        onClick={onAdd}
-        className="inline-flex items-center gap-2 rounded-xl bg-bluePrimary px-5 py-3 font-body text-sm font-semibold text-white transition-opacity hover:opacity-90"
-      >
-        <IconPlus size={14} />
-        Proponer primera actividad
-      </button>
-    </div>
-  );
-}
-
-function HeroCard({
-  activeDay,
-  totalDays,
-  selectedDay,
-  group,
-  onAdd,
-  onExportPdf,
-  canManageSubgroups,
-  onOpenSubgroups,
-}: {
-  activeDay: number | null;
-  totalDays: number;
-  selectedDay?: ItineraryDay;
-  group: ReturnType<typeof getCurrentGroup> | null;
-  onAdd: () => void;
-  onExportPdf: () => void;
-  canManageSubgroups?: boolean;
-  onOpenSubgroups?: () => void;
-}) {
-  const activities = selectedDay?.activities ?? [];
-  const pending = activities.filter(
-    (activity) => activity.status === "pendiente",
-  ).length;
-  const destination =
-    group?.destino || group?.destino_formatted_address || "Destino pendiente";
-  const dateLabel =
-    selectedDay?.date?.toUpperCase() ||
-    group?.fecha_inicio ||
-    "Fecha pendiente";
-  const heroImage =
-    group?.destino_photo_url ||
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=400&fit=crop";
-
-  return (
-    <div className="relative mb-4 h-52 shrink-0 overflow-hidden rounded-2xl">
-      <img
-        src={heroImage}
-        alt={destination}
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
-      <div className="absolute left-4 top-4 flex gap-2">
-        <span className="rounded-full bg-white/20 px-3 py-1 font-body text-[11px] font-bold text-white backdrop-blur-sm">
-          {activeDay !== null
-            ? `DÍA ${activeDay} / ${totalDays}`
-            : `${destination.toUpperCase()}`}
-        </span>
-        <span className="rounded-full bg-white/20 px-3 py-1 font-body text-[11px] font-bold text-white backdrop-blur-sm">
-          {dateLabel}
-        </span>
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 px-5 pb-4">
-        <h1 className="mb-1 font-heading text-[28px] font-bold leading-tight text-white">
-          {activeDay !== null ? `Día ${activeDay}` : destination}
-        </h1>
-        <p className="mb-3 font-body text-[13px] text-white/70">
-          {activities.length} actividad{activities.length !== 1 ? "es" : ""}{" "}
-          planeada{activities.length !== 1 ? "s" : ""} · {pending} pendiente
-          {pending !== 1 ? "s" : ""} de confirmación
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={onExportPdf}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-white/10"
-          >
-            <IconDownload size={13} />
-            Exportar PDF
-          </button>
-          <button
-            onClick={onAdd}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-greenAccent px-4 py-2 font-body text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
-            <IconPlus size={13} />
-            Proponer actividad
-          </button>
-          {canManageSubgroups && onOpenSubgroups && (
-            <button
-              onClick={onOpenSubgroups}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 bg-white/10 px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-white/20"
-            >
-              Horario subgrupos
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TimelineStrip({
-  activeDay,
-  date,
-  activities = [],
-}: {
-  activeDay: number | null;
-  date?: string;
-  activities?: DayActivity[];
-}) {
-  if (activeDay === null) {
-    return (
-      <div className="mb-4 flex flex-col items-center justify-center gap-2 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-bluePrimary/10">
+    <div className="flex flex-1 items-center justify-center px-6 py-16">
+      <div className="w-full max-w-2xl rounded-2xl border border-[#D9E4F7] bg-white px-6 py-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-bluePrimary/10">
           <svg
-            width="20"
-            height="20"
+            width="36"
+            height="36"
             viewBox="0 0 24 24"
             fill="none"
             className="text-bluePrimary"
@@ -555,11 +421,236 @@ function TimelineStrip({
               stroke="currentColor"
               strokeWidth="2"
             />
+            <line
+              x1="8"
+              y1="14"
+              x2="16"
+              y2="14"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            <line
+              x1="8"
+              y1="18"
+              x2="12"
+              y2="18"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
           </svg>
         </div>
-        <p className="text-center font-body text-sm text-gray500">
-          Selecciona un día para ver su progreso
+        <h3 className="mb-2 font-heading text-xl font-bold text-purpleNavbar">
+          Aún no hay planes en el itinerario
+        </h3>
+        <p className="mx-auto mb-5 max-w-md font-body text-sm leading-relaxed text-gray500">
+          Crea la primera propuesta para que el viaje empiece a tomar forma.
+          Puedes agregar una actividad, un traslado o un hospedaje.
         </p>
+        <div className="mb-6 grid gap-2 text-left sm:grid-cols-3">
+          {["Actividad", "Transporte", "Hospedaje"].map((label) => (
+            <span
+              key={label}
+              className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-center font-body text-xs font-semibold text-[#475569]"
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+        <button
+          onClick={onAdd}
+          className="inline-flex items-center gap-2 rounded-xl bg-greenAccent px-5 py-3 font-body text-sm font-semibold text-white transition-opacity hover:opacity-90"
+        >
+          <IconPlus size={14} />
+          Proponer primer plan
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HeroCard({
+  activeDay,
+  totalDays,
+  selectedDay,
+  group,
+  onAdd,
+  onExportPdf,
+  canManageSubgroups,
+  onOpenSubgroups,
+}: {
+  activeDay: number | null;
+  totalDays: number;
+  selectedDay?: ItineraryDay;
+  group: ReturnType<typeof getCurrentGroup> | null;
+  onAdd: () => void;
+  onExportPdf: () => void;
+  canManageSubgroups?: boolean;
+  onOpenSubgroups?: () => void;
+}) {
+  const activities = selectedDay?.activities ?? [];
+  const pending = activities.filter(
+    (activity) => activity.status === "pendiente",
+  ).length;
+  const destination =
+    group?.destino || group?.destino_formatted_address || "Destino pendiente";
+  const dateLabel =
+    selectedDay?.date?.toUpperCase() ||
+    group?.fecha_inicio ||
+    "Fecha pendiente";
+  const heroImage =
+    group?.destino_photo_url ||
+    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=400&fit=crop";
+
+  return (
+    <div className="relative mb-4 min-h-[220px] shrink-0 overflow-hidden rounded-2xl">
+      <img
+        src={heroImage}
+        alt={destination}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
+      <div className="absolute left-5 top-5 flex flex-wrap gap-2">
+        <span className="inline-flex items-center gap-2 rounded-xl border border-[#BFD7FF]/50 bg-[#1E6FD9]/45 px-3 py-2 font-body text-[11px] font-bold uppercase tracking-wide text-white shadow-sm backdrop-blur-md">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20 text-[#D9E8FF]">
+            <IconMapPinSmall />
+          </span>
+          {activeDay !== null
+            ? `DÍA ${activeDay} / ${totalDays}`
+            : `${destination.toUpperCase()}`}
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-xl border border-[#FFE8B6]/55 bg-[#F59E0B]/45 px-3 py-2 font-body text-[11px] font-bold uppercase tracking-wide text-white shadow-sm backdrop-blur-md">
+          <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20 text-[#FFF4D6]">
+            <IconCalendarSmall />
+          </span>
+          {dateLabel}
+        </span>
+      </div>
+      <div className="absolute bottom-0 left-0 right-0 px-6 pb-5">
+        <h1 className="mb-1 font-heading text-[30px] font-bold leading-tight text-white">
+          {destination}
+        </h1>
+        <div className="mb-4 flex flex-wrap gap-2">
+          <span className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/18 px-3 py-2 font-body text-xs font-bold text-white shadow-sm backdrop-blur-md">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#35C56A]" />
+            {activities.length} actividad{activities.length !== 1 ? "es" : ""} planeada
+            {activities.length !== 1 ? "s" : ""}
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-xl border border-[#E9D5FF]/40 bg-[#7A4FD6]/35 px-3 py-2 font-body text-xs font-bold text-white shadow-sm backdrop-blur-md">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#F59E0B]" />
+            {pending} pendiente{pending !== 1 ? "s" : ""} de confirmacion
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={onAdd}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-greenAccent px-4 py-2.5 font-body text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          >
+            <IconPlus size={13} />
+            Proponer actividad
+          </button>
+          <button
+            onClick={onExportPdf}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/45 bg-black/10 px-4 py-2.5 font-body text-sm font-semibold text-white transition-colors hover:bg-white/10"
+          >
+            <IconDownload size={13} />
+            Exportar PDF
+          </button>
+          {canManageSubgroups && onOpenSubgroups && (
+            <button
+              onClick={onOpenSubgroups}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/45 bg-white/10 px-4 py-2.5 font-body text-sm font-semibold text-white transition-colors hover:bg-white/20"
+            >
+              Horario subgrupos
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineStrip({
+  activeDay,
+  date,
+  activities = [],
+  onAdd,
+}: {
+  activeDay: number | null;
+  date?: string;
+  activities?: DayActivity[];
+  onAdd?: () => void;
+}) {
+  if (activeDay === null) {
+    return (
+      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-[#BCD4FF] bg-[#EEF4FF] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-bluePrimary/10">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="text-bluePrimary"
+              aria-hidden="true"
+            >
+              <rect
+                x="3"
+                y="4"
+                width="18"
+                height="18"
+                rx="2"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+              <line
+                x1="16"
+                y1="2"
+                x2="16"
+                y2="6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <line
+                x1="8"
+                y1="2"
+                x2="8"
+                y2="6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <line
+                x1="3"
+                y1="10"
+                x2="21"
+                y2="10"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+            </svg>
+          </div>
+          <div>
+            <p className="font-heading text-sm font-bold text-purpleNavbar">
+              Selecciona un día para revisar el avance
+            </p>
+            <p className="font-body text-xs text-gray500">
+              También puedes empezar creando una propuesta para el primer día.
+            </p>
+          </div>
+        </div>
+        {onAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-bluePrimary px-4 py-2 font-body text-xs font-semibold text-white hover:bg-[#1E5EEA]"
+          >
+            <IconPlus size={13} />
+            Proponer plan
+          </button>
+        )}
       </div>
     );
   }
@@ -792,6 +883,35 @@ function isPastItineraryDay(
   return dayKey < getTodayDateKey();
 }
 
+function formatTripDateRange(
+  start?: string | null,
+  end?: string | null,
+): string {
+  if (!start || !end) return "Fechas por definir";
+  const startDate = new Date(`${toDateKey(start) ?? start}T00:00:00`);
+  const endDate = new Date(`${toDateKey(end) ?? end}T00:00:00`);
+  if (
+    !Number.isFinite(startDate.getTime()) ||
+    !Number.isFinite(endDate.getTime())
+  ) {
+    return `${start} - ${end}`;
+  }
+  const sameYear = startDate.getFullYear() === endDate.getFullYear();
+  const sameMonth =
+    sameYear && startDate.getMonth() === endDate.getMonth();
+  const dayFormatter = new Intl.DateTimeFormat("es-MX", { day: "numeric" });
+  const fullFormatter = new Intl.DateTimeFormat("es-MX", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  if (sameMonth) {
+    return `${dayFormatter.format(startDate)} al ${fullFormatter.format(endDate)}`;
+  }
+  return `${fullFormatter.format(startDate)} al ${fullFormatter.format(endDate)}`;
+}
+
 function InfoBanner({ memberCount }: { memberCount: number }) {
   const isSoloTrip = memberCount <= 1;
 
@@ -829,6 +949,8 @@ function BottomNavbar({
     {
       id: "inicio",
       label: "Inicio",
+      color: "#1E6FD9",
+      bg: "#EEF4FF",
       icon: (
         <svg
           width="18"
@@ -857,6 +979,8 @@ function BottomNavbar({
     {
       id: "buscar",
       label: "Buscar",
+      color: "#7A4FD6",
+      bg: "#F3EEFF",
       icon: (
         <svg
           width="18"
@@ -878,6 +1002,8 @@ function BottomNavbar({
     {
       id: "comparar",
       label: "Comparar",
+      color: "#F59E0B",
+      bg: "#FFF7E6",
       icon: (
         <svg
           width="18"
@@ -898,6 +1024,8 @@ function BottomNavbar({
     {
       id: "mapas",
       label: "Mapas",
+      color: "#35C56A",
+      bg: "#EAFBF1",
       icon: (
         <svg
           width="18"
@@ -937,6 +1065,8 @@ function BottomNavbar({
     {
       id: "pagar",
       label: "Finanzas",
+      color: "#0F766E",
+      bg: "#E6FFFA",
       icon: (
         <svg
           width="18"
@@ -966,6 +1096,8 @@ function BottomNavbar({
     {
       id: "boveda",
       label: "Bóveda",
+      color: "#DB2777",
+      bg: "#FCE7F3",
       icon: (
         <svg
           width="18"
@@ -990,7 +1122,7 @@ function BottomNavbar({
     : tabs;
 
   return (
-    <div className="flex h-14 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4">
+    <div className="flex h-16 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4 shadow-[0_-10px_24px_rgba(15,23,42,0.04)]">
       {visibleTabs.map((tab) => {
         const isActive = tab.id === activeTab;
         return (
@@ -998,12 +1130,22 @@ function BottomNavbar({
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             className={[
-              "rounded-lg px-3 py-1 font-body text-[10px] font-medium transition-colors",
-              isActive ? "text-bluePrimary" : "text-gray500 hover:text-gray700",
+              "rounded-xl px-3 py-1 font-body text-[10px] font-semibold transition-colors",
+              isActive
+                ? "text-[#1E0A4E]"
+                : "text-gray500 hover:bg-white hover:text-gray700",
             ].join(" ")}
           >
             <span className="flex flex-col items-center gap-0.5">
-              {tab.icon}
+              <span
+                className="flex h-7 w-7 items-center justify-center rounded-xl transition-transform duration-200"
+                style={{
+                  color: tab.color,
+                  backgroundColor: isActive ? tab.bg : "transparent",
+                }}
+              >
+                {tab.icon}
+              </span>
               <span>{tab.label}</span>
             </span>
           </button>
@@ -2988,7 +3130,7 @@ export function DashboardPage() {
       trip={{
         name: group?.nombre || "Itinerario",
         subtitle: group?.destino || "Destino pendiente",
-        dates: `${group?.fecha_inicio || "—"} – ${group?.fecha_fin || "—"}`,
+        dates: formatTripDateRange(group?.fecha_inicio, group?.fecha_fin),
         people: group?.maximo_miembros
           ? `${group.maximo_miembros} personas máx.`
           : "Miembros por definir",
@@ -3028,6 +3170,13 @@ export function DashboardPage() {
             setChatOpen(true);
             setChatUnread(0);
           }}
+          onOpenBudget={() => setActiveTab("pagar")}
+          onOpenMap={() => setActiveTab("mapas")}
+          onOpenGroupPanel={() =>
+            navigate(
+              `/grouppanel?groupId=${encodeURIComponent(groupId || currentGroup?.id || "")}`,
+            )
+          }
           unreadCount={chatUnread}
           totalBudget={budgetSummary?.totalBudget}
           committedBudget={budgetSummary?.committed}
@@ -3458,6 +3607,14 @@ export function DashboardPage() {
             activeDay={activeDay}
             date={selectedDayWithContext?.date}
             activities={selectedDayWithContext?.activities}
+            onAdd={
+              isReadOnly
+                ? undefined
+                : () =>
+                    openActivityModalForDay(
+                      activeDay ?? daysWithContext[0]?.dayNumber ?? 1,
+                    )
+            }
           />
           <div className="flex flex-col gap-3">
             {daysWithContext.map((day) => {
@@ -3977,8 +4134,3 @@ export function DashboardPage() {
     </AppLayout>
   );
 }
-
-
-
-
-

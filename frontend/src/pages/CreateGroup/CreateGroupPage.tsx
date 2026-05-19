@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AppLayout } from "../../components/layout/AppLayout";
 import { useAuth } from "../../context/useAuth";
 import { groupsService, saveCurrentGroup } from "../../services/groups";
+import { isNetworkError } from "../../services/apiClient";
 import { DestinationSearch } from "../../components/DestinationSearch/DestinationSearch";
 import type { GeocodingResult } from "../../services/maps";
 import { HelpButton } from "../../components/ui/HelpButton";
@@ -354,6 +355,10 @@ function StandardInlineAlert({
 }
 
 function getCreateGroupErrorMessage(error: unknown): string {
+  if (isNetworkError(error)) {
+    return "Sin conexión. Verifica tu red e inténtalo de nuevo cuando recuperes internet.";
+  }
+
   if (error instanceof Error) return error.message;
   return "No se pudo crear el grupo. Inténtalo de nuevo.";
 }
@@ -463,6 +468,18 @@ export function CreateGroupPage() {
   const [created, setCreated] = useState(false);
   const [groupCode, setGroupCode] = useState("");
   const [invitedCount, setInvitedCount] = useState(0);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
+
+  useEffect(() => {
+    const updateOnlineState = () => setIsOffline(typeof navigator !== "undefined" && !navigator.onLine);
+    window.addEventListener("online", updateOnlineState);
+    window.addEventListener("offline", updateOnlineState);
+    updateOnlineState();
+    return () => {
+      window.removeEventListener("online", updateOnlineState);
+      window.removeEventListener("offline", updateOnlineState);
+    };
+  }, []);
 
   const set = (key: keyof FormData) => (val: string | boolean) => {
     const normalizedValue =
@@ -520,6 +537,11 @@ export function CreateGroupPage() {
 
     if (!accessToken) {
       setServerError("Tu sesión expiró. Vuelve a iniciar sesión.");
+      return;
+    }
+
+    if (isOffline) {
+      setServerError("Sin conexión. La creación del grupo estará disponible cuando recuperes internet.");
       return;
     }
 
@@ -1002,6 +1024,14 @@ export function CreateGroupPage() {
               </div>
             </div>
 
+            {isOffline && (
+              <StandardInlineAlert
+                title="Sin conexión — modo lectura activo"
+                message="Puedes revisar la información capturada, pero no se harán búsquedas de destino ni se creará el grupo hasta recuperar internet."
+                tone="warning"
+              />
+            )}
+
             {!isFormValid && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="font-body text-xs text-amber-700">
@@ -1016,12 +1046,14 @@ export function CreateGroupPage() {
             {/* Create Button */}
             <button
               onClick={handleCreate}
-              disabled={loading || !isFormValid}
-              aria-disabled={loading || !isFormValid}
+              disabled={loading || !isFormValid || isOffline}
+              aria-disabled={loading || !isFormValid || isOffline}
               title={
-                !isFormValid
-                  ? "Completa los campos obligatorios con valores válidos para crear el grupo."
-                  : undefined
+                isOffline
+                  ? "Acción no disponible sin conexión."
+                  : !isFormValid
+                    ? "Completa los campos obligatorios con valores válidos para crear el grupo."
+                    : undefined
               }
               className="w-full font-body font-medium text-sm bg-[#1E6FD9] text-white rounded-xl px-6 py-4 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >

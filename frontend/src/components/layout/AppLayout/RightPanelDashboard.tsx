@@ -84,6 +84,29 @@ function IconChat() {
   )
 }
 
+function SectionDivider({
+  label,
+  color,
+  background,
+}: {
+  label: string
+  color: string
+  background: string
+}) {
+  return (
+    <div className="mb-3 flex items-center gap-2">
+      <span
+        className="inline-flex items-center gap-2 rounded-full px-3 py-1 font-body text-[10px] font-bold uppercase tracking-widest"
+        style={{ color, backgroundColor: background }}
+      >
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+        {label}
+      </span>
+      <span className="h-px flex-1 rounded-full bg-[#E2E8F0]" />
+    </div>
+  )
+}
+
 function toNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null
   const parsed = Number(value)
@@ -129,6 +152,9 @@ export function RightPanelDashboard({
   isLoading = false,
   socket,
   onOpenChat,
+  onOpenBudget,
+  onOpenGroupPanel,
+  onOpenMap,
   unreadCount = 0,
   totalBudget,
   committedBudget,
@@ -138,6 +164,9 @@ export function RightPanelDashboard({
   isLoading?: boolean
   socket?: Socket | null
   onOpenChat?: () => void
+  onOpenBudget?: () => void
+  onOpenGroupPanel?: () => void
+  onOpenMap?: () => void
   unreadCount?: number
   totalBudget?: number
   committedBudget?: number
@@ -303,9 +332,7 @@ export function RightPanelDashboard({
     <>
       {/* Participants */}
       <section className="shrink-0">
-        <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest mb-3">
-          Participantes
-        </p>
+        <SectionDivider label="Participantes" color="#1E6FD9" background="#EEF4FF" />
 
         {/* Trigger: avatars + summary text — wrapped with popover in same ref for click-outside */}
         <div ref={popoverRef} className="relative">
@@ -331,6 +358,16 @@ export function RightPanelDashboard({
               {participants.length} participante{participants.length !== 1 ? 's' : ''} · {onlineCount} en línea
             </p>
           </button>
+
+          {onOpenGroupPanel && (
+            <button
+              type="button"
+              onClick={onOpenGroupPanel}
+              className="mt-3 w-full rounded-xl border border-[#D9E2F2] bg-white px-3 py-2 text-left font-body text-xs font-semibold text-bluePrimary transition-colors hover:border-bluePrimary/40 hover:bg-[#EEF4FF]"
+            >
+              Invitar o gestionar miembros
+            </button>
+          )}
 
           {/* Popover */}
           {popoverOpen && (
@@ -389,15 +426,17 @@ export function RightPanelDashboard({
 
       {/* Mini map */}
       <section className="shrink-0">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest">
-            Punto de partida
-          </p>
+        <div className="mb-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <SectionDivider label="Punto de partida" color="#7A4FD6" background="#F3EEFF" />
+            </div>
           {startLocation?.source === 'hotel_reservado' && (
             <span className="rounded-full bg-greenAccent/10 px-2 py-0.5 font-body text-[10px] font-bold text-greenAccent">
               Hotel reservado
             </span>
           )}
+          </div>
         </div>
 
         <div className="mb-2">
@@ -417,22 +456,31 @@ export function RightPanelDashboard({
         </p>
 
         {startLocation?.latitude != null && startLocation?.longitude != null && (
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${startLocation.latitude},${startLocation.longitude}`}
-            target="_blank"
-            rel="noreferrer"
-            className="font-body text-[11px] text-bluePrimary mt-1.5 hover:underline inline-block"
-          >
-            Ver en mapa completo →
-          </a>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${startLocation.latitude},${startLocation.longitude}`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg bg-[#EEF4FF] px-2.5 py-1.5 font-body text-[11px] font-semibold text-bluePrimary hover:bg-[#E2EDFF]"
+            >
+              Abrir mapa
+            </a>
+            {onOpenMap && (
+              <button
+                type="button"
+                onClick={onOpenMap}
+                className="rounded-lg border border-[#D9E2F2] px-2.5 py-1.5 font-body text-[11px] font-semibold text-[#475569] hover:bg-white"
+              >
+                Ver rutas
+              </button>
+            )}
+          </div>
         )}
       </section>
 
       {/* Mini budget */}
       <section className="shrink-0">
-        <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest mb-3">
-          Presupuesto
-        </p>
+        <SectionDivider label="Presupuesto" color="#35C56A" background="#EAFBF1" />
 
         {budgetData === null ? (
           <p className="font-body text-xs text-gray500">Sin presupuesto definido</p>
@@ -471,12 +519,22 @@ export function RightPanelDashboard({
             <p className="font-body text-[10px] text-gray500 text-right">
               {budgetData.isOverBudget ? 'Presupuesto excedido' : `${budgetData.pct.toFixed(0)}% comprometido`}
             </p>
+            {onOpenBudget && (
+              <button
+                type="button"
+                onClick={onOpenBudget}
+                className="mt-3 w-full rounded-xl border border-[#D9E2F2] bg-white px-3 py-2 text-left font-body text-xs font-semibold text-bluePrimary transition-colors hover:border-bluePrimary/40 hover:bg-[#EEF4FF]"
+              >
+                Ajustar presupuesto
+              </button>
+            )}
           </>
         )}
       </section>
 
       {/* Open chat button */}
       <section className="shrink-0">
+        <SectionDivider label="Comunicacion" color="#DB2777" background="#FCE7F3" />
         <button
           type="button"
           onClick={onOpenChat}

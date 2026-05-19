@@ -5,7 +5,9 @@ const EMAIL_REGEX = /^(?!.*\.\.)(?!.*@.*\.\.)(?!.*@-)(?!.*-\.)[A-Za-z0-9](?:[A-Z
 const PASSWORD_REGEX = /^(?=.*[a-záéíóúñ])(?=.*[A-ZÁÉÍÓÚÑ])(?=.*\d).{8,}$/;
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOGIN_LOCK_MS = 5 * 60 * 1000;
-const FORGOT_PASSWORD_MIN_RESPONSE_MS = 1200;
+const FORGOT_PASSWORD_MIN_RESPONSE_MS = 1400;
+const FORGOT_PASSWORD_GENERIC_MESSAGE =
+  'Si el correo existe, se enviará un enlace para restablecer la contraseña.';
 
 type LoginAttemptState = {
   failedAttempts: number;
@@ -39,13 +41,11 @@ function clearExpiredLoginLock(key: string, state?: LoginAttemptState): void {
   }
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const enforceForgotPasswordConstantTime = async (startedAt: number): Promise<void> => {
-  const elapsed = Date.now() - startedAt;
-  const remaining = FORGOT_PASSWORD_MIN_RESPONSE_MS - elapsed;
-  if (remaining > 0) await sleep(remaining);
-};
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, ms));
+  });
+}
 
 const multer = require('multer');
 
@@ -357,7 +357,6 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 });
 
 router.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
-  const startedAt = Date.now();
   try {
     const { email } = req.body as { email?: string };
 
@@ -381,26 +380,28 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    const { error } = await AuthService.forgotPassword({ email: normalizedEmail });
-
-    if (error) {
-      await enforceForgotPasswordConstantTime(startedAt);
-      res.status(400).json({
-        ok: false,
-        error: error.message,
+    void AuthService.forgotPassword({ email: normalizedEmail })
+      .then(({ error }) => {
+        if (error) {
+          console.warn('Password reset provider returned an internal error', {
+            error: error.message,
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn('Password reset request failed internally', {
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
-      return;
-    }
 
-    await enforceForgotPasswordConstantTime(startedAt);
+    await wait(FORGOT_PASSWORD_MIN_RESPONSE_MS);
+
     res.status(200).json({
       ok: true,
-      message:
-        'Si el correo existe, se enviará un enlace para restablecer la contraseña.',
+      message: FORGOT_PASSWORD_GENERIC_MESSAGE,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
-    await enforceForgotPasswordConstantTime(startedAt);
     res.status(500).json({
       ok: false,
       error: 'Error interno del servidor',

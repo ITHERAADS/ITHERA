@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { Logo } from '../../components/ui/Logo'
 import { Navbar } from '../../components/layout/Navbar'
 import { useNavigate } from 'react-router-dom'
@@ -56,6 +56,187 @@ function useFadeIn() {
     return () => observer.disconnect()
   }, [])
   return ref
+}
+
+// ── Small UI pieces ──────────────────────────────────────────────────────────
+
+function Icon({
+  type,
+  className = '',
+}: {
+  type: 'calendar' | 'budget' | 'chat' | 'vote' | 'vault' | 'map' | 'spark'
+  className?: string
+}) {
+  const common = {
+    width: 18,
+    height: 18,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    className,
+    'aria-hidden': true,
+  }
+
+  if (type === 'budget') {
+    return (
+      <svg {...common}>
+        <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    )
+  }
+  if (type === 'chat') {
+    return (
+      <svg {...common}>
+        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (type === 'vote') {
+    return (
+      <svg {...common}>
+        <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (type === 'vault') {
+    return (
+      <svg {...common}>
+        <path d="M21 8a2 2 0 00-2-2h-3l-2-2h-4L8 6H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V8z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  if (type === 'map') {
+    return (
+      <svg {...common}>
+        <path d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z" stroke="currentColor" strokeWidth="2" />
+        <circle cx="12" cy="10" r="2.5" fill="currentColor" />
+      </svg>
+    )
+  }
+  if (type === 'spark') {
+    return (
+      <svg {...common}>
+        <path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      </svg>
+    )
+  }
+  return (
+    <svg {...common}>
+      <rect x="3" y="4" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
+      <path d="M8 2v4M16 2v4M3 10h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function SectionEyebrow({ children }: { children: ReactNode }) {
+  return (
+    <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#D9E4F7] bg-white px-3 py-1 font-body text-[11px] font-bold uppercase tracking-[0.18em] text-[#1E6FD9] shadow-sm">
+      <span className="h-1.5 w-1.5 rounded-full bg-[#35C56A]" />
+      {children}
+    </p>
+  )
+}
+
+function HeroProductPreview() {
+  return (
+    <div className="relative mx-auto w-full max-w-xl lg:max-w-none">
+      <div className="landing-float relative overflow-hidden rounded-[26px] border border-white/20 bg-white/95 shadow-[0_30px_90px_rgba(9,5,28,0.45)] backdrop-blur">
+        <div className="flex h-12 items-center gap-2 border-b border-[#E2E8F0] bg-[#FAFCFF] px-4">
+          <span className="h-3 w-3 rounded-full bg-[#EF4444]" />
+          <span className="h-3 w-3 rounded-full bg-[#F59E0B]" />
+          <span className="h-3 w-3 rounded-full bg-[#35C56A]" />
+          <div className="ml-3 h-6 flex-1 rounded-full bg-[#EEF4FF]" />
+        </div>
+
+        <div className="grid min-h-[430px] grid-cols-[82px_minmax(0,1fr)] bg-[#F0EEF8] sm:grid-cols-[170px_minmax(0,1fr)]">
+          <aside className="bg-[#1E0A4E] p-4">
+            <div className="mb-5 h-10 rounded-2xl bg-white/10" />
+            <div className="space-y-2">
+              {[
+                ['Día 1', '#1E6FD9'],
+                ['Votos', '#7A4FD6'],
+                ['Gastos', '#35C56A'],
+              ].map(([label, color]) => (
+                <div key={label} className="rounded-2xl border border-white/10 bg-white/10 px-3 py-3">
+                  <div className="mb-2 h-2 w-16 rounded-full bg-white/25" />
+                  <div className="h-2 w-10 rounded-full" style={{ backgroundColor: color }} />
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          <main className="min-w-0 p-4 sm:p-5">
+            <div className="mb-4 overflow-hidden rounded-2xl bg-white shadow-sm">
+              <div className="relative h-28 bg-[url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&h=300&fit=crop')] bg-cover bg-center">
+                <div className="absolute inset-0 bg-[#1E0A4E]/45" />
+                <div className="absolute bottom-4 left-4 right-4">
+                  <div className="mb-2 flex gap-2">
+                    <span className="rounded-full bg-[#1E6FD9]/80 px-2 py-1 text-[10px] font-bold text-white">ACAPULCO</span>
+                    <span className="rounded-full bg-[#F59E0B]/80 px-2 py-1 text-[10px] font-bold text-white">19 MAY</span>
+                  </div>
+                  <p className="font-heading text-xl font-bold text-white">Despedida de Soltero</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_150px]">
+              <div className="space-y-3">
+                {[
+                  ['10:00', 'Llegada al hotel', 'Confirmado', '#35C56A'],
+                  ['14:30', 'Comida frente al mar', 'En votacion', '#F59E0B'],
+                  ['20:00', 'Actividad nocturna', 'Propuesta', '#7A4FD6'],
+                ].map(([time, title, status, color]) => (
+                  <div key={title} className="rounded-2xl border border-[#E2E8F0] bg-white p-3 shadow-sm">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="font-body text-xs font-bold text-[#64748B]">{time}</span>
+                      <span className="rounded-full px-2 py-1 font-body text-[10px] font-bold text-white" style={{ backgroundColor: color }}>
+                        {status}
+                      </span>
+                    </div>
+                    <p className="font-heading text-sm font-bold text-[#1E0A4E]">{title}</p>
+                    <div className="mt-3 h-2 rounded-full bg-[#EEF2FF]">
+                      <div className="h-full w-2/3 rounded-full" style={{ backgroundColor: color }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="hidden space-y-3 md:block">
+                <div className="rounded-2xl border border-[#D7F3E1] bg-white p-3 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2 text-[#35C56A]">
+                    <Icon type="budget" />
+                    <span className="font-body text-xs font-bold">Presupuesto</span>
+                  </div>
+                  <p className="font-heading text-lg font-bold text-[#1E0A4E]">$50,000</p>
+                  <div className="mt-2 h-2 rounded-full bg-[#EAFBF1]">
+                    <div className="h-full w-[28%] rounded-full bg-[#35C56A]" />
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-[#E2D8FF] bg-white p-3 shadow-sm">
+                  <div className="mb-3 flex items-center gap-2 text-[#7A4FD6]">
+                    <Icon type="chat" />
+                    <span className="font-body text-xs font-bold">Chat activo</span>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-2 rounded-full bg-[#F3EEFF]" />
+                    <div className="h-2 w-2/3 rounded-full bg-[#F3EEFF]" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+
+      <div className="landing-float-delayed absolute -bottom-5 -left-3 hidden rounded-2xl border border-white/20 bg-white px-4 py-3 shadow-[0_18px_44px_rgba(9,5,28,0.28)] sm:block">
+        <p className="font-body text-[11px] font-bold uppercase tracking-wide text-[#7A4FD6]">Votacion cerrada</p>
+        <p className="font-heading text-sm font-bold text-[#1E0A4E]">7 de 8 aprobaron el plan</p>
+      </div>
+      <div className="landing-float absolute -right-3 top-12 hidden rounded-2xl border border-white/20 bg-white px-4 py-3 shadow-[0_18px_44px_rgba(9,5,28,0.28)] md:block">
+        <p className="font-body text-[11px] font-bold uppercase tracking-wide text-[#35C56A]">Sincronizado</p>
+        <p className="font-heading text-sm font-bold text-[#1E0A4E]">Presupuesto actualizado</p>
+      </div>
+    </div>
+  )
 }
 
 // ── Navbar ────────────────────────────────────────────────────────────────────
@@ -159,145 +340,134 @@ function HeroSection({ isOnline }: { isOnline: boolean }) {
   }
 
   return (
-    <section className="relative bg-primary-dark min-h-screen flex flex-col items-center justify-center text-center px-4 pt-24 pb-20">
-      {/* Beach background image */}
+    <section className="relative flex min-h-screen items-center overflow-hidden bg-primary-dark px-4 pb-16 pt-24">
       <img
         src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1400&h=900&fit=crop"
         alt=""
         aria-hidden="true"
-        className="absolute inset-0 w-full h-full object-cover"
+        className="absolute inset-0 h-full w-full object-cover"
       />
-      {/* Strong purple overlay — image barely perceptible */}
-      <div className="absolute inset-0 bg-[#1E0A4E]/85" />
-
-      {/* Background gradient glow + dot grid */}
+      <div className="absolute inset-0 bg-[linear-gradient(100deg,rgba(30,10,78,0.96)_0%,rgba(30,10,78,0.86)_42%,rgba(30,10,78,0.58)_100%)]" />
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-primary/30 rounded-full blur-3xl" />
         <div
-          className="absolute inset-0 opacity-30"
+          className="absolute inset-0 opacity-25"
           style={{
             backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
+            backgroundSize: '30px 30px',
           }}
         />
+        <div className="landing-glow absolute left-[8%] top-[18%] h-28 w-28 rounded-full bg-[#35C56A]/30 blur-3xl" />
+        <div className="landing-glow absolute bottom-[14%] right-[18%] h-36 w-36 rounded-full bg-[#1E6FD9]/35 blur-3xl" />
       </div>
 
-      {/* Badge */}
-      <div className="relative inline-flex items-center gap-2 border border-white/20 rounded-full px-4 py-1.5 mb-6">
-        <span className="relative flex w-2 h-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green opacity-75" />
-          <span className="relative inline-flex rounded-full w-2 h-2 bg-green" />
-        </span>
-        <span className="font-body text-xs text-white/80">Colaboración en tiempo real</span>
-      </div>
+      <div className="relative mx-auto grid w-full max-w-7xl items-center gap-12 lg:grid-cols-[minmax(0,0.95fr)_minmax(520px,1.05fr)]">
+        <div className="text-left">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green" />
+            </span>
+            <span className="font-body text-xs font-semibold text-white/85">Colaboracion en tiempo real</span>
+          </div>
 
-      {/* Headline */}
-      <h1 className="relative font-heading font-bold text-white text-5xl md:text-6xl leading-tight max-w-2xl mb-4">
-        Planifica tu viaje grupal{' '}
-        <span className="bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] bg-clip-text text-transparent">sin el caos.</span>
-      </h1>
+          <h1 className="max-w-3xl font-heading text-5xl font-bold leading-[1.02] text-white md:text-6xl">
+            Planea viajes grupales con decisiones claras.
+          </h1>
+          <p className="mt-5 max-w-xl font-body text-base leading-8 text-white/70">
+            ITHERA une itinerarios, propuestas, votos, presupuesto y documentos
+            en una sola experiencia para que el grupo avance sin perder contexto.
+          </p>
 
-      <p className="relative font-body text-white/60 text-base max-w-md mb-8">
-        Itinerarios, presupuestos y reservas — todo en un solo lugar.
-      </p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <button onClick={() => navigate('/create-group')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-green px-6 py-3 font-body text-sm font-bold text-white shadow-[0_14px_30px_rgba(53,197,106,0.28)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_38px_rgba(53,197,106,0.34)]">
+              Crear mi primer viaje
+              <Icon type="spark" />
+            </button>
+            <button onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })} className="inline-flex items-center justify-center rounded-xl border border-white/30 bg-white/10 px-6 py-3 font-body text-sm font-bold text-white backdrop-blur transition-colors hover:bg-white/20">
+              Ver como funciona
+            </button>
+          </div>
 
-      {/* CTAs */}
-      <div className="relative flex flex-col sm:flex-row items-center gap-3 mb-4">
-        <button
-          onClick={() => isOnline && navigate('/create-group')}
-          disabled={!isOnline}
-          title={!isOnline ? 'Sin conexión a internet' : undefined}
-          className="font-body font-medium text-sm bg-green text-white rounded-lg px-6 py-3 hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Crear mi primer viaje
-        </button>
-        <button
-          onClick={() => document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })}
-          className="font-body font-medium text-sm border border-[rgba(255,255,255,0.35)] text-white rounded-lg px-6 py-3 hover:bg-white/10 transition-colors"
-        >
-          Ver cómo funciona
-        </button>
-      </div>
+          <div className="mt-8 grid max-w-lg grid-cols-3 gap-3">
+            {[
+              ['1,200+', 'grupos'],
+              ['98%', 'satisfaccion'],
+              ['100%', 'gratis'],
+            ].map(([value, label]) => (
+              <div key={label} className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur">
+                <p className="font-heading text-2xl font-bold text-white">{value}</p>
+                <p className="font-body text-xs font-semibold text-white/55">{label}</p>
+              </div>
+            ))}
+          </div>
 
-      <p className="relative font-body text-white/40 text-xs mb-8">
-        ¿Ya tienes? Inicia con código →
-      </p>
-
-      {/* Search form */}
-      <div className="relative w-full max-w-4xl rounded-2xl border border-white/20 bg-white/95 p-2 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.5)] backdrop-blur-md">
-        <div className="grid gap-2 sm:grid-cols-[1.5fr_1.5fr_0.8fr_auto]">
-        <div className="flex min-w-0 flex-col rounded-xl px-4 py-3 transition-all duration-300 hover:bg-[#F0F5FF] focus-within:bg-[#F0F5FF] focus-within:ring-2 focus-within:ring-[#1E6FD9]/20">
-          <label className="flex items-center gap-1.5 font-body text-[10px] font-bold text-[#1E6FD9] uppercase tracking-wider mb-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1v12z" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><line x1="4" y1="22" x2="4" y2="15" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            Nombre del viaje
-          </label>
-          <input
-            type="text"
-            placeholder="Ej: Aventura verano 2026"
-            value={tripName}
-            onChange={e => setTripName(e.target.value)}
-            className="font-body text-base text-primary-dark placeholder-gray-400 outline-none bg-transparent font-medium"
-          />
+          <div className="mt-8 w-full max-w-3xl rounded-2xl border border-white/20 bg-white/95 p-2 shadow-[0_24px_60px_rgba(9,5,28,0.35)] backdrop-blur-md">
+            <div className="grid gap-2 md:grid-cols-[1.2fr_1.2fr_0.7fr_auto]">
+              <div className="flex min-w-0 flex-col rounded-xl px-4 py-3 transition-all duration-300 hover:bg-[#F0F5FF] focus-within:bg-[#F0F5FF] focus-within:ring-2 focus-within:ring-[#1E6FD9]/20">
+                <label className="mb-1.5 flex items-center gap-1.5 font-body text-[10px] font-bold uppercase tracking-wider text-[#1E6FD9]">
+                  <Icon type="calendar" className="h-3 w-3" />
+                  Nombre del viaje
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Aventura verano 2026"
+                  value={tripName}
+                  onChange={e => setTripName(e.target.value)}
+                  className="bg-transparent font-body text-base font-medium text-primary-dark outline-none placeholder-gray-400"
+                />
+              </div>
+              <div className="flex min-w-0 flex-col rounded-xl px-4 py-3 transition-all duration-300 hover:bg-[#F0F5FF] focus-within:bg-[#F0F5FF] focus-within:ring-2 focus-within:ring-[#1E6FD9]/20 md:border-l md:border-gray-100">
+                <label className="mb-1.5 flex items-center gap-1.5 font-body text-[10px] font-bold uppercase tracking-wider text-[#7A4FD6]">
+                  <Icon type="map" className="h-3 w-3" />
+                  Destino
+                </label>
+                <input
+                  type="text"
+                  placeholder="A donde vamos"
+                  value={dates}
+                  onChange={e => setDates(e.target.value)}
+                  className="bg-transparent font-body text-base font-medium text-primary-dark outline-none placeholder-gray-400"
+                />
+              </div>
+              <div className="flex min-w-0 flex-col rounded-xl px-4 py-3 transition-all duration-300 hover:bg-[#F0F5FF] focus-within:bg-[#F0F5FF] focus-within:ring-2 focus-within:ring-[#1E6FD9]/20 md:border-l md:border-gray-100">
+                <label className="mb-1.5 flex items-center gap-1.5 font-body text-[10px] font-bold uppercase tracking-wider text-[#35C56A]">
+                  <Icon type="vote" className="h-3 w-3" />
+                  Personas
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="2"
+                  value={people}
+                  onChange={e => handlePeopleChange(e.target.value)}
+                  onBlur={() => {
+                    if (!people) setPeople('2')
+                  }}
+                  className="w-full bg-transparent font-body text-base font-medium text-primary-dark outline-none placeholder-gray-400"
+                />
+              </div>
+              <button
+                onClick={isOnline ? handleCreateItinerary : undefined}
+                disabled={!isOnline}
+                title={!isOnline ? 'Sin conexión a internet' : undefined}
+                className="flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-7 py-3 font-body text-sm font-bold text-white transition-all duration-300 hover:opacity-90 hover:shadow-[0_10px_24px_rgba(30,111,217,0.35)] disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Crear
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 5l7 7-7 7" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="flex min-w-0 flex-col rounded-xl px-4 py-3 transition-all duration-300 hover:bg-[#F0F5FF] focus-within:bg-[#F0F5FF] focus-within:ring-2 focus-within:ring-[#1E6FD9]/20 sm:border-l sm:border-gray-100 sm:rounded-l-none">
-          <label className="flex items-center gap-1.5 font-body text-[10px] font-bold text-[#1E6FD9] uppercase tracking-wider mb-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            Destino
-          </label>
-          <input
-            type="text"
-            placeholder="¿A dónde vamos?"
-            value={dates}
-            onChange={e => setDates(e.target.value)}
-            className="font-body text-base text-primary-dark placeholder-gray-400 outline-none bg-transparent font-medium"
-          />
-        </div>
-        <div className="flex min-w-0 flex-col rounded-xl px-4 py-3 transition-all duration-300 hover:bg-[#F0F5FF] focus-within:bg-[#F0F5FF] focus-within:ring-2 focus-within:ring-[#1E6FD9]/20 sm:border-l sm:border-gray-100 sm:rounded-l-none">
-          <label className="flex items-center gap-1.5 font-body text-[10px] font-bold text-[#1E6FD9] uppercase tracking-wider mb-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/><path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/><path d="M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg>
-            Personas
-          </label>
-          <input
-            type="number"
-            min={1}
-            max={30}
-            step={1}
-            inputMode="numeric"
-            placeholder="2"
-            value={people}
-            onChange={e => handlePeopleChange(e.target.value)}
-            onBlur={() => {
-              if (!people) setPeople('2')
-            }}
-            className="font-body text-base text-primary-dark placeholder-gray-400 outline-none w-full bg-transparent font-medium"
-          />
-        </div>
-        <button
-          onClick={isOnline ? handleCreateItinerary : undefined}
-          disabled={!isOnline}
-          title={!isOnline ? 'Sin conexión a internet' : undefined}
-          className="font-body font-bold text-base bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] text-white rounded-xl px-8 py-3 hover:opacity-90 hover:shadow-[0_8px_20px_-6px_rgba(30,111,217,0.5)] transition-all duration-300 whitespace-nowrap flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Crear Itinerario
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 5l7 7-7 7" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        </button>
-      </div>
-      </div>
 
-      {/* Social proof */}
-      <div className="relative flex items-center gap-3 mt-6">
-        <div className="flex -space-x-2">
-          {['#7A4FD6', '#35C56A', '#1E6FD9'].map((color, i) => (
-            <div
-              key={i}
-              className="w-7 h-7 rounded-full border-2 border-primary-dark"
-              style={{ backgroundColor: color }}
-            />
-          ))}
+        <div className="relative">
+          <HeroProductPreview />
+          <p className="mt-7 text-center font-body text-xs font-semibold text-white/55">
+            {groupCount.toLocaleString('en-US')}+ grupos creados este mes
+          </p>
         </div>
-        <p className="font-body text-white/50 text-xs">
-          {groupCount.toLocaleString('en-US')}+ grupos creados este mes
-        </p>
       </div>
     </section>
   )
@@ -306,20 +476,26 @@ function HeroSection({ isOnline }: { isOnline: boolean }) {
 // ── Stats ─────────────────────────────────────────────────────────────────────
 
 const stats = [
-  { value: '1,200+', label: 'grupos creados' },
-  { value: '50+',    label: 'destinos disponibles' },
-  { value: '98%',    label: 'satisfacción' },
-  { value: '100%',   label: 'completamente gratis' },
+  { value: '1,200+', label: 'grupos creados', color: '#1E6FD9', icon: 'calendar' as const },
+  { value: '8,400+', label: 'propuestas votadas', color: '#7A4FD6', icon: 'vote' as const },
+  { value: '$2M+', label: 'gastos sincronizados', color: '#35C56A', icon: 'budget' as const },
+  { value: '98%', label: 'satisfaccion', color: '#F59E0B', icon: 'spark' as const },
 ]
 
 function StatsSection() {
   return (
-    <section className="bg-white border-b border-[#E2E8F0] py-10 px-4">
-      <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+    <section className="border-b border-[#E2E8F0] bg-white px-4 py-8">
+      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-3 md:grid-cols-4">
         {stats.map((s) => (
-          <div key={s.label}>
-            <p className="font-heading font-bold text-[#1E0A4E] text-3xl mb-1">{s.value}</p>
-            <p className="font-body text-[#7A8799] text-sm">{s.label}</p>
+          <div key={s.label} className="group rounded-2xl border border-[#E2E8F0] bg-[#FAFCFF] px-4 py-4 transition-all duration-300 hover:-translate-y-1 hover:border-[#CFE0FF] hover:shadow-[0_18px_40px_rgba(30,10,78,0.08)]">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ color: s.color, backgroundColor: `${s.color}18` }}>
+                <Icon type={s.icon} />
+              </span>
+              <span className="h-2 w-2 rounded-full landing-glow" style={{ backgroundColor: s.color }} />
+            </div>
+            <p className="font-heading text-2xl font-bold text-[#1E0A4E]">{s.value}</p>
+            <p className="font-body text-xs font-semibold text-[#7A8799]">{s.label}</p>
           </div>
         ))}
       </div>
@@ -331,59 +507,98 @@ function StatsSection() {
 
 const features = [
   {
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-blue">
-        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    ),
-    title: 'Busca vuelos y hoteles',
-    description: 'Amadeus y Google Maps integrados. Compara precios en MXN.',
+    icon: 'vote' as const,
+    color: '#1E6FD9',
+    title: 'Decidan sin discusiones eternas',
+    description: 'Cada propuesta muestra votos, estado y responsables para que el grupo avance con claridad.',
+    preview: 'votes',
   },
   {
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-blue">
-        <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
-        <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" strokeWidth="2"/>
-      </svg>
-    ),
-    title: 'Itinerario colaborativo',
-    description: 'Agrega actividades, vota y bloquea el plan del grupo en tiempo real.',
+    icon: 'budget' as const,
+    color: '#35C56A',
+    title: 'Controlen gastos sin hojas sueltas',
+    description: 'Presupuesto, comprometido y disponible se actualizan mientras el grupo propone y confirma.',
+    preview: 'budget',
   },
   {
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-blue">
-        <line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      </svg>
-    ),
-    title: 'Presupuesto grupal',
-    description: 'Todos ven los gastos actualizados al instante. Sin sorpresas.',
+    icon: 'vault' as const,
+    color: '#7A4FD6',
+    title: 'Guarden lo importante en contexto',
+    description: 'Documentos, reservas y notas quedan conectados al viaje, no perdidos en chats separados.',
+    preview: 'vault',
   },
 ]
+
+function FeaturePreview({ type, color }: { type: string; color: string }) {
+  if (type === 'budget') {
+    return (
+      <div className="mt-5 rounded-2xl border border-[#E2E8F0] bg-[#FAFCFF] p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="font-body text-xs font-bold text-[#64748B]">Disponible</span>
+          <span className="font-heading text-lg font-bold text-[#1E0A4E]">$38,200</span>
+        </div>
+        <div className="h-2.5 overflow-hidden rounded-full bg-[#E2E8F0]">
+          <div className="h-full w-[42%] rounded-full bg-[#35C56A]" />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <span className="rounded-xl bg-white px-3 py-2 font-body text-[11px] font-bold text-[#7A8799]">Comprometido $11,800</span>
+          <span className="rounded-xl bg-white px-3 py-2 font-body text-[11px] font-bold text-[#35C56A]">0 deudas</span>
+        </div>
+      </div>
+    )
+  }
+  if (type === 'vault') {
+    return (
+      <div className="mt-5 grid gap-2">
+        {['Reserva hotel', 'PDF itinerario', 'Seguro viaje'].map((item) => (
+          <div key={item} className="flex items-center gap-3 rounded-2xl border border-[#E2E8F0] bg-[#FAFCFF] px-3 py-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ color, backgroundColor: `${color}18` }}>
+              <Icon type="vault" />
+            </span>
+            <span className="font-body text-xs font-bold text-[#1E0A4E]">{item}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  return (
+    <div className="mt-5 rounded-2xl border border-[#E2E8F0] bg-[#FAFCFF] p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-[11px] font-bold text-[#1E6FD9]">Comida frente al mar</span>
+        <span className="font-body text-xs font-bold text-[#64748B]">5/7</span>
+      </div>
+      <div className="flex -space-x-2">
+        {['#1E6FD9', '#35C56A', '#7A4FD6', '#F59E0B', '#E11D48'].map((avatarColor) => (
+          <span key={avatarColor} className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-[10px] font-bold text-white" style={{ backgroundColor: avatarColor }}>
+            ✓
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function FeaturesSection() {
   const ref = useFadeIn()
   return (
-    <section id="features" ref={ref} className="bg-white py-24 px-4">
-      <div className="max-w-5xl mx-auto">
-        <p className="font-body text-xs text-gray-400 uppercase tracking-widest text-center mb-3">
-          ¿Qué puedes hacer?
-        </p>
-        <h2 className="font-heading font-bold text-primary-dark text-3xl md:text-4xl text-center mb-14">
-          Todo lo que necesitas para planear en grupo
-        </h2>
+    <section id="features" ref={ref} className="bg-white px-4 py-24">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-12 text-center">
+          <SectionEyebrow>Producto</SectionEyebrow>
+          <h2 className="mx-auto max-w-3xl font-heading text-3xl font-bold text-primary-dark md:text-4xl">
+            Una app pensada para decisiones compartidas, no solo listas bonitas.
+          </h2>
+        </div>
 
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid gap-5 lg:grid-cols-3">
           {features.map((f) => (
-            <div key={f.title} className="border border-gray-100 rounded-2xl p-6 shadow-sm hover:shadow-md hover:border-[#1E6FD9]/30 transition-all duration-300">
-              <div className="w-10 h-10 bg-blue/10 rounded-xl flex items-center justify-center mb-4">
-                {f.icon}
+            <div key={f.title} className="group rounded-[26px] border border-[#E2E8F0] bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#CFE0FF] hover:shadow-[0_24px_60px_rgba(30,10,78,0.10)]">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl" style={{ color: f.color, backgroundColor: `${f.color}18` }}>
+                <Icon type={f.icon} />
               </div>
-              <h3 className="font-heading font-semibold text-primary-dark text-base mb-2">{f.title}</h3>
-              <p className="font-body text-gray-500 text-sm leading-relaxed">{f.description}</p>
+              <h3 className="font-heading text-lg font-bold leading-tight text-primary-dark">{f.title}</h3>
+              <p className="mt-2 font-body text-sm leading-7 text-gray-500">{f.description}</p>
+              <FeaturePreview type={f.preview} color={f.color} />
             </div>
           ))}
         </div>
@@ -404,26 +619,36 @@ const demoPoints = [
 function DemoSection() {
   const ref = useFadeIn()
   return (
-    <section ref={ref} className="bg-primary-dark py-24 px-4">
-      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row items-center gap-12">
+    <section ref={ref} className="overflow-hidden bg-[linear-gradient(135deg,#1E0A4E_0%,#2D1368_48%,#111827_100%)] px-4 py-24">
+      <div className="mx-auto flex max-w-6xl flex-col items-center gap-12 lg:flex-row">
         {/* Left */}
-        <div className="flex-1 lg:max-w-md w-full">
-          <h2 className="font-heading font-bold text-white text-3xl md:text-4xl mb-8">
-            Así se ve Ithera en acción
+        <div className="w-full flex-1 lg:max-w-md">
+          <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 font-body text-[11px] font-bold uppercase tracking-[0.18em] text-[#9ED4FF]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#35C56A]" />
+            En accion
+          </p>
+          <h2 className="mb-5 font-heading text-3xl font-bold text-white md:text-4xl">
+            Del primer voto al itinerario confirmado.
           </h2>
-          <ul className="space-y-4">
+          <p className="mb-8 font-body text-sm leading-7 text-white/65">
+            La landing debe vender el producto mostrando lo que el usuario va a
+            usar: dias, propuestas, chat, gastos y documentos en una misma vista.
+          </p>
+          <ul className="space-y-3">
             {demoPoints.map((point) => (
-              <li key={point} className="flex items-center gap-3">
-                <span className="w-2.5 h-2.5 rounded-full bg-green shrink-0" />
-                <span className="font-body text-white/70 text-sm">{point}</span>
+              <li key={point} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#35C56A]/15 text-[#9AF0B8]">
+                  <Icon type="vote" />
+                </span>
+                <span className="font-body text-sm font-semibold text-white/75">{point}</span>
               </li>
             ))}
           </ul>
         </div>
 
         {/* Right — App Mockup */}
-        <div className="flex-[1.5] w-full flex justify-center">
-          <div className="relative w-full max-w-2xl bg-[#F4F6F8] rounded-2xl border border-white/20 shadow-2xl overflow-hidden flex h-[420px] font-body text-left transform md:-rotate-2 transition-transform duration-500 hover:rotate-0 hover:scale-105">
+        <div className="flex w-full flex-[1.5] justify-center">
+          <div className="relative flex h-[420px] w-full max-w-2xl overflow-hidden rounded-[26px] border border-white/20 bg-[#F4F6F8] font-body text-left shadow-[0_28px_80px_rgba(0,0,0,0.34)] transition-transform duration-500 hover:-translate-y-1">
             
             {/* Mock Sidebar */}
             <div className="w-16 sm:w-56 bg-white border-r border-[#E2E8F0] flex flex-col shrink-0">
@@ -523,7 +748,7 @@ function DemoSection() {
                     <div className="flex gap-2 items-end">
                       <div className="w-5 h-5 rounded-full bg-[#35C56A] shrink-0 flex items-center justify-center text-white text-[9px] font-bold mb-0.5">M</div>
                       <div className="bg-white border border-[#E2E8F0] px-2.5 py-1.5 rounded-xl rounded-bl-sm shadow-sm text-gray-600">
-                        ¿Alguien más falta de votar el tour de snorkel? 🐠
+                        ¿Quien falta de votar la actividad de la tarde?
                       </div>
                     </div>
                   </div>
@@ -545,43 +770,51 @@ const destinations = [
     name: 'Cancún',
     image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&h=600&fit=crop',
     fallback: '#4B8A6E',
+    tag: 'Playa',
   },
   {
     name: 'Ciudad de México',
     image: 'https://images.unsplash.com/photo-1534430480872-3498386e7856?w=400&h=600&fit=crop',
     fallback: '#8A6E4B',
+    tag: 'Cultura',
   },
   {
     name: 'Oaxaca',
     image: 'https://images.unsplash.com/photo-1518638150340-f706e86654de?w=400&h=600&fit=crop',
     fallback: '#8A4B6E',
+    tag: 'Gastronomia',
   },
   {
     name: 'Los Cabos',
     image: 'https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=400&h=600&fit=crop',
     fallback: '#4B6E8A',
+    tag: 'Relax',
   },
   {
     name: 'Puerto Vallarta',
     image: 'https://images.unsplash.com/photo-1510097467424-192d713fd8b2?w=400&h=600&fit=crop',
     fallback: '#6E4B8A',
+    tag: 'Grupo',
   },
 ]
 
 function DestinationsSection() {
   const ref = useFadeIn()
   return (
-    <section ref={ref} className="bg-white py-24 px-4">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-10">
-          <h2 className="font-heading font-bold text-primary-dark text-2xl md:text-3xl">
-            Destinos populares para grupos
-          </h2>
+    <section ref={ref} className="bg-white px-4 py-24">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-10 flex items-end justify-between gap-4">
+          <div>
+            <SectionEyebrow>Inspiracion</SectionEyebrow>
+            <h2 className="font-heading text-2xl font-bold text-primary-dark md:text-3xl">
+              Destinos que se prestan para decidir en grupo
+            </h2>
+          </div>
           <div className="flex gap-2">
-            <button className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:border-primary-dark transition-colors">
+            <button className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 transition-colors hover:border-primary-dark">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="15 18 9 12 15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
             </button>
-            <button className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center hover:border-primary-dark transition-colors">
+            <button className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 transition-colors hover:border-primary-dark">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="9 18 15 12 9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
             </button>
           </div>
@@ -591,7 +824,7 @@ function DestinationsSection() {
           {destinations.map((dest) => (
             <div
               key={dest.name}
-              className="shrink-0 w-44 h-56 rounded-2xl relative overflow-hidden cursor-pointer group transition-transform duration-300 hover:scale-105"
+              className="group relative h-64 w-52 shrink-0 cursor-pointer overflow-hidden rounded-[24px] transition-transform duration-300 hover:-translate-y-1"
               style={{ backgroundColor: dest.fallback }}
             >
               <img
@@ -600,11 +833,14 @@ function DestinationsSection() {
                 className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                 loading="lazy"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent group-hover:from-black/80 transition-all duration-300" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent transition-all duration-300 group-hover:from-black/90" />
+              <div className="absolute left-4 top-4 rounded-full border border-white/30 bg-white/20 px-3 py-1 font-body text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur">
+                {dest.tag}
+              </div>
               <div className="absolute bottom-0 left-0 right-0 p-4">
-                <p className="font-heading font-semibold text-white text-sm">{dest.name}</p>
-                <p className="font-body text-xs text-white/60 group-hover:text-white group-hover:font-medium transition-all duration-300">
-                  Ver paquetes →
+                <p className="font-heading text-lg font-bold text-white">{dest.name}</p>
+                <p className="mt-1 font-body text-xs font-semibold text-white/65 transition-all duration-300 group-hover:text-white">
+                  Planear viaje →
                 </p>
               </div>
             </div>
@@ -771,19 +1007,51 @@ function CTASection() {
   const ref = useFadeIn()
   const navigate = useNavigate()
   return (
-    <section ref={ref} className="bg-primary-dark py-24 px-4 text-center">
-      <div className="max-w-2xl mx-auto">
-        <h2 className="font-heading font-bold text-white text-4xl md:text-5xl mb-4">
-          ¿Listo para tu próxima aventura?
-        </h2>
-        <p className="font-body text-white/60 text-sm mb-10">
-          Crea tu grupo gratis en menos de 2 minutos.
-        </p>
-        <button onClick={() => navigate('/create-group')} className="font-body font-medium text-sm border border-white/40 text-white rounded-full px-8 py-3 hover:bg-white/10 transition-colors inline-flex items-center gap-2">
-          Empezar ahora — es gratis
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="9 18 15 12 9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
-        </button>
-        <p className="font-body text-white/30 text-xs mt-4">Sin tarjeta de crédito · Sin instalación</p>
+    <section ref={ref} className="bg-white px-4 py-20">
+      <div className="relative mx-auto grid max-w-6xl overflow-hidden rounded-[30px] bg-[#1E0A4E] px-6 py-12 shadow-[0_24px_70px_rgba(30,10,78,0.20)] md:grid-cols-[1fr_360px] md:px-10">
+        <img
+          src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=900&h=600&fit=crop"
+          alt=""
+          aria-hidden="true"
+          className="absolute inset-0 h-full w-full object-cover opacity-20"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(30,10,78,0.94),rgba(30,10,78,0.72))]" />
+        <div className="relative">
+          <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 font-body text-[11px] font-bold uppercase tracking-[0.18em] text-[#9AF0B8]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#35C56A]" />
+            Empezar
+          </p>
+          <h2 className="max-w-2xl font-heading text-4xl font-bold leading-tight text-white md:text-5xl">
+            Crea el grupo, invita a todos y deja que el plan avance.
+          </h2>
+          <p className="mt-4 max-w-xl font-body text-sm leading-7 text-white/65">
+            En menos de dos minutos puedes abrir un espacio compartido para
+            proponer, votar y ordenar el viaje.
+          </p>
+          <button onClick={() => navigate('/create-group')} className="mt-8 inline-flex items-center gap-2 rounded-xl bg-green px-7 py-3 font-body text-sm font-bold text-white shadow-[0_16px_34px_rgba(53,197,106,0.28)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_42px_rgba(53,197,106,0.34)]">
+            Empezar ahora
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><polyline points="9 18 15 12 9 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+          </button>
+          <p className="mt-4 font-body text-xs text-white/40">Sin tarjeta de credito · Sin instalacion</p>
+        </div>
+        <div className="relative mt-10 hidden md:block">
+          <div className="landing-float rounded-3xl border border-white/20 bg-white/95 p-4 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#EEF4FF] text-[#1E6FD9]">
+                <Icon type="calendar" />
+              </span>
+              <div>
+                <p className="font-heading text-sm font-bold text-[#1E0A4E]">Viaje creado</p>
+                <p className="font-body text-xs text-[#7A8799]">8 dias · 10 personas</p>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <span className="rounded-xl bg-[#EAFBF1] px-3 py-2 font-body text-xs font-bold text-[#167A3D]">Invitacion lista</span>
+              <span className="rounded-xl bg-[#F3EEFF] px-3 py-2 font-body text-xs font-bold text-[#6D45C0]">Presupuesto configurado</span>
+              <span className="rounded-xl bg-[#EEF4FF] px-3 py-2 font-body text-xs font-bold text-[#1E6FD9]">Primer dia preparado</span>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   )

@@ -99,6 +99,11 @@ export interface CreateGroupInvitationsPayload {
   emails: string[];
 }
 
+export interface UpdateInviteSettingsPayload {
+  expirationDays?: number | null;
+  maxUses?: number | null;
+}
+
 export interface GroupInvitation {
   id: string;
   grupo_id: string;

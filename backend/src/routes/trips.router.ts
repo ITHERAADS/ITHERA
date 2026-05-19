@@ -251,6 +251,27 @@ router.get('/:groupId/invite', requireAuth, async (req: Request, res: Response):
   }
 });
 
+
+router.patch('/:groupId/invite-settings', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { expirationDays, maxUses } = req.body as { expirationDays?: number | null; maxUses?: number | null };
+    const result = await GroupsService.updateInviteSettings(
+      req.user!.id,
+      req.params.groupId,
+      { expirationDays, maxUses }
+    );
+
+    res.status(200).json({
+      ok: true,
+      message: 'Configuración de invitación actualizada correctamente',
+      ...result,
+    });
+  } catch (err: unknown) {
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
+  }
+});
+
 router.get('/:groupId/invitations', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const invitations = await GroupsService.getGroupInvitations(

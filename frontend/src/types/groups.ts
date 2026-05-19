@@ -85,6 +85,12 @@ export interface CreateInvitationsPayload {
   emails: string[]
 }
 
+export interface GroupInviteSettings {
+  expiresAt: string | null
+  maxUses: number | null
+  usedCount: number
+}
+
 export interface GroupInvitationResult {
   id?: string
   email: string

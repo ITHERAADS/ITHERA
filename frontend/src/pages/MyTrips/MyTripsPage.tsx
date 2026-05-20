@@ -356,16 +356,18 @@ function FeaturedCard({ item, onClick }: { item: GroupHistoryItem; onClick: () =
         <h2 className="font-heading text-2xl font-extrabold leading-tight text-white">
           {g.nombre}
         </h2>
-        <div className="mt-4 grid gap-2 sm:max-w-md sm:grid-cols-2">
+        <div className="mt-4 grid max-w-2xl gap-2">
           {g.destino && (
-            <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2">
-              <span className="text-[#D8C8FF]"><IconMap /></span>
-              <p className="min-w-0 truncate font-body text-[13px] font-semibold text-white/85">{g.destino}</p>
+            <div className="flex min-w-0 items-start gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2.5">
+              <span className="mt-0.5 shrink-0 text-[#D8C8FF]"><IconMap /></span>
+              <p className="min-w-0 break-words font-body text-[13px] font-semibold leading-snug text-white/85 [overflow-wrap:anywhere]">
+                {g.destino}
+              </p>
             </div>
           )}
-          <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2">
-            <span className="text-[#BFD7FF]"><IconClock /></span>
-            <p className="min-w-0 truncate font-body text-[13px] font-semibold text-white/85">
+          <div className="flex min-w-0 items-start gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2.5">
+            <span className="mt-0.5 shrink-0 text-[#BFD7FF]"><IconClock /></span>
+            <p className="min-w-0 break-words font-body text-[13px] font-semibold leading-snug text-white/85">
               {formatRange(g.fecha_inicio, g.fecha_fin)}
             </p>
           </div>
@@ -398,42 +400,48 @@ function TripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => vo
           : 'border-[#C3D3EC] bg-white text-[#1E0A4E] shadow-[0_8px_22px_rgba(30,10,78,0.08)] hover:border-[#1E6FD9]/50'
       }`}
     >
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-4 flex items-center justify-between gap-2">
         <StatusChip estado={g.estado} />
-        <RolBadge rol={item.rol} />
+        <RolBadge rol={item.rol} dark={isAdmin} />
       </div>
 
-      <h2 className={`font-heading text-lg font-bold leading-tight mb-1 ${
+      <h2 className={`mb-4 break-words font-heading text-xl font-extrabold leading-tight [overflow-wrap:anywhere] ${
         isAdmin ? 'text-white' : 'text-[#1E0A4E]'
       }`}>
         {g.nombre}
       </h2>
 
-      {g.destino && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className={isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'}>
-            <IconMap />
-          </span>
-          <p className={`font-body text-[13px] ${
-            isAdmin ? 'text-white/70' : 'text-[#6B7280]'
+      <div className="grid gap-2">
+        {g.destino && (
+          <div className={`flex min-w-0 items-start gap-2 rounded-2xl border px-3 py-2.5 ${
+            isAdmin ? 'border-white/15 bg-white/10' : 'border-[#D9E4F7] bg-[#F8FAFF]'
           }`}>
-            {g.destino}
+            <span className={`mt-0.5 shrink-0 ${isAdmin ? 'text-[#D8C8FF]' : 'text-[#7A4FD6]'}`}>
+              <IconMap />
+            </span>
+            <p className={`min-w-0 break-words font-body text-[13px] font-semibold leading-snug [overflow-wrap:anywhere] ${
+              isAdmin ? 'text-white/85' : 'text-[#475569]'
+            }`}>
+              {g.destino}
+            </p>
+          </div>
+        )}
+
+        <div className={`flex min-w-0 items-start gap-2 rounded-2xl border px-3 py-2.5 ${
+          isAdmin ? 'border-white/15 bg-white/10' : 'border-[#D9E4F7] bg-[#F8FAFF]'
+        }`}>
+          <span className={`mt-0.5 shrink-0 ${isAdmin ? 'text-[#BFD7FF]' : 'text-[#1E6FD9]'}`}>
+            <IconClock />
+          </span>
+          <p className={`min-w-0 break-words font-body text-[13px] font-semibold leading-snug ${
+            isAdmin ? 'text-white/85' : 'text-[#475569]'
+          }`}>
+            {formatRange(g.fecha_inicio, g.fecha_fin)}
           </p>
         </div>
-      )}
-
-      <div className="flex items-center gap-1.5 mb-4">
-        <span className={isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'}>
-          <IconClock />
-        </span>
-        <p className={`font-body text-[12px] ${
-          isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'
-        }`}>
-          {formatRange(g.fecha_inicio, g.fecha_fin)}
-        </p>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span className={`font-body text-xs ${
           isAdmin ? 'text-white/60' : 'text-[#6B7280]'
         }`}>

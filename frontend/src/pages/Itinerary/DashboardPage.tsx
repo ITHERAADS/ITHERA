@@ -1661,6 +1661,11 @@ const applyVoteResultsToDays = (
         ...activity,
         hasVoted: Boolean(voteResult.mi_voto),
         myVote: voteResult.mi_voto ?? null,
+        votes: voteResult.votos_a_favor ?? voteResult.votos ?? 0,
+        votesFor: voteResult.votos_a_favor ?? voteResult.votos ?? 0,
+        votesAgainst: voteResult.votos_en_contra ?? 0,
+        pendingVotes: voteResult.votos_pendientes ?? 0,
+        requiresAdminTieBreak: Boolean(voteResult.requiere_desempate_admin),
       };
     }),
   }));
@@ -1923,7 +1928,15 @@ export function DashboardPage() {
       : undefined;
 
   const openActivityEditor = (activity: DayActivity) => {
+    const activityDayNumber =
+      days.find(
+        (day) =>
+          Array.isArray(day.activities) &&
+          day.activities.some((item) => item.id === activity.id),
+      )
+        ?.dayNumber ?? selectedActivityDay ?? activeDay ?? 1;
     lockProposalForActivity(activity);
+    setSelectedActivityDay(activityDayNumber);
     setEditingActivity(activity);
     setShowActivityModal(true);
   };
@@ -2398,6 +2411,17 @@ export function DashboardPage() {
 
       if (!resolvedGroupId || !accessToken) return;
 
+      const activityName =
+        selectedDayWithContext?.activities.find(
+          (activity) => String(activity.id) === String(activityId),
+        )?.title ?? "esta actividad";
+
+      const confirmed = window.confirm(
+        `¿Seguro que quieres eliminar "${activityName}"? Esta acción no se puede deshacer.`,
+      );
+
+      if (!confirmed) return;
+
       await groupsService.deleteActivity(
         String(resolvedGroupId),
         activityId,
@@ -2405,7 +2429,14 @@ export function DashboardPage() {
       );
       await reloadDashboard();
     },
-    [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard],
+    [
+      groupIdFromState,
+      groupId,
+      currentGroup?.id,
+      accessToken,
+      reloadDashboard,
+      selectedDayWithContext?.activities,
+    ],
   );
 
   const handleOpenSubgroupSlot = useCallback(
@@ -2435,7 +2466,7 @@ export function DashboardPage() {
         (currentGroup?.id ? String(currentGroup.id) : null);
       const busyKey = `slot-delete:${slotId}`;
       if (!resolvedGroupId || !accessToken || subgroupQuickBusyKey) return;
-      if (!window.confirm("Eliminar este horario de subgrupos?")) return;
+      if (!window.confirm("Eliminar este horario de subgrupos y todo su contenido?")) return;
       try {
         setSubgroupQuickBusyKey(busyKey);
         await subgroupScheduleService.deleteSlot(
@@ -3213,6 +3244,7 @@ export function DashboardPage() {
           }}
           onOpenBudget={() => setActiveTab("pagar")}
           onOpenMap={() => setActiveTab("mapas")}
+          isMapViewActive={activeTab === "mapas"}
           onOpenGroupPanel={() =>
             navigate(
               `/grouppanel?groupId=${encodeURIComponent(groupId || currentGroup?.id || "")}`,
@@ -3560,6 +3592,73 @@ export function DashboardPage() {
                 viewBox="0 0 24 24"
                 fill="none"
                 className="text-gray-400 group-hover:text-[#35C56A] transition-colors shrink-0"
+                aria-hidden="true"
+              >
+                <path
+                  d="M9 18l6-6-6-6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate("/search/history", { state: { group } })}
+              className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#F59E0B]/40 hover:bg-[#F0EEF8] transition-colors group"
+            >
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                style={{
+                  background: "linear-gradient(135deg, #F59E0B, #D97706)",
+                }}
+              >
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.9 2.9L3 8"
+                    stroke="white"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M3 3v5h5"
+                    stroke="white"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M12 7v6l4 2"
+                    stroke="white"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">
+                  Propuestas guardadas
+                </p>
+                <p className="font-body text-xs text-gray-500 mt-1">
+                  Historial de vuelos y hospedajes ya guardados en este viaje
+                </p>
+              </div>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                className="text-gray-400 group-hover:text-[#D97706] transition-colors shrink-0"
                 aria-hidden="true"
               >
                 <path

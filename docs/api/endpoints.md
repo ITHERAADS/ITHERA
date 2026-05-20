@@ -43,6 +43,8 @@ Codigos comunes:
 | `/api/hotels` | Hoteles | `backend/src/routes/hotels.router.ts` |
 | `/api/maps` | Mapas, lugares, rutas y clima | `backend/src/routes/maps.router.ts` |
 | `/api/proposals` | Propuestas, votos y comentarios | `backend/src/routes/proposals.router.ts`, `votesComments.router.ts` |
+| `/api/search-history` | Historial de busquedas M4 | `backend/src/routes/search-history.router.ts` |
+| `/api/export` | Enlaces compartibles de itinerario | `backend/src/routes/export.router.ts` |
 | `/api/budget` | Alias directo de presupuesto | `backend/src/routes/budget.router.ts` |
 | `/api/notifications` | Notificaciones | `backend/src/routes/notifications.router.ts` |
 | `/api/documents` | Alias directo de documentos | `backend/src/routes/documents.router.ts` |
@@ -218,6 +220,24 @@ Base: `/api/proposals`
 | `GET` | `/groups/:tripId/vote-results` | Si | Obtiene resultados de votacion del grupo. |
 | `POST` | `/groups/:tripId/:proposalId/comments` | Si | Crea comentario en propuesta. |
 | `GET` | `/groups/:tripId/:proposalId/comments` | Si | Lista comentarios de propuesta. |
+
+## Historial de busquedas M4
+
+Base: `/api/search-history`
+
+| Metodo | Endpoint | Auth | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/?grupoId=:grupoId` | Si | Lista historial de resultados M4 guardados para un grupo. |
+| `POST` | `/` | Si | Registra en historial un resultado de busqueda M4 guardado (vuelo u hospedaje). |
+
+## Export y enlace compartible
+
+Base: `/api/export`
+
+| Metodo | Endpoint | Auth | Descripcion |
+| --- | --- | --- | --- |
+| `GET` | `/share-link/:groupId` | Si | Genera URL compartible publica para el itinerario del grupo. |
+| `GET` | `/shared/:token` | No | Obtiene itinerario publico usando token compartido. |
 | `PATCH` | `/groups/:tripId/:proposalId/comments/:commentId` | Si | Actualiza comentario. |
 | `DELETE` | `/groups/:tripId/:proposalId/comments/:commentId` | Si | Elimina comentario. |
 

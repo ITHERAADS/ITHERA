@@ -217,6 +217,7 @@ export function ActivityProposalModal({
   const [activeContextModal, setActiveContextModal] = useState<ActivityContextModalMode>(null)
   const [expenseModalTab, setExpenseModalTab] = useState<ContextModalTab>('associate')
   const [documentModalTab, setDocumentModalTab] = useState<ContextModalTab>('associate')
+  const [contextSaving, setContextSaving] = useState(false)
   const [longRouteConfirmation, setLongRouteConfirmation] = useState<{ asAdminDirect: boolean } | null>(null)
   const [scheduleConflictMessage, setScheduleConflictMessage] = useState<string | null>(null)
   const autocompleteBoxRef = useRef<HTMLDivElement | null>(null)
@@ -508,6 +509,29 @@ export function ActivityProposalModal({
     }
   }, [enrichPlaceWithRoute, open, query, routeOrigin, selectedPlace?.name, token])
 
+  const refreshContextOptions = useCallback(async () => {
+    if (!group?.id || !token) return
+    const [optionsResponse, linksResponse] = await Promise.all([
+      contextLinksService.options(String(group.id), token),
+      editingActivity
+        ? contextLinksService.list(String(group.id), token, { type: 'activity', id: editingActivity.id })
+        : Promise.resolve({ ok: true, links: [] }),
+    ])
+
+    setLinkOptions(optionsResponse.options)
+
+    if (!editingActivity) return
+
+    const linkedEntities = linksResponse.links
+      .map((link) => otherEntityForActivity(link, editingActivity.id))
+      .filter((entity): entity is ContextEntitySummary =>
+        entity !== null && (entity.type === 'expense' || entity.type === 'document')
+      )
+
+    setSelectedExpenseIds(linkedEntities.filter((entity) => entity.type === 'expense').map((entity) => entity.id))
+    setSelectedDocumentIds(linkedEntities.filter((entity) => entity.type === 'document').map((entity) => entity.id))
+  }, [editingActivity, group?.id, token])
+
   if (!open) return null
 
   const handleSearch = async () => {
@@ -744,21 +768,7 @@ export function ActivityProposalModal({
         const previousExpenseIds = new Set(linkOptions.expenses.map((item) => item.id))
         const createdExpenseId = shouldCreateExpense
           ? await budgetService.createExpense(String(group.id), {
-            paid_by_user_id: quickExpensePaidBy,
-            amount: quickExpenseValue,
-            description: quickExpenseDescription.trim(),
-            category: quickExpenseCategory,
-            split_type: quickExpenseSplitType,
-            member_ids: quickExpenseMemberIds,
-            split_amounts: quickExpenseSplitType === 'personalizada'
-              ? Object.fromEntries(
-                quickExpenseMemberIds.map((memberId) => [
-                  memberId,
-                  parseFloat(quickExpenseSplitAmounts[memberId] ?? '0') || 0,
-                ])
-              )
-              : undefined,
-            expense_date: quickExpenseDate || (getActivityDate()?.slice(0, 10) ?? null),
+            ...createQuickExpensePayload(quickExpenseValue),
           }, token).then((response) => {
             return pickCreatedExpenseId(
               response.expenses,
@@ -850,8 +860,61 @@ export function ActivityProposalModal({
     onClose()
   }
 
-  const confirmExpenseModal = () => {
+  const createQuickExpensePayload = (amount: number) => ({
+    paid_by_user_id: quickExpensePaidBy,
+    amount,
+    description: quickExpenseDescription.trim(),
+    category: quickExpenseCategory,
+    split_type: quickExpenseSplitType,
+    member_ids: quickExpenseMemberIds,
+    split_amounts: quickExpenseSplitType === 'personalizada'
+      ? Object.fromEntries(
+        quickExpenseMemberIds.map((memberId) => [
+          memberId,
+          parseFloat(quickExpenseSplitAmounts[memberId] ?? '0') || 0,
+        ])
+      )
+      : undefined,
+    expense_date: quickExpenseDate || (getActivityDate()?.slice(0, 10) ?? null),
+  })
+
+  const confirmExpenseModal = async () => {
     if (expenseModalTab === 'associate') {
+      if (editingActivity?.id && group?.id && token) {
+        try {
+          setContextSaving(true)
+          const currentResponse = await contextLinksService.list(String(group.id), token, {
+            type: 'activity',
+            id: editingActivity.id,
+          })
+          const currentExpenseLinks = currentResponse.links
+            .map((link) => ({ link, entity: otherEntityForActivity(link, editingActivity.id) }))
+            .filter((item): item is { link: ContextLink; entity: ContextEntitySummary } =>
+              item.entity !== null && item.entity.type === 'expense'
+            )
+          const desiredExpenseIds = new Set(selectedExpenseIds)
+
+          await Promise.all([
+            ...currentExpenseLinks
+              .filter(({ entity }) => !desiredExpenseIds.has(entity.id))
+              .map(({ link }) => contextLinksService.remove(String(group.id), link.id, token)),
+            ...selectedExpenseIds
+              .filter((expenseId) => !currentExpenseLinks.some(({ entity }) => entity.id === expenseId))
+              .map((expenseId) => contextLinksService.create(String(group.id), {
+                source: { type: 'activity', id: editingActivity.id },
+                target: { type: 'expense', id: expenseId },
+              }, token)),
+          ])
+
+          await refreshContextOptions()
+          await onCreated()
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'No se pudo asociar el gasto.')
+          return
+        } finally {
+          setContextSaving(false)
+        }
+      }
       setActiveContextModal(null)
       return
     }
@@ -881,6 +944,44 @@ export function ActivityProposalModal({
       setError(quickExpenseSplitError)
       return
     }
+
+    if (editingActivity?.id && group?.id && token) {
+      try {
+        setContextSaving(true)
+        const previousExpenseIds = new Set(linkOptions.expenses.map((item) => item.id))
+        const response = await budgetService.createExpense(
+          String(group.id),
+          createQuickExpensePayload(amount),
+          token
+        )
+        const createdExpenseId = pickCreatedExpenseId(
+          response.expenses,
+          previousExpenseIds,
+          quickExpenseDescription.trim(),
+          amount,
+        )
+        if (!createdExpenseId) throw new Error('No se pudo ubicar el gasto creado.')
+
+        await contextLinksService.create(String(group.id), {
+          source: { type: 'activity', id: editingActivity.id },
+          target: { type: 'expense', id: createdExpenseId },
+        }, token)
+
+        setQuickExpenseAmount('')
+        setQuickExpenseDescription('')
+        setQuickExpenseCategory('actividad')
+        setQuickExpenseSplitType('equitativa')
+        setQuickExpenseSplitAmounts({})
+        await refreshContextOptions()
+        await onCreated()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'No se pudo crear y asociar el gasto.')
+        return
+      } finally {
+        setContextSaving(false)
+      }
+    }
+
     setError('')
     setActiveContextModal(null)
   }
@@ -1239,10 +1340,25 @@ export function ActivityProposalModal({
       <ActionModal
         open={activeContextModal === 'expense'}
         title="Agregar gasto o comprobante"
-        subtitle="Relaciona un gasto existente o crea uno nuevo, por ejemplo taxi, entradas o comida."
-        confirmLabel={expenseModalTab === 'associate' ? 'Guardar seleccion' : 'Guardar gasto'}
-        onClose={() => setActiveContextModal(null)}
-        onConfirm={confirmExpenseModal}
+        subtitle={
+          editingActivity
+            ? "Relaciona un gasto existente o crea uno nuevo para esta propuesta."
+            : "Prepara un gasto para asociarlo cuando guardes la propuesta."
+        }
+        confirmLabel={
+          contextSaving
+            ? 'Guardando...'
+            : expenseModalTab === 'associate'
+              ? 'Guardar seleccion'
+              : editingActivity
+                ? 'Crear y asociar gasto'
+                : 'Guardar gasto'
+        }
+        confirmDisabled={contextSaving}
+        onClose={() => {
+          if (!contextSaving) setActiveContextModal(null)
+        }}
+        onConfirm={() => void confirmExpenseModal()}
       >
         <div className="mb-4 inline-flex rounded-lg border border-[#D7DEEA] bg-[#F8FAFC] p-1">
           <button

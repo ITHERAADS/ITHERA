@@ -1999,7 +1999,7 @@ export function SubgroupSchedulePanel({
 
   const onDeleteSlot = async (slotId: number) => {
     if (!groupId || !accessToken) return;
-    if (!window.confirm("Eliminar este horario y todo su contenido?")) return;
+    if (!window.confirm("Eliminar este horario de subgrupos y todo su contenido?")) return;
     await runAction(async () => {
       await subgroupScheduleService.deleteSlot(groupId, slotId, accessToken);
       await load();

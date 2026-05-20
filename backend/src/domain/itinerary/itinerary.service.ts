@@ -244,12 +244,14 @@ const ensureNoGroupActivityCollision = async ({
   nextStartsAt,
   nextEndsAt,
   excludeActivityId,
+  allowPendingCompetition = false,
 }: {
   itineraryId: string | number;
   groupId?: string | number | null;
   nextStartsAt?: string | null;
   nextEndsAt?: string | null;
   excludeActivityId?: string | null;
+  allowPendingCompetition?: boolean;
 }) => {
   const candidateRange = toActivityRange(nextStartsAt, nextEndsAt);
   const candidateMinuteKey = getScheduleMinuteKey(nextStartsAt);
@@ -270,6 +272,11 @@ const ensureNoGroupActivityCollision = async ({
       )
         return false;
       if (String(activity.estado ?? "") === "cancelada") return false;
+      if (
+        allowPendingCompetition &&
+        String(activity.estado ?? "") === "pendiente"
+      )
+        return false;
 
       const siblingRange = toActivityRange(
         activity.fecha_inicio ? String(activity.fecha_inicio) : null,
@@ -495,10 +502,36 @@ export const getGroupItinerary = async (
       voteCountMap.set(proposalId, (voteCountMap.get(proposalId) ?? 0) + 1);
     }
 
-    const proposalIdsToConfirm = pendingProposalIds.filter((proposalId) => {
+    const eligibleByStart = new Map<
+      string,
+      Array<{ proposalId: number; votes: number }>
+    >();
+
+    for (const activity of activities ?? []) {
+      const proposalId = Number((activity as any).propuesta_id);
+      if (!pendingProposalIds.includes(proposalId)) continue;
       const votes = voteCountMap.get(proposalId) ?? 0;
-      return votes >= votesRequired;
-    });
+      if (votes < votesRequired) continue;
+      const startKey = getScheduleMinuteKey(
+        (activity as any).fecha_inicio
+          ? String((activity as any).fecha_inicio)
+          : null,
+      );
+      if (!startKey) continue;
+      const bucket = eligibleByStart.get(startKey) ?? [];
+      bucket.push({ proposalId, votes });
+      eligibleByStart.set(startKey, bucket);
+    }
+
+    const proposalIdsToConfirm = Array.from(eligibleByStart.values()).flatMap(
+      (bucket) => {
+        const sorted = [...bucket].sort((a, b) => b.votes - a.votes);
+        const leader = sorted[0];
+        if (!leader) return [];
+        const tiedLeaders = sorted.filter((item) => item.votes === leader.votes);
+        return tiedLeaders.length === 1 ? [leader.proposalId] : [];
+      },
+    );
 
     if (proposalIdsToConfirm.length > 0) {
       const nowIso = new Date().toISOString();
@@ -529,6 +562,73 @@ export const getGroupItinerary = async (
           proposalIdsToConfirm.includes(Number(activity.propuesta_id))
         ) {
           activity.estado = "confirmada";
+        }
+      }
+
+      const confirmedStarts = new Set(
+        (activities ?? [])
+          .filter((activity: any) =>
+            proposalIdsToConfirm.includes(Number(activity.propuesta_id)),
+          )
+          .map((activity: any) =>
+            getScheduleMinuteKey(
+              activity.fecha_inicio ? String(activity.fecha_inicio) : null,
+            ),
+          )
+          .filter(Boolean),
+      );
+
+      const competingActivities = (activities ?? []).filter(
+        (activity: any) => {
+          const startKey = getScheduleMinuteKey(
+            activity.fecha_inicio ? String(activity.fecha_inicio) : null,
+          );
+          return (
+            activity.estado === "pendiente" &&
+            activity.propuesta_id != null &&
+            !!startKey &&
+            confirmedStarts.has(startKey) &&
+            !proposalIdsToConfirm.includes(Number(activity.propuesta_id))
+          );
+        },
+      );
+
+      const competingActivityIds = competingActivities
+        .map((activity: any) => activity.id_actividad)
+        .filter(Boolean);
+      const competingProposalIds = competingActivities
+        .map((activity: any) => activity.propuesta_id)
+        .filter(Boolean);
+
+      if (competingActivityIds.length > 0) {
+        const { error: cancelCompetingActivitiesError } = await supabase
+          .from("actividades")
+          .update({ estado: "cancelada", ultima_actualizacion: nowIso })
+          .in("id_actividad", competingActivityIds);
+        if (cancelCompetingActivitiesError)
+          throw new Error(cancelCompetingActivitiesError.message);
+      }
+
+      if (competingProposalIds.length > 0) {
+        const { error: discardCompetingProposalsError } = await supabase
+          .from("propuestas")
+          .update({
+            estado: "descartada",
+            fecha_cierre: nowIso,
+            ultima_actualizacion: nowIso,
+          })
+          .in("id_propuesta", competingProposalIds)
+          .eq("grupo_id", groupId);
+        if (discardCompetingProposalsError)
+          throw new Error(discardCompetingProposalsError.message);
+      }
+
+      const competingActivityIdSet = new Set(
+        competingActivityIds.map((id: string | number) => String(id)),
+      );
+      for (const activity of activities ?? []) {
+        if (competingActivityIdSet.has(String((activity as any).id_actividad))) {
+          (activity as any).estado = "cancelada";
         }
       }
     }
@@ -594,6 +694,8 @@ export const getGroupItinerary = async (
   });
 
   for (const activity of activities ?? []) {
+    if (String((activity as any).estado ?? "") === "cancelada") continue;
+
     const activityDate = getActivityDate(activity, startDate);
     const dayIndex = diffDays(startDate, activityDate);
 
@@ -707,6 +809,7 @@ export const createGroupActivity = async (
     groupId,
     nextStartsAt: payload.fecha_inicio ?? null,
     nextEndsAt: payload.fecha_fin ?? payload.fecha_inicio ?? null,
+    allowPendingCompetition: true,
   });
 
   const { data: proposal, error: proposalError } = await supabase
@@ -909,6 +1012,7 @@ export const updateGroupActivity = async (
     nextStartsAt,
     nextEndsAt,
     excludeActivityId: activityId,
+    allowPendingCompetition: true,
   });
 
   const updateData = {

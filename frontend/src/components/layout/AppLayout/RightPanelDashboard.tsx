@@ -155,6 +155,7 @@ export function RightPanelDashboard({
   onOpenBudget,
   onOpenGroupPanel,
   onOpenMap,
+  isMapViewActive = false,
   unreadCount = 0,
   totalBudget,
   committedBudget,
@@ -167,6 +168,7 @@ export function RightPanelDashboard({
   onOpenBudget?: () => void
   onOpenGroupPanel?: () => void
   onOpenMap?: () => void
+  isMapViewActive?: boolean
   unreadCount?: number
   totalBudget?: number
   committedBudget?: number
@@ -242,6 +244,10 @@ export function RightPanelDashboard({
     if (!q) return participants
     return participants.filter((p) => p.name.toLowerCase().includes(q))
   }, [participants, search])
+
+  const maxVisibleParticipants = 6
+  const visibleParticipants = participants.slice(0, maxVisibleParticipants)
+  const hiddenParticipantsCount = Math.max(participants.length - maxVisibleParticipants, 0)
 
   // Budget derived values
   const budgetData = totalBudget != null && totalBudget > 0
@@ -342,8 +348,8 @@ export function RightPanelDashboard({
             className="w-full text-left"
           >
             {participants.length > 0 && (
-              <div className="flex -space-x-2 mb-2">
-                {participants.map((participant) => (
+              <div className="mb-2 flex items-center -space-x-2 overflow-hidden">
+                {visibleParticipants.map((participant) => (
                   <ParticipantAvatar
                     key={participant.id}
                     name={participant.name}
@@ -352,6 +358,14 @@ export function RightPanelDashboard({
                     className="w-9 h-9 border-2 border-white text-sm"
                   />
                 ))}
+                {hiddenParticipantsCount > 0 && (
+                  <div
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-white bg-[#1E0A4E] text-[11px] font-bold text-white"
+                    title={`${hiddenParticipantsCount} participante(s) más`}
+                  >
+                    +{hiddenParticipantsCount}
+                  </div>
+                )}
               </div>
             )}
             <p className="font-body text-xs text-gray500 hover:text-gray700 transition-colors">
@@ -467,9 +481,14 @@ export function RightPanelDashboard({
               <button
                 type="button"
                 onClick={onOpenMap}
-                className="rounded-lg border border-[#D9E2F2] px-2.5 py-1.5 font-body text-[11px] font-semibold text-[#475569] hover:bg-white"
+                aria-pressed={isMapViewActive}
+                className={`rounded-lg border px-2.5 py-1.5 font-body text-[11px] font-semibold transition-colors ${
+                  isMapViewActive
+                    ? "border-[#1E6FD9] bg-[#EEF4FF] text-[#1E6FD9]"
+                    : "border-[#D9E2F2] text-[#475569] hover:bg-white"
+                }`}
               >
-                Ver rutas
+                {isMapViewActive ? "Viendo rutas" : "Ver rutas"}
               </button>
             )}
           </div>

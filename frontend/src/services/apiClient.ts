@@ -1,3 +1,5 @@
+import { supabase } from "../lib/supabase";
+
 const API_URL = import.meta.env.VITE_API_URL as string;
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -97,11 +99,29 @@ function buildHttpError(
   return new ApiError(sanitizeApiMessage(message), response.status, payload);
 }
 
+function isExpiredTokenResponse(response: Response, parsed: ParsedBody): boolean {
+  if (response.status !== 401) return false;
+  const payload = (parsed.data ?? null) as ApiErrorPayload | null;
+  const message = `${payload?.error ?? ""} ${payload?.details ?? ""} ${parsed.raw ?? ""}`.toLowerCase();
+  return message.includes("token") && (message.includes("expir") || message.includes("invalid"));
+}
+
+async function getFreshAccessToken(currentToken?: string): Promise<string | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const freshToken = session?.access_token ?? null;
+  if (!freshToken || freshToken === currentToken) return null;
+  return freshToken;
+}
+
 async function request<T>(
   path: string,
   method: HttpMethod,
   body?: unknown,
   token?: string,
+  retryOnExpiredToken = true,
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -126,6 +146,13 @@ async function request<T>(
 
   const parsed = await parseResponseBody(response);
 
+  if (retryOnExpiredToken && token && isExpiredTokenResponse(response, parsed)) {
+    const freshToken = await getFreshAccessToken(token);
+    if (freshToken) {
+      return request<T>(path, method, body, freshToken, false);
+    }
+  }
+
   if (!response.ok) {
     throw buildHttpError(response, parsed, "Error en la peticion");
   }
@@ -143,6 +170,7 @@ async function upload<T>(
   path: string,
   formData: FormData,
   token?: string,
+  retryOnExpiredToken = true,
 ): Promise<T> {
   const headers: Record<string, string> = {};
 
@@ -164,6 +192,13 @@ async function upload<T>(
   }
 
   const parsed = await parseResponseBody(response);
+
+  if (retryOnExpiredToken && token && isExpiredTokenResponse(response, parsed)) {
+    const freshToken = await getFreshAccessToken(token);
+    if (freshToken) {
+      return upload<T>(path, formData, freshToken, false);
+    }
+  }
 
   if (!response.ok) {
     throw buildHttpError(response, parsed, "Error al subir archivo");

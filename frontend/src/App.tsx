@@ -18,9 +18,11 @@ import { JoinGroupPage } from './pages/JoinGroup'
 import FlightHotelSearchPage from './pages/Search/FlightHotelSearchPage'
 import MapPlacesPage from './pages/Search/MapPlacesPage'
 import RoutesTransportWeatherPage from './pages/Search/RoutesTransportWeatherPage'
+import SearchHistoryPage from './pages/Search/SearchHistoryPage'
 import { CheckoutPage } from './pages/Checkout'
 import { useNetworkMonitor } from './hooks'
 import { OfflineBanner } from './components/ui/OfflineBanner/OfflineBanner'
+import { SharedItineraryPage } from './pages/Shared/SharedItineraryPage'
 
 function App() {
   const isOnline = useNetworkMonitor()
@@ -36,6 +38,7 @@ function App() {
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/otp" element={<OTPPage />} />
         <Route path="/join-group" element={<JoinGroupPage />} />
+        <Route path="/shared/:token" element={<SharedItineraryPage />} />
 
         <Route
           path="/my-trips"
@@ -109,6 +112,15 @@ function App() {
           element={
             <ProtectedRoute>
               <RoutesTransportWeatherPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/search/history"
+          element={
+            <ProtectedRoute>
+              <SearchHistoryPage />
             </ProtectedRoute>
           }
         />

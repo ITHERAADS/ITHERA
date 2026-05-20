@@ -22,6 +22,7 @@ export interface NotificationPreferences {
   notificaciones_finanzas: boolean;
   notificaciones_vuelos: boolean;
   notificaciones_hospedajes: boolean;
+  notificaciones_alertas: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -46,6 +47,7 @@ export interface UpdatePreferencesPayload {
   notificaciones_finanzas?: boolean;
   notificaciones_vuelos?: boolean;
   notificaciones_hospedajes?: boolean;
+  notificaciones_alertas?: boolean;
 }
 
 

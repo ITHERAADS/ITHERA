@@ -531,7 +531,7 @@ function HeroCard({
           {destination}
         </h1>
         <div className="mb-4 flex flex-wrap gap-2">
-          <span className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/18 px-3 py-2 font-body text-xs font-bold text-white shadow-sm backdrop-blur-md">
+          <span className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/20 px-3 py-2 font-body text-xs font-bold text-white shadow-sm backdrop-blur-md">
             <span className="h-2.5 w-2.5 rounded-full bg-[#35C56A]" />
             {activities.length} actividad{activities.length !== 1 ? "es" : ""} planeada
             {activities.length !== 1 ? "s" : ""}

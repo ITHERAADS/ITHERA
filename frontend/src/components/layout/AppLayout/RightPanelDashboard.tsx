@@ -94,7 +94,7 @@ function SectionDivider({
   background: string
 }) {
   return (
-    <div className="mb-3 flex items-center gap-2">
+    <div className="mb-2 flex items-center gap-2">
       <span
         className="inline-flex items-center gap-2 rounded-full px-3 py-1 font-body text-[10px] font-bold uppercase tracking-widest"
         style={{ color, backgroundColor: background }}
@@ -426,20 +426,18 @@ export function RightPanelDashboard({
 
       {/* Mini map */}
       <section className="shrink-0">
-        <div className="mb-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <SectionDivider label="Punto de partida" color="#7A4FD6" background="#F3EEFF" />
-            </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <SectionDivider label="Punto de partida" color="#7A4FD6" background="#F3EEFF" />
+          </div>
           {startLocation?.source === 'hotel_reservado' && (
             <span className="rounded-full bg-greenAccent/10 px-2 py-0.5 font-body text-[10px] font-bold text-greenAccent">
               Hotel reservado
             </span>
           )}
-          </div>
         </div>
 
-        <div className="mb-2">
+        <div className="mb-1.5">
           <GoogleMiniMap
             lat={startLocation?.latitude}
             lng={startLocation?.longitude}
@@ -539,7 +537,7 @@ export function RightPanelDashboard({
           type="button"
           onClick={onOpenChat}
           disabled={!onOpenChat}
-          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3 hover:bg-[#F0EEF8] hover:border-[#7A4FD6]/30 transition-colors group shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-2.5 hover:bg-[#F0EEF8] hover:border-[#7A4FD6]/30 transition-colors group shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
         >
           <div className="flex items-center gap-2.5">
             <div

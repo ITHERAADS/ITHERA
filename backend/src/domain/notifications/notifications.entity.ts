@@ -22,6 +22,7 @@ export interface NotificationPreferences {
   notificaciones_finanzas: boolean;
   notificaciones_vuelos: boolean;
   notificaciones_hospedajes: boolean;
+  notificaciones_alertas: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -46,14 +47,15 @@ export interface UpdatePreferencesPayload {
   notificaciones_finanzas?: boolean;
   notificaciones_vuelos?: boolean;
   notificaciones_hospedajes?: boolean;
+  notificaciones_alertas?: boolean;
 }
 
 
 export interface DashboardUpdatedPayload {
-  grupoId: number;
+  grupoId: number | string;
   tipo: string;
   entidadTipo?: string | null;
-  entidadId?: number | null;
+  entidadId?: number | string | null;
   actorUsuarioId?: number | null;
   createdAt: string;
   metadata?: Record<string, unknown>;

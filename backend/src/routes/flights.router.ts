@@ -112,7 +112,8 @@ router.get('/search', requireAuth, async (req: Request, res: Response): Promise<
     res.status(200).json({ ok: true, data: flights });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Error desconocido';
-    res.status(getStatusCode(err)).json({ ok: false, error: 'Error al buscar vuelos', details: msg });
+    const status = getStatusCode(err);
+    res.status(status).json({ ok: false, error: status === 400 ? msg : 'Error al buscar vuelos', details: msg });
   }
 });
 

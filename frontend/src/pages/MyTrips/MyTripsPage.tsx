@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout/AppLayout'
 import { useAuth } from '../../context/useAuth'
+import { useSocket } from '../../hooks/useSocket'
 import { groupsService, saveCurrentGroup } from '../../services/groups'
+import { isNetworkError } from '../../services/apiClient'
 import type { GroupHistoryItem } from '../../types/groups'
 
 // ── Date helper ───────────────────────────────────────────────────────────────
@@ -133,6 +135,15 @@ function IconLuggage() {
   )
 }
 
+function IconPlaneBadge() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M21 3L9.5 14.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M21 3l-7 18-4.5-6.5L3 10l18-7z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function IconWifiOff() {
   return (
     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -161,9 +172,22 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
   const [info, setInfo]       = useState('')
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
   const { accessToken }       = useAuth()
 
+  useEffect(() => {
+    const updateOnlineState = () => setIsOffline(typeof navigator !== 'undefined' && !navigator.onLine)
+    window.addEventListener('online', updateOnlineState)
+    window.addEventListener('offline', updateOnlineState)
+    updateOnlineState()
+    return () => {
+      window.removeEventListener('online', updateOnlineState)
+      window.removeEventListener('offline', updateOnlineState)
+    }
+  }, [])
+
   const handleJoin = async () => {
+    if (isOffline) return setError('Sin conexión. Podrás unirte con código cuando recuperes internet.')
     if (!code.trim()) return setError('Ingresa un código de invitación.')
     setError('')
     setInfo('')
@@ -185,7 +209,7 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
       saveCurrentGroup(response.group)
       onJoined()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Código inválido o expirado.')
+      setError(isNetworkError(e) ? 'Sin conexión. Podrás unirte con código cuando recuperes internet.' : e instanceof Error ? e.message : 'Código inválido o expirado.')
     } finally {
       setLoading(false)
     }
@@ -198,19 +222,25 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
           type="text"
           value={code}
           onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(''); setInfo('') }}
-          onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+          onKeyDown={(e) => e.key === 'Enter' && !isOffline && handleJoin()}
+          disabled={isOffline}
           placeholder="Ej: ABCD1234"
           maxLength={8}
           className="flex-1 font-body text-sm text-[#1E0A4E] placeholder-gray-400 border border-[#E2E8F0] rounded-xl px-4 py-2.5 outline-none focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10 tracking-widest uppercase bg-white"
         />
         <button
           onClick={handleJoin}
-          disabled={loading}
+          disabled={loading || isOffline}
           className="font-body text-sm font-semibold bg-[#1E0A4E] text-white rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity disabled:opacity-50 whitespace-nowrap"
         >
           {loading ? 'Uniéndome…' : 'Unirme'}
         </button>
       </div>
+      {isOffline && (
+        <p className="rounded-xl bg-[#FFFBEB] px-4 py-3 font-body text-xs text-[#92400E]">
+          Sin conexión — modo lectura activo. Esta acción estará disponible al recuperar conexión.
+        </p>
+      )}
       {error && <p className="font-body text-xs text-red-500">{error}</p>}
       {info && (
         <p className="rounded-xl bg-[#FFF8E6] px-4 py-3 font-body text-xs text-[#8A5A00]">
@@ -315,33 +345,39 @@ function RolBadge({ rol, dark = false }: { rol: string; dark?: boolean }) {
 function FeaturedCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => void }) {
   const g = item.grupos_viaje
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#2D1266] bg-[#1E0A4E] p-5 shadow-lg">
-      <div className="mb-3 flex items-center justify-between">
-        <StatusChip estado="activo"/>
-        <RolBadge rol={item.rol} dark />
-      </div>
-      <h2 className="font-heading text-xl font-bold text-white leading-tight mb-1">
-        {g.nombre}
-      </h2>
-      {g.destino && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-white/50"><IconMap /></span>
-          <p className="font-body text-[13px] text-white/70">{g.destino}</p>
+    <div className="relative overflow-hidden rounded-3xl border border-[#D8C8FF] bg-[linear-gradient(135deg,#1E0A4E_0%,#4F24A8_48%,#7A4FD6_100%)] p-5 shadow-[0_22px_46px_rgba(30,10,78,0.22)]">
+      <div className="absolute -bottom-24 left-10 h-56 w-56 rounded-full bg-[#1E6FD9]/20 blur-3xl" />
+      <div className="absolute -right-20 top-8 h-48 w-48 rounded-full bg-[#D8C8FF]/20 blur-3xl" />
+      <div className="relative">
+        <div className="mb-5 flex items-center justify-between">
+          <StatusChip estado="activo"/>
+          <RolBadge rol={item.rol} dark />
         </div>
-      )}
-      <div className="flex items-center gap-1.5 mb-4">
-        <span className="text-white/50"><IconClock /></span>
-        <p className="font-body text-[12px] text-white/50">
-          {formatRange(g.fecha_inicio, g.fecha_fin)}
-        </p>
-      </div>
-      <div className="flex justify-end">
-        <button
-          onClick={onClick}
-          className="inline-flex min-w-[132px] items-center justify-center rounded-full border border-white/80 bg-white px-5 py-2.5 font-body text-[13px] font-semibold text-[#1E0A4E] shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md"
-        >
-          Abrir viaje →
-        </button>
+        <h2 className="font-heading text-2xl font-extrabold leading-tight text-white">
+          {g.nombre}
+        </h2>
+        <div className="mt-4 grid gap-2 sm:max-w-md sm:grid-cols-2">
+          {g.destino && (
+            <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2">
+              <span className="text-[#D8C8FF]"><IconMap /></span>
+              <p className="min-w-0 truncate font-body text-[13px] font-semibold text-white/85">{g.destino}</p>
+            </div>
+          )}
+          <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2">
+            <span className="text-[#BFD7FF]"><IconClock /></span>
+            <p className="min-w-0 truncate font-body text-[13px] font-semibold text-white/85">
+              {formatRange(g.fecha_inicio, g.fecha_fin)}
+            </p>
+          </div>
+        </div>
+        <div className="mt-8 flex justify-end">
+          <button
+            onClick={onClick}
+            className="inline-flex min-w-[132px] items-center justify-center rounded-full border border-white/80 bg-white px-5 py-2.5 font-body text-[13px] font-bold text-[#1E0A4E] shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md"
+          >
+            Abrir viaje →
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -356,9 +392,9 @@ function TripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => vo
   return (
     <button
       onClick={onClick}
-      className={`w-full overflow-hidden rounded-2xl border p-5 text-left shadow-sm transition-all hover:shadow-md ${
+      className={`w-full overflow-hidden rounded-3xl border p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
         isAdmin
-          ? 'border-[#2D1266] bg-[#1E0A4E] text-white'
+          ? 'border-[#D8C8FF] bg-[linear-gradient(135deg,#1E0A4E,#5B2BC0)] text-white'
           : 'border-[#C3D3EC] bg-white text-[#1E0A4E] shadow-[0_8px_22px_rgba(30,10,78,0.08)] hover:border-[#1E6FD9]/50'
       }`}
     >
@@ -407,7 +443,7 @@ function TripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => vo
         <span className={`inline-flex min-w-[132px] items-center justify-center rounded-full border px-5 py-2.5 font-body text-[13px] font-semibold shadow-sm transition-all ${
           isAdmin
             ? 'border-white/80 bg-white text-[#1E0A4E]'
-            : 'border-[#9FC0F4] bg-[#EAF2FF] text-[#1E6FD9]'
+            : 'border-[#D8C8FF] bg-[#F3EEFF] text-[#6D45C0]'
         }`}>
           Abrir viaje →
         </span>
@@ -441,6 +477,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 export function MyTripsPage() {
   const { accessToken, localUser } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [activos, setActivos] = useState<GroupHistoryItem[]>([])
   const [pasados, setPasados] = useState<GroupHistoryItem[]>([])
@@ -448,8 +485,9 @@ export function MyTripsPage() {
   const [error,   setError]   = useState(false)
   const [showJoin, setShowJoin] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const { socket } = useSocket(accessToken)
 
-  async function fetchTrips() {
+  const fetchTrips = useCallback(async () => {
   if (!accessToken) return
 
   setLoading(true)
@@ -465,12 +503,50 @@ export function MyTripsPage() {
   } finally {
     setLoading(false)
   }
-}
+  }, [accessToken])
 
   useEffect(() => {
-    fetchTrips()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken])
+    void fetchTrips()
+  }, [fetchTrips])
+
+  useEffect(() => {
+    if (!socket) return
+
+    const refreshTrips = () => { void fetchTrips() }
+    const handleDashboardUpdated = (payload: { tipo?: string; actorUsuarioId?: string | number | null; metadata?: Record<string, unknown> }) => {
+      const tipo = String(payload?.tipo ?? '')
+      if (
+        tipo.includes('grupo') ||
+        tipo.includes('solicitud_union') ||
+        tipo.includes('miembro') ||
+        tipo.includes('viaje')
+      ) refreshTrips()
+    }
+
+    socket.on('dashboard_updated', handleDashboardUpdated)
+    socket.on('group_members_updated', refreshTrips)
+    socket.on('group_deleted', refreshTrips)
+    socket.on('notification_created', refreshTrips)
+
+    return () => {
+      socket.off('dashboard_updated', handleDashboardUpdated)
+      socket.off('group_members_updated', refreshTrips)
+      socket.off('group_deleted', refreshTrips)
+      socket.off('notification_created', refreshTrips)
+    }
+  }, [fetchTrips, socket])
+
+  const isPastTripsMode = location.hash === '#viajes-pasados'
+
+  useEffect(() => {
+    if (location.hash !== '#viajes-pasados') return
+    setShowHistory(true)
+    const timeoutId = window.setTimeout(() => {
+      const target = document.getElementById('viajes-pasados')
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
+    return () => window.clearTimeout(timeoutId)
+  }, [location.hash])
 
 
   function openTrip(item: GroupHistoryItem) {
@@ -507,37 +583,69 @@ export function MyTripsPage() {
       {loading ? (
         <SkeletonCards/>
       ) : error ? (
-        <ErrorState onRetry={fetchTrips}/>
+        <ErrorState onRetry={() => { void fetchTrips() }}/>
       ) : (
-        <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
+        <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#FFFFFF_0%,#F8F6FF_48%,#F3EEFF_100%)]">
 
           {/* ── Header ── */}
-          <div className="bg-white border-b border-[#E2E8F0] px-6 py-5">
-            <h1 className="font-heading text-2xl font-bold text-[#1E0A4E] mb-0.5">
-              Hola, {firstName} 👋
-            </h1>
-            <p className="font-body text-sm text-[#6B7280]">
-              {hasTrips
-                ? `Tienes ${activos.length} viaje${activos.length !== 1 ? 's' : ''} activo${activos.length !== 1 ? 's' : ''}`
-                : 'Empieza creando tu primer viaje o únete a uno existente'}
-            </p>
+          <div className="border-b border-[#D9E4F7] bg-white/85 px-6 py-6 backdrop-blur">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] text-white shadow-[0_14px_28px_rgba(30,10,78,0.22)]">
+                  <IconPlaneBadge />
+                </div>
+                <div className="min-w-0">
+                  <p className="mb-1 inline-flex items-center gap-2 rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#6D45C0]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#7A4FD6]" />
+                    Centro de viajes
+                  </p>
+                  <h1 className="font-heading text-3xl font-extrabold leading-tight text-[#1E0A4E]">
+                    Hola, {firstName}
+                  </h1>
+                  <p className="mt-1 font-body text-sm text-[#64748B]">
+                    {hasTrips
+                      ? `Tienes ${activos.length} viaje${activos.length !== 1 ? 's' : ''} activo${activos.length !== 1 ? 's' : ''}`
+                      : 'Empieza creando tu primer viaje o únete a uno existente'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:w-[320px]">
+                <div className="rounded-2xl border border-[#D8C8FF] bg-[#F3EEFF] px-4 py-3">
+                  <p className="font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#6D45C0]">
+                    Activos
+                  </p>
+                  <p className="mt-1 font-heading text-2xl font-extrabold text-[#1E0A4E]">
+                    {activos.length}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#CFE0FF] bg-[#EEF4FF] px-4 py-3">
+                  <p className="font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#1E6FD9]">
+                    Historial
+                  </p>
+                  <p className="mt-1 font-heading text-2xl font-extrabold text-[#1E0A4E]">
+                    {pasados.length}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* ── Quick actions ── */}
-          <div className="px-6 py-4 flex gap-3">
+          <div className="grid gap-3 px-6 py-4 md:grid-cols-2">
             <button
               onClick={() => navigate('/create-group')}
-              className="flex-1 flex items-center justify-center gap-2 bg-[#1E6FD9] text-white font-body text-sm font-semibold rounded-xl py-3 hover:opacity-90 transition-opacity shadow-sm"
+              className="flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] py-3.5 font-body text-sm font-bold text-white shadow-[0_14px_28px_rgba(30,10,78,0.18)] transition hover:-translate-y-0.5"
             >
               <IconPlus/>
               Crear viaje
             </button>
             <button
               onClick={() => setShowJoin((v) => !v)}
-              className={`flex-1 flex items-center justify-center gap-2 font-body text-sm font-semibold rounded-xl py-3 border transition-all shadow-sm
+              className={`flex items-center justify-center gap-2 rounded-2xl border py-3.5 font-body text-sm font-bold shadow-sm transition-all hover:-translate-y-0.5
                 ${showJoin
                   ? 'bg-[#1E0A4E] text-white border-[#1E0A4E]'
-                  : 'bg-white text-[#1E0A4E] border-[#E2E8F0] hover:border-[#1E0A4E]/30'
+                  : 'bg-white text-[#1E0A4E] border-[#D9E4F7] hover:border-[#7A4FD6]/60'
                 }`}
             >
               <IconKey/>
@@ -552,7 +660,7 @@ export function MyTripsPage() {
                 <p className="font-body text-xs font-semibold text-[#1E0A4E]/50 uppercase tracking-wide mb-3">
                   Código de invitación
                 </p>
-                <JoinCodePanel onJoined={() => { setShowJoin(false); fetchTrips() }}/>
+                <JoinCodePanel onJoined={() => { setShowJoin(false); void fetchTrips() }}/>
               </div>
             </div>
           )}
@@ -594,7 +702,7 @@ export function MyTripsPage() {
             )}
 
             {/* ── Viaje activo destacado ── */}
-            {featured && (
+            {!isPastTripsMode && featured && (
               <section>
                 <p className="mb-2 font-body text-[11px] font-semibold uppercase tracking-wider text-[#6B7280]">
                   {featured.rol === 'admin' ? 'Viaje que organizas' : 'Viaje activo'}
@@ -604,7 +712,7 @@ export function MyTripsPage() {
             )}
 
             {/* ── Activos adicionales ── */}
-            {extraActivos.length > 0 && (
+            {!isPastTripsMode && extraActivos.length > 0 && (
               <div className="flex flex-col gap-3">
                 {extraActivos.map((item) => (
                   <TripCard
@@ -616,29 +724,34 @@ export function MyTripsPage() {
               </div>
             )}
 
-            {/* ── Historial (viajes cerrados / archivados / finalizados) ── */}
-            {pasados.length > 0 && (
-              <section className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-sm">
+            {/* ── Viajes pasados (cerrados / archivados / finalizados) ── */}
+            {isPastTripsMode && pasados.length > 0 && (
+              <section id="viajes-pasados" className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-sm">
                 <button
                   type="button"
-                  onClick={() => setShowHistory((value) => !value)}
+                  onClick={() => {
+                    if (isPastTripsMode) return
+                    setShowHistory((value) => !value)
+                  }}
                   className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-[#F8FAFC]"
-                  aria-expanded={showHistory}
+                  aria-expanded={isPastTripsMode ? true : showHistory}
                 >
                   <div>
                     <p className="font-body text-[11px] font-semibold uppercase tracking-wider text-[#6B7280]">
-                      Historial
+                      Viajes pasados
                     </p>
                     <p className="mt-1 font-body text-sm text-[#1E0A4E]">
                       {pasados.length} viaje{pasados.length !== 1 ? 's' : ''} cerrado{pasados.length !== 1 ? 's' : ''} disponible{pasados.length !== 1 ? 's' : ''} para consulta.
                     </p>
                   </div>
-                  <span className={`flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F5F9] text-[#64748B] transition-transform ${showHistory ? 'rotate-180' : ''}`}>
-                    <IconChevronDown />
-                  </span>
+                  {!isPastTripsMode && (
+                    <span className={`flex h-9 w-9 items-center justify-center rounded-full bg-[#F1F5F9] text-[#64748B] transition-transform ${showHistory ? 'rotate-180' : ''}`}>
+                      <IconChevronDown />
+                    </span>
+                  )}
                 </button>
 
-                {showHistory && (
+                {(isPastTripsMode || showHistory) && (
                   <div className="flex flex-col gap-3 border-t border-[#E2E8F0] bg-[#F8FAFC] p-4">
                     {pasados.map((item) => (
                       <PastTripCard

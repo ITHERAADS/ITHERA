@@ -19,17 +19,22 @@ import FlightHotelSearchPage from './pages/Search/FlightHotelSearchPage'
 import MapPlacesPage from './pages/Search/MapPlacesPage'
 import RoutesTransportWeatherPage from './pages/Search/RoutesTransportWeatherPage'
 import { CheckoutPage } from './pages/Checkout'
+import { useNetworkMonitor } from './hooks'
+import { OfflineBanner } from './components/ui/OfflineBanner/OfflineBanner'
 
 function App() {
+  const isOnline = useNetworkMonitor()
   return (
-    <BrowserRouter>
+    <>
+      {!isOnline && <OfflineBanner />}
+      <BrowserRouter>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
         <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/otp" element={<PublicRoute><OTPPage /></PublicRoute>} />
+        <Route path="/otp" element={<OTPPage />} />
         <Route path="/join-group" element={<JoinGroupPage />} />
 
         <Route
@@ -119,6 +124,7 @@ function App() {
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
+    </>
   );
 }
 

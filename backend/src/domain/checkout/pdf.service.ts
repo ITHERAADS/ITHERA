@@ -425,3 +425,43 @@ export const generateHotelVoucherPdf = async (data: {
     ],
   });
 };
+
+export const generateCollectionReceiptPdf = async (data: {
+  folio: string;
+  tripLabel: string;
+  issuedAt: string;
+  creditor: string;
+  debtor: string;
+  amount: string;
+}): Promise<Buffer> => {
+  return buildElegantPdf({
+    title: 'Comprobante de liquidacion',
+    subtitle: 'Movimiento financiero validado en ITHERA',
+    folio: data.folio,
+    total: data.amount,
+    sections: [
+      {
+        title: 'Datos del recibo',
+        lines: [
+          { label: 'Fecha de emision', value: data.issuedAt },
+          { label: 'Viaje', value: data.tripLabel },
+          { label: 'Tipo', value: 'Liquidacion entre integrantes' },
+        ],
+      },
+      {
+        title: 'Partes involucradas',
+        lines: [
+          { label: 'Acreedor (cobra)', value: data.creditor },
+          { label: 'Deudor', value: data.debtor },
+          { label: 'Monto', value: data.amount },
+        ],
+      },
+      {
+        title: 'Nota de validacion',
+        lines: [
+          { value: 'Comprobante emitido por ITHERA con el estado de deuda registrado al momento de la emision.' },
+        ],
+      },
+    ],
+  });
+};

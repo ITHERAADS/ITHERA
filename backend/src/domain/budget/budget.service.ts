@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../infrastructure/db/supabase.client';
+import * as NotificationsService from '../notifications/notifications.service';
 import { getLocalUserId } from '../groups/groups.service';
 import {
   BudgetCategory,
@@ -8,6 +9,8 @@ import {
   BudgetSettlement,
   BudgetSplitType,
   MarkSettlementPaymentPayload,
+  ReviewSettlementPaymentPayload,
+  UpdateSettlementPaymentPayload,
 } from './budget.entity';
 
 type ServiceError = Error & { statusCode?: number };
@@ -16,6 +19,7 @@ type RawExpenseRow = {
   id: string | number;
   group_id: string | number;
   paid_by_user_id: string | number;
+  created_by_user_id?: string | number | null;
   amount: number | string;
   description: string;
   category: BudgetCategory | string | null;
@@ -36,9 +40,17 @@ type RawPaymentRow = {
   from_user_id: string | number;
   to_user_id: string | number;
   amount: number | string;
+  status?: string | null;
+  payment_method?: string | null;
   paid_at: string;
   created_by_user_id: string | number;
+  reviewed_by_user_id?: string | number | null;
+  reviewed_at?: string | null;
+  rejection_reason?: string | null;
   note?: string | null;
+  settlement_payment_documents?: Array<{
+    trip_document_id: string;
+  }>;
 };
 
 const createError = (message: string, statusCode: number): ServiceError => {
@@ -47,7 +59,55 @@ const createError = (message: string, statusCode: number): ServiceError => {
   return err;
 };
 
+const emitBudgetDashboardUpdated = (
+  groupId: string,
+  tipo: string,
+  entidadTipo: string,
+  entidadId: string | number | null,
+  actorUsuarioId: string | number | null,
+  metadata: Record<string, unknown> = {},
+): void => {
+  NotificationsService.emitGroupDashboardUpdated(
+    Number.isNaN(Number(groupId)) ? groupId : Number(groupId),
+    {
+      tipo,
+      entidadTipo,
+      entidadId: entidadId !== null ? (Number.isNaN(Number(entidadId)) ? String(entidadId) : Number(entidadId)) : null,
+      actorUsuarioId: actorUsuarioId !== null ? Number(actorUsuarioId) : null,
+      metadata: { itemType: 'presupuesto', ...metadata },
+    }
+  );
+};
+
 const roundMoney = (value: number): number => Math.round(value * 100) / 100;
+
+const toDateKey = (value?: string | null): string | null => {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const EXPENSE_WINDOW_MONTHS_BEFORE_TRIP = 2;
+const EXPENSE_WINDOW_DAYS_AFTER_TRIP = 3;
+
+const addMonthsToDateKey = (dateKey: string, months: number): string => {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1));
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+};
+
+const addDaysToDateKey = (dateKey: string, days: number): string => {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const date = new Date(Date.UTC(year, (month ?? 1) - 1, day ?? 1));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 
 const assertPositiveAmount = (amount: unknown): number => {
   const parsed = Number(amount);
@@ -67,6 +127,20 @@ const normalizeCategory = (category: unknown): BudgetCategory => {
 
 const normalizeSplitType = (splitType: unknown): BudgetSplitType =>
   splitType === 'personalizada' ? 'personalizada' : 'equitativa';
+
+const normalizePaymentStatus = (
+  status: unknown,
+): 'pendiente_validacion' | 'confirmado' | 'rechazado' => {
+  if (status === 'confirmado' || status === 'rechazado') return status;
+  return 'pendiente_validacion';
+};
+
+const normalizePaymentMethod = (
+  method: unknown,
+): 'efectivo_presencial' | 'transferencia' | null => {
+  if (method === 'efectivo_presencial' || method === 'transferencia') return method;
+  return null;
+};
 
 export const ensureGroupMember = async (authUserId: string, groupId: string) => {
   const usuarioId = await getLocalUserId(authUserId);
@@ -103,15 +177,28 @@ const getMembers = async (groupId: string): Promise<BudgetMember[]> => {
     .map((item: any) => Number(item.usuario_id))
     .filter((id) => Number.isFinite(id))));
 
-  const users = await Promise.all(userIds.map(async (userId) => {
-    const { data, error: userError } = await supabaseAdmin
+  let users: any[] = [];
+  let usersError: any = null;
+
+  if (userIds.length > 0) {
+    const usersQuery = supabaseAdmin
       .from('usuarios')
-      .select('id_usuario, nombre, email, avatar_url')
-      .eq('id_usuario', userId)
-      .maybeSingle();
-    if (userError) throw createError(userError.message, 500);
-    return data;
-  }));
+      .select('id_usuario, nombre, email, avatar_url') as any;
+
+    if (typeof usersQuery.in === 'function') {
+      const response = await usersQuery.in('id_usuario', userIds);
+      users = response.data ?? [];
+      usersError = response.error ?? null;
+    } else {
+      const response = await usersQuery;
+      users = (response.data ?? []).filter((user: any) =>
+        userIds.includes(Number(user.id_usuario)),
+      );
+      usersError = response.error ?? null;
+    }
+  }
+
+  if (usersError) throw createError(usersError.message, 500);
 
   const usersById = new Map((users ?? []).map((user: any) => [String(user.id_usuario), user]));
 
@@ -134,6 +221,62 @@ const assertUserInGroup = (members: BudgetMember[], userId: string, message: str
   }
 };
 
+const getScopedMembersForExpense = async (
+  groupId: string,
+  payload: BudgetExpensePayload,
+  allGroupMembers: BudgetMember[],
+): Promise<{ members: BudgetMember[]; scopeLabel: 'grupo' | 'subgrupo' }> => {
+  const subgroupId = String(payload.subgroup_id ?? '').trim();
+  if (!subgroupId) {
+    return { members: allGroupMembers, scopeLabel: 'grupo' };
+  }
+
+  const { data: subgroup, error: subgroupError } = await supabaseAdmin
+    .from('subgroups')
+    .select('id, slot_id')
+    .eq('id', subgroupId)
+    .maybeSingle();
+  if (subgroupError) throw createError(subgroupError.message, 500);
+  if (!subgroup) throw createError('Subgrupo no encontrado', 404);
+
+  const slotId = Number((subgroup as { slot_id?: number | string | null }).slot_id);
+  if (!Number.isFinite(slotId)) {
+    throw createError('Subgrupo invalido', 400);
+  }
+
+  const { data: slot, error: slotError } = await supabaseAdmin
+    .from('subgroup_slots')
+    .select('id, group_id')
+    .eq('id', slotId)
+    .maybeSingle();
+  if (slotError) throw createError(slotError.message, 500);
+  if (!slot || String((slot as { group_id?: string | number | null }).group_id) !== String(groupId)) {
+    throw createError('El subgrupo no pertenece al grupo enviado', 400);
+  }
+
+  const { data: memberships, error: membershipsError } = await supabaseAdmin
+    .from('subgroup_memberships')
+    .select('user_id')
+    .eq('subgroup_id', subgroupId);
+  if (membershipsError) throw createError(membershipsError.message, 500);
+
+  const allowedUserIds = new Set(
+    (memberships ?? [])
+      .map((item: any) => String(item.user_id ?? ''))
+      .filter((id) => id.length > 0),
+  );
+
+  const scopedMembers = allGroupMembers.filter((member) =>
+    allowedUserIds.has(String(member.usuario_id)),
+  );
+
+  if (scopedMembers.length === 0) {
+    throw createError('El subgrupo no tiene integrantes para registrar gastos', 400);
+  }
+
+  return { members: scopedMembers, scopeLabel: 'subgrupo' };
+};
+
 const getGroupBudgetRecord = async (groupId: string) => {
   const { data, error } = await supabaseAdmin
     .from('grupos_viaje')
@@ -143,6 +286,45 @@ const getGroupBudgetRecord = async (groupId: string) => {
 
   if (error || !data) throw createError('Grupo no encontrado', 404);
   return data;
+};
+
+const assertExpenseDateWithinTripWindow = async (
+  groupId: string,
+  expenseDateRaw: string | null | undefined,
+) => {
+  const expenseDate = toDateKey(expenseDateRaw ?? null);
+  if (!expenseDate) {
+    throw createError('La fecha del gasto es invalida', 400);
+  }
+
+  const { data: group, error } = await supabaseAdmin
+    .from('grupos_viaje')
+    .select('fecha_inicio, fecha_fin')
+    .eq('id', groupId)
+    .maybeSingle();
+
+  if (error) throw createError(error.message, 500);
+  if (!group) throw createError('Grupo no encontrado', 404);
+
+  const start = toDateKey(String((group as any).fecha_inicio ?? ''));
+  const end = toDateKey(String((group as any).fecha_fin ?? ''));
+  if (!start || !end) {
+    // Mantiene compatibilidad con grupos legacy o fixtures de prueba sin fechas.
+    // Solo aplicamos validacion estricta cuando existe ventana de viaje completa.
+    return;
+  }
+
+  const minDate = addMonthsToDateKey(
+    start,
+    -EXPENSE_WINDOW_MONTHS_BEFORE_TRIP,
+  );
+  const maxDate = addDaysToDateKey(end, EXPENSE_WINDOW_DAYS_AFTER_TRIP);
+  if (expenseDate < minDate || expenseDate > maxDate) {
+    throw createError(
+      `La fecha del gasto debe estar entre ${minDate} y ${maxDate}`,
+      400,
+    );
+  }
 };
 
 const getExpenses = async (groupId: string): Promise<RawExpenseRow[]> => {
@@ -161,6 +343,7 @@ const buildSplits = (
   payload: BudgetExpensePayload,
   members: BudgetMember[],
   amount: number,
+  scopeLabel: 'grupo' | 'subgrupo' = 'grupo',
 ) => {
   const splitType = normalizeSplitType(payload.split_type);
 
@@ -169,7 +352,13 @@ const buildSplits = (
     const splits = Object.entries(splitAmounts)
       .filter(([, share]) => Number(share) > 0)
       .map(([userId, share]) => {
-        assertUserInGroup(members, userId, 'Un integrante del split no pertenece al grupo');
+        assertUserInGroup(
+          members,
+          userId,
+          scopeLabel === 'subgrupo'
+            ? 'Un integrante del split no pertenece al subgrupo seleccionado'
+            : 'Un integrante del split no pertenece al grupo',
+        );
         return {
           expense_id: expenseId,
           user_id: String(userId),
@@ -190,7 +379,13 @@ const buildSplits = (
     : members.map((member) => String(member.usuario_id));
 
   for (const memberId of selectedMemberIds) {
-    assertUserInGroup(members, memberId, 'Un integrante del split no pertenece al grupo');
+    assertUserInGroup(
+      members,
+      memberId,
+      scopeLabel === 'subgrupo'
+        ? 'Un integrante del split no pertenece al subgrupo seleccionado'
+        : 'Un integrante del split no pertenece al grupo',
+    );
   }
 
   if (selectedMemberIds.length === 0) {
@@ -241,6 +436,29 @@ const calculateBalances = (expenses: RawExpenseRow[]): Record<string, number> =>
   return balances;
 };
 
+const applyConfirmedPaymentsToBalances = (
+  balances: Record<string, number>,
+  payments: RawPaymentRow[],
+): Record<string, number> => {
+  const next = { ...balances };
+  for (const payment of payments) {
+    if (normalizePaymentStatus(payment.status) !== 'confirmado') continue;
+
+    const from = String(payment.from_user_id);
+    const to = String(payment.to_user_id);
+    const amount = Number(payment.amount);
+
+    /*
+      En el balance base, quien debe tiene saldo negativo y quien debe cobrar
+      tiene saldo positivo. Al confirmar una liquidacion, la deuda del pagador
+      disminuye y el saldo por cobrar del acreedor tambien disminuye.
+    */
+    next[from] = roundMoney((next[from] ?? 0) + amount);
+    next[to] = roundMoney((next[to] ?? 0) - amount);
+  }
+  return next;
+};
+
 const calculateMinimumSettlements = (balances: Record<string, number>): BudgetSettlement[] => {
   const debtors: { userId: string; amount: number }[] = [];
   const creditors: { userId: string; amount: number }[] = [];
@@ -279,7 +497,7 @@ const calculateMinimumSettlements = (balances: Record<string, number>): BudgetSe
 const getSettlementPayments = async (groupId: string): Promise<RawPaymentRow[]> => {
   const { data, error } = await supabaseAdmin
     .from('settlement_payments')
-    .select('*')
+    .select('*, settlement_payment_documents(trip_document_id)')
     .eq('group_id', groupId)
     .order('paid_at', { ascending: false });
 
@@ -292,32 +510,16 @@ const mapPayment = (payment: RawPaymentRow): BudgetPayment => ({
   from: String(payment.from_user_id),
   to: String(payment.to_user_id),
   amount: Number(payment.amount),
+  status: normalizePaymentStatus(payment.status),
+  payment_method: normalizePaymentMethod(payment.payment_method),
   paid_at: String(payment.paid_at),
   created_by_user_id: String(payment.created_by_user_id),
+  reviewed_by_user_id: payment.reviewed_by_user_id != null ? String(payment.reviewed_by_user_id) : null,
+  reviewed_at: payment.reviewed_at ?? null,
+  rejection_reason: payment.rejection_reason ?? null,
+  proof_document_id: payment.settlement_payment_documents?.[0]?.trip_document_id ?? null,
   note: payment.note ?? null,
 });
-
-const applyPaymentsToSettlements = (
-  settlements: BudgetSettlement[],
-  payments: RawPaymentRow[],
-): BudgetSettlement[] => {
-  const paidByPair = new Map<string, number>();
-  for (const payment of payments) {
-    const key = `${payment.from_user_id}->${payment.to_user_id}`;
-    paidByPair.set(key, roundMoney((paidByPair.get(key) ?? 0) + Number(payment.amount)));
-  }
-
-  return settlements
-    .map((settlement) => {
-      const key = `${settlement.from}->${settlement.to}`;
-      const paid = paidByPair.get(key) ?? 0;
-      return {
-        ...settlement,
-        amount: roundMoney(Math.max(0, settlement.amount - paid)),
-      };
-    })
-    .filter((settlement) => settlement.amount > 0.01);
-};
 
 const mapExpense = (expense: RawExpenseRow, membersById: Map<string, BudgetMember>) => {
   const splitAmounts = Object.fromEntries(
@@ -341,7 +543,7 @@ const mapExpense = (expense: RawExpenseRow, membersById: Map<string, BudgetMembe
 };
 
 export const getBudgetDashboard = async (authUserId: string, groupId: string) => {
-  const { membership } = await ensureGroupMember(authUserId, groupId);
+  const { membership, usuarioId } = await ensureGroupMember(authUserId, groupId);
   const [group, members, expenses, payments] = await Promise.all([
     getGroupBudgetRecord(groupId),
     getMembers(groupId),
@@ -352,8 +554,18 @@ export const getBudgetDashboard = async (authUserId: string, groupId: string) =>
   const membersById = new Map(members.map((member) => [String(member.usuario_id), member]));
   const totalBudget = Number(group.presupuesto_total ?? 0);
   const committed = roundMoney(expenses.reduce((sum, expense) => sum + Number(expense.amount), 0));
-  const balances = calculateBalances(expenses);
-  const settlements = applyPaymentsToSettlements(calculateMinimumSettlements(balances), payments);
+  const balances = applyConfirmedPaymentsToBalances(calculateBalances(expenses), payments);
+  const settlements = calculateMinimumSettlements(balances);
+  const groupSettlementSummary = {
+    totalTransfers: settlements.length,
+    totalAmount: roundMoney(settlements.reduce((sum, settlement) => sum + settlement.amount, 0)),
+  };
+  const personalSettlements = settlements.filter(
+    (settlement) => settlement.from === String(usuarioId) || settlement.to === String(usuarioId),
+  );
+  const personalPaymentHistory = payments
+    .map(mapPayment)
+    .filter((payment) => payment.from === String(usuarioId) || payment.to === String(usuarioId));
 
   return {
     ok: true,
@@ -369,8 +581,9 @@ export const getBudgetDashboard = async (authUserId: string, groupId: string) =>
     members,
     expenses: expenses.map((expense) => mapExpense(expense, membersById)),
     balances,
-    settlements,
-    paymentHistory: payments.map(mapPayment),
+    settlements: personalSettlements,
+    groupSettlementSummary,
+    paymentHistory: personalPaymentHistory,
   };
 };
 
@@ -396,6 +609,12 @@ export const updateBudget = async (authUserId: string, groupId: string, amount: 
     .eq('id', groupId);
 
   if (error) throw createError(error.message, 500);
+
+  const actor = await ensureGroupMember(authUserId, groupId);
+  emitBudgetDashboardUpdated(groupId, 'presupuesto_actualizado', 'presupuesto', groupId, actor.usuarioId, {
+    amount: roundMoney(totalBudget),
+  });
+
   return getBudgetDashboard(authUserId, groupId);
 };
 
@@ -404,33 +623,49 @@ export const createExpense = async (
   groupId: string,
   payload: BudgetExpensePayload,
 ) => {
-  await ensureGroupMember(authUserId, groupId);
+  const actor = await ensureGroupMember(authUserId, groupId);
   const members = await getMembers(groupId);
+  const { members: scopedMembers, scopeLabel } = await getScopedMembersForExpense(groupId, payload, members);
   const amount = assertPositiveAmount(payload.amount);
   const category = normalizeCategory(payload.category);
   const splitType = normalizeSplitType(payload.split_type);
   const paidByUserId = String(payload.paid_by_user_id);
-  assertUserInGroup(members, paidByUserId, 'El pagador no pertenece al grupo');
+  assertUserInGroup(
+    scopedMembers,
+    paidByUserId,
+    scopeLabel === 'subgrupo'
+      ? 'El pagador no pertenece al subgrupo seleccionado'
+      : 'El pagador no pertenece al grupo',
+  );
+  const expenseDate = payload.expense_date ?? new Date().toISOString().split('T')[0];
+  await assertExpenseDateWithinTripWindow(groupId, expenseDate);
 
   const { data: expense, error } = await supabaseAdmin
     .from('expenses')
     .insert({
       group_id: groupId,
       paid_by_user_id: paidByUserId,
+      created_by_user_id: actor.usuarioId,
       amount,
       description: String(payload.description ?? '').trim(),
       category,
       split_type: splitType,
-      expense_date: payload.expense_date ?? new Date().toISOString().split('T')[0],
+      expense_date: expenseDate,
     })
     .select()
     .single();
 
   if (error || !expense) throw createError(error?.message ?? 'Error al registrar el gasto', 500);
 
-  const splits = buildSplits(String(expense.id), payload, members, amount);
+  const splits = buildSplits(String(expense.id), payload, scopedMembers, amount, scopeLabel);
   const { error: splitError } = await supabaseAdmin.from('expense_splits').insert(splits);
   if (splitError) throw createError(splitError.message, 500);
+
+  emitBudgetDashboardUpdated(groupId, 'gasto_creado', 'gasto', expense.id, paidByUserId, {
+    amount,
+    category,
+    itemTitle: String(payload.description ?? '').trim() || 'Gasto',
+  });
 
   return getBudgetDashboard(authUserId, groupId);
 };
@@ -441,13 +676,36 @@ export const updateExpense = async (
   expenseId: string,
   payload: BudgetExpensePayload,
 ) => {
-  await ensureGroupAdmin(authUserId, groupId);
+  const actor = await ensureGroupMember(authUserId, groupId);
+  const isAdmin = String(actor.membership.rol).toLowerCase() === 'admin';
+  const { data: existingExpense, error: expenseError } = await supabaseAdmin
+    .from('expenses')
+    .select('id, paid_by_user_id, created_by_user_id, group_id')
+    .eq('id', expenseId)
+    .eq('group_id', groupId)
+    .maybeSingle();
+  if (expenseError) throw createError(expenseError.message, 500);
+  if (!existingExpense) throw createError('Gasto no encontrado', 404);
+  const creatorUserId = String((existingExpense as { created_by_user_id?: string | number | null }).created_by_user_id ?? '');
+  if (!isAdmin && creatorUserId !== String(actor.usuarioId)) {
+    throw createError('Solo el creador del gasto o un admin pueden modificarlo', 403);
+  }
+
   const members = await getMembers(groupId);
+  const { members: scopedMembers, scopeLabel } = await getScopedMembersForExpense(groupId, payload, members);
   const amount = assertPositiveAmount(payload.amount);
   const category = normalizeCategory(payload.category);
   const splitType = normalizeSplitType(payload.split_type);
   const paidByUserId = String(payload.paid_by_user_id);
-  assertUserInGroup(members, paidByUserId, 'El pagador no pertenece al grupo');
+  assertUserInGroup(
+    scopedMembers,
+    paidByUserId,
+    scopeLabel === 'subgrupo'
+      ? 'El pagador no pertenece al subgrupo seleccionado'
+      : 'El pagador no pertenece al grupo',
+  );
+  const expenseDate = payload.expense_date ?? new Date().toISOString().split('T')[0];
+  await assertExpenseDateWithinTripWindow(groupId, expenseDate);
 
   const { error } = await supabaseAdmin
     .from('expenses')
@@ -457,7 +715,7 @@ export const updateExpense = async (
       description: String(payload.description ?? '').trim(),
       category,
       split_type: splitType,
-      expense_date: payload.expense_date ?? new Date().toISOString().split('T')[0],
+      expense_date: expenseDate,
       updated_at: new Date().toISOString(),
     })
     .eq('id', expenseId)
@@ -471,15 +729,34 @@ export const updateExpense = async (
     .eq('expense_id', expenseId);
   if (deleteSplitsError) throw createError(deleteSplitsError.message, 500);
 
-  const splits = buildSplits(expenseId, payload, members, amount);
+  const splits = buildSplits(expenseId, payload, scopedMembers, amount, scopeLabel);
   const { error: insertSplitsError } = await supabaseAdmin.from('expense_splits').insert(splits);
   if (insertSplitsError) throw createError(insertSplitsError.message, 500);
+
+  emitBudgetDashboardUpdated(groupId, 'gasto_actualizado', 'gasto', expenseId, actor.usuarioId, {
+    amount,
+    category,
+    itemTitle: String(payload.description ?? '').trim() || 'Gasto',
+  });
 
   return getBudgetDashboard(authUserId, groupId);
 };
 
 export const deleteExpense = async (authUserId: string, groupId: string, expenseId: string) => {
-  await ensureGroupAdmin(authUserId, groupId);
+  const actor = await ensureGroupMember(authUserId, groupId);
+  const isAdmin = String(actor.membership.rol).toLowerCase() === 'admin';
+  const { data: existingExpense, error: expenseError } = await supabaseAdmin
+    .from('expenses')
+    .select('id, paid_by_user_id, created_by_user_id, group_id')
+    .eq('id', expenseId)
+    .eq('group_id', groupId)
+    .maybeSingle();
+  if (expenseError) throw createError(expenseError.message, 500);
+  if (!existingExpense) throw createError('Gasto no encontrado', 404);
+  const creatorUserId = String((existingExpense as { created_by_user_id?: string | number | null }).created_by_user_id ?? '');
+  if (!isAdmin && creatorUserId !== String(actor.usuarioId)) {
+    throw createError('Solo el creador del gasto o un admin pueden eliminarlo', 403);
+  }
 
   const { error: splitError } = await supabaseAdmin
     .from('expense_splits')
@@ -494,11 +771,19 @@ export const deleteExpense = async (authUserId: string, groupId: string, expense
     .eq('group_id', groupId);
 
   if (error) throw createError(error.message, 500);
+
+  emitBudgetDashboardUpdated(groupId, 'gasto_eliminado', 'gasto', expenseId, actor.usuarioId);
+
   return getBudgetDashboard(authUserId, groupId);
 };
 
 export const getBalances = async (groupId: string): Promise<Record<string, number>> => {
-  return calculateBalances(await getExpenses(groupId));
+  const [expenses, payments] = await Promise.all([
+    getExpenses(groupId),
+    getSettlementPayments(groupId),
+  ]);
+
+  return applyConfirmedPaymentsToBalances(calculateBalances(expenses), payments);
 };
 
 export const getMinimumSettlements = async (groupId: string) => {
@@ -528,11 +813,19 @@ export const markSettlementPaid = async (
     throw createError('Solo el deudor o un admin pueden marcar este pago', 403);
   }
 
+  const paymentMethod = normalizePaymentMethod(payload.payment_method);
+  if (!paymentMethod) {
+    throw createError('Metodo de pago invalido', 400);
+  }
+  const proofDocumentId = payload.proof_document_id ? String(payload.proof_document_id) : null;
+  if (paymentMethod === 'transferencia' && !proofDocumentId) {
+    throw createError('Para transferencia debes adjuntar comprobante', 400);
+  }
+
   const expenses = await getExpenses(groupId);
   const payments = await getSettlementPayments(groupId);
-  const currentSettlements = applyPaymentsToSettlements(
-    calculateMinimumSettlements(calculateBalances(expenses)),
-    payments,
+  const currentSettlements = calculateMinimumSettlements(
+    applyConfirmedPaymentsToBalances(calculateBalances(expenses), payments),
   );
 
   const pendingPair = currentSettlements.find(
@@ -547,16 +840,193 @@ export const markSettlementPaid = async (
     throw createError('El monto excede la liquidacion pendiente', 400);
   }
 
-  const { error } = await supabaseAdmin.from('settlement_payments').insert({
-    group_id: groupId,
-    from_user_id: fromUserId,
-    to_user_id: toUserId,
-    amount,
-    note: payload.note ?? null,
-    created_by_user_id: usuarioId,
-    paid_at: new Date().toISOString(),
-  });
+  const duplicatedPending = payments.find((payment) =>
+    normalizePaymentStatus(payment.status) === 'pendiente_validacion' &&
+    String(payment.from_user_id) === fromUserId &&
+    String(payment.to_user_id) === toUserId
+  );
+  if (duplicatedPending) {
+    throw createError('Ya tienes un pago pendiente de validacion para este acreedor', 409);
+  }
+
+  const { data: inserted, error } = await supabaseAdmin.from('settlement_payments').insert({
+      group_id: groupId,
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      amount,
+      status: 'pendiente_validacion',
+      payment_method: paymentMethod,
+      note: payload.note ?? null,
+      created_by_user_id: usuarioId,
+      paid_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single();
 
   if (error) throw createError(error.message, 500);
+  if (!inserted) throw createError('No se pudo registrar el pago', 500);
+
+  if (proofDocumentId) {
+    const { error: proofError } = await supabaseAdmin.from('settlement_payment_documents').insert({
+      settlement_payment_id: inserted.id,
+      trip_document_id: proofDocumentId,
+    });
+    if (proofError) throw createError(proofError.message, 500);
+  }
+
+  emitBudgetDashboardUpdated(groupId, 'pago_liquidacion_registrado', 'settlement_payment', null, usuarioId, {
+    fromUserId,
+    toUserId,
+    amount,
+    status: 'pendiente_validacion',
+  });
+
   return getBudgetDashboard(authUserId, groupId);
 };
+
+export const updatePendingSettlementPayment = async (
+  authUserId: string,
+  groupId: string,
+  paymentId: string,
+  payload: UpdateSettlementPaymentPayload,
+) => {
+  const { usuarioId } = await ensureGroupMember(authUserId, groupId);
+  const amount = assertPositiveAmount(payload.amount);
+  const paymentMethod = normalizePaymentMethod(payload.payment_method);
+  if (!paymentMethod) throw createError('Metodo de pago invalido', 400);
+  const proofDocumentId = payload.proof_document_id ? String(payload.proof_document_id) : null;
+  if (paymentMethod === 'transferencia' && !proofDocumentId) {
+    throw createError('Para transferencia debes adjuntar comprobante', 400);
+  }
+
+  const { data: payment, error: paymentError } = await supabaseAdmin
+    .from('settlement_payments')
+    .select('id, group_id, from_user_id, to_user_id, status, created_by_user_id')
+    .eq('id', paymentId)
+    .eq('group_id', groupId)
+    .maybeSingle();
+  if (paymentError) throw createError(paymentError.message, 500);
+  if (!payment) throw createError('Pago no encontrado', 404);
+  if (String(payment.created_by_user_id) !== String(usuarioId)) {
+    throw createError('Solo quien registro el pago puede editarlo', 403);
+  }
+  if (normalizePaymentStatus(payment.status) !== 'pendiente_validacion') {
+    throw createError('Solo se puede editar un pago pendiente', 400);
+  }
+
+  const expenses = await getExpenses(groupId);
+  const payments = await getSettlementPayments(groupId);
+  const currentSettlements = calculateMinimumSettlements(
+    applyConfirmedPaymentsToBalances(calculateBalances(expenses), payments),
+  );
+  const pendingPair = currentSettlements.find(
+    (settlement) => settlement.from === String(payment.from_user_id) && settlement.to === String(payment.to_user_id),
+  );
+  if (!pendingPair || amount - pendingPair.amount > 0.01) {
+    throw createError('El monto excede la liquidacion pendiente', 400);
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .from('settlement_payments')
+    .update({ amount, payment_method: paymentMethod, note: payload.note ?? null, paid_at: new Date().toISOString() })
+    .eq('id', paymentId)
+    .eq('group_id', groupId);
+  if (updateError) throw createError(updateError.message, 500);
+
+  await supabaseAdmin.from('settlement_payment_documents').delete().eq('settlement_payment_id', paymentId);
+  if (proofDocumentId) {
+    const { error: proofError } = await supabaseAdmin.from('settlement_payment_documents').insert({
+      settlement_payment_id: paymentId,
+      trip_document_id: proofDocumentId,
+    });
+    if (proofError) throw createError(proofError.message, 500);
+  }
+
+  return getBudgetDashboard(authUserId, groupId);
+};
+
+export const deletePendingSettlementPayment = async (
+  authUserId: string,
+  groupId: string,
+  paymentId: string,
+) => {
+  const { usuarioId } = await ensureGroupMember(authUserId, groupId);
+  const { data: payment, error: paymentError } = await supabaseAdmin
+    .from('settlement_payments')
+    .select('id, group_id, status, created_by_user_id')
+    .eq('id', paymentId)
+    .eq('group_id', groupId)
+    .maybeSingle();
+  if (paymentError) throw createError(paymentError.message, 500);
+  if (!payment) throw createError('Pago no encontrado', 404);
+  if (String(payment.created_by_user_id) !== String(usuarioId)) {
+    throw createError('Solo quien registro el pago puede eliminarlo', 403);
+  }
+  if (normalizePaymentStatus(payment.status) !== 'pendiente_validacion') {
+    throw createError('Solo se puede eliminar un pago pendiente', 400);
+  }
+
+  await supabaseAdmin.from('settlement_payment_documents').delete().eq('settlement_payment_id', paymentId);
+  const { error: deleteError } = await supabaseAdmin
+    .from('settlement_payments')
+    .delete()
+    .eq('id', paymentId)
+    .eq('group_id', groupId);
+  if (deleteError) throw createError(deleteError.message, 500);
+
+  return getBudgetDashboard(authUserId, groupId);
+};
+
+export const reviewSettlementPayment = async (
+  authUserId: string,
+  groupId: string,
+  paymentId: string,
+  payload: ReviewSettlementPaymentPayload,
+) => {
+  const { usuarioId } = await ensureGroupMember(authUserId, groupId);
+  const status = payload.status;
+  if (status !== 'confirmado' && status !== 'rechazado') {
+    throw createError('Estado de revision invalido', 400);
+  }
+
+  const { data: payment, error: paymentError } = await supabaseAdmin
+    .from('settlement_payments')
+    .select('id, group_id, from_user_id, to_user_id, status')
+    .eq('id', paymentId)
+    .eq('group_id', groupId)
+    .maybeSingle();
+
+  if (paymentError) throw createError(paymentError.message, 500);
+  if (!payment) throw createError('Pago no encontrado', 404);
+  if (String(payment.to_user_id) !== String(usuarioId)) {
+    throw createError('Solo el acreedor puede revisar este pago', 403);
+  }
+  if (normalizePaymentStatus(payment.status) !== 'pendiente_validacion') {
+    throw createError('Este pago ya fue revisado', 400);
+  }
+  if (status === 'rechazado' && !String(payload.rejection_reason ?? '').trim()) {
+    throw createError('Debes indicar el motivo de rechazo', 400);
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .from('settlement_payments')
+    .update({
+      status,
+      reviewed_by_user_id: usuarioId,
+      reviewed_at: new Date().toISOString(),
+      rejection_reason: status === 'rechazado' ? String(payload.rejection_reason ?? '').trim() : null,
+    })
+    .eq('id', paymentId)
+    .eq('group_id', groupId);
+
+  if (updateError) throw createError(updateError.message, 500);
+
+  emitBudgetDashboardUpdated(groupId, 'pago_liquidacion_revisado', 'settlement_payment', paymentId, usuarioId, {
+    fromUserId: String(payment.from_user_id),
+    toUserId: String(payment.to_user_id),
+    status,
+  });
+
+  return getBudgetDashboard(authUserId, groupId);
+};
+

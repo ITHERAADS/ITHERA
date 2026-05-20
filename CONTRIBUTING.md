@@ -1,32 +1,50 @@
-# 🤝 Guía de Contribución — Ithera
+# Guia de contribucion - ITHERA
 
-Este documento define el flujo de trabajo obligatorio para todos los integrantes del equipo. Léelo completo antes de hacer tu primer commit.
+Este documento define las reglas oficiales para trabajar en ITHERA: issues, ramas, commits, pull requests, revisiones, CI/CD y documentacion obligatoria.
 
----
+```text
+Proyecto academico: Analisis y Diseno de Sistemas
+Carrera: Ingenieria en Sistemas Computacionales
+Escuela: Escuela Superior de Computo - IPN
+Ciclo: 2026/2
+Grupo: 5CM3
+Profesora: Idalia Maldonado
+Equipo: 3
+```
 
-## 📋 Índice
+## Indice
 
-1. [Configuración inicial](#-configuración-inicial)
-2. [Estrategia de ramas](#-estrategia-de-ramas)
-3. [Flujo de trabajo diario](#-flujo-de-trabajo-diario)
-4. [Convención de commits](#-convención-de-commits)
-5. [Proceso de Pull Request](#-proceso-de-pull-request)
-6. [CI — Qué revisa automáticamente](#-ci--qué-revisa-automáticamente)
-7. [Qué hacer si el CI falla](#-qué-hacer-si-el-ci-falla)
-8. [Reglas de oro](#-reglas-de-oro)
+1. [Principios de trabajo](#principios-de-trabajo)
+2. [Preparacion local](#preparacion-local)
+3. [Issues](#issues)
+4. [GitFlow](#gitflow)
+5. [Commits](#commits)
+6. [Pull requests](#pull-requests)
+7. [Verificaciones](#verificaciones)
+8. [CI/CD](#cicd)
+9. [Documentacion obligatoria](#documentacion-obligatoria)
+10. [Reglas de oro](#reglas-de-oro)
 
----
+## Principios de trabajo
 
-## 🔧 Configuración inicial
+- Todo cambio debe ser rastreable.
+- Todo PR debe tener un alcance claro.
+- La rama `develop` integra el trabajo aprobado.
+- La rama `main` representa codigo estable de entrega.
+- La documentacion debe actualizarse junto con el cambio que la vuelve obsoleta.
+- Nadie debe subir secrets, `.env`, tokens o credenciales.
+- El CI debe pasar antes de mergear.
 
-Antes de tocar código, configura tu identidad en Git:
+## Preparacion local
+
+Configura Git:
 
 ```bash
 git config --global user.name "Tu Nombre"
 git config --global user.email "tu@correo.com"
 ```
 
-Clona el repo y entra a la carpeta:
+Clona el repositorio:
 
 ```bash
 git clone https://github.com/ximcaher20/repo-equipo3ads
@@ -36,250 +54,290 @@ cd ithera
 Instala dependencias:
 
 ```bash
-cd backend && npm install
-cd ../frontend && npm install
+cd backend
+npm install
+
+cd ../frontend
+npm install
 ```
 
-Copia y configura variables de entorno:
+Copia variables de entorno:
 
 ```bash
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
-# Edita ambos archivos con tus credenciales locales
 ```
 
----
+Levanta el backend:
 
-## 🌿 Estrategia de ramas
-
-### Ramas permanentes (nunca se borran)
-
-| Rama | Propósito |
-|------|-----------|
-| `main` | Código estable para entrega. **CERO commits directos.** |
-| `develop` | Integración. Todo el trabajo aprobado llega aquí. |
-
-### Ramas temporales (se crean y se borran)
-
-| Rama | Origen | Destino | Cuándo usarla |
-|------|--------|---------|---------------|
-| `feature/nombre` | `develop` | `develop` | Nueva funcionalidad o tarea |
-| `hotfix/nombre` | `main` | `main` + `develop` | Bug urgente en producción |
-| `release/vX.X` | `develop` | `main` + `develop` | Cierre de sprint / entrega |
-
-### Convención de nombres
-
+```bash
+cd backend
+npm run dev
 ```
+
+Levanta el frontend:
+
+```bash
+cd frontend
+npm run dev
+```
+
+## Issues
+
+Todo trabajo relevante debe tener issue antes de abrir PR.
+
+### Tipos de issue
+
+| Tipo | Uso | Rama sugerida |
+| --- | --- | --- |
+| Bug | Algo existente falla. | `fix/nombre` |
+| Feature | Nueva funcionalidad. | `feature/nombre` |
+| Task | Trabajo tecnico, deuda, configuracion o refactor controlado. | `feature/nombre` o `chore/nombre` |
+| Docs | Cambios exclusivos de documentacion. | `docs/nombre` |
+| CI | Workflows, Vercel, checks o automatizacion. | `ci/nombre` |
+| Hotfix | Correccion urgente sobre estable. | `hotfix/nombre` |
+
+### Contenido minimo
+
+Un issue debe incluir:
+
+- Contexto.
+- Objetivo.
+- Alcance.
+- Criterios de aceptacion.
+- Modulo afectado: `backend`, `frontend`, `docs`, `workflows` o varios.
+- Evidencia si aplica: capturas, logs, pasos de reproduccion o links.
+
+### Criterios de aceptacion
+
+Usa criterios verificables:
+
+```md
+- [ ] El usuario puede crear un grupo con datos validos.
+- [ ] El backend rechaza fechas invalidas.
+- [ ] El frontend muestra error cuando la API responde 400.
+- [ ] El endpoint queda documentado en docs/api/endpoints.md.
+```
+
+Mas detalle: [docs/issues/README.md](docs/issues/README.md).
+
+## GitFlow
+
+### Ramas permanentes
+
+| Rama | Proposito | Regla |
+| --- | --- | --- |
+| `main` | Codigo estable para entrega. | No recibe commits directos. |
+| `develop` | Integracion del trabajo aprobado. | Todo entra por PR. |
+
+### Ramas temporales
+
+| Rama | Sale de | Entra a | Uso |
+| --- | --- | --- | --- |
+| `feature/nombre` | `develop` | `develop` | Nueva funcionalidad o tarea de sprint. |
+| `fix/nombre` | `develop` | `develop` | Correccion de bug no urgente. |
+| `docs/nombre` | `develop` | `develop` | Cambios de documentacion. |
+| `ci/nombre` | `develop` | `develop` | Workflows o automatizacion. |
+| `release/vX.X` | `develop` | `main` y `develop` | Cierre de sprint o entrega. |
+| `hotfix/nombre` | `main` | `main` y `develop` | Correccion urgente sobre estable. |
+
+Ejemplos:
+
+```text
 feature/auth-registro-otp
-feature/backend-socket-heartbeat
 feature/frontend-dashboard-viaje
-hotfix/fix-token-expiry
-hotfix/fix-socket-disconnect
-release/v1.0-sprint1
+feature/backend-socket-heartbeat
+fix/socket-disconnect
+docs/readmes-proyecto
+ci/vercel-preview
 release/v1.2-sprint3
+hotfix/token-expiry
 ```
 
-> Usa kebab-case, sin mayúsculas, sin espacios, sin caracteres especiales.
-
----
-
-## 🔄 Flujo de trabajo diario
-
-### Iniciar una tarea nueva
+### Crear rama
 
 ```bash
-# 1. Siempre parte desde develop actualizado
 git checkout develop
 git pull origin develop
-
-# 2. Crea tu rama
-git checkout -b feature/nombre-de-tu-tarea
-
-# 3. Trabaja y commitea
-git add .
-git commit -m "feat: descripción de lo que hiciste"
+git checkout -b feature/nombre-de-la-tarea
 ```
 
-### Antes de abrir el PR
+### Sincronizar antes de PR
 
 ```bash
-# Sincroniza con develop para evitar conflictos
 git checkout develop
 git pull origin develop
-git checkout feature/nombre-de-tu-tarea
+git checkout feature/nombre-de-la-tarea
 git merge develop
-
-# Resuelve conflictos si los hay, luego:
-git push -u origin feature/nombre-de-tu-tarea
+git push -u origin feature/nombre-de-la-tarea
 ```
 
-### Abrir el PR
+Mas detalle: [docs/gitflow/README.md](docs/gitflow/README.md).
 
-1. Ve al repo en GitHub
-2. Aparecerá un banner "Compare & pull request" — haz clic
-3. Asegúrate de que el PR apunta a **`develop`**, no a `main`
-4. Llena el template completo
-5. Espera a que el CI pase y el Scrum Master apruebe
+## Commits
 
----
+Formato:
 
-## ✍️ Convención de commits
-
-Todo commit debe seguir este formato:
-
-```
-tipo: descripción corta en presente e imperativo
+```text
+tipo: descripcion corta en presente
 ```
 
-### Tipos válidos
+Tipos permitidos:
 
-| Tipo | Cuándo usarlo |
-|------|--------------|
-| `feat` | Nueva funcionalidad |
-| `fix` | Corrección de bug |
-| `refactor` | Cambio de código sin cambiar comportamiento |
-| `docs` | Solo documentación |
-| `test` | Agregar o corregir tests |
-| `ci` | Cambios en workflows o configuración CI |
-| `chore` | Mantenimiento, dependencias, config |
-| `style` | Formato, espacios, comas (sin cambio de lógica) |
+| Tipo | Uso |
+| --- | --- |
+| `feat` | Nueva funcionalidad. |
+| `fix` | Correccion de bug. |
+| `docs` | Documentacion. |
+| `refactor` | Cambio interno sin alterar comportamiento esperado. |
+| `test` | Pruebas. |
+| `ci` | Workflows o configuracion CI/CD. |
+| `chore` | Mantenimiento, dependencias o configuracion. |
+| `style` | Formato sin cambio logico. |
 
-### Ejemplos correctos
+Ejemplos correctos:
 
+```text
+feat: agregar busqueda de hoteles
+fix: corregir validacion de token expirado
+docs: actualizar endpoints de api
+refactor: separar servicio de presupuesto
+test: agregar pruebas de checkout
+ci: ajustar deploy preview de vercel
+chore: actualizar dependencias frontend
 ```
-feat: agregar endpoint de registro de usuario
-fix: corregir validación de token expirado
-refactor: extraer lógica de cálculo de saldos a helper
-docs: agregar documentación de endpoints de autenticación
-test: agregar tests unitarios para budget.service
-ci: agregar step de type check al workflow de backend
-chore: actualizar dependencias de Express a v5
-```
 
-### Ejemplos incorrectos ❌
+Evita:
 
-```
-fix cosas
+```text
 WIP
 cambios
-actualización
-arreglé el bug ese del login
+arreglos
+fix cosas
+actualizacion
 ```
 
----
+## Pull requests
 
-## 🔀 Proceso de Pull Request
+Todo PR debe:
 
-### Checklist antes de abrir el PR
+- Apuntar a `develop`, salvo `release` o `hotfix`.
+- Estar asociado a un issue.
+- Llenar el template completo.
+- Tener alcance pequeno y revisable.
+- Explicar que cambia y por que.
+- Incluir evidencia visual si modifica frontend.
+- Indicar comandos de verificacion ejecutados.
+- Pasar CI.
+- Tener aprobacion requerida.
 
-- [ ] Mi rama parte de `develop` actualizado
-- [ ] El lint pasa sin errores (`npm run lint`)
-- [ ] El type check pasa (`npx tsc --noEmit`)
-- [ ] Probé los cambios localmente
-- [ ] No hay `console.log` de debugging
-- [ ] No subí archivos `.env` ni secrets
-- [ ] El PR apunta a `develop` (no a `main`)
+### Checklist antes de abrir PR
 
-### Reglas de aprobación
+- [ ] Mi rama parte de `develop` actualizado.
+- [ ] El PR esta asociado a un issue.
+- [ ] Corri verificaciones locales del paquete afectado.
+- [ ] No subi `.env`, tokens, secrets ni credenciales.
+- [ ] No mezcle cambios no relacionados.
+- [ ] Actualice documentacion si cambio endpoints, estructura, workflows o comportamiento visible.
+- [ ] El PR apunta a la rama correcta.
 
-| PR hacia | Aprobaciones requeridas | Quién aprueba |
-|----------|------------------------|---------------|
-| `develop` | 1 | Scrum Master o líder de célula |
-| `main` | 2 | Scrum Master + Product Owner |
+### Aprobaciones
 
-### Lo que pasa automáticamente cuando abres un PR
+| PR hacia | Aprobaciones requeridas | Quien aprueba |
+| --- | --- | --- |
+| `develop` | 1 | Scrum Master o lider de celula. |
+| `main` | 2 | Scrum Master y Product Owner. |
 
-1. **CI corre** — lint, type check, build/tests
-2. **Copilot** se agrega como reviewer automático y comenta el código
-3. **Scrum Master** recibe notificación para revisar
-4. Si todo pasa → se puede mergear
-5. Si algo falla → hay que corregir antes de pedir review
+No hagas merge de tu propio PR.
 
-> ⚠️ **Nunca hagas merge de tu propio PR.** Sin excepciones.
+## Verificaciones
 
----
-
-## 🤖 CI — Qué revisa automáticamente
-
-Cada PR activa GitHub Actions que corre:
-
-### Backend
-```
-✅ npm run lint          — ESLint sin errores
-✅ npx tsc --noEmit      — TypeScript sin errores de tipos
-✅ npm test              — Tests unitarios
-✅ Copilot code review   — Revisión automática de IA
-```
-
-### Frontend
-```
-✅ npm run lint          — ESLint sin errores
-✅ npx tsc --noEmit      — TypeScript sin errores de tipos
-✅ npm run build         — Build de producción exitoso
-✅ Copilot code review   — Revisión automática de IA
-```
-
-El CI **debe pasar obligatoriamente** antes de que cualquier PR pueda mergearse.
-
----
-
-## 🔧 Qué hacer si el CI falla
-
-### Falla el lint
+Backend:
 
 ```bash
-# Ver errores específicos
+cd backend
 npm run lint
-
-# Muchos errores de formato se auto-corrigen con:
-npm run lint -- --fix
-```
-
-### Falla el type check
-
-```bash
 npx tsc --noEmit
-# Lee el error, busca el archivo y línea indicada, corrige el tipo
-```
-
-### Falla el build (frontend)
-
-```bash
 npm run build
-# Generalmente es un error de tipos o import incorrecto
-# Lee la salida del build para identificar el archivo
+npm test -- --runInBand
 ```
 
-### Falla en CI pero no en local
+Frontend:
 
 ```bash
-# Asegúrate de que package-lock.json está actualizado
-npm install
-git add package-lock.json
-git commit -m "chore: actualizar package-lock.json"
-git push
+cd frontend
+npm run lint
+npx tsc --noEmit
+npm run build
 ```
 
----
+Documentacion:
+
+- Revisar links internos.
+- Confirmar que no haya informacion desactualizada.
+- Confirmar que rutas, scripts y variables mencionadas existan.
+
+## CI/CD
+
+Workflows actuales:
+
+| Workflow | Que valida |
+| --- | --- |
+| `ci-backend.yml` | Dependencias, lint, type check, build y tests backend. |
+| `ci-frontend.yml` | Dependencias, lint, type check y build frontend. |
+| `vercel-frontend-preview.yml` | Preview deploy del frontend en PRs hacia `develop`. |
+| `vercel-frontend-production.yml` | Deploy productivo del frontend desde `develop` o ejecucion manual. |
+
+Guias:
+
+- [docs/workflows/README.md](docs/workflows/README.md)
+- [.github/workflows/README.md](.github/workflows/README.md)
+
+Si falla CI:
+
+1. Leer el log del job fallido.
+2. Reproducir localmente el comando que fallo.
+3. Corregir en la misma rama.
+4. Subir nuevo commit.
+5. Esperar que el CI vuelva a pasar.
+
+No pedir merge con checks rojos.
+
+## Documentacion obligatoria
+
+Actualizar documentacion en el mismo PR cuando:
+
+| Cambio | Documento a actualizar |
+| --- | --- |
+| Nuevo endpoint o cambio de contrato API | [docs/api/endpoints.md](docs/api/endpoints.md) |
+| Nueva variable de entorno | [docs/env/README.md](docs/env/README.md) |
+| Nueva migracion o cambio de esquema | [docs/database/README.md](docs/database/README.md) |
+| Nuevo evento Socket.IO o cambio realtime | [docs/realtime/README.md](docs/realtime/README.md) |
+| Cambio de pruebas o comandos de verificacion | [docs/testing/README.md](docs/testing/README.md) |
+| Cambio de seguridad, permisos o secrets | [docs/security/README.md](docs/security/README.md) |
+| Cambio de release/hotfix/entrega | [docs/releases/README.md](docs/releases/README.md) |
+| Cambio visual estructural frontend | [docs/frontend-ui/README.md](docs/frontend-ui/README.md) |
+| Cambio de estructura backend | [backend/README.md](backend/README.md) y [docs/architecture/README.md](docs/architecture/README.md) |
+| Cambio de estructura frontend | [frontend/README.md](frontend/README.md) y [docs/architecture/README.md](docs/architecture/README.md) |
+| Cambio de workflow | [docs/workflows/README.md](docs/workflows/README.md) y [.github/workflows/README.md](.github/workflows/README.md) |
+| Cambio de reglas de colaboracion | [CONTRIBUTING.md](CONTRIBUTING.md) y, si aplica, [README.md](README.md) |
+| Cambio de GitFlow | [docs/gitflow/README.md](docs/gitflow/README.md) y [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Cambio de criterios de issues | [docs/issues/README.md](docs/issues/README.md) y [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ## Reglas de oro
 
-```
-1. NUNCA hagas push directo a main o develop
-2. NUNCA hagas merge de tu propio PR
-3. SIEMPRE parte de develop actualizado al crear una rama
-4. SIEMPRE llena el PR template completo
-5. SIEMPRE espera a que el CI pase antes de pedir review
-6. NUNCA subas archivos .env al repo
-7. Un PR = una funcionalidad o fix. PRs pequeños son más fáciles de revisar.
-```
+1. No hacer push directo a `main` ni a `develop`.
+2. No hacer merge de tu propio PR.
+3. Todo cambio relevante debe tener issue.
+4. Todo PR debe apuntar a la rama correcta.
+5. Un PR debe resolver una cosa clara.
+6. Todo endpoint nuevo debe documentarse.
+7. Todo cambio de workflow debe documentarse.
+8. Todo cambio de variable, migracion, evento realtime o seguridad debe documentarse.
+9. Todo cambio estructural debe reflejarse en el README correspondiente.
+10. No subir `.env`, secrets, tokens ni credenciales.
+11. No pedir merge con CI fallando.
+12. Si hay cambios visuales, agregar evidencia en el PR.
+13. Si hay duda de alcance, preguntar antes de mezclar cambios no relacionados.
 
----
-
-##  Dudas
-
-Cualquier duda sobre el flujo de trabajo, pregunta en el canal del equipo o abre un Issue con el template de `task`.
-
----
-
-*IPN ESCOM 2026 · Equipo 3 · Ithera*
+Proyecto academico - ESCOM IPN - Ingenieria en Sistemas Computacionales - Analisis y Diseno de Sistemas - Ciclo 2026/2 - Grupo 5CM3.

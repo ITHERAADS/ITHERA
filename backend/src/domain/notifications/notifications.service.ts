@@ -17,6 +17,7 @@ const DEFAULT_PREFERENCES = {
   notificaciones_finanzas: true,
   notificaciones_vuelos: true,
   notificaciones_hospedajes: true,
+  notificaciones_alertas: true,
 };
 
 const getLocalUserId = async (authUserId: string): Promise<number> => {
@@ -96,6 +97,7 @@ export const updatePreferences = async (
   if (payload.notificaciones_finanzas !== undefined) updateData.notificaciones_finanzas = payload.notificaciones_finanzas;
   if (payload.notificaciones_vuelos !== undefined) updateData.notificaciones_vuelos = payload.notificaciones_vuelos;
   if (payload.notificaciones_hospedajes !== undefined) updateData.notificaciones_hospedajes = payload.notificaciones_hospedajes;
+  if (payload.notificaciones_alertas !== undefined) updateData.notificaciones_alertas = payload.notificaciones_alertas;
 
   const { data, error } = await supabase
     .from('usuario_preferencias_notificacion')
@@ -188,7 +190,7 @@ export const emitGroupDashboardUpdated = (
   try {
     const io = getIO();
     const eventPayload: DashboardUpdatedPayload = {
-      grupoId: Number(grupoId),
+      grupoId: Number.isNaN(Number(grupoId)) ? String(grupoId) : Number(grupoId),
       tipo: payload.tipo,
       entidadTipo: payload.entidadTipo ?? null,
       entidadId: payload.entidadId ?? null,
@@ -198,6 +200,17 @@ export const emitGroupDashboardUpdated = (
     };
 
     io.to(String(grupoId)).emit('dashboard_updated', eventPayload);
+
+    const tipo = String(eventPayload.tipo ?? '');
+    if (
+      tipo.includes('miembro') ||
+      tipo.includes('solicitud_union') ||
+      tipo.includes('invitacion') ||
+      tipo.includes('rol') ||
+      tipo.includes('grupo_actualizado')
+    ) {
+      io.to(String(grupoId)).emit('group_members_updated', eventPayload);
+    }
   } catch (ioError) {
     console.log('[Notifications] No se pudo emitir dashboard_updated', ioError);
   }

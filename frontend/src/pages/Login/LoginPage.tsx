@@ -4,7 +4,7 @@ import googleIcon from "../../assets/google.png";
 import facebookIcon from "../../assets/facebook.png";
 import { useNavigate, Link, useSearchParams, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
-import { ApiError } from "../../services/apiClient";
+import { ApiError, apiClient } from "../../services/apiClient";
 
 const REDIRECT_STORAGE_KEY = "ithera_post_login_redirect";
 const LOGIN_LOCK_STORAGE_KEY = "ithera_login_lockout";
@@ -17,6 +17,25 @@ type StoredLoginLock = {
 
 function normalizeLoginEmail(value: string): string {
   return value.trim().toLowerCase();
+}
+
+type EmailAvailabilityResult = {
+  ok: boolean;
+  available: boolean;
+  code?: string;
+  message?: string;
+};
+
+async function isEmailAvailableForRegistration(emailValue: string): Promise<boolean | null> {
+  try {
+    const result = await apiClient.get<EmailAvailabilityResult>(
+      `/auth/email-availability?email=${encodeURIComponent(normalizeLoginEmail(emailValue))}`,
+    );
+
+    return result.available;
+  } catch {
+    return null;
+  }
 }
 
 function readStoredLoginLock(): StoredLoginLock | null {
@@ -74,13 +93,49 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isOffline, setIsOffline] = useState(
+    typeof navigator !== "undefined" ? !navigator.onLine : false,
+  );
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
   const [lockRemainingSeconds, setLockRemainingSeconds] = useState(0);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const sessionExpired = (location.state as { sessionExpired?: boolean } | null)?.sessionExpired === true;
+  const rawSessionExpired =
+    (location.state as { sessionExpired?: boolean } | null)?.sessionExpired === true;
+
+  const hasPreviousSession =
+    typeof window !== "undefined" &&
+    Object.keys(localStorage).some((key) =>
+      key.toLowerCase().includes("auth") ||
+      key.toLowerCase().includes("token") ||
+      key.toLowerCase().includes("session"),
+    );
+
+  const sessionExpired = rawSessionExpired && hasPreviousSession;
   const { login, loginWithGoogle, loginWithFacebook } = useAuth();
+
+  useEffect(() => {
+    const updateNetworkState = () => {
+      const offline = !navigator.onLine;
+      setIsOffline(offline);
+
+      if (offline) {
+        setLoading(false);
+        setError("");
+        setErrorCode(null);
+      }
+    };
+
+    updateNetworkState();
+    window.addEventListener("online", updateNetworkState);
+    window.addEventListener("offline", updateNetworkState);
+
+    return () => {
+      window.removeEventListener("online", updateNetworkState);
+      window.removeEventListener("offline", updateNetworkState);
+    };
+  }, []);
 
   const redirect = getSafeRedirect(
     searchParams.get("redirect") ||
@@ -148,8 +203,30 @@ export function LoginPage() {
     return () => window.clearInterval(timer);
   }, [lockRemainingSeconds]);
 
+  const showOfflineState = () => {
+    setLoading(false);
+    setIsOffline(true);
+    setError("");
+    setErrorCode(null);
+  };
+
+  const isNetworkError = (value: unknown): boolean => {
+    if (!(value instanceof Error)) return false;
+    const message = value.message.toLowerCase();
+    return (
+      message.includes("failed to fetch") ||
+      message.includes("networkerror") ||
+      message.includes("network request failed")
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    if (isOffline) {
+      showOfflineState();
+      return;
+    }
 
     if (isLoginLocked) {
       setError(
@@ -181,15 +258,24 @@ export function LoginPage() {
       navigate(redirect, { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
-        setErrorCode(err.payload?.code ?? null);
+        const payload = err.payload;
+        const code = payload?.code ?? null;
+
+        setErrorCode(code);
+
+        if (code?.startsWith("ERR-11-")) {
+          setPassword("");
+          setShowPassword(false);
+        }
+
         const retryAfterSeconds =
-          typeof err.payload?.retryAfterSeconds === "number"
-            ? err.payload.retryAfterSeconds
+          typeof payload?.retryAfterSeconds === "number"
+            ? payload.retryAfterSeconds
             : 0;
 
-        if (err.payload?.code === "ERR-11-003" && retryAfterSeconds > 0) {
-          const lockedUntil = err.payload.lockedUntil
-            ? Date.parse(err.payload.lockedUntil)
+        if (code === "ERR-11-003" && retryAfterSeconds > 0) {
+          const lockedUntil = payload?.lockedUntil
+            ? Date.parse(payload.lockedUntil)
             : Date.now() + retryAfterSeconds * 1000;
 
           if (!Number.isNaN(lockedUntil)) {
@@ -197,9 +283,26 @@ export function LoginPage() {
           }
 
           setLockRemainingSeconds(retryAfterSeconds);
+          setError(err.message);
+          return;
+        }
+
+        if (code === "ERR-11-001" || code === "ERR-11-002") {
+          const emailAvailability = await isEmailAvailableForRegistration(email);
+
+          if (emailAvailability === true || code === "ERR-11-002") {
+            setErrorCode("ERR-11-002");
+            setError("No encontramos una cuenta activa con ese correo. ¿Deseas registrarte?");
+            return;
+          }
         }
 
         setError(err.message);
+        return;
+      }
+
+      if (isNetworkError(err)) {
+        showOfflineState();
         return;
       }
 
@@ -250,41 +353,82 @@ export function LoginPage() {
     "w-full rounded-[14px] border border-[#D9DEE7] bg-white px-4 py-3 text-[15px] text-[#3D4A5C] outline-none transition placeholder:text-[#7A8799] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/15";
 
   return (
-    <div className="min-h-screen bg-[#F4F6F8] font-body">
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[45%_55%]">
+    <div className="h-screen overflow-hidden bg-[#F4F6F8] font-body">
+      <div className="grid h-screen grid-cols-1 lg:grid-cols-[45%_55%]">
         {/* ── Left panel ── */}
-        <section
-          className="relative hidden lg:flex overflow-hidden"
-          style={{
-            background:
-              "linear-gradient(135deg, #0D0820 0%, #1E0A4E 55%, #0D0820 100%)",
-          }}
-        >
-          <div className="absolute inset-0 opacity-[0.15]">
-            <div className="h-full w-full bg-[radial-gradient(circle,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:24px_24px]" />
+        <section className="relative hidden overflow-hidden lg:flex">
+          <div className="absolute inset-0 bg-[linear-gradient(135deg,#0D0820_0%,#1E0A4E_48%,#31136F_100%)]" />
+          <div className="absolute inset-0 opacity-20">
+            <div className="h-full w-full bg-[radial-gradient(circle,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:26px_26px]" />
           </div>
+          <div className="landing-glow absolute left-10 top-28 h-40 w-40 rounded-full bg-[#1E6FD9]/35 blur-3xl" />
+          <div className="landing-glow absolute bottom-20 right-8 h-44 w-44 rounded-full bg-[#35C56A]/25 blur-3xl" />
 
           <div className="relative z-10 flex h-full w-full flex-col px-16 py-12">
-            <div>
-              <Link to="/">
-                <img
-                  src={logoWhite}
-                  alt="Ithera"
-                  className="h-16 w-auto cursor-pointer object-contain"
-                />
-              </Link>
-            </div>
+            <Link to="/" className="inline-flex w-fit">
+              <img
+                src={logoWhite}
+                alt="Ithera"
+                className="h-16 w-auto cursor-pointer object-contain"
+              />
+            </Link>
 
             <div className="flex flex-1 items-center">
-              <div className="w-full max-w-[600px]">
-                <h1 className="text-[72px] font-extrabold leading-[0.95] tracking-[-0.04em] text-white">
-                  Planifica tus viajes en grupo sin el caos.
+              <div className="w-full max-w-[620px]">
+                <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[12px] font-bold uppercase tracking-[0.16em] text-[#9AF0B8] backdrop-blur">
+                  <span className="h-2 w-2 rounded-full bg-[#35C56A]" />
+                  Plataforma colaborativa
+                </div>
+                <h1 className="text-[68px] font-extrabold leading-[0.96] tracking-[-0.04em] text-white">
+                  Planea, vota y organiza viajes sin perder el control.
                 </h1>
 
-                <p className="mt-10 max-w-[520px] text-[20px] leading-[1.6] text-white/80">
-                  Organiza itinerarios, controla los gastos compartidos y
-                  reserva tu próxima aventura con amigos de forma sencilla en un
-                  solo lugar.
+                <p className="mt-8 max-w-[540px] text-[19px] leading-[1.65] text-white/75">
+                  Itinerarios, presupuesto, decisiones y documentos conectados
+                  para que cada integrante sepa qué sigue.
+                </p>
+
+                <div className="mt-10 grid max-w-[520px] grid-cols-3 gap-3">
+                  {[
+                    ["Votos", "Decisiones claras"],
+                    ["Gastos", "Balance visible"],
+                    ["Bóveda", "Todo a mano"],
+                  ].map(([title, subtitle]) => (
+                    <div
+                      key={title}
+                      className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur"
+                    >
+                      <p className="text-[13px] font-bold text-white">{title}</p>
+                      <p className="mt-1 text-[11px] leading-tight text-white/55">
+                        {subtitle}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid max-w-[560px] grid-cols-[1fr_0.9fr] gap-3">
+              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9ED4FF]">
+                  Próximo plan
+                </p>
+                <p className="mt-2 text-[16px] font-bold text-white">
+                  Cena frente al mar
+                </p>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
+                  <div className="h-full w-3/4 rounded-full bg-[#35C56A]" />
+                </div>
+              </div>
+              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#D8C8FF]">
+                  Presupuesto
+                </p>
+                <p className="mt-2 text-[22px] font-extrabold text-white">
+                  $50,000
+                </p>
+                <p className="mt-1 text-[12px] text-white/55">
+                  28% comprometido
                 </p>
               </div>
             </div>
@@ -292,7 +436,7 @@ export function LoginPage() {
         </section>
 
         {/* ── Right panel ── */}
-        <section className="flex items-center justify-center bg-[#F4F6F8] px-6 py-10 sm:px-10 lg:px-16">
+        <section className="flex h-screen items-start justify-center overflow-y-auto bg-[#F4F6F8] px-6 py-10 sm:px-10 lg:px-16 lg:py-12">
           <div className="w-full max-w-[470px]">
             <Link
               to="/"
@@ -342,6 +486,7 @@ export function LoginPage() {
             <div className="mb-8 grid grid-cols-2 gap-4">
               <button
                 type="button"
+                disabled={isOffline || loading}
                 onClick={async () => {
                   try {
                     setLoading(true);
@@ -355,7 +500,7 @@ export function LoginPage() {
                     setLoading(false);
                   }
                 }}
-                className="flex h-[54px] items-center justify-center gap-3 rounded-[14px] border border-[#D9DEE7] bg-white text-[16px] font-medium text-[#344054] transition hover:border-[#2C8BE6]"
+                className="flex h-[54px] items-center justify-center gap-3 rounded-[14px] border border-[#D9DEE7] bg-white text-[16px] font-medium text-[#344054] transition hover:border-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <img
                   src={googleIcon}
@@ -367,6 +512,7 @@ export function LoginPage() {
 
               <button
                 type="button"
+                disabled={isOffline || loading}
                 onClick={async () => {
                   try {
                     setLoading(true);
@@ -380,7 +526,7 @@ export function LoginPage() {
                     setLoading(false);
                   }
                 }}
-                className="flex h-[54px] items-center justify-center gap-3 rounded-[14px] border border-[#D9DEE7] bg-white text-[16px] font-medium text-[#344054] transition hover:border-[#2C8BE6]"
+                className="flex h-[54px] items-center justify-center gap-3 rounded-[14px] border border-[#D9DEE7] bg-white text-[16px] font-medium text-[#344054] transition hover:border-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <img
                   src={facebookIcon}
@@ -404,6 +550,58 @@ export function LoginPage() {
             {sessionExpired && (
               <div className="mb-5 rounded-xl border border-[#F59E0B]/30 bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]">
                 Tu sesión expiró. Por favor inicia sesión de nuevo.
+              </div>
+            )}
+
+            {/* Offline banner */}
+            {isOffline && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mb-5 flex items-start gap-3 rounded-xl border border-[#F59E0B]/30 bg-[#FFFBEB] px-4 py-3 text-sm font-medium text-[#92400E]"
+              >
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                  className="mt-[1px] shrink-0"
+                >
+                  <path
+                    d="M3 3l18 18"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M2 8.8C7.8 4.2 16.2 4.2 22 8.8"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M5.5 12.3a10.4 10.4 0 0113 0"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M9 15.8a5 5 0 016 0"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d="M12 19h.01"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span>
+                  Sin conexión. Verifica tu red e inténtalo de nuevo.
+                </span>
               </div>
             )}
 
@@ -438,7 +636,7 @@ export function LoginPage() {
                   onBlur={(e) => validateEmail(e.target.value)}
                   placeholder="correo@ejemplo.com"
                   aria-invalid={Boolean(emailError)}
-                  className={`${inputBase} ${emailError || error ? "border-[#EF4444]" : ""}`}
+                  className={`${inputBase} ${emailError || errorCode === "ERR-11-002" ? "border-[#EF4444]" : ""}`}
                 />
                 {emailError && (
                   <p className="mt-1 text-[12px] font-medium text-[#EF4444]">
@@ -566,7 +764,7 @@ export function LoginPage() {
               </div>
 
               {/* Error */}
-              {error && (
+              {error && !isOffline && (
                 <div
                   role="alert"
                   className={`rounded-[12px] border px-3 py-2 text-[12px] font-semibold ${
@@ -617,10 +815,10 @@ export function LoginPage() {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={loading || isLoginLocked || !isLoginFormReady}
+                disabled={loading || isOffline || isLoginLocked || !isLoginFormReady}
                 className="mt-2 h-[54px] w-full rounded-full bg-[linear-gradient(90deg,#7A4FD6_0%,#6D46D4_35%,#6E45E6_65%,#5B35D5_100%)] text-[18px] font-bold text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {loading ? "Iniciando sesión..." : isLoginLocked ? `Bloqueado ${lockMinutes}:${lockSeconds}` : "Iniciar sesión"}
+                {loading ? "Iniciando sesión..." : isOffline ? "Sin conexión" : isLoginLocked ? `Bloqueado ${lockMinutes}:${lockSeconds}` : "Iniciar sesión"}
               </button>
 
               {/* Sign-up link */}

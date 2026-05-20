@@ -195,7 +195,7 @@ describe('BudgetService', () => {
       .toMatchObject({ statusCode: 403 });
   });
 
-  it('markSettlementPaid: deudor puede marcar pago y reduce liquidacion', async () => {
+  it('markSettlementPaid: deudor puede registrar pago pendiente de validacion', async () => {
     await BudgetService.createExpense('auth-user', '7', {
       paid_by_user_id: '1',
       amount: 900,
@@ -211,12 +211,14 @@ describe('BudgetService', () => {
       from_user_id: '2',
       to_user_id: '1',
       amount: 300,
+      payment_method: 'efectivo_presencial',
     });
 
     expect(dashboard.settlements).toEqual([
-      { from: '3', to: '1', amount: 300 },
+      { from: '2', to: '1', amount: 300 },
     ]);
     expect(dashboard.paymentHistory).toHaveLength(1);
+    expect(dashboard.paymentHistory[0].status).toBe('pendiente_validacion');
   });
 
   it('markSettlementPaid: bloquea si no es admin ni deudor', async () => {
@@ -235,12 +237,13 @@ describe('BudgetService', () => {
       from_user_id: '2',
       to_user_id: '1',
       amount: 100,
+      payment_method: 'transferencia',
     }))
       .rejects
       .toMatchObject({ statusCode: 403 });
   });
 
-  it('updateExpense y deleteExpense: solo admin y reflejan cambios en resumen', async () => {
+  it('updateExpense y deleteExpense: admin reflejan cambios en resumen', async () => {
     const created = await BudgetService.createExpense('auth-user', '7', {
       paid_by_user_id: '1',
       amount: 500,
@@ -270,7 +273,7 @@ describe('BudgetService', () => {
     expect(dashboard.expenses).toHaveLength(0);
   });
 
-  it('updateExpense: bloquea si no es admin', async () => {
+  it('updateExpense: permite al creador del gasto editar aunque no sea pagador', async () => {
     const created = await BudgetService.createExpense('auth-user', '7', {
       paid_by_user_id: '1',
       amount: 400,
@@ -281,18 +284,38 @@ describe('BudgetService', () => {
     });
 
     const expenseId = created.expenses[0].id;
-    (getLocalUserId as jest.Mock).mockResolvedValue('2');
+    (getLocalUserId as jest.Mock).mockResolvedValue('1');
 
-    await expect(BudgetService.updateExpense('auth-user', '7', expenseId, {
+    const dashboard = await BudgetService.updateExpense('auth-user', '7', expenseId, {
       paid_by_user_id: '2',
       amount: 450,
       description: 'Taxi edit',
       category: 'transporte',
       split_type: 'equitativa',
       member_ids: ['1', '2'],
-    }))
-      .rejects
-      .toMatchObject({ statusCode: 403 });
+    });
+    expect(dashboard.expenses[0].description).toBe('Taxi edit');
+  });
+
+  it('updateExpense: bloquea a miembro que no es admin ni creador', async () => {
+    const created = await BudgetService.createExpense('auth-user', '7', {
+      paid_by_user_id: '1',
+      amount: 400,
+      description: 'Taxi',
+      category: 'transporte',
+      split_type: 'equitativa',
+      member_ids: ['1', '2'],
+    });
+    const expenseId = created.expenses[0].id;
+    (getLocalUserId as jest.Mock).mockResolvedValue('2');
+    await expect(BudgetService.updateExpense('auth-user', '7', expenseId, {
+      paid_by_user_id: '1',
+      amount: 450,
+      description: 'Taxi edit',
+      category: 'transporte',
+      split_type: 'equitativa',
+      member_ids: ['1', '2'],
+    })).rejects.toMatchObject({ statusCode: 403 });
   });
 
   it('markSettlementPaid: bloquea sobrepago de liquidacion', async () => {
@@ -311,8 +334,139 @@ describe('BudgetService', () => {
       from_user_id: '2',
       to_user_id: '1',
       amount: 500,
+      payment_method: 'efectivo_presencial',
     }))
       .rejects
       .toMatchObject({ statusCode: 400 });
+  });
+
+  it('markSettlementPaid: transferencia requiere comprobante', async () => {
+    await BudgetService.createExpense('auth-user', '7', {
+      paid_by_user_id: '1',
+      amount: 900,
+      description: 'Hotel',
+      category: 'hospedaje',
+      split_type: 'equitativa',
+      member_ids: ['1', '2', '3'],
+    });
+
+    (getLocalUserId as jest.Mock).mockResolvedValue('2');
+
+    await expect(BudgetService.markSettlementPaid('auth-user', '7', {
+      from_user_id: '2',
+      to_user_id: '1',
+      amount: 100,
+      payment_method: 'transferencia',
+    }))
+      .rejects
+      .toMatchObject({ statusCode: 400 });
+  });
+
+  it('markSettlementPaid: bloquea duplicado pendiente por mismo par', async () => {
+    await BudgetService.createExpense('auth-user', '7', {
+      paid_by_user_id: '1',
+      amount: 900,
+      description: 'Hotel',
+      category: 'hospedaje',
+      split_type: 'equitativa',
+      member_ids: ['1', '2', '3'],
+    });
+    (getLocalUserId as jest.Mock).mockResolvedValue('2');
+    await BudgetService.markSettlementPaid('auth-user', '7', {
+      from_user_id: '2',
+      to_user_id: '1',
+      amount: 100,
+      payment_method: 'efectivo_presencial',
+    });
+    await expect(BudgetService.markSettlementPaid('auth-user', '7', {
+      from_user_id: '2',
+      to_user_id: '1',
+      amount: 100,
+      payment_method: 'efectivo_presencial',
+    })).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('updatePendingSettlementPayment: bloquea si no es autor del pago', async () => {
+    await BudgetService.createExpense('auth-user', '7', {
+      paid_by_user_id: '1',
+      amount: 900,
+      description: 'Hotel',
+      category: 'hospedaje',
+      split_type: 'equitativa',
+      member_ids: ['1', '2', '3'],
+    });
+    (getLocalUserId as jest.Mock).mockResolvedValue('2');
+    await BudgetService.markSettlementPaid('auth-user', '7', {
+      from_user_id: '2',
+      to_user_id: '1',
+      amount: 100,
+      payment_method: 'efectivo_presencial',
+    });
+    const paymentId = String(mockDb.settlement_payments[0].id);
+    (getLocalUserId as jest.Mock).mockResolvedValue('3');
+    await expect(BudgetService.updatePendingSettlementPayment('auth-user', '7', paymentId, {
+      amount: 80,
+      payment_method: 'efectivo_presencial',
+      note: 'x',
+    })).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('deletePendingSettlementPayment: bloquea si no es autor del pago', async () => {
+    await BudgetService.createExpense('auth-user', '7', {
+      paid_by_user_id: '1',
+      amount: 900,
+      description: 'Hotel',
+      category: 'hospedaje',
+      split_type: 'equitativa',
+      member_ids: ['1', '2', '3'],
+    });
+    (getLocalUserId as jest.Mock).mockResolvedValue('2');
+    await BudgetService.markSettlementPaid('auth-user', '7', {
+      from_user_id: '2',
+      to_user_id: '1',
+      amount: 100,
+      payment_method: 'efectivo_presencial',
+    });
+    const paymentId = String(mockDb.settlement_payments[0].id);
+    (getLocalUserId as jest.Mock).mockResolvedValue('3');
+    await expect(BudgetService.deletePendingSettlementPayment('auth-user', '7', paymentId))
+      .rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('deleteExpense: permite al creador aunque no sea pagador', async () => {
+    const created = await BudgetService.createExpense('auth-user', '7', {
+      paid_by_user_id: '2',
+      amount: 500,
+      description: 'Ticket',
+      category: 'transporte',
+      split_type: 'equitativa',
+      member_ids: ['1', '2'],
+    });
+    const expenseId = created.expenses[0].id;
+    (getLocalUserId as jest.Mock).mockResolvedValue('1');
+    const dashboard = await BudgetService.deleteExpense('auth-user', '7', expenseId);
+    expect(dashboard.expenses).toHaveLength(0);
+  });
+
+  it('reviewSettlementPayment: bloquea si no es acreedor', async () => {
+    await BudgetService.createExpense('auth-user', '7', {
+      paid_by_user_id: '1',
+      amount: 900,
+      description: 'Hotel',
+      category: 'hospedaje',
+      split_type: 'equitativa',
+      member_ids: ['1', '2', '3'],
+    });
+    (getLocalUserId as jest.Mock).mockResolvedValue('2');
+    await BudgetService.markSettlementPaid('auth-user', '7', {
+      from_user_id: '2',
+      to_user_id: '1',
+      amount: 100,
+      payment_method: 'efectivo_presencial',
+    });
+    const paymentId = String(mockDb.settlement_payments[0].id);
+    (getLocalUserId as jest.Mock).mockResolvedValue('3');
+    await expect(BudgetService.reviewSettlementPayment('auth-user', '7', paymentId, { status: 'confirmado' }))
+      .rejects.toMatchObject({ statusCode: 403 });
   });
 });

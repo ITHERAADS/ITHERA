@@ -3,10 +3,12 @@ import { sendEmail } from '../../services/email.service';
 import { supabase } from '../../infrastructure/db/supabase.client';
 import { getPlaceDetails } from '../maps/maps.service';
 import { baseTemplate } from '../../infrastructure/email/templates/baseTemplate';
+import { emitGroupDeleted } from '../../infrastructure/sockets/socket.gateway';
 import {
   CreateGroupInvitationsPayload,
   CreateGroupPayload,
   GroupInvitePreview,
+  GroupTravelContext,
   JoinGroupPayload,
   MemberRole,
   UpdateGroupPayload,
@@ -16,6 +18,7 @@ import * as NotificationsService from '../notifications/notifications.service';
 
 const GROUP_NAME_MAX_LENGTH = 60;
 const GROUP_DESCRIPTION_MAX_LENGTH = 300;
+const MAX_TRIP_DURATION_DAYS = 60;
 
 const normalizeRequiredText = (value: unknown, fieldLabel: string, maxLength: number): string => {
   if (typeof value !== 'string' || !value.trim()) {
@@ -51,6 +54,208 @@ const normalizeOptionalText = (value: unknown, fieldLabel: string, maxLength: nu
   }
 
   return normalized;
+};
+
+const isValidISODate = (value: unknown): value is string =>
+  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+const daysBetweenISO = (startDate: string, endDate: string): number | null => {
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((end.getTime() - start.getTime()) / millisecondsPerDay);
+};
+
+
+const normalizeComparableTripName = (value: string): string =>
+  value.trim().replace(/\s+/g, ' ').toLocaleLowerCase('es-MX');
+
+const ensureUserHasNoTripWithSameName = async (usuarioId: string | number, nombre: string): Promise<void> => {
+  const comparableName = normalizeComparableTripName(nombre);
+
+  const { data, error } = await supabase
+    .from('grupos_viaje')
+    .select('id,nombre,estado')
+    .eq('creado_por', Number(usuarioId))
+    .in('estado', ['activo', 'borrador']);
+
+  if (error) throw new Error(error.message);
+
+  const duplicate = (data ?? []).find((group) =>
+    typeof group.nombre === 'string' &&
+    normalizeComparableTripName(group.nombre) === comparableName
+  );
+
+  if (duplicate) {
+    throw Object.assign(
+      new Error('ERR-23-005: Ya tienes un viaje con ese nombre. Elige un nombre diferente para distinguirlos.'),
+      { statusCode: 409, code: 'DUPLICATE_TRIP_NAME', errorCode: 'ERR-23-005' }
+    );
+  }
+};
+
+const validateTripDateRange = (startDate?: string | null, endDate?: string | null) => {
+  if (!startDate || !endDate) return;
+
+  if (!isValidISODate(startDate) || !isValidISODate(endDate)) {
+    throw Object.assign(new Error('ERR-23-001: Las fechas del viaje tienen formato inválido'), { statusCode: 400 });
+  }
+
+  const durationDays = daysBetweenISO(startDate, endDate);
+
+  if (durationDays === null || durationDays < 1) {
+    throw Object.assign(
+      new Error('ERR-23-003: La fecha de regreso debe ser posterior a la de inicio del viaje'),
+      { statusCode: 400 }
+    );
+  }
+
+  if (durationDays > MAX_TRIP_DURATION_DAYS) {
+    throw Object.assign(
+      new Error(`ERR-23-003: La duración máxima del viaje es de ${MAX_TRIP_DURATION_DAYS} días`),
+      { statusCode: 400 }
+    );
+  }
+};
+
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const toDateOnly = (value?: string | null): string | null => {
+  if (!value) return null;
+  return String(value).slice(0, 10);
+};
+
+const hasTripStarted = (startDate?: string | null): boolean => {
+  const date = toDateOnly(startDate);
+  return Boolean(date && date < todayISO());
+};
+
+const coordinatesAreAvailable = (latitude?: unknown, longitude?: unknown): latitude is number =>
+  Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude));
+
+const distanceInKilometers = (
+  fromLatitude: number,
+  fromLongitude: number,
+  toLatitude: number,
+  toLongitude: number
+): number => {
+  const earthRadiusKm = 6371;
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const deltaLatitude = toRadians(toLatitude - fromLatitude);
+  const deltaLongitude = toRadians(toLongitude - fromLongitude);
+  const startLatitude = toRadians(fromLatitude);
+  const endLatitude = toRadians(toLatitude);
+
+  const a =
+    Math.sin(deltaLatitude / 2) ** 2 +
+    Math.cos(startLatitude) * Math.cos(endLatitude) * Math.sin(deltaLongitude / 2) ** 2;
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getGroupActivityDateStats = async (groupId: string) => {
+  const { data: itineraries, error: itineraryError } = await supabase
+    .from('itinerarios')
+    .select('id_itinerario')
+    .eq('grupo_id', groupId);
+
+  if (itineraryError) throw new Error(itineraryError.message);
+
+  const itineraryIds = (itineraries ?? [])
+    .map((item: any) => item.id_itinerario)
+    .filter(Boolean);
+
+  if (itineraryIds.length === 0) {
+    return { count: 0, minDate: null as string | null, maxDate: null as string | null };
+  }
+
+  const { data: activities, error: activitiesError } = await supabase
+    .from('actividades')
+    .select('fecha_inicio, fecha_fin, estado')
+    .in('itinerario_id', itineraryIds)
+    .neq('estado', 'cancelada');
+
+  if (activitiesError) throw new Error(activitiesError.message);
+
+  const dates = (activities ?? [])
+    .flatMap((activity: any) => [toDateOnly(activity.fecha_inicio), toDateOnly(activity.fecha_fin)])
+    .filter((date: string | null): date is string => Boolean(date));
+
+  return {
+    count: activities?.length ?? 0,
+    minDate: dates.length > 0 ? dates.reduce((min, date) => (date < min ? date : min), dates[0]) : null,
+    maxDate: dates.length > 0 ? dates.reduce((max, date) => (date > max ? date : max), dates[0]) : null,
+  };
+};
+
+const assertDateUpdateDoesNotBreakExistingPlan = async (
+  groupId: string,
+  nextStartDate?: string | null,
+  nextEndDate?: string | null
+) => {
+  if (!nextStartDate || !nextEndDate) return;
+
+  const stats = await getGroupActivityDateStats(groupId);
+  if (stats.count === 0 || !stats.minDate || !stats.maxDate) return;
+
+  if (stats.minDate < nextStartDate || stats.maxDate > nextEndDate) {
+    throw Object.assign(
+      new Error(
+        `ERR-23-003: El nuevo rango no cubre actividades existentes (${stats.minDate} a ${stats.maxDate}). Ajusta las fechas o mueve primero esas actividades.`
+      ),
+      {
+        statusCode: 409,
+        code: 'TRIP_DATES_CONTAIN_EXISTING_ACTIVITIES',
+        errorCode: 'ERR-23-003',
+        conflict: { minActivityDate: stats.minDate, maxActivityDate: stats.maxDate, activityCount: stats.count },
+      }
+    );
+  }
+};
+
+const assertDestinationUpdateIsSafe = async (currentGroup: any, destinationFields: any) => {
+  const currentPlaceId = currentGroup.destino_place_id ?? null;
+  const nextPlaceId = destinationFields.destino_place_id ?? null;
+  const placeChanged = Boolean(nextPlaceId && currentPlaceId && nextPlaceId !== currentPlaceId);
+  const coordinatesChanged =
+    coordinatesAreAvailable(currentGroup.destino_latitud, currentGroup.destino_longitud) &&
+    coordinatesAreAvailable(destinationFields.destino_latitud, destinationFields.destino_longitud) &&
+    distanceInKilometers(
+      Number(currentGroup.destino_latitud),
+      Number(currentGroup.destino_longitud),
+      Number(destinationFields.destino_latitud),
+      Number(destinationFields.destino_longitud)
+    ) > 50;
+
+  if (!placeChanged && !coordinatesChanged) return;
+
+  const stats = await getGroupActivityDateStats(String(currentGroup.id));
+  if (stats.count === 0) return;
+
+  if (
+    coordinatesAreAvailable(currentGroup.destino_latitud, currentGroup.destino_longitud) &&
+    coordinatesAreAvailable(destinationFields.destino_latitud, destinationFields.destino_longitud)
+  ) {
+    const distance = distanceInKilometers(
+      Number(currentGroup.destino_latitud),
+      Number(currentGroup.destino_longitud),
+      Number(destinationFields.destino_latitud),
+      Number(destinationFields.destino_longitud)
+    );
+
+    if (distance <= 50) return;
+  }
+
+  throw Object.assign(
+    new Error(
+      'ERR-23-003: El destino nuevo está lejos del destino original y el viaje ya tiene actividades. Crea un viaje nuevo o elimina/reagenda las actividades antes de cambiarlo.'
+    ),
+    { statusCode: 409, code: 'TRIP_DESTINATION_CONFLICT', errorCode: 'ERR-23-003' }
+  );
 };
 
 const generateGroupCode = (length = 8): string => {
@@ -319,6 +524,39 @@ const countMembers = async (groupId: string): Promise<number> => {
   return count ?? 0;
 };
 
+const isGroupAtCapacity = async (grupo: { id: number | string; maximo_miembros?: number | null }): Promise<boolean> => {
+  if (!grupo.maximo_miembros) return false;
+  const memberCount = await countMembers(String(grupo.id));
+  return memberCount >= Number(grupo.maximo_miembros);
+};
+
+const throwGroupAtCapacity = (): never => {
+  throw Object.assign(new Error('ERR-24-002: Este grupo ya alcanzó su capacidad máxima de miembros.'), {
+    statusCode: 409,
+    code: 'GROUP_CAPACITY_REACHED',
+  });
+};
+
+const releasePreviousJoinRequestsWithStatus = async (
+  groupId: string | number,
+  usuarioId: string | number,
+  currentRequestId: string | number,
+  status: 'aprobada' | 'rechazada'
+): Promise<void> => {
+  const { error } = await supabase
+    .from('grupo_solicitudes_union')
+    .update({
+      estado: 'cancelada',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('grupo_id', Number(groupId))
+    .eq('usuario_id', Number(usuarioId))
+    .eq('estado', status)
+    .neq('id', Number(currentRequestId));
+
+  if (error) throw new Error(error.message);
+};
+
 const normalizeMaxMembers = (value?: number | null): number | null => {
   if (value === undefined || value === null) return null;
 
@@ -345,6 +583,203 @@ export const getGroupDetails = async (authUserId: string, groupId: string) => {
   };
 };
 
+
+const toNullableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const buildDestinationTravelLocation = (grupo: any) => ({
+  source: 'destino_viaje' as const,
+  label: grupo.destino_formatted_address ?? grupo.destino ?? null,
+  formattedAddress: grupo.destino_formatted_address ?? grupo.destino ?? null,
+  latitude: toNullableNumber(grupo.destino_latitud),
+  longitude: toNullableNumber(grupo.destino_longitud),
+  placeId: grupo.destino_place_id ?? null,
+  photoUrl: grupo.destino_photo_url ?? null,
+});
+
+const buildPersistedStartLocation = (grupo: any) => {
+  const latitude = toNullableNumber(grupo.punto_partida_latitud);
+  const longitude = toNullableNumber(grupo.punto_partida_longitud);
+
+  if (grupo.punto_partida_tipo !== 'hotel_reservado' || latitude === null || longitude === null) {
+    return null;
+  }
+
+  return {
+    source: 'hotel_reservado' as const,
+    label: grupo.punto_partida_nombre ?? 'Hotel reservado',
+    formattedAddress: grupo.punto_partida_direccion ?? grupo.punto_partida_nombre ?? null,
+    latitude,
+    longitude,
+    placeId: grupo.punto_partida_place_id ?? null,
+    photoUrl: null,
+    hotelId: grupo.punto_partida_hospedaje_id ? String(grupo.punto_partida_hospedaje_id) : null,
+    folioReserva: null,
+  };
+};
+
+const getConfirmedHotelStartLocation = async (groupId: string) => {
+  const { data: proposals, error: proposalsError } = await supabase
+    .from('propuestas')
+    .select('id_propuesta')
+    .eq('grupo_id', groupId)
+    .eq('tipo_item', 'hospedaje')
+    .in('estado', ['aprobada', 'guardada', 'en_votacion']);
+
+  if (proposalsError) throw new Error(proposalsError.message);
+
+  const proposalIds = (proposals ?? [])
+    .map((proposal: any) => Number(proposal.id_propuesta))
+    .filter((id) => Number.isFinite(id));
+
+  if (!proposalIds.length) return null;
+
+  const { data: hotels, error: hotelsError } = await supabase
+    .from('hospedajes')
+    .select('id_hospedaje, propuesta_id, nombre, direccion, latitud, longitud, google_place_id, foto_url, folio_reserva, reserva_estado, ultima_actualizacion, fecha_creacion')
+    .in('propuesta_id', proposalIds)
+    .eq('reserva_estado', 'confirmada_simulada')
+    .order('ultima_actualizacion', { ascending: false })
+    .order('fecha_creacion', { ascending: false })
+    .limit(1);
+
+  if (hotelsError) throw new Error(hotelsError.message);
+
+  const hotel = hotels?.[0];
+  const latitude = toNullableNumber((hotel as any)?.latitud);
+  const longitude = toNullableNumber((hotel as any)?.longitud);
+
+  if (!hotel || latitude === null || longitude === null) return null;
+
+  return {
+    source: 'hotel_reservado' as const,
+    label: (hotel as any).nombre ?? 'Hotel reservado',
+    formattedAddress: (hotel as any).direccion ?? (hotel as any).nombre ?? null,
+    latitude,
+    longitude,
+    placeId: (hotel as any).google_place_id ?? null,
+    photoUrl: (hotel as any).foto_url ?? null,
+    hotelId: String((hotel as any).id_hospedaje),
+    folioReserva: (hotel as any).folio_reserva ?? null,
+  };
+};
+
+export const getGroupTravelContext = async (authUserId: string, groupId: string): Promise<GroupTravelContext> => {
+  await ensureGroupMember(authUserId, groupId);
+  const grupo = await ensureDestinationPhotoCached(await getGroupById(groupId));
+  const destinationLocation = buildDestinationTravelLocation(grupo);
+  const persistedStartLocation = buildPersistedStartLocation(grupo);
+  const hotelStartLocation = persistedStartLocation ?? await getConfirmedHotelStartLocation(groupId);
+
+  return {
+    groupId: String(grupo.id),
+    startLocation: hotelStartLocation ?? destinationLocation,
+    destinationLocation,
+  };
+};
+
+
+type TripDateConflict = {
+  id: number;
+  nombre: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+};
+
+const formatTripDate = (value: string): string => value.slice(0, 10);
+
+const dateRangesOverlap = (
+  startA?: string | null,
+  endA?: string | null,
+  startB?: string | null,
+  endB?: string | null
+): boolean => {
+  if (!startA || !endA || !startB || !endB) return false;
+  return formatTripDate(startA) <= formatTripDate(endB) && formatTripDate(endA) >= formatTripDate(startB);
+};
+
+const findUserTripDateConflict = async (
+  usuarioId: string | number,
+  startDate?: string | null,
+  endDate?: string | null,
+  options: { excludeGroupId?: string | number } = {}
+): Promise<TripDateConflict | null> => {
+  if (!startDate || !endDate) return null;
+
+  const { data: memberships, error: membershipError } = await supabase
+    .from('grupo_miembros')
+    .select('grupo_id')
+    .eq('usuario_id', Number(usuarioId));
+
+  if (membershipError) throw new Error(membershipError.message);
+
+  const groupIds = Array.from(new Set((memberships ?? [])
+    .map((membership: any) => Number(membership.grupo_id))
+    .filter((groupId) => Number.isFinite(groupId) && String(groupId) !== String(options.excludeGroupId ?? ''))));
+
+  if (!groupIds.length) return null;
+
+  const { data: groups, error: groupsError } = await supabase
+    .from('grupos_viaje')
+    .select('id, nombre, fecha_inicio, fecha_fin, estado')
+    .in('id', groupIds)
+    .not('fecha_inicio', 'is', null)
+    .not('fecha_fin', 'is', null);
+
+  if (groupsError) throw new Error(groupsError.message);
+
+  const conflicts = (groups ?? [])
+    .filter((group: any) => !isClosedGroupStatus(group.estado))
+    .filter((group: any) => dateRangesOverlap(startDate, endDate, group.fecha_inicio, group.fecha_fin))
+    .sort((a: any, b: any) => formatTripDate(a.fecha_inicio).localeCompare(formatTripDate(b.fecha_inicio)));
+
+  const conflict = conflicts[0];
+  if (!conflict) return null;
+
+  return {
+    id: Number(conflict.id),
+    nombre: String(conflict.nombre ?? 'otro viaje'),
+    fecha_inicio: formatTripDate(String(conflict.fecha_inicio)),
+    fecha_fin: formatTripDate(String(conflict.fecha_fin)),
+  };
+};
+
+const throwTripDateConflict = (
+  conflict: TripDateConflict,
+  action: 'create' | 'join' | 'approve'
+): never => {
+  const actionText = action === 'create'
+    ? 'crear este viaje'
+    : action === 'approve'
+      ? 'aprobar esta solicitud'
+      : 'unirte a este viaje';
+
+  const errorCode = action === 'create' ? 'ERR-23-006' : 'ERR-24-004';
+
+  throw Object.assign(
+    new Error(`${errorCode}: No puedes ${actionText} porque las fechas se cruzan con el viaje "${conflict.nombre}" (${conflict.fecha_inicio} al ${conflict.fecha_fin}). Ajusta las fechas o elige otro viaje.`),
+    {
+      statusCode: 409,
+      code: 'TRIP_DATE_CONFLICT',
+      errorCode,
+      conflict,
+    }
+  );
+};
+
+const ensureUserHasAvailableDates = async (
+  usuarioId: string | number,
+  startDate?: string | null,
+  endDate?: string | null,
+  action: 'create' | 'join' | 'approve' = 'join'
+): Promise<void> => {
+  const conflict = await findUserTripDateConflict(usuarioId, startDate, endDate);
+  if (conflict) throwTripDateConflict(conflict, action);
+};
+
 export const createGroup = async (authUserId: string, payload: CreateGroupPayload) => {
   const usuarioId = await getLocalUserId(authUserId);
   const codigo = await generateUniqueCode();
@@ -364,6 +799,10 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
       { statusCode: 400 }
     );
   }
+
+  validateTripDateRange(payload.fecha_inicio ?? null, payload.fecha_fin ?? null);
+  await ensureUserHasNoTripWithSameName(usuarioId, nombre);
+  await ensureUserHasAvailableDates(usuarioId, payload.fecha_inicio ?? null, payload.fecha_fin ?? null, 'create');
 
   const { data: grupo, error: groupError } = await supabase
     .from('grupos_viaje')
@@ -393,6 +832,14 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
     .insert({ grupo_id: grupo.id, usuario_id: Number(usuarioId), rol: 'admin' });
 
   if (memberError) throw new Error(memberError.message);
+
+  NotificationsService.emitGroupDashboardUpdated(Number(grupo.id), {
+    tipo: 'grupo_creado',
+    entidadTipo: 'grupo',
+    entidadId: Number(grupo.id),
+    actorUsuarioId: Number(usuarioId),
+    metadata: { itemTitle: grupo.nombre, itemType: 'grupo' },
+  });
 
   return {
     ...grupo,
@@ -429,6 +876,12 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
   if (existente) {
     throw Object.assign(new Error('El usuario ya pertenece a este grupo'), { statusCode: 409 });
   }
+
+  if (await isGroupAtCapacity(grupo)) {
+    throwGroupAtCapacity();
+  }
+
+  await ensureUserHasAvailableDates(localUser.id_usuario, grupo.fecha_inicio ?? null, grupo.fecha_fin ?? null, 'join');
 
   const isPublicGroup = grupo.es_publico === true;
 
@@ -515,15 +968,6 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
       joinRequestId: String(createdRequest.id),
       requiresApproval: true,
     };
-  }
-
-  if (grupo.maximo_miembros) {
-    const miembrosActuales = await countMembers(String(grupo.id));
-    if (miembrosActuales >= grupo.maximo_miembros) {
-      throw Object.assign(new Error('El grupo alcanzó el máximo de miembros'), {
-        statusCode: 409,
-      });
-    }
   }
 
   const { error: insertError } = await supabase
@@ -628,6 +1072,292 @@ export const getGroupMembers = async (authUserId: string, groupId: string) => {
   });
 };
 
+
+type AdminDelegationStatus = 'pendiente' | 'aceptada' | 'rechazada' | 'expirada' | 'cancelada';
+
+type AdminDelegationRequest = {
+  id: string;
+  group_id: string;
+  from_user_id: string;
+  to_user_id: string;
+  status: AdminDelegationStatus;
+  expires_at: string;
+  created_at?: string;
+  updated_at?: string;
+  from_nombre?: string | null;
+  from_email?: string | null;
+  to_nombre?: string | null;
+  to_email?: string | null;
+};
+
+const ADMIN_DELEGATION_TTL_MINUTES = 5;
+
+const getUserSummaryByLocalId = async (usuarioId: string | number) => {
+  const { data, error } = await supabase
+    .from('usuarios')
+    .select('id_usuario, nombre, email, avatar_url')
+    .eq('id_usuario', Number(usuarioId))
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data ?? null;
+};
+
+const decorateAdminDelegationRequest = async (request: any): Promise<AdminDelegationRequest> => {
+  const [fromUser, toUser] = await Promise.all([
+    getUserSummaryByLocalId(request.from_user_id),
+    getUserSummaryByLocalId(request.to_user_id),
+  ]);
+
+  return {
+    id: String(request.id),
+    group_id: String(request.group_id),
+    from_user_id: String(request.from_user_id),
+    to_user_id: String(request.to_user_id),
+    status: request.status,
+    expires_at: request.expires_at,
+    created_at: request.created_at,
+    updated_at: request.updated_at,
+    from_nombre: fromUser?.nombre ?? null,
+    from_email: fromUser?.email ?? null,
+    to_nombre: toUser?.nombre ?? null,
+    to_email: toUser?.email ?? null,
+  };
+};
+
+const expireStaleAdminDelegations = async (groupId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('admin_delegation_requests')
+    .update({ status: 'expirada', updated_at: new Date().toISOString() })
+    .eq('group_id', Number(groupId))
+    .eq('status', 'pendiente')
+    .lt('expires_at', new Date().toISOString());
+
+  if (error && !String(error.message).includes('admin_delegation_requests')) {
+    throw new Error(error.message);
+  }
+};
+
+const createAdminDelegationRequest = async (
+  groupId: string,
+  fromUserId: string | number,
+  toUserId: string | number,
+  targetMemberId: string | number
+): Promise<AdminDelegationRequest> => {
+  await expireStaleAdminDelegations(groupId);
+
+  const targetMembership = await getMembership(groupId, String(toUserId));
+  if (!targetMembership || String(targetMembership.id) !== String(targetMemberId)) {
+    throw Object.assign(new Error('El integrante seleccionado ya no pertenece al viaje.'), { statusCode: 404 });
+  }
+
+  if (targetMembership.rol === 'admin') {
+    throw Object.assign(new Error('Este integrante ya es administrador del viaje.'), { statusCode: 409 });
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from('admin_delegation_requests')
+    .select('*')
+    .eq('group_id', Number(groupId))
+    .eq('status', 'pendiente')
+    .maybeSingle();
+
+  if (existingError) throw new Error(existingError.message);
+
+  if (existing) {
+    return decorateAdminDelegationRequest(existing);
+  }
+
+  const expiresAt = new Date(Date.now() + ADMIN_DELEGATION_TTL_MINUTES * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('admin_delegation_requests')
+    .insert({
+      group_id: Number(groupId),
+      from_user_id: Number(fromUserId),
+      to_user_id: Number(toUserId),
+      status: 'pendiente',
+      expires_at: expiresAt,
+    })
+    .select('*')
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  const decorated = await decorateAdminDelegationRequest(data);
+  const actorName = await NotificationsService.getUserDisplayName(fromUserId);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'delegacion_admin_pendiente',
+    entidadTipo: 'admin_delegation_request',
+    entidadId: Number(data.id),
+    actorUsuarioId: Number(fromUserId),
+    metadata: {
+      actorName,
+      requestId: Number(data.id),
+      targetUsuarioId: Number(toUserId),
+      fromUsuarioId: Number(fromUserId),
+      expiresAt,
+    },
+  });
+
+  await NotificationsService.createNotification({
+    usuarioId: Number(toUserId),
+    grupoId: Number(groupId),
+    tipo: 'delegacion_admin_pendiente',
+    titulo: 'Solicitud de administración pendiente',
+    mensaje: `${actorName} quiere delegarte la administración del viaje. Acepta o rechaza la solicitud antes de que expire.`,
+    entidadTipo: 'admin_delegation_request',
+    entidadId: Number(data.id),
+    metadata: { requestId: Number(data.id), groupId: Number(groupId), expiresAt },
+  });
+
+  return decorated;
+};
+
+export const getAdminDelegationRequests = async (authUserId: string, groupId: string) => {
+  const { usuarioId } = await ensureGroupMember(authUserId, groupId);
+  await expireStaleAdminDelegations(groupId);
+
+  const { data, error } = await supabase
+    .from('admin_delegation_requests')
+    .select('*')
+    .eq('group_id', Number(groupId))
+    .eq('status', 'pendiente')
+    .or(`from_user_id.eq.${Number(usuarioId)},to_user_id.eq.${Number(usuarioId)}`)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return Promise.all((data ?? []).map(decorateAdminDelegationRequest));
+};
+
+export const resolveAdminDelegationRequest = async (
+  authUserId: string,
+  groupId: string,
+  requestId: string,
+  action: 'accept' | 'reject'
+) => {
+  const { usuarioId } = await ensureGroupMember(authUserId, groupId);
+  await expireStaleAdminDelegations(groupId);
+
+  const { data: request, error: requestError } = await supabase
+    .from('admin_delegation_requests')
+    .select('*')
+    .eq('id', Number(requestId))
+    .eq('group_id', Number(groupId))
+    .maybeSingle();
+
+  if (requestError) throw new Error(requestError.message);
+  if (!request) throw Object.assign(new Error('Solicitud de delegación no encontrada.'), { statusCode: 404 });
+  if (String(request.to_user_id) !== String(usuarioId)) {
+    throw Object.assign(new Error('Solo el receptor puede responder esta solicitud.'), { statusCode: 403 });
+  }
+  if (request.status !== 'pendiente') {
+    throw Object.assign(new Error('Esta solicitud de delegación ya no está pendiente.'), { statusCode: 409 });
+  }
+  if (new Date(request.expires_at).getTime() <= Date.now()) {
+    await supabase
+      .from('admin_delegation_requests')
+      .update({ status: 'expirada', updated_at: new Date().toISOString() })
+      .eq('id', Number(requestId));
+    throw Object.assign(new Error('ERR-28-001: La solicitud de delegación expiró.'), { statusCode: 409, errorCode: 'ERR-28-001' });
+  }
+
+  if (action === 'reject') {
+    const { data, error } = await supabase
+      .from('admin_delegation_requests')
+      .update({ status: 'rechazada', updated_at: new Date().toISOString() })
+      .eq('id', Number(requestId))
+      .eq('status', 'pendiente')
+      .select('*')
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+      tipo: 'delegacion_admin_rechazada',
+      entidadTipo: 'admin_delegation_request',
+      entidadId: Number(requestId),
+      actorUsuarioId: Number(usuarioId),
+      metadata: {
+        requestId: Number(requestId),
+        targetUsuarioId: Number(request.to_user_id),
+        fromUsuarioId: Number(request.from_user_id),
+      },
+    });
+
+    return { request: await decorateAdminDelegationRequest(data), member: null };
+  }
+
+  const currentReceiverMembership = await getMembership(groupId, String(request.to_user_id));
+  const currentAdminMembership = await getMembership(groupId, String(request.from_user_id));
+
+  if (!currentReceiverMembership || !currentAdminMembership || currentAdminMembership.rol !== 'admin') {
+    await supabase
+      .from('admin_delegation_requests')
+      .update({ status: 'cancelada', updated_at: new Date().toISOString() })
+      .eq('id', Number(requestId));
+    throw Object.assign(
+      new Error('ERR-28-002: La transferencia fue cancelada porque los roles del viaje cambiaron.'),
+      { statusCode: 409, errorCode: 'ERR-28-002' }
+    );
+  }
+
+  const { error: demoteError } = await supabase
+    .from('grupo_miembros')
+    .update({ rol: 'viajero' })
+    .eq('grupo_id', Number(groupId))
+    .eq('usuario_id', Number(request.from_user_id))
+    .eq('rol', 'admin');
+
+  if (demoteError) throw new Error(demoteError.message);
+
+  const { data: promotedMember, error: promoteError } = await supabase
+    .from('grupo_miembros')
+    .update({ rol: 'admin' })
+    .eq('grupo_id', Number(groupId))
+    .eq('usuario_id', Number(request.to_user_id))
+    .select('*')
+    .single();
+
+  if (promoteError) {
+    await supabase
+      .from('grupo_miembros')
+      .update({ rol: 'admin' })
+      .eq('grupo_id', Number(groupId))
+      .eq('usuario_id', Number(request.from_user_id));
+    throw new Error(promoteError.message);
+  }
+
+  const { data: resolvedRequest, error: resolveError } = await supabase
+    .from('admin_delegation_requests')
+    .update({ status: 'aceptada', updated_at: new Date().toISOString(), responded_at: new Date().toISOString() })
+    .eq('id', Number(requestId))
+    .eq('status', 'pendiente')
+    .select('*')
+    .single();
+
+  if (resolveError) throw new Error(resolveError.message);
+
+  const actorName = await NotificationsService.getUserDisplayName(usuarioId);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'delegacion_admin_aceptada',
+    entidadTipo: 'admin_delegation_request',
+    entidadId: Number(requestId),
+    actorUsuarioId: Number(usuarioId),
+    metadata: {
+      actorName,
+      requestId: Number(requestId),
+      targetUsuarioId: Number(request.to_user_id),
+      fromUsuarioId: Number(request.from_user_id),
+      memberId: Number(promotedMember.id),
+      rol: 'admin',
+      previousRole: 'viajero',
+      transferType: 'admin_delegation',
+    },
+  });
+
+  return { request: await decorateAdminDelegationRequest(resolvedRequest), member: promotedMember };
+};
+
 export const updateMemberRole = async (
   authUserId: string,
   memberId: string,
@@ -643,9 +1373,44 @@ export const updateMemberRole = async (
     throw Object.assign(new Error('Miembro no encontrado'), { statusCode: 404 });
   }
 
-  await ensureGroupAdmin(authUserId, String(targetMember.grupo_id));
+  const { usuarioId: actorUsuarioId } = await ensureGroupAdmin(authUserId, String(targetMember.grupo_id));
 
-  const { data, error } = await supabase
+  if (String(targetMember.usuario_id) === String(actorUsuarioId)) {
+    throw Object.assign(new Error('No puedes cambiar tu propio rol desde este panel'), { statusCode: 400 });
+  }
+
+  if (rol === 'admin') {
+    const request = await createAdminDelegationRequest(
+      String(targetMember.grupo_id),
+      actorUsuarioId,
+      targetMember.usuario_id,
+      memberId
+    );
+
+    return {
+      ...targetMember,
+      delegationRequest: request,
+      pendingDelegation: true,
+    };
+  }
+
+  const { count: adminCount, error: countError } = await supabase
+    .from('grupo_miembros')
+    .select('id', { count: 'exact', head: true })
+    .eq('grupo_id', targetMember.grupo_id)
+    .eq('rol', 'admin');
+
+  if (countError) throw new Error(countError.message);
+
+  if (targetMember.rol === 'admin' && (adminCount ?? 0) <= 1) {
+    throw Object.assign(new Error('El viaje debe mantener un administrador activo'), {
+      statusCode: 409,
+      code: 'GROUP_REQUIRES_ADMIN',
+      errorCode: 'ERR-28-002',
+    });
+  }
+
+  const { data: updatedMember, error } = await supabase
     .from('grupo_miembros')
     .update({ rol })
     .eq('id', memberId)
@@ -654,7 +1419,6 @@ export const updateMemberRole = async (
 
   if (error) throw new Error(error.message);
 
-  const actorUsuarioId = await getLocalUserId(authUserId);
   const actorName = await NotificationsService.getUserDisplayName(actorUsuarioId);
   NotificationsService.emitGroupDashboardUpdated(Number(targetMember.grupo_id), {
     tipo: 'miembro_actualizado',
@@ -666,10 +1430,12 @@ export const updateMemberRole = async (
       targetUsuarioId: Number(targetMember.usuario_id),
       memberId: Number(memberId),
       rol,
+      previousRole: targetMember.rol,
+      transferType: 'role_update',
     },
   });
 
-  return data;
+  return updatedMember;
 };
 
 export const removeMember = async (
@@ -723,6 +1489,10 @@ export const getInviteInfo = async (authUserId: string, groupId: string) => {
   await ensureGroupMember(authUserId, groupId);
   const grupo = await getGroupById(groupId);
 
+  if (await isGroupAtCapacity(grupo)) {
+    throwGroupAtCapacity();
+  }
+
   const inviteLink = getFrontendJoinLink(grupo.codigo_invitacion);
 
   return {
@@ -766,6 +1536,7 @@ export const getInvitePreviewByCode = async (
     maximo_miembros: grupo.maximo_miembros ?? null,
     es_publico: grupo.es_publico ?? false,
     canJoin,
+    cannotJoinReason: canJoin ? null : 'GROUP_CAPACITY_REACHED',
     requiresApproval: grupo.es_publico !== true,
   };
 };
@@ -797,6 +1568,10 @@ export const createGroupInvitations = async (
 ) => {
   const { usuarioId } = await ensureGroupAdmin(authUserId, groupId);
   const grupo = await getGroupById(groupId);
+
+  if (await isGroupAtCapacity(grupo)) {
+    throwGroupAtCapacity();
+  }
 
   const emails = Array.from(
     new Set(payload.emails.map((email) => email.trim().toLowerCase()).filter(Boolean))
@@ -1011,6 +1786,8 @@ export const resolveJoinRequest = async (
   const grupo = await getGroupById(groupId);
 
   if (action === 'reject') {
+    await releasePreviousJoinRequestsWithStatus(groupId, request.usuario_id, requestId, 'rechazada');
+
     const { data, error } = await supabase
       .from('grupo_solicitudes_union')
       .update({
@@ -1057,12 +1834,12 @@ export const resolveJoinRequest = async (
     return { request: data, member: null };
   }
 
-  if (grupo.maximo_miembros) {
-    const miembrosActuales = await countMembers(String(grupo.id));
-    if (miembrosActuales >= grupo.maximo_miembros) {
-      throw Object.assign(new Error('El grupo alcanzó el máximo de miembros'), { statusCode: 409 });
-    }
+  if (await isGroupAtCapacity(grupo)) {
+    throwGroupAtCapacity();
   }
+
+  await ensureUserHasAvailableDates(request.usuario_id, grupo.fecha_inicio ?? null, grupo.fecha_fin ?? null, 'approve');
+  await releasePreviousJoinRequestsWithStatus(groupId, request.usuario_id, requestId, 'aprobada');
 
   const membership = await getMembership(groupId, String(request.usuario_id));
   if (membership) {
@@ -1246,6 +2023,16 @@ export const archiveExpiredGroups = async (): Promise<void> => {
       { statusCode: 500 }
     );
   }
+
+  for (const groupId of idsToClose) {
+    NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+      tipo: 'viaje_cerrado_automaticamente',
+      entidadTipo: 'grupo',
+      entidadId: Number(groupId),
+      actorUsuarioId: null,
+      metadata: { itemType: 'grupo', status: 'cerrado' },
+    });
+  }
 };
 
 export const getMyTravelHistory = async (authUserId: string) => {
@@ -1329,6 +2116,51 @@ export const updateGroup = async (
       ? normalizeOptionalText(payload.descripcion, 'La descripción', GROUP_DESCRIPTION_MAX_LENGTH)
       : undefined;
 
+  const currentGroup = await getGroupById(groupId);
+  const currentStartDate = toDateOnly(currentGroup.fecha_inicio ?? null);
+  const currentEndDate = toDateOnly(currentGroup.fecha_fin ?? null);
+  const nextStartDate = payload.fecha_inicio !== undefined ? toDateOnly(payload.fecha_inicio) : currentStartDate;
+  const nextEndDate = payload.fecha_fin !== undefined ? toDateOnly(payload.fecha_fin) : currentEndDate;
+  const startDateChanged = payload.fecha_inicio !== undefined && nextStartDate !== currentStartDate;
+  const endDateChanged = payload.fecha_fin !== undefined && nextEndDate !== currentEndDate;
+  const today = todayISO();
+
+  validateTripDateRange(nextStartDate, nextEndDate);
+
+  if (startDateChanged && hasTripStarted(currentStartDate)) {
+    throw Object.assign(
+      new Error('ERR-23-003: No puedes cambiar la fecha de inicio de un viaje que ya comenzó. Solo ajusta la fecha de fin si necesitas extenderlo.'),
+      { statusCode: 409, errorCode: 'ERR-23-003', code: 'TRIP_ALREADY_STARTED' }
+    );
+  }
+
+  if (startDateChanged && nextStartDate && nextStartDate < today) {
+    throw Object.assign(
+      new Error('ERR-23-003: La fecha de inicio no puede ser anterior a hoy.'),
+      { statusCode: 400, errorCode: 'ERR-23-003' }
+    );
+  }
+
+  if (endDateChanged && nextEndDate && nextEndDate < today) {
+    throw Object.assign(
+      new Error('ERR-23-003: La fecha de fin no puede ser anterior a hoy.'),
+      { statusCode: 400, errorCode: 'ERR-23-003' }
+    );
+  }
+
+  if (startDateChanged || endDateChanged) {
+    await assertDateUpdateDoesNotBreakExistingPlan(groupId, nextStartDate, nextEndDate);
+  }
+
+  if (
+    payload.destino !== undefined ||
+    payload.destino_latitud !== undefined ||
+    payload.destino_longitud !== undefined ||
+    payload.destino_place_id !== undefined
+  ) {
+    await assertDestinationUpdateIsSafe(currentGroup, destinationFields);
+  }
+
   const updateData = {
     ...(payload.nombre !== undefined ? { nombre } : {}),
     ...(payload.descripcion !== undefined ? { descripcion } : {}),
@@ -1337,6 +2169,12 @@ export const updateGroup = async (
     ...(payload.fecha_fin !== undefined ? { fecha_fin: payload.fecha_fin || null } : {}),
     ...(payload.maximo_miembros !== undefined ? { maximo_miembros: maximoMiembros } : {}),
     ...(payload.es_publico !== undefined ? { es_publico: payload.es_publico === true } : {}),
+    ...(payload.modulo_itinerario_bloqueado !== undefined
+      ? { modulo_itinerario_bloqueado: payload.modulo_itinerario_bloqueado === true }
+      : {}),
+    ...(payload.modulo_presupuesto_bloqueado !== undefined
+      ? { modulo_presupuesto_bloqueado: payload.modulo_presupuesto_bloqueado === true }
+      : {}),
     ...(payload.destino_latitud !== undefined ? { destino_latitud: destinationFields.destino_latitud } : {}),
     ...(payload.destino_longitud !== undefined ? { destino_longitud: destinationFields.destino_longitud } : {}),
     ...(payload.destino_place_id !== undefined ? { destino_place_id: destinationFields.destino_place_id } : {}),
@@ -1346,6 +2184,18 @@ export const updateGroup = async (
       : {}),
     ...(payload.destino_place_id !== undefined || payload.destino_photo_url !== undefined
       ? { destino_photo_url: destinationFields.destino_photo_url }
+      : {}),
+    ...((payload.destino !== undefined || payload.destino_latitud !== undefined || payload.destino_longitud !== undefined || payload.destino_place_id !== undefined) &&
+    (currentGroup.punto_partida_tipo ?? 'destino_viaje') === 'destino_viaje'
+      ? {
+          punto_partida_tipo: 'destino_viaje',
+          punto_partida_nombre: payload.destino || currentGroup.destino || null,
+          punto_partida_direccion: destinationFields.destino_formatted_address ?? payload.destino ?? currentGroup.destino ?? null,
+          punto_partida_latitud: destinationFields.destino_latitud,
+          punto_partida_longitud: destinationFields.destino_longitud,
+          punto_partida_place_id: destinationFields.destino_place_id,
+          punto_partida_actualizado_at: new Date().toISOString(),
+        }
       : {}),
   };
 
@@ -1360,6 +2210,66 @@ export const updateGroup = async (
     throw new Error(error?.message ?? 'No se pudo actualizar el grupo');
   }
 
+  if (startDateChanged || endDateChanged) {
+    const { error: itinerarySyncError } = await supabase
+      .from('itinerarios')
+      .update({
+        fecha_inicio: nextStartDate,
+        fecha_fin: nextEndDate,
+        ultima_actualizacion: new Date().toISOString(),
+      })
+      .eq('grupo_id', groupId);
+
+    if (itinerarySyncError) {
+      throw Object.assign(
+        new Error('ERR-23-002: No se pudo sincronizar el rango del itinerario. Inténtalo de nuevo.'),
+        { statusCode: 500, errorCode: 'ERR-23-002' }
+      );
+    }
+  }
+
+  const actorUsuarioId = await getLocalUserId(authUserId);
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'grupo_actualizado',
+    entidadTipo: 'grupo',
+    entidadId: Number(groupId),
+    actorUsuarioId: Number(actorUsuarioId),
+    metadata: { itemTitle: data.nombre, itemType: 'grupo' },
+  });
+
+  return data;
+};
+
+export const closeGroup = async (authUserId: string, groupId: string) => {
+  const { usuarioId } = await ensureGroupAdmin(authUserId, groupId);
+
+  const { data, error } = await supabase
+    .from('grupos_viaje')
+    .update({
+      estado: 'cerrado',
+      modulo_itinerario_bloqueado: true,
+      modulo_presupuesto_bloqueado: true,
+    })
+    .eq('id', groupId)
+    .eq('estado', 'activo')
+    .select('*')
+    .single();
+
+  if (error || !data) {
+    throw Object.assign(new Error('ERR-210-001: No se pudo cerrar el viaje. Inténtalo de nuevo.'), {
+      statusCode: 409,
+      errorCode: 'ERR-210-001',
+    });
+  }
+
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'grupo_cerrado',
+    entidadTipo: 'grupo',
+    entidadId: Number(groupId),
+    actorUsuarioId: Number(usuarioId),
+    metadata: { itemTitle: data.nombre, itemType: 'grupo' },
+  });
+
   return data;
 };
 
@@ -1372,6 +2282,20 @@ export const deleteGroup = async (authUserId: string, groupId: string) => {
     .eq('id', groupId);
 
   if (error) throw new Error(error.message);
+
+  const actorUsuarioId = await getLocalUserId(authUserId);
+  emitGroupDeleted({
+    groupId: Number(groupId),
+    actorUsuarioId: Number(actorUsuarioId),
+  });
+
+  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
+    tipo: 'grupo_eliminado',
+    entidadTipo: 'grupo',
+    entidadId: Number(groupId),
+    actorUsuarioId: Number(actorUsuarioId),
+    metadata: { itemType: 'grupo' },
+  });
 
   return { ok: true };
 };

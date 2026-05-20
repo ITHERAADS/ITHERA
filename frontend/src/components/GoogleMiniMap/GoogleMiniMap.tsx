@@ -71,7 +71,7 @@ export function GoogleMiniMap({ lat, lng, title = 'Destino' }: GoogleMiniMapProp
 
   if (!apiKey) {
     return (
-      <div className="flex h-28 items-center justify-center rounded-xl border border-[#E2E8F0] bg-[#F0EEF8] px-3 text-center">
+      <div className="flex h-20 items-center justify-center rounded-xl border border-[#E2E8F0] bg-[#F0EEF8] px-3 text-center">
         <p className="font-body text-[11px] text-gray500">Falta VITE_GOOGLE_MAPS_BROWSER_KEY</p>
       </div>
     )
@@ -79,7 +79,7 @@ export function GoogleMiniMap({ lat, lng, title = 'Destino' }: GoogleMiniMapProp
 
   if (!hasCoordinates) {
     return (
-      <div className="flex h-28 items-center justify-center rounded-xl border border-[#E2E8F0] bg-[#F0EEF8] px-3 text-center">
+      <div className="flex h-20 items-center justify-center rounded-xl border border-[#E2E8F0] bg-[#F0EEF8] px-3 text-center">
         <p className="font-body text-[11px] text-gray500">Destino sin coordenadas</p>
       </div>
     )
@@ -87,11 +87,11 @@ export function GoogleMiniMap({ lat, lng, title = 'Destino' }: GoogleMiniMapProp
 
   if (error) {
     return (
-      <div className="flex h-28 items-center justify-center rounded-xl border border-[#E2E8F0] bg-[#F0EEF8] px-3 text-center">
+      <div className="flex h-20 items-center justify-center rounded-xl border border-[#E2E8F0] bg-[#F0EEF8] px-3 text-center">
         <p className="font-body text-[11px] text-gray500">{error}</p>
       </div>
     )
   }
 
-  return <div ref={mapRef} className="h-28 w-full overflow-hidden rounded-xl bg-[#D4E9F7]" />
+  return <div ref={mapRef} className="h-20 w-full overflow-hidden rounded-xl bg-[#D4E9F7]" />
 }

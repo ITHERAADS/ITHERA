@@ -151,6 +151,9 @@ export function SearchIntegratedShell({ children, group, user }: { children: Rea
         onOpenGroupPanel={() =>
           navigate(`/grouppanel?groupId=${encodeURIComponent(String(group.id))}`)
         }
+        onOpenGroupSettings={() =>
+          navigate(`/group-settings?groupId=${encodeURIComponent(String(group.id))}`)
+        }
       />
     )
   }, [activeDay, days, group, navigate])

@@ -13,6 +13,48 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const isValidISODate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
 const GROUP_NAME_MAX_LENGTH = 60;
 const GROUP_DESCRIPTION_MAX_LENGTH = 300;
+const MAX_TRIP_DURATION_DAYS = 60;
+
+type RouteError = Error & {
+  statusCode?: number;
+  code?: string;
+  errorCode?: string;
+  conflict?: unknown;
+};
+
+const buildRouteErrorResponse = (err: unknown, fallback = 'Error interno del servidor') => {
+  const routeError = err as RouteError;
+  const message = err instanceof Error ? err.message : 'Error desconocido';
+  const status = routeError.statusCode ?? 500;
+
+  return {
+    status,
+    body: {
+      ok: false,
+      error: status === 500 ? fallback : message,
+      ...(status === 500 ? { details: message } : {}),
+      ...(routeError.code ? { code: routeError.code } : {}),
+      ...(routeError.errorCode ? { errorCode: routeError.errorCode } : {}),
+      ...(routeError.conflict ? { conflict: routeError.conflict } : {}),
+    },
+  };
+};
+
+
+const daysBetweenISO = (startDate: string, endDate: string): number | null => {
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((end.getTime() - start.getTime()) / millisecondsPerDay);
+};
+
+const hasValidTripDuration = (startDate: string, endDate: string): boolean => {
+  const durationDays = daysBetweenISO(startDate, endDate);
+  return durationDays !== null && durationDays >= 1 && durationDays <= MAX_TRIP_DURATION_DAYS;
+};
 
 router.post('/', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -85,6 +127,14 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    if (!hasValidTripDuration(fecha_inicio!, fecha_fin!)) {
+      res.status(400).json({
+        ok: false,
+        error: `ERR-23-003: La duración máxima del viaje es de ${MAX_TRIP_DURATION_DAYS} días`,
+      });
+      return;
+    }
+
     if (!Number.isFinite(Number(presupuesto_total)) || Number(presupuesto_total) <= 0) {
       res.status(400).json({ ok: false, error: 'ERR-23-004: El monto del presupuesto debe ser un número positivo mayor a cero' });
       return;
@@ -118,13 +168,8 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
 
     res.status(201).json({ ok: true, message: 'Grupo creado correctamente', group: grupo });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({
-      ok: false,
-      error: status === 500 ? 'Error interno del servidor' : msg,
-      ...(status === 500 ? { details: msg } : {}),
-    });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -146,9 +191,8 @@ router.post('/join', requireAuth, async (req: Request, res: Response): Promise<v
       group: grupo,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -167,23 +211,33 @@ router.get('/invite-preview/:code', async (req: Request, res: Response): Promise
     const preview = await GroupsService.getInvitePreviewByCode(req.params.code);
     res.status(200).json({ ok: true, preview });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
 router.use('/:groupId/itinerary', itineraryRouter);
 router.use('/:groupId/chat', chatRouter);
 
+
+router.get('/:groupId/travel-context', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const context = await GroupsService.getGroupTravelContext(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, data: context });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const status = (err as any).statusCode ?? 500;
+    res.status(status).json({ ok: false, error: status === 500 ? 'No se pudo cargar el punto de partida del viaje' : msg });
+  }
+});
+
 router.get('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const group = await GroupsService.getGroupDetails(req.user!.id, req.params.groupId);
     res.status(200).json({ ok: true, group });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -192,9 +246,8 @@ router.get('/:groupId/invite', requireAuth, async (req: Request, res: Response):
     const payload = await GroupsService.getInviteInfo(req.user!.id, req.params.groupId);
     res.status(200).json({ ok: true, ...payload });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -210,9 +263,8 @@ router.get('/:groupId/invitations', requireAuth, async (req: Request, res: Respo
       invitations,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -222,9 +274,8 @@ router.get('/:groupId/join-requests', requireAuth, async (req: Request, res: Res
     const requests = await GroupsService.getJoinRequests(req.user!.id, req.params.groupId);
     res.status(200).json({ ok: true, requests });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -250,9 +301,8 @@ router.patch('/:groupId/join-requests/:requestId', requireAuth, async (req: Requ
       ...result,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -271,13 +321,13 @@ router.post('/:groupId/invitations', requireAuth, async (req: Request, res: Resp
     const invalidEmails = emails.filter(
       (email) =>
         typeof email !== 'string' ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+        !/^[A-Za-z0-9._%+-]+@[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)*\.[A-Za-z]{2,24}$/.test(email.trim().toLowerCase())
     );
 
     if (invalidEmails.length > 0) {
       res.status(400).json({
         ok: false,
-        error: 'Uno o más correos no tienen un formato válido',
+        error: 'Ingresa un correo electrónico válido (ej. usuario@dominio.com).',
         invalidEmails,
       });
       return;
@@ -295,9 +345,8 @@ router.post('/:groupId/invitations', requireAuth, async (req: Request, res: Resp
       ...result,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -312,9 +361,8 @@ router.get('/:groupId/qr', requireAuth, async (req: Request, res: Response): Pro
       qrBase64,
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -323,9 +371,48 @@ router.get('/:groupId/members', requireAuth, async (req: Request, res: Response)
     const members = await GroupsService.getGroupMembers(req.user!.id, req.params.groupId);
     res.status(200).json({ ok: true, members });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
+  }
+});
+
+
+router.get('/:groupId/admin-delegations', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const requests = await GroupsService.getAdminDelegationRequests(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, requests });
+  } catch (err: unknown) {
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
+  }
+});
+
+router.patch('/:groupId/admin-delegations/:requestId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { action } = req.body as { action?: 'accept' | 'reject' };
+
+    if (!action || !['accept', 'reject'].includes(action)) {
+      res.status(400).json({ ok: false, error: 'Acción inválida. Usa accept o reject.' });
+      return;
+    }
+
+    const result = await GroupsService.resolveAdminDelegationRequest(
+      req.user!.id,
+      req.params.groupId,
+      req.params.requestId,
+      action
+    );
+
+    res.status(200).json({
+      ok: true,
+      message: action === 'accept'
+        ? 'Ahora eres administrador del viaje.'
+        : 'Solicitud de administración rechazada.',
+      ...result,
+    });
+  } catch (err: unknown) {
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -349,9 +436,8 @@ router.patch('/members/:memberId/role', requireAuth, async (req: Request, res: R
 
     res.status(200).json({ ok: true, message: 'Rol actualizado correctamente', member });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -365,9 +451,18 @@ router.delete('/:groupId/members/:memberId', requireAuth, async (req: Request, r
 
     res.status(200).json({...result, message: 'Miembro eliminado correctamente' });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
+  }
+});
+
+router.patch('/:groupId/close', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const group = await GroupsService.closeGroup(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, message: 'Viaje cerrado correctamente', group });
+  } catch (err: unknown) {
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -379,6 +474,8 @@ router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Prom
       fecha_inicio?: string;
       fecha_fin?: string;
       maximo_miembros?: number;
+      modulo_itinerario_bloqueado?: boolean;
+      modulo_presupuesto_bloqueado?: boolean;
     };
 
     if (nombre !== undefined && (!nombre.trim() || nombre.trim().length > GROUP_NAME_MAX_LENGTH)) {
@@ -412,6 +509,14 @@ router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Prom
       return;
     }
 
+    if (fecha_inicio && fecha_fin && !hasValidTripDuration(fecha_inicio, fecha_fin)) {
+      res.status(400).json({
+        ok: false,
+        error: `ERR-23-003: La duración máxima del viaje es de ${MAX_TRIP_DURATION_DAYS} días`,
+      });
+      return;
+    }
+
     if (maximo_miembros !== undefined) {
       const parsedMaxMembers = Number(maximo_miembros);
       if (!Number.isInteger(parsedMaxMembers) || parsedMaxMembers < 1 || parsedMaxMembers > 50) {
@@ -426,9 +531,8 @@ router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Prom
     const group = await GroupsService.updateGroup(req.user!.id, req.params.groupId, req.body);
     res.status(200).json({ ok: true, message: 'Grupo actualizado correctamente', group });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 
@@ -437,9 +541,8 @@ router.delete('/:groupId', requireAuth, async (req: Request, res: Response): Pro
     const result = await GroupsService.deleteGroup(req.user!.id, req.params.groupId);
     res.status(200).json({...result, message: 'Grupo eliminado correctamente' });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Error desconocido';
-    const status = (err as any).statusCode ?? 500;
-    res.status(status).json({ ok: false, error: msg });
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
   }
 });
 

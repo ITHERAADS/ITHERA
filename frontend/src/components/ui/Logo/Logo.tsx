@@ -1,5 +1,5 @@
 import logoWhite from '../../../assets/logo-white.png'
-import logoColor from '../../../assets/logo-color.jpg'
+import logoColor from '../../../assets/ithera-transparente.png'
 
 export interface LogoProps {
   /** 'white' para fondos oscuros, 'color' para fondos claros */

@@ -18,6 +18,8 @@ export interface ItineraryActivity {
   createdBy?: string | null;
   hasVoted?: boolean;
   adminDecisionType?: 'A' | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
 }
 
 export interface ItineraryDay {

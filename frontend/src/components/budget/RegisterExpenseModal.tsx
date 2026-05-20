@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { FC } from 'react'
 import type { Expense } from './BudgetDashboard'
 import type { BudgetMember } from '../../services/budget'
@@ -8,13 +8,21 @@ import type { TripDocumentCategory } from '../../services/documents'
 interface Props {
   open: boolean
   members: BudgetMember[]
+  subgroupScope?: {
+    subgroupId: string
+    memberUserIds: string[]
+    label?: string | null
+  } | null
   activityOptions?: ContextEntitySummary[]
   documentOptions?: ContextEntitySummary[]
   editingExpense?: Expense | null
   totalBudget?: number
   comprometido?: number
+  minExpenseDate?: string | null
+  maxExpenseDate?: string | null
+  isSaving?: boolean
   onClose: () => void
-  onSave: (expense: Expense) => void
+  onSave: (expense: Expense) => void | Promise<void>
 }
 
 type ExpenseContextModalMode = 'activity' | 'document' | null
@@ -43,6 +51,15 @@ const documentCategoryLabels: Record<TripDocumentCategory, string> = {
   gasto: 'Gasto',
   actividad: 'Actividad',
   otro: 'Otro',
+}
+
+function InlineSpinner({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" className="animate-spin">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3" />
+      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
 }
 
 function ActionModal({
@@ -102,11 +119,15 @@ function ActionModal({
 export const RegisterExpenseModal: FC<Props> = ({
   open,
   members,
+  subgroupScope = null,
   activityOptions = [],
   documentOptions = [],
   editingExpense,
   totalBudget = 0,
   comprometido = 0,
+  minExpenseDate = null,
+  maxExpenseDate = null,
+  isSaving = false,
   onClose,
   onSave,
 }) => {
@@ -126,6 +147,11 @@ export const RegisterExpenseModal: FC<Props> = ({
   const [activeContextModal, setActiveContextModal] = useState<ExpenseContextModalMode>(null)
   const [activityFilter, setActivityFilter] = useState('')
   const [documentModalTab, setDocumentModalTab] = useState<'associate' | 'create'>('associate')
+  const scopedMemberIds = useMemo(() => subgroupScope?.memberUserIds ?? [], [subgroupScope?.memberUserIds])
+  const hasScopedMembers = scopedMemberIds.length > 0
+  const effectiveMembers = hasScopedMembers
+    ? members.filter((member) => scopedMemberIds.includes(member.usuario_id))
+    : members
 
   useEffect(() => {
     if (!open) return
@@ -135,12 +161,17 @@ export const RegisterExpenseModal: FC<Props> = ({
       setDescription(editingExpense.titulo)
       setDate(editingExpense.fecha)
       setCategory(editingExpense.categoria)
-      setPaidBy(editingExpense.pagadoPorId)
+      setPaidBy(
+        hasScopedMembers && !scopedMemberIds.includes(editingExpense.pagadoPorId)
+          ? (effectiveMembers[0]?.usuario_id ?? '')
+          : editingExpense.pagadoPorId
+      )
       setSplitType(editingExpense.splitType ?? 'equitativa')
       setSelectedMemberIds(
-        editingExpense.participantIds?.length
+        (editingExpense.participantIds?.length
           ? editingExpense.participantIds
-          : members.map((member) => member.usuario_id)
+          : effectiveMembers.map((member) => member.usuario_id))
+          .filter((memberId) => !hasScopedMembers || scopedMemberIds.includes(memberId))
       )
       setSplitAmounts(
         Object.fromEntries(
@@ -158,9 +189,9 @@ export const RegisterExpenseModal: FC<Props> = ({
       setDescription('')
       setDate(new Date().toISOString().split('T')[0])
       setCategory('transporte')
-      setPaidBy(members[0]?.usuario_id ?? '')
+      setPaidBy(effectiveMembers[0]?.usuario_id ?? '')
       setSplitType('equitativa')
-      setSelectedMemberIds(members.map((member) => member.usuario_id))
+      setSelectedMemberIds(effectiveMembers.map((member) => member.usuario_id))
       setSplitAmounts({})
       setSelectedActivityKeys([])
       setSelectedDocumentIds([])
@@ -169,14 +200,14 @@ export const RegisterExpenseModal: FC<Props> = ({
       setDraftDocumentNotes('')
       setActivityFilter('')
     }
-  }, [open, editingExpense]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editingExpense, effectiveMembers, hasScopedMembers, scopedMemberIds])
 
   if (!open) return null
 
   const totalAmount = parseFloat(amount) || 0
   const splitSum =
     splitType === 'personalizada'
-      ? members
+      ? effectiveMembers
         .filter((member) => selectedMemberIds.includes(member.usuario_id))
         .reduce((sum, m) => sum + (parseFloat(splitAmounts[m.usuario_id] ?? '0') || 0), 0)
       : totalAmount
@@ -193,6 +224,13 @@ export const RegisterExpenseModal: FC<Props> = ({
       : null
 
   const isValid = totalAmount > 0 && description.trim().length > 0 && selectedMemberIds.length > 0 && splitError === null && budgetError === null
+  const isDateOutOfRange =
+    (Boolean(minExpenseDate) && date < String(minExpenseDate)) ||
+    (Boolean(maxExpenseDate) && date > String(maxExpenseDate))
+  const dateRangeError = isDateOutOfRange
+    ? `La fecha del gasto debe estar entre ${minExpenseDate} y ${maxExpenseDate}.`
+    : null
+  const canSave = isValid && !isDateOutOfRange
 
   const toggleMember = (memberId: string) => {
     setSelectedMemberIds((prev) => {
@@ -223,20 +261,20 @@ export const RegisterExpenseModal: FC<Props> = ({
     setActiveContextModal(null)
   }
 
-  const handleSave = () => {
-    if (!isValid) return
+  const handleSave = async () => {
+    if (isSaving || !canSave) return
     if (draftDocumentFile && !draftDocumentNotes.trim()) return
 
     const parsedSplitAmounts: Record<string, number> | undefined =
       splitType === 'personalizada'
         ? Object.fromEntries(
-          members
+          effectiveMembers
             .filter((member) => selectedMemberIds.includes(member.usuario_id))
             .map((m) => [m.usuario_id, parseFloat(splitAmounts[m.usuario_id] ?? '0') || 0])
         )
         : undefined
 
-    const paidByMember = members.find((member) => member.usuario_id === paidBy)
+    const paidByMember = effectiveMembers.find((member) => member.usuario_id === paidBy)
     const expense: Expense = {
       id: editingExpense ? editingExpense.id : crypto.randomUUID(),
       titulo: description.trim(),
@@ -254,6 +292,7 @@ export const RegisterExpenseModal: FC<Props> = ({
         category: draftDocumentCategory,
         notes: draftDocumentNotes.trim(),
       } : null,
+      subgroupId: subgroupScope?.subgroupId ?? undefined,
       ...(parsedSplitAmounts !== undefined && { splitAmounts: parsedSplitAmounts }),
     }
 
@@ -263,14 +302,14 @@ export const RegisterExpenseModal: FC<Props> = ({
       console.log('Gasto registrado:', expense)
     }
 
-    onSave(expense)
+    await Promise.resolve(onSave(expense))
   }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center"
       style={{ background: 'rgba(13,8,32,0.75)' }}
-      onClick={onClose}
+      onClick={isSaving ? undefined : onClose}
     >
       <div
         className="flex w-full max-w-lg flex-col rounded-t-3xl bg-white max-h-[90vh]"
@@ -291,7 +330,7 @@ export const RegisterExpenseModal: FC<Props> = ({
                 </span>
               )}
             </div>
-            <button onClick={onClose} className="text-[#7A8799] transition-colors hover:text-[#3D4A5C]">
+            <button onClick={isSaving ? undefined : onClose} disabled={isSaving} className="text-[#7A8799] transition-colors hover:text-[#3D4A5C] disabled:cursor-not-allowed disabled:opacity-50">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -341,8 +380,18 @@ export const RegisterExpenseModal: FC<Props> = ({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                min={minExpenseDate ?? undefined}
+                max={maxExpenseDate ?? undefined}
                 className="w-full rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
               />
+              {(minExpenseDate || maxExpenseDate) && (
+                <p className="mt-1 font-body text-xs text-[#64748B]">
+                  Rango permitido: {minExpenseDate ?? '...'} a {maxExpenseDate ?? '...'}
+                </p>
+              )}
+              {dateRangeError && (
+                <p className="mt-1 font-body text-xs text-[#EF4444]">{dateRangeError}</p>
+              )}
             </div>
 
             <div>
@@ -365,7 +414,7 @@ export const RegisterExpenseModal: FC<Props> = ({
                 onChange={(e) => setPaidBy(e.target.value)}
                 className="w-full rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
               >
-                {members.filter((member) => selectedMemberIds.includes(member.usuario_id)).map((m) => (
+                {effectiveMembers.filter((member) => selectedMemberIds.includes(member.usuario_id)).map((m) => (
                   <option key={m.usuario_id} value={m.usuario_id}>{m.nombre || m.email}</option>
                 ))}
               </select>
@@ -373,8 +422,13 @@ export const RegisterExpenseModal: FC<Props> = ({
 
             <div>
               <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Participantes</label>
+              {subgroupScope?.label && (
+                <p className="mb-1.5 font-body text-xs text-[#64748B]">
+                  Modo subgrupo: solo integrantes de {subgroupScope.label}
+                </p>
+              )}
               <div className="flex flex-wrap gap-2 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-3">
-                {members.map((member) => {
+                {effectiveMembers.map((member) => {
                   const selected = selectedMemberIds.includes(member.usuario_id)
                   return (
                     <button
@@ -419,7 +473,7 @@ export const RegisterExpenseModal: FC<Props> = ({
             {splitType === 'personalizada' && (
               <div className="flex flex-col gap-2 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3">
                 <p className="font-body text-xs font-medium text-[#7A8799]">Monto por persona</p>
-                {members.filter((member) => selectedMemberIds.includes(member.usuario_id)).map((member) => (
+                {effectiveMembers.filter((member) => selectedMemberIds.includes(member.usuario_id)).map((member) => (
                   <div key={member.usuario_id} className="flex items-center gap-3">
                     <span className="w-20 shrink-0 font-body text-sm text-[#3D4A5C]">{member.nombre || member.email}</span>
                     <div className="relative flex-1">
@@ -443,9 +497,9 @@ export const RegisterExpenseModal: FC<Props> = ({
 
             {(activityOptions.length > 0 || documentOptions.length > 0) && (
               <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3">
-                <p className="font-body text-sm font-semibold text-[#3D4A5C]">Vincular con el viaje</p>
+                <p className="font-body text-sm font-semibold text-[#3D4A5C]">Vincular este gasto con una actividad o comprobante</p>
                 <p className="mt-1 font-body text-xs text-[#7A8799]">
-                  Relaciona esta salida con acciones separadas para que el formulario principal no se vuelva confuso.
+                  Relaciona este gasto con una actividad (tour, cena, traslado) o con un comprobante (ticket, reservacion, recibo).
                 </p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <button
@@ -453,7 +507,7 @@ export const RegisterExpenseModal: FC<Props> = ({
                     onClick={() => setActiveContextModal('activity')}
                     className="rounded-xl border border-[#D7DEEA] bg-[#F8FAFC] px-3 py-2.5 text-left font-body text-sm font-semibold text-[#1E6FD9]"
                   >
-                    Relacionar actividad
+                    Elegir actividad
                   </button>
                   <button
                     type="button"
@@ -463,7 +517,7 @@ export const RegisterExpenseModal: FC<Props> = ({
                     }}
                     className="rounded-xl border border-[#D7DEEA] bg-[#F8FAFC] px-3 py-2.5 text-left font-body text-sm font-semibold text-[#7A4FD6]"
                   >
-                    Gestionar documento
+                    Elegir comprobante
                   </button>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -501,18 +555,21 @@ export const RegisterExpenseModal: FC<Props> = ({
           <div className="flex gap-3">
             <button
               type="button"
-              onClick={onClose}
-              className="flex-1 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] py-3.5 font-body text-sm font-semibold text-[#7A8799] transition-colors hover:border-[#3D4A5C] hover:text-[#3D4A5C]"
+              onClick={isSaving ? undefined : onClose}
+              disabled={isSaving}
+              className="flex-1 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] py-3.5 font-body text-sm font-semibold text-[#7A8799] transition-colors hover:border-[#3D4A5C] hover:text-[#3D4A5C] disabled:cursor-not-allowed disabled:opacity-50"
             >
               Cancelar
             </button>
             <button
               type="button"
-              onClick={handleSave}
-              disabled={!isValid}
-              className="flex-1 rounded-xl bg-[#1E6FD9] py-3.5 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => void handleSave()}
+              disabled={isSaving || !canSave}
+              aria-busy={isSaving}
+              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#1E6FD9] py-3.5 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {editingExpense ? 'Guardar cambios' : 'Guardar gasto'}
+              {isSaving && <InlineSpinner size={15} />}
+              {isSaving ? 'Guardando...' : editingExpense ? 'Guardar cambios' : 'Guardar gasto'}
             </button>
           </div>
         </div>
@@ -520,8 +577,8 @@ export const RegisterExpenseModal: FC<Props> = ({
 
       <ActionModal
         open={activeContextModal === 'activity'}
-        title="Relacionar actividad"
-        subtitle="Selecciona una actividad ya existente del viaje para dejarla asociada al gasto."
+        title="Vincular este gasto con una actividad o comprobante"
+        subtitle="Elige la actividad que corresponde a este gasto, por ejemplo tour, cena o traslado."
         confirmLabel="Guardar seleccion"
         onClose={() => setActiveContextModal(null)}
         onConfirm={() => setActiveContextModal(null)}
@@ -572,8 +629,8 @@ export const RegisterExpenseModal: FC<Props> = ({
 
       <ActionModal
         open={activeContextModal === 'document'}
-        title="Gestionar documento"
-        subtitle="Asocia un documento existente o sube uno nuevo desde este mismo modal."
+        title="Vincular este gasto con una actividad o comprobante"
+        subtitle="Elige o sube un comprobante para este gasto, por ejemplo ticket, reservacion o recibo."
         confirmLabel={documentModalTab === 'associate' ? 'Guardar seleccion' : 'Guardar documento'}
         onClose={() => setActiveContextModal(null)}
         onConfirm={() => {

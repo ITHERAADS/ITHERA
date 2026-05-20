@@ -1,5 +1,5 @@
 import { supabase } from '../../infrastructure/db/supabase.client';
-import { emitProposalVoteUpdated } from '../../infrastructure/sockets/socket.gateway';
+import { emitProposalVoteUpdated, emitProposalCommentChanged } from '../../infrastructure/sockets/socket.gateway';
 import { getLocalUserId } from '../groups/groups.service';
 import {
   CreateCommentPayload,
@@ -258,6 +258,14 @@ export const createComment = async (
     metadata: { actorName, commentPreview: payload.contenido.trim().slice(0, 120) },
   });
 
+  emitProposalCommentChanged({
+    groupId: Number(proposal.grupo_id),
+    proposalId: Number(proposalId),
+    action: 'created',
+    comment: data as Record<string, unknown>,
+    actorUsuarioId: Number(usuarioId),
+  });
+
   return data;
 };
 
@@ -322,6 +330,15 @@ export const updateComment = async (
     },
   });
 
+  emitProposalCommentChanged({
+    groupId: Number(proposal.grupo_id),
+    proposalId: Number(proposalId),
+    action: 'updated',
+    comment: data as Record<string, unknown>,
+    commentId: Number(commentId),
+    actorUsuarioId: Number(usuarioId),
+  });
+
   return data;
 };
 
@@ -367,6 +384,14 @@ export const deleteComment = async (
       actorUsuarioId: Number(usuarioId),
       commentId: Number(commentId),
     },
+  });
+
+  emitProposalCommentChanged({
+    groupId: Number(proposal.grupo_id),
+    proposalId: Number(proposalId),
+    action: 'deleted',
+    commentId: Number(commentId),
+    actorUsuarioId: Number(usuarioId),
   });
 
   return true;

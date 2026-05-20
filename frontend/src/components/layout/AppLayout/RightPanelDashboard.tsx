@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Socket } from 'socket.io-client'
 import { GoogleMiniMap } from '../../GoogleMiniMap/GoogleMiniMap'
-import type { Group } from '../../../types/groups'
+import { useAuth } from '../../../context/useAuth'
+import { groupsService } from '../../../services/groups'
+import type { Group, TravelStartLocation } from '../../../types/groups'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -82,6 +84,66 @@ function IconChat() {
   )
 }
 
+function SectionDivider({
+  label,
+  color,
+  background,
+}: {
+  label: string
+  color: string
+  background: string
+}) {
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <span
+        className="inline-flex items-center gap-2 rounded-full px-3 py-1 font-body text-[10px] font-bold uppercase tracking-widest"
+        style={{ color, backgroundColor: background }}
+      >
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
+        {label}
+      </span>
+      <span className="h-px flex-1 rounded-full bg-[#E2E8F0]" />
+    </div>
+  )
+}
+
+function toNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function buildSidebarStartLocation(group?: Group | null): TravelStartLocation | null {
+  if (!group) return null
+
+  const persistedLat = toNumberOrNull(group.punto_partida_latitud)
+  const persistedLng = toNumberOrNull(group.punto_partida_longitud)
+  const hasReservedHotel = group.punto_partida_tipo === 'hotel_reservado' && persistedLat !== null && persistedLng !== null
+
+  if (hasReservedHotel) {
+    return {
+      source: 'hotel_reservado',
+      label: group.punto_partida_nombre || 'Hotel reservado',
+      formattedAddress: group.punto_partida_direccion || group.punto_partida_nombre || null,
+      latitude: persistedLat,
+      longitude: persistedLng,
+      placeId: group.punto_partida_place_id || null,
+      photoUrl: null,
+      hotelId: group.punto_partida_hospedaje_id ? String(group.punto_partida_hospedaje_id) : null,
+    }
+  }
+
+  return {
+    source: 'destino_viaje',
+    label: group.destino || group.destino_formatted_address || group.nombre || 'Destino',
+    formattedAddress: group.destino_formatted_address || group.destino || null,
+    latitude: toNumberOrNull(group.destino_latitud),
+    longitude: toNumberOrNull(group.destino_longitud),
+    placeId: group.destino_place_id || null,
+    photoUrl: group.destino_photo_url || null,
+  }
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function RightPanelDashboard({
@@ -90,6 +152,9 @@ export function RightPanelDashboard({
   isLoading = false,
   socket,
   onOpenChat,
+  onOpenBudget,
+  onOpenGroupPanel,
+  onOpenMap,
   unreadCount = 0,
   totalBudget,
   committedBudget,
@@ -99,16 +164,50 @@ export function RightPanelDashboard({
   isLoading?: boolean
   socket?: Socket | null
   onOpenChat?: () => void
+  onOpenBudget?: () => void
+  onOpenGroupPanel?: () => void
+  onOpenMap?: () => void
   unreadCount?: number
   totalBudget?: number
   committedBudget?: number
 }) {
+  const { accessToken } = useAuth()
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [search, setSearch] = useState('')
   const popoverRef = useRef<HTMLDivElement | null>(null)
 
   const groupId = group?.id ? String(group.id) : null
+  const fallbackStartLocation = useMemo(() => buildSidebarStartLocation(group), [group])
+  const [startLocation, setStartLocation] = useState<TravelStartLocation | null>(fallbackStartLocation)
+
+  useEffect(() => {
+    setStartLocation(fallbackStartLocation)
+  }, [fallbackStartLocation])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadStartLocation = async () => {
+      if (!accessToken || !groupId) return
+
+      try {
+        const response = await groupsService.getTravelContext(groupId, accessToken)
+        if (!isMounted) return
+        setStartLocation(response.data?.startLocation ?? fallbackStartLocation)
+      } catch {
+        if (!isMounted) return
+        setStartLocation(fallbackStartLocation)
+      }
+    }
+
+    void loadStartLocation()
+
+    return () => {
+      isMounted = false
+    }
+  }, [accessToken, fallbackStartLocation, groupId])
+
 
   const participants: Participant[] = useMemo(() => {
     const uniqueMembers: MemberFromBackend[] = []
@@ -155,9 +254,12 @@ export function RightPanelDashboard({
       })()
     : null
 
-  // Presence-only socket listener — room joining is handled by ChatDrawer
+  // Presence socket listener. The right panel joins the group room so the
+  // online state works even when the chat drawer is closed.
   useEffect(() => {
     if (!socket || !groupId) return
+
+    socket.emit('join_room', { tripId: groupId })
 
     const handlePresenceUpdate = (payload: { tripId: string; onlineUserIds: string[] }) => {
       if (String(payload.tripId) !== groupId) return
@@ -167,6 +269,7 @@ export function RightPanelDashboard({
     socket.on('presence_update', handlePresenceUpdate)
 
     return () => {
+      socket.emit('leave_room', { tripId: groupId })
       socket.off('presence_update', handlePresenceUpdate)
       setOnlineUserIds([])
     }
@@ -229,9 +332,7 @@ export function RightPanelDashboard({
     <>
       {/* Participants */}
       <section className="shrink-0">
-        <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest mb-3">
-          Participantes
-        </p>
+        <SectionDivider label="Participantes" color="#1E6FD9" background="#EEF4FF" />
 
         {/* Trigger: avatars + summary text — wrapped with popover in same ref for click-outside */}
         <div ref={popoverRef} className="relative">
@@ -257,6 +358,16 @@ export function RightPanelDashboard({
               {participants.length} participante{participants.length !== 1 ? 's' : ''} · {onlineCount} en línea
             </p>
           </button>
+
+          {onOpenGroupPanel && (
+            <button
+              type="button"
+              onClick={onOpenGroupPanel}
+              className="mt-3 w-full rounded-xl border border-[#D9E2F2] bg-white px-3 py-2 text-left font-body text-xs font-semibold text-bluePrimary transition-colors hover:border-bluePrimary/40 hover:bg-[#EEF4FF]"
+            >
+              Invitar o gestionar miembros
+            </button>
+          )}
 
           {/* Popover */}
           {popoverOpen && (
@@ -315,43 +426,59 @@ export function RightPanelDashboard({
 
       {/* Mini map */}
       <section className="shrink-0">
-        <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest mb-2">
-          Destino
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <SectionDivider label="Punto de partida" color="#7A4FD6" background="#F3EEFF" />
+          </div>
+          {startLocation?.source === 'hotel_reservado' && (
+            <span className="rounded-full bg-greenAccent/10 px-2 py-0.5 font-body text-[10px] font-bold text-greenAccent">
+              Hotel reservado
+            </span>
+          )}
+        </div>
 
-        <div className="mb-2">
+        <div className="mb-1.5">
           <GoogleMiniMap
-            lat={group?.destino_latitud}
-            lng={group?.destino_longitud}
-            title={group?.destino || group?.nombre || 'Destino'}
+            lat={startLocation?.latitude}
+            lng={startLocation?.longitude}
+            title={startLocation?.label || group?.nombre || 'Punto de partida'}
           />
         </div>
 
         <p className="font-body text-xs font-bold text-purpleNavbar leading-none">
-          {group?.destino || 'Destino pendiente'}
+          {startLocation?.label || 'Punto de partida pendiente'}
         </p>
 
         <p className="font-body text-[11px] text-gray500 mt-0.5 leading-none">
-          {group?.destino_formatted_address || 'Ubicación no disponible'}
+          {startLocation?.formattedAddress || 'Ubicación no disponible'}
         </p>
 
-        {group?.destino_latitud != null && group?.destino_longitud != null && (
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${group.destino_latitud},${group.destino_longitud}`}
-            target="_blank"
-            rel="noreferrer"
-            className="font-body text-[11px] text-bluePrimary mt-1.5 hover:underline inline-block"
-          >
-            Ver en mapa completo →
-          </a>
+        {startLocation?.latitude != null && startLocation?.longitude != null && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${startLocation.latitude},${startLocation.longitude}`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-lg bg-[#EEF4FF] px-2.5 py-1.5 font-body text-[11px] font-semibold text-bluePrimary hover:bg-[#E2EDFF]"
+            >
+              Abrir mapa
+            </a>
+            {onOpenMap && (
+              <button
+                type="button"
+                onClick={onOpenMap}
+                className="rounded-lg border border-[#D9E2F2] px-2.5 py-1.5 font-body text-[11px] font-semibold text-[#475569] hover:bg-white"
+              >
+                Ver rutas
+              </button>
+            )}
+          </div>
         )}
       </section>
 
       {/* Mini budget */}
       <section className="shrink-0">
-        <p className="font-body text-[10px] font-semibold text-gray500 uppercase tracking-widest mb-3">
-          Presupuesto
-        </p>
+        <SectionDivider label="Presupuesto" color="#35C56A" background="#EAFBF1" />
 
         {budgetData === null ? (
           <p className="font-body text-xs text-gray500">Sin presupuesto definido</p>
@@ -390,17 +517,27 @@ export function RightPanelDashboard({
             <p className="font-body text-[10px] text-gray500 text-right">
               {budgetData.isOverBudget ? 'Presupuesto excedido' : `${budgetData.pct.toFixed(0)}% comprometido`}
             </p>
+            {onOpenBudget && (
+              <button
+                type="button"
+                onClick={onOpenBudget}
+                className="mt-3 w-full rounded-xl border border-[#D9E2F2] bg-white px-3 py-2 text-left font-body text-xs font-semibold text-bluePrimary transition-colors hover:border-bluePrimary/40 hover:bg-[#EEF4FF]"
+              >
+                Ajustar presupuesto
+              </button>
+            )}
           </>
         )}
       </section>
 
       {/* Open chat button */}
       <section className="shrink-0">
+        <SectionDivider label="Comunicacion" color="#DB2777" background="#FCE7F3" />
         <button
           type="button"
           onClick={onOpenChat}
           disabled={!onOpenChat}
-          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3 hover:bg-[#F0EEF8] hover:border-[#7A4FD6]/30 transition-colors group shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-2.5 hover:bg-[#F0EEF8] hover:border-[#7A4FD6]/30 transition-colors group shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
         >
           <div className="flex items-center gap-2.5">
             <div

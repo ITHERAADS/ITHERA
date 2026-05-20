@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { mapsService, type PlaceResult } from '../../services/maps'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { mapsService, type PlaceAutocompleteResult, type PlaceResult } from '../../services/maps'
 import { groupsService } from '../../services/groups'
 import { proposalsService } from '../../services/proposals'
 import { budgetService, type BudgetCategory, type BudgetSplitType } from '../../services/budget'
 import { documentsService, type TripDocumentCategory } from '../../services/documents'
+import { ApiError } from '../../services/apiClient'
 import {
   contextLinksService,
   type ContextEntitySummary,
@@ -14,11 +15,16 @@ import type { Group } from '../../types/groups'
 import type { Activity } from '../ui/DayView/DayView'
 import { ExpenseDraftForm } from '../budget/ExpenseDraftForm'
 
-type EnrichedPlaceResult = PlaceResult & {
+type RoutePreview = {
   routeDistanceText?: string | null
   routeDurationText?: string | null
   routeDistanceMeters?: number | null
+  routeDurationSeconds?: number | null
 }
+
+type EnrichedPlaceResult = PlaceResult & RoutePreview
+
+type EnrichedPlaceAutocompleteResult = PlaceAutocompleteResult & RoutePreview
 
 type ActivityContextModalMode =
   | 'expense'
@@ -42,7 +48,7 @@ type ActivityProposalModalProps = {
     email?: string | null
   }>
   onClose: () => void
-  onCreated: () => void
+  onCreated: () => void | Promise<void>
 }
 
 const EMPTY_LINK_OPTIONS: ContextLinkOptions = {
@@ -63,6 +69,31 @@ const documentCategoryLabels: Record<TripDocumentCategory, string> = {
 const todayValue = () => new Date().toISOString().split('T')[0]
 const activityContextKey = (entity: { type: 'expense' | 'document'; id: string }) => `${entity.type}:${entity.id}`
 
+const pickCreatedExpenseId = (
+  expenses: Array<{
+    id: string
+    description: string
+    amount: number
+    createdAt: string | null
+  }>,
+  previousExpenseIds: Set<string>,
+  expectedDescription: string,
+  expectedAmount: number,
+): string | null => {
+  const newlyCreated = expenses.filter((expense) => !previousExpenseIds.has(String(expense.id)))
+  const pool = newlyCreated.length > 0 ? newlyCreated : expenses
+  const candidates = pool.filter((expense) =>
+    expense.description === expectedDescription &&
+    Number(expense.amount) === expectedAmount
+  )
+  const sorted = [...(candidates.length > 0 ? candidates : pool)].sort((a, b) =>
+    new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+  )
+  return sorted[0]?.id ?? null
+}
+const PLACE_SEARCH_RADIUS_METERS = 50000
+const LONG_ROUTE_THRESHOLD_SECONDS = 60 * 60
+
 const otherEntityForActivity = (link: ContextLink, activityId: string): ContextEntitySummary | null => {
   if (link.entityA.type === 'activity' && link.entityA.id === activityId) return link.entityB
   if (link.entityB.type === 'activity' && link.entityB.id === activityId) return link.entityA
@@ -72,6 +103,21 @@ const otherEntityForActivity = (link: ContextLink, activityId: string): ContextE
 function parseActivityTime(raw: string | undefined): string {
   const match = (raw ?? '').match(/\b([01]\d|2[0-3]):([0-5]\d)\b/)
   return match ? match[0] : '12:00'
+}
+
+function parseGoogleDurationSeconds(raw?: string | null): number | null {
+  if (!raw) return null
+  const match = raw.match(/^(\d+(?:\.\d+)?)s$/)
+  return match ? Number(match[1]) : null
+}
+
+function InlineSpinner({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" className="animate-spin">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeOpacity="0.3" />
+      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
 }
 
 function ActionModal({
@@ -144,9 +190,13 @@ export function ActivityProposalModal({
   const [description, setDescription] = useState('')
   const [timeValue, setTimeValue] = useState('12:00')
   const [results, setResults] = useState<EnrichedPlaceResult[]>([])
+  const [suggestions, setSuggestions] = useState<EnrichedPlaceAutocompleteResult[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const [selectedPlace, setSelectedPlace] = useState<EnrichedPlaceResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [savingMode, setSavingMode] = useState<'admin' | 'normal' | null>(null)
   const [error, setError] = useState('')
   const [linkOptions, setLinkOptions] = useState<ContextLinkOptions>(EMPTY_LINK_OPTIONS)
   const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([])
@@ -167,6 +217,9 @@ export function ActivityProposalModal({
   const [activeContextModal, setActiveContextModal] = useState<ActivityContextModalMode>(null)
   const [expenseModalTab, setExpenseModalTab] = useState<ContextModalTab>('associate')
   const [documentModalTab, setDocumentModalTab] = useState<ContextModalTab>('associate')
+  const [longRouteConfirmation, setLongRouteConfirmation] = useState<{ asAdminDirect: boolean } | null>(null)
+  const [scheduleConflictMessage, setScheduleConflictMessage] = useState<string | null>(null)
+  const autocompleteBoxRef = useRef<HTMLDivElement | null>(null)
 
   const memberOptions = useMemo(
     () =>
@@ -195,7 +248,7 @@ export function ActivityProposalModal({
     return safeMemberOptions[0]?.id ?? ''
   }, [currentUserId, safeMemberOptions])
 
-  const getActivityDate = useCallback(() => {
+  const selectedActivityDate = useMemo(() => {
     const startDate = group?.fecha_inicio
     if (!startDate || !selectedDayNumber) return null
 
@@ -205,8 +258,43 @@ export function ActivityProposalModal({
     const yyyy = selectedDate.getFullYear()
     const mm = String(selectedDate.getMonth() + 1).padStart(2, '0')
     const dd = String(selectedDate.getDate()).padStart(2, '0')
-    return `${yyyy}-${mm}-${dd}T${timeValue}:00`
-  }, [group?.fecha_inicio, selectedDayNumber, timeValue])
+    return `${yyyy}-${mm}-${dd}`
+  }, [group?.fecha_inicio, selectedDayNumber])
+
+  const routeOrigin = useMemo(() => {
+    if (group?.punto_partida_latitud != null && group.punto_partida_longitud != null) {
+      return {
+        lat: Number(group.punto_partida_latitud),
+        lng: Number(group.punto_partida_longitud),
+      }
+    }
+
+    if (group?.destino_latitud != null && group.destino_longitud != null) {
+      return {
+        lat: Number(group.destino_latitud),
+        lng: Number(group.destino_longitud),
+      }
+    }
+
+    return null
+  }, [
+    group?.destino_latitud,
+    group?.destino_longitud,
+    group?.punto_partida_latitud,
+    group?.punto_partida_longitud,
+  ])
+
+  const routeOriginLabel = group?.punto_partida_tipo === 'hotel_reservado'
+    ? 'tu hospedaje'
+    : 'el destino del viaje'
+  const selectedPlaceIsLongRoute =
+    selectedPlace?.routeDurationSeconds != null &&
+    selectedPlace.routeDurationSeconds > LONG_ROUTE_THRESHOLD_SECONDS
+
+  const getActivityDate = useCallback(() => {
+    if (!selectedActivityDate) return null
+    return `${selectedActivityDate}T${timeValue}:00`
+  }, [selectedActivityDate, timeValue])
 
   const resetContextDraft = () => {
     setSelectedExpenseIds([])
@@ -276,7 +364,7 @@ export function ActivityProposalModal({
       setQuickExpenseAmount('')
       setQuickExpenseDescription('')
       setQuickExpenseCategory('actividad')
-      setQuickExpenseDate(getActivityDate()?.slice(0, 10) ?? todayValue())
+      setQuickExpenseDate(selectedActivityDate ?? todayValue())
       setQuickExpensePaidBy(defaultExpensePayer)
       setQuickExpenseSplitType('equitativa')
       setQuickExpenseSplitAmounts({})
@@ -308,6 +396,8 @@ export function ActivityProposalModal({
       setDescription('')
       setTimeValue('12:00')
       setResults([])
+      setSuggestions([])
+      setShowSuggestions(false)
       setSelectedPlace(null)
       setError('')
     }
@@ -315,7 +405,108 @@ export function ActivityProposalModal({
     void hydrate()
 
     return () => { cancelled = true }
-  }, [defaultExpensePayer, editingActivity, getActivityDate, group?.id, open, safeMemberOptions, token])
+  }, [defaultExpensePayer, editingActivity, group?.id, open, safeMemberOptions, selectedActivityDate, token])
+
+  const enrichPlaceWithRoute = useCallback(async (place: EnrichedPlaceResult): Promise<EnrichedPlaceResult> => {
+    const enrichedPlace = { ...place }
+
+    if (!token || !routeOrigin || place.latitude == null || place.longitude == null) {
+      return enrichedPlace
+    }
+
+    try {
+      const routeResponse = await mapsService.computeRoute(
+        {
+          originLat: routeOrigin.lat,
+          originLng: routeOrigin.lng,
+          destinationLat: place.latitude,
+          destinationLng: place.longitude,
+          travelMode: 'DRIVE',
+        },
+        token
+      )
+
+      enrichedPlace.routeDistanceText = routeResponse.data?.distanceText ?? null
+      enrichedPlace.routeDurationText = routeResponse.data?.durationText ?? routeResponse.data?.staticDurationText ?? null
+      enrichedPlace.routeDistanceMeters = routeResponse.data?.distanceMeters ?? null
+      enrichedPlace.routeDurationSeconds = parseGoogleDurationSeconds(
+        routeResponse.data?.duration ?? routeResponse.data?.staticDuration
+      )
+    } catch {
+      // La propuesta puede continuar aunque la ruta no este disponible.
+    }
+
+    return enrichedPlace
+  }, [routeOrigin, token])
+
+  useEffect(() => {
+    if (!open) return
+
+    const trimmedQuery = query.trim()
+    const selectedName = selectedPlace?.name?.trim()
+
+    if (trimmedQuery.length < 3 || (selectedName && trimmedQuery === selectedName)) {
+      setSuggestions([])
+      setShowSuggestions(false)
+      setSuggestionsLoading(false)
+      return
+    }
+
+    if (!token) {
+      setSuggestions([])
+      setShowSuggestions(false)
+      return
+    }
+
+    let cancelled = false
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        setSuggestionsLoading(true)
+        const response = await mapsService.autocompletePlaces(trimmedQuery, token, {
+          latitude: routeOrigin?.lat,
+          longitude: routeOrigin?.lng,
+          radius: PLACE_SEARCH_RADIUS_METERS,
+        })
+
+        const rawSuggestions = response.data ?? []
+        const nextSuggestions: EnrichedPlaceAutocompleteResult[] = routeOrigin
+          ? await Promise.all(
+            rawSuggestions.slice(0, 6).map(async (suggestion) => {
+              try {
+                const detailResponse = await mapsService.getPlaceDetails(suggestion.placeId, token)
+                const place = detailResponse.data
+                if (!place) return suggestion
+                const enrichedPlace = await enrichPlaceWithRoute(place)
+                return {
+                  ...suggestion,
+                  routeDistanceText: enrichedPlace.routeDistanceText ?? null,
+                  routeDurationText: enrichedPlace.routeDurationText ?? null,
+                  routeDistanceMeters: enrichedPlace.routeDistanceMeters ?? null,
+                  routeDurationSeconds: enrichedPlace.routeDurationSeconds ?? null,
+                }
+              } catch {
+                return suggestion
+              }
+            })
+          )
+          : rawSuggestions
+        if (cancelled) return
+        setSuggestions(nextSuggestions)
+        setShowSuggestions(nextSuggestions.length > 0)
+      } catch {
+        if (cancelled) return
+        setSuggestions([])
+        setShowSuggestions(false)
+      } finally {
+        if (!cancelled) setSuggestionsLoading(false)
+      }
+    }, 300)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [enrichPlaceWithRoute, open, query, routeOrigin, selectedPlace?.name, token])
 
   if (!open) return null
 
@@ -338,9 +529,9 @@ export function ActivityProposalModal({
       const response = await mapsService.searchPlacesByText(
         {
           textQuery: query.trim(),
-          latitude: group?.destino_latitud ?? undefined,
-          longitude: group?.destino_longitud ?? undefined,
-          radius: 7000,
+          latitude: routeOrigin?.lat,
+          longitude: routeOrigin?.lng,
+          radius: PLACE_SEARCH_RADIUS_METERS,
           maxResultCount: 10,
         },
         token
@@ -348,34 +539,8 @@ export function ActivityProposalModal({
 
       const fetchedResults: EnrichedPlaceResult[] = response.data ?? []
 
-      const originLat = group?.destino_latitud
-      const originLng = group?.destino_longitud
-
-      if (originLat != null && originLng != null && fetchedResults.length > 0) {
-        const topResults = fetchedResults.slice(0, 10)
-        
-        await Promise.all(topResults.map(async (place) => {
-          if (place.latitude != null && place.longitude != null) {
-            try {
-              const routeResponse = await mapsService.computeRoute(
-                {
-                  originLat,
-                  originLng,
-                  destinationLat: place.latitude,
-                  destinationLng: place.longitude,
-                  travelMode: 'DRIVE',
-                },
-                token
-              )
-              
-              place.routeDistanceText = routeResponse.data?.distanceText ?? null
-              place.routeDurationText = routeResponse.data?.durationText ?? routeResponse.data?.staticDurationText ?? null
-              place.routeDistanceMeters = routeResponse.data?.distanceMeters ?? null
-            } catch {
-              // Ignorar error de ruta
-            }
-          }
-        }))
+      if (routeOrigin && fetchedResults.length > 0) {
+        const topResults: EnrichedPlaceResult[] = await Promise.all(fetchedResults.slice(0, 10).map(enrichPlaceWithRoute))
 
         topResults.sort((a, b) => {
           const distA = a.routeDistanceMeters ?? Infinity
@@ -389,6 +554,37 @@ export function ActivityProposalModal({
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudieron buscar lugares.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSelectSuggestion = async (suggestion: PlaceAutocompleteResult) => {
+    if (!token) {
+      setError('Tu sesion expiro. Vuelve a iniciar sesion.')
+      return
+    }
+
+    try {
+      setLoading(true)
+      setError('')
+      setShowSuggestions(false)
+      setSuggestions([])
+      setResults([])
+
+      const response = await mapsService.getPlaceDetails(suggestion.placeId, token)
+      const place = response.data
+
+      if (!place) {
+        setError('No se pudo cargar el detalle de ese lugar.')
+        return
+      }
+
+      const enrichedPlace = await enrichPlaceWithRoute(place)
+      setSelectedPlace(enrichedPlace)
+      setQuery(enrichedPlace.name || suggestion.mainText || suggestion.description)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo seleccionar el lugar.')
     } finally {
       setLoading(false)
     }
@@ -456,7 +652,7 @@ export function ActivityProposalModal({
       ? 'La division personalizada debe sumar el monto total.'
       : null
 
-  const handleSave = async (asAdminDirect = false) => {
+  const handleSave = async (asAdminDirect = false, skipLongRouteConfirmation = false) => {
     if (!group?.id) {
       setError('No se encontro el grupo actual.')
       return
@@ -467,6 +663,10 @@ export function ActivityProposalModal({
     }
     if (!selectedPlace) {
       setError('Selecciona un lugar para proponer la actividad.')
+      return
+    }
+    if (selectedPlaceIsLongRoute && !skipLongRouteConfirmation) {
+      setLongRouteConfirmation({ asAdminDirect })
       return
     }
 
@@ -508,6 +708,7 @@ export function ActivityProposalModal({
 
     try {
       setSaving(true)
+      setSavingMode(asAdminDirect ? 'admin' : 'normal')
       setError('')
 
       let activityId = ''
@@ -540,6 +741,7 @@ export function ActivityProposalModal({
       }
 
       if (activityId) {
+        const previousExpenseIds = new Set(linkOptions.expenses.map((item) => item.id))
         const createdExpenseId = shouldCreateExpense
           ? await budgetService.createExpense(String(group.id), {
             paid_by_user_id: quickExpensePaidBy,
@@ -558,15 +760,12 @@ export function ActivityProposalModal({
               : undefined,
             expense_date: quickExpenseDate || (getActivityDate()?.slice(0, 10) ?? null),
           }, token).then((response) => {
-            const expectedDescription = quickExpenseDescription.trim()
-            const candidates = response.expenses.filter((expense) =>
-              expense.description === expectedDescription &&
-              Number(expense.amount) === quickExpenseValue
+            return pickCreatedExpenseId(
+              response.expenses,
+              previousExpenseIds,
+              quickExpenseDescription.trim(),
+              quickExpenseValue,
             )
-            const sorted = [...(candidates.length > 0 ? candidates : response.expenses)].sort((a, b) =>
-              new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
-            )
-            return sorted[0]?.id ?? null
           })
           : null
 
@@ -612,10 +811,18 @@ export function ActivityProposalModal({
       setTimeValue('12:00')
       setResults([])
       setSelectedPlace(null)
+      setLongRouteConfirmation(null)
       resetContextDraft()
-      onCreated()
+      await onCreated()
       onClose()
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setScheduleConflictMessage(
+          'Ya hay una actividad en ese horario. Necesitas cambiar el horario de la otra actividad o el de esta para poder continuar.'
+        )
+        setError('')
+        return
+      }
       setError(
         err instanceof Error
           ? err.message
@@ -625,6 +832,7 @@ export function ActivityProposalModal({
       )
     } finally {
       setSaving(false)
+      setSavingMode(null)
     }
   }
 
@@ -635,6 +843,8 @@ export function ActivityProposalModal({
     setTimeValue('12:00')
     setResults([])
     setSelectedPlace(null)
+    setLongRouteConfirmation(null)
+    setScheduleConflictMessage(null)
     resetContextDraft()
     setError('')
     onClose()
@@ -712,7 +922,7 @@ export function ActivityProposalModal({
             {editingActivity ? 'Editar propuesta' : 'Proponer actividad'}
           </h2>
           <p className="mt-1 font-body text-sm text-gray500">
-            Busca un lugar con Google Places y agregalo como propuesta al itinerario.
+            Escribe y elige una sugerencia de Google Places para agregarla como propuesta al itinerario.
           </p>
         </div>
 
@@ -721,31 +931,75 @@ export function ActivityProposalModal({
             <label className="mb-1.5 block font-body text-xs font-semibold uppercase tracking-wide text-[#1E0A4E]/60">
               Buscar lugar o actividad
             </label>
-            <div className="flex gap-2">
+            <div
+              ref={autocompleteBoxRef}
+              className="relative"
+              onBlur={(event) => {
+                if (!autocompleteBoxRef.current?.contains(event.relatedTarget as Node | null)) {
+                  setShowSuggestions(false)
+                }
+              }}
+            >
               <input
                 value={query}
                 onChange={(e) => {
-                  setQuery(e.target.value)
+                  const value = e.target.value
+                  setQuery(value)
                   setError('')
                   if (selectedPlace) setSelectedPlace(null)
+                  setResults([])
+                  setShowSuggestions(value.trim().length >= 3)
+                }}
+                onFocus={() => {
+                  setShowSuggestions(query.trim().length >= 3 && suggestions.length > 0)
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault()
-                    void handleSearch()
+                    if (suggestions[0]) {
+                      void handleSelectSuggestion(suggestions[0])
+                    } else {
+                      void handleSearch()
+                    }
                   }
                 }}
                 placeholder="Ej: restaurante, playa, museo..."
-                className="flex-1 rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm outline-none transition focus:border-bluePrimary focus:ring-2 focus:ring-bluePrimary/10"
+                className="w-full rounded-xl border border-[#E2E8F0] px-4 py-3 pr-10 text-sm outline-none transition focus:border-bluePrimary focus:ring-2 focus:ring-bluePrimary/10"
               />
-              <button
-                type="button"
-                onClick={handleSearch}
-                disabled={loading}
-                className="rounded-xl bg-purpleNavbar px-4 py-3 font-body text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {loading ? 'Buscando...' : 'Buscar'}
-              </button>
+              {(suggestionsLoading || loading) && (
+                <span className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-[#D7DEEA] border-t-bluePrimary" />
+              )}
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-72 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-xl">
+                  {suggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.placeId || suggestion.description}
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => void handleSelectSuggestion(suggestion)}
+                      className="block w-full rounded-lg px-4 py-3 text-left transition hover:bg-[#F8FAFC]"
+                    >
+                      <p className="font-body text-sm font-semibold text-purpleNavbar">
+                        {suggestion.mainText || suggestion.description}
+                      </p>
+                      <p className="mt-0.5 font-body text-xs text-gray500">
+                        {suggestion.secondaryText || suggestion.description}
+                      </p>
+                      {(suggestion.routeDistanceText || suggestion.routeDurationText) && (
+                        <p className="mt-2 inline-flex rounded-full bg-[#EEF4FF] px-2.5 py-1 font-body text-[11px] font-semibold text-bluePrimary">
+                          {suggestion.routeDistanceText ?? 'Distancia no disponible'}
+                          {suggestion.routeDurationText ? ` · ${suggestion.routeDurationText}` : ''} desde {routeOriginLabel}
+                        </p>
+                      )}
+                      {suggestion.routeDurationSeconds != null && suggestion.routeDurationSeconds > LONG_ROUTE_THRESHOLD_SECONDS && (
+                        <p className="mt-1 font-body text-[11px] font-semibold text-red-700">
+                          Traslado largo: mas de 1 hora
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -782,6 +1036,30 @@ export function ActivityProposalModal({
               <p className="mt-0.5 font-body text-xs text-gray500">
                 {selectedPlace.formattedAddress || 'Direccion no disponible'}
               </p>
+              {(selectedPlace.routeDistanceText || selectedPlace.routeDurationText) && (
+                <p className="mt-2 inline-flex rounded-full bg-white px-2.5 py-1 font-body text-[11px] font-semibold text-bluePrimary shadow-sm">
+                  A {selectedPlace.routeDistanceText ?? 'distancia no disponible'}
+                  {selectedPlace.routeDurationText ? ` · ${selectedPlace.routeDurationText}` : ''} desde {routeOriginLabel}
+                </p>
+              )}
+              {selectedPlaceIsLongRoute && (
+                <div className="mt-3 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-red-800">
+                  <span className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full bg-red-100 text-red-700">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M12 8v5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                      <path d="M12 17h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                      <path d="M10.3 4.1 2.6 17.4A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.6L13.7 4.1a2 2 0 0 0-3.4 0Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                  <div>
+                    <p className="font-body text-xs font-bold">Traslado largo</p>
+                    <p className="mt-0.5 font-body text-xs">
+                      Este lugar queda a mas de 1 hora desde {routeOriginLabel}
+                      {selectedPlace.routeDurationText ? ` (${selectedPlace.routeDurationText})` : ''}. Te pediremos confirmar antes de agregarlo.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -811,15 +1089,22 @@ export function ActivityProposalModal({
                         <p className="mt-0.5 line-clamp-2 font-body text-xs text-gray500">
                           {place.formattedAddress || 'Direccion no disponible'}
                         </p>
-                        {place.routeDistanceText && place.routeDurationText && (
-                          <p className="mt-1 flex items-center gap-1 font-body text-[11px] text-gray700">
-                            <span className="text-bluePrimary">
+                        {(place.routeDistanceText || place.routeDurationText) && (
+                          <p className="mt-1 font-body text-[11px] font-semibold text-bluePrimary">
+                            {place.routeDistanceText ?? 'Distancia no disponible'}
+                            {place.routeDurationText ? ` · ${place.routeDurationText}` : ''} desde {routeOriginLabel}
+                          </p>
+                        )}
+                        {place.routeDurationSeconds != null && place.routeDurationSeconds > LONG_ROUTE_THRESHOLD_SECONDS && (
+                          <p className="mt-1 flex items-center gap-1.5 font-body text-[11px] font-semibold text-red-700">
+                            <span className="text-red-600">
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" />
-                                <circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="2" />
+                                <path d="M12 8v5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                                <path d="M12 17h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                                <path d="M10.3 4.1 2.6 17.4A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.6L13.7 4.1a2 2 0 0 0-3.4 0Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
                               </svg>
                             </span>
-                            {place.routeDistanceText} · {place.routeDurationText}
+                            A mas de 1 hora{place.routeDurationText ? ` (${place.routeDurationText})` : ''}
                           </p>
                         )}
                         {place.primaryCategory && (
@@ -834,9 +1119,9 @@ export function ActivityProposalModal({
           )}
 
           <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-              <p className="font-body text-sm font-semibold text-[#1E0A4E]">Contexto opcional</p>
+              <p className="font-body text-sm font-semibold text-[#1E0A4E]">Agregar gasto o comprobante</p>
               <p className="mt-1 font-body text-xs text-[#64748B]">
-                Asocia gastos y documentos desde este mismo modal, aunque la propuesta siga en votacion o ya este confirmada.
+                Aqui puedes relacionar gastos (taxi, entradas, comida) y comprobantes (tickets, reservaciones, recibos) para esta actividad.
               </p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <button
@@ -847,7 +1132,7 @@ export function ActivityProposalModal({
                   }}
                   className="rounded-xl border border-[#D7DEEA] bg-white px-3 py-2.5 text-left font-body text-sm font-semibold text-[#1E6FD9]"
                 >
-                  Gestionar gasto
+                  Agregar o elegir gasto
                 </button>
                 <button
                   type="button"
@@ -857,7 +1142,7 @@ export function ActivityProposalModal({
                   }}
                   className="rounded-xl border border-[#D7DEEA] bg-white px-3 py-2.5 text-left font-body text-sm font-semibold text-[#7A4FD6]"
                 >
-                  Gestionar documento
+                  Agregar o elegir comprobante
                 </button>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -918,26 +1203,43 @@ export function ActivityProposalModal({
               type="button"
               onClick={() => void handleSave(true)}
               disabled={saving || !selectedPlace}
-              className="rounded-xl border border-[#1E6FD9] bg-[#EEF4FF] px-4 py-3 font-body text-sm font-semibold text-[#1E6FD9] disabled:opacity-50"
+              aria-busy={saving}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#1E6FD9] bg-[#EEF4FF] px-4 py-3 font-body text-sm font-semibold text-[#1E6FD9] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {saving ? 'Guardando...' : 'Agregar como admin (directo)'}
+              {savingMode === 'admin' && <InlineSpinner size={15} />}
+              {savingMode === 'admin' ? 'Guardando...' : 'Agregar como admin (directo)'}
             </button>
           )}
           <button
             type="button"
             onClick={() => void handleSave(false)}
             disabled={saving || !selectedPlace}
-            className="rounded-xl bg-bluePrimary px-4 py-3 font-body text-sm font-semibold text-white disabled:opacity-50"
+            aria-busy={saving}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-bluePrimary px-4 py-3 font-body text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {saving ? 'Guardando...' : editingActivity ? 'Guardar cambios' : 'Agregar actividad'}
+            {savingMode === 'normal' && <InlineSpinner size={15} />}
+            {savingMode === 'normal' ? 'Guardando...' : editingActivity ? 'Guardar cambios' : 'Agregar actividad'}
           </button>
         </div>
       </div>
 
       <ActionModal
+        open={scheduleConflictMessage !== null}
+        title="Conflicto de horario"
+        subtitle="No se puede guardar la actividad con esa hora."
+        confirmLabel="Cambiar horario"
+        onClose={() => setScheduleConflictMessage(null)}
+        onConfirm={() => setScheduleConflictMessage(null)}
+      >
+        <p className="font-body text-sm leading-relaxed text-[#475569]">
+          {scheduleConflictMessage}
+        </p>
+      </ActionModal>
+
+      <ActionModal
         open={activeContextModal === 'expense'}
-        title="Gestionar gasto"
-        subtitle="Asocia un gasto existente o crea uno nuevo desde el mismo lugar."
+        title="Agregar gasto o comprobante"
+        subtitle="Relaciona un gasto existente o crea uno nuevo, por ejemplo taxi, entradas o comida."
         confirmLabel={expenseModalTab === 'associate' ? 'Guardar seleccion' : 'Guardar gasto'}
         onClose={() => setActiveContextModal(null)}
         onConfirm={confirmExpenseModal}
@@ -1018,8 +1320,8 @@ export function ActivityProposalModal({
 
       <ActionModal
         open={activeContextModal === 'document'}
-        title="Gestionar documento"
-        subtitle="Asocia un documento existente o sube uno nuevo desde el mismo modal."
+        title="Agregar gasto o comprobante"
+        subtitle="Relaciona un comprobante existente o sube uno nuevo, por ejemplo ticket, reservacion o recibo."
         confirmLabel={documentModalTab === 'associate' ? 'Guardar seleccion' : 'Guardar documento'}
         onClose={() => setActiveContextModal(null)}
         onConfirm={confirmDocumentModal}
@@ -1100,6 +1402,41 @@ export function ActivityProposalModal({
             />
           </div>
         )}
+      </ActionModal>
+
+      <ActionModal
+        open={longRouteConfirmation !== null}
+        title="Confirmar traslado largo"
+        subtitle="La actividad seleccionada puede quedar demasiado lejos para el grupo."
+        confirmLabel="Si, agregar de todos modos"
+        confirmDisabled={saving}
+        onClose={() => setLongRouteConfirmation(null)}
+        onConfirm={() => {
+          const pending = longRouteConfirmation
+          setLongRouteConfirmation(null)
+          if (pending) void handleSave(pending.asAdminDirect, true)
+        }}
+      >
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-800">
+          <span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-red-100 text-red-700">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M12 8v5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+              <path d="M12 17h.01" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              <path d="M10.3 4.1 2.6 17.4A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.6L13.7 4.1a2 2 0 0 0-3.4 0Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <div>
+            <p className="font-body text-sm font-bold">
+              {selectedPlace?.name || 'Este lugar'} esta a mas de 1 hora desde {routeOriginLabel}.
+            </p>
+            <p className="mt-1 font-body text-sm">
+              {selectedPlace?.routeDurationText
+                ? `Google estima aproximadamente ${selectedPlace.routeDurationText} de traslado.`
+                : 'El traslado estimado supera el limite recomendado.'}
+              {' '}Confirma solo si esta distancia tiene sentido para el itinerario.
+            </p>
+          </div>
+        </div>
       </ActionModal>
     </div>
   )

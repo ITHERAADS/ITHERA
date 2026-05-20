@@ -1,10 +1,10 @@
 blank_issues_enabled: false
 
 contact_links:
-  - name:  Tablero Notion
+  - name: Tablero Notion
     url: https://www.notion.so/3169d31c051280f69a33cb0401001bd0
     about: Ver el backlog y tareas del sprint actual
 
-  - name:  Seguimiento Google Sheets
+  - name: Seguimiento Google Sheets
     url: https://docs.google.com/spreadsheets/d/1usizFziQstavDTBPxTMygbx_ATeBYn-N/edit
     about: Ver el seguimiento general del proyecto

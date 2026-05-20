@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "../../components/layout/AppLayout";
 import { useAuth } from "../../context/useAuth";
 import { groupsService, saveCurrentGroup } from "../../services/groups";
+import { isNetworkError } from "../../services/apiClient";
 import { DestinationSearch } from "../../components/DestinationSearch/DestinationSearch";
 import type { GeocodingResult } from "../../services/maps";
+import { HelpButton } from "../../components/ui/HelpButton";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Member {
@@ -118,25 +120,64 @@ function InputField({
   );
 }
 
+const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)*\.[A-Za-z]{2,24}$/;
+
+function isValidEmail(value: string) {
+  return EMAIL_REGEX.test(value.trim().toLowerCase());
+}
+
 function MembersSection({
   members,
+  maxInvitations,
   onAdd,
   onRemove,
 }: {
   members: Member[];
+  maxInvitations: number;
   onAdd: (m: Member) => void;
   onRemove: (id: string) => void;
 }) {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
 
+  const normalizedEmail = email.trim().toLowerCase();
+  const hasReachedInvitationLimit = members.length >= maxInvitations;
+  const canAddEmail =
+    normalizedEmail.length > 0 &&
+    isValidEmail(normalizedEmail) &&
+    !hasReachedInvitationLimit &&
+    !members.some((member) => member.email.toLowerCase() === normalizedEmail);
+
   const handleAdd = () => {
-    if (!email.trim()) return setError("Ingresa un correo electrónico.");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      return setError("Correo inválido.");
-    if (members.find((m) => m.email === email))
-      return setError("Ya fue agregado.");
-    onAdd({ id: crypto.randomUUID(), email });
+    if (hasReachedInvitationLimit) {
+      setError(
+        maxInvitations === 1
+          ? "Solo puedes agregar una invitación para esta capacidad."
+          : `Solo puedes agregar ${maxInvitations} invitaciones para esta capacidad.`,
+      );
+      return;
+    }
+
+    if (!normalizedEmail) {
+      setError("Ingresa un correo electrónico.");
+      return;
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      setError(
+        "Ingresa un correo electrónico válido (ej. usuario@dominio.com).",
+      );
+      return;
+    }
+
+    if (
+      members.some((member) => member.email.toLowerCase() === normalizedEmail)
+    ) {
+      setError("Ese correo ya fue agregado.");
+      return;
+    }
+
+    onAdd({ id: crypto.randomUUID(), email: normalizedEmail });
     setEmail("");
     setError("");
   };
@@ -152,16 +193,29 @@ function MembersSection({
           type="email"
           placeholder="correo@ejemplo.com"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          className={`flex-1 font-body text-sm text-[#1E0A4E] placeholder-gray-400 border rounded-xl px-4 py-3 outline-none transition-all duration-200 bg-white
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setError("");
+          }}
+          onBlur={() => {
+            if (normalizedEmail && !isValidEmail(normalizedEmail)) {
+              setError(
+                "Ingresa un correo electrónico válido (ej. usuario@dominio.com).",
+              );
+            }
+          }}
+          onKeyDown={(e) => e.key === "Enter" && canAddEmail && handleAdd()}
+          disabled={hasReachedInvitationLimit}
+          aria-invalid={Boolean(error)}
+          className={`flex-1 font-body text-sm text-[#1E0A4E] placeholder-gray-400 border rounded-xl px-4 py-3 outline-none transition-all duration-200 bg-white disabled:bg-[#F4F6F8] disabled:text-[#7A8799]
             ${error ? "border-red-400" : "border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10"}
           `}
         />
         <button
           onClick={handleAdd}
           type="button"
-          className="font-body text-sm font-semibold bg-[#1E6FD9] text-white rounded-xl px-4 py-3 hover:bg-[#1a5fc2] transition-colors whitespace-nowrap flex items-center gap-1.5"
+          disabled={!canAddEmail}
+          className="font-body text-sm font-semibold bg-[#1E6FD9] text-white rounded-xl px-4 py-3 hover:bg-[#1a5fc2] transition-colors whitespace-nowrap flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#1E6FD9]"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <line
@@ -186,6 +240,15 @@ function MembersSection({
           Agregar
         </button>
       </div>
+      {!error && (
+        <p className="font-body text-[11px] text-[#1E0A4E]/40">
+          Puedes agregar{" "}
+          {maxInvitations === 1
+            ? "1 invitación"
+            : `${maxInvitations} invitaciones`}{" "}
+          como máximo para la capacidad seleccionada.
+        </p>
+      )}
       {error && <p className="font-body text-xs text-red-500">{error}</p>}
 
       {members.length > 0 && (
@@ -195,19 +258,20 @@ function MembersSection({
               key={m.id}
               className="flex items-center justify-between bg-[#F0EEF8] rounded-xl px-4 py-2.5 border border-[#E2E8F0]"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-full bg-[#1E6FD9]/10 flex items-center justify-center">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-7 h-7 rounded-full bg-[#1E6FD9]/10 flex items-center justify-center shrink-0">
                   <span className="font-heading font-bold text-[#1E6FD9] text-[11px] uppercase">
                     {m.email[0]}
                   </span>
                 </div>
-                <span className="font-body text-sm text-[#1E0A4E]">
+                <span className="font-body text-sm text-[#1E0A4E] break-all">
                   {m.email}
                 </span>
               </div>
               <button
+                type="button"
                 onClick={() => onRemove(m.id)}
-                className="text-[#7A8799] hover:text-red-500 transition-colors"
+                className="text-[#7A8799] hover:text-red-500 transition-colors shrink-0"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                   <line
@@ -242,23 +306,66 @@ function MembersSection({
 function SectionLabel({
   icon,
   title,
+  help,
 }: {
   icon: React.ReactNode;
   title: string;
+  help?: string;
 }) {
   return (
-    <div className="flex items-center gap-2 mb-4">
-      <div className="w-7 h-7 bg-[#1E0A4E] rounded-lg flex items-center justify-center">
-        {icon}
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <div className="w-7 h-7 bg-[#1E0A4E] rounded-lg flex items-center justify-center">
+          {icon}
+        </div>
+        <h3 className="font-heading font-semibold text-[#1E0A4E] text-sm">
+          {title}
+        </h3>
       </div>
-      <h3 className="font-heading font-semibold text-[#1E0A4E] text-sm">
-        {title}
-      </h3>
+      {help && <HelpButton title={title} description={help} placement="right" />}
     </div>
   );
 }
 
+
+function StandardInlineAlert({
+  title,
+  message,
+  tone = "error",
+}: {
+  title: string;
+  message: string;
+  tone?: "error" | "warning" | "info";
+}) {
+  const toneClasses = {
+    error: "border-[#FBC7C7] bg-[#FFF5F5] text-[#C03535]",
+    warning: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]",
+    info: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
+  } satisfies Record<string, string>;
+
+  return (
+    <div
+      role="alert"
+      className={`rounded-xl border px-4 py-3 font-body ${toneClasses[tone]}`}
+    >
+      <p className="text-sm font-semibold">{title}</p>
+      <p className="mt-1 text-sm leading-relaxed">{message}</p>
+    </div>
+  );
+}
+
+function getCreateGroupErrorMessage(error: unknown): string {
+  if (isNetworkError(error)) {
+    return "Sin conexión. Verifica tu red e inténtalo de nuevo cuando recuperes internet.";
+  }
+
+  if (error instanceof Error) return error.message;
+  return "No se pudo crear el grupo. Inténtalo de nuevo.";
+}
+
 // ── Validation helpers ────────────────────────────────────────────────────────
+const MAX_TRIP_DURATION_DAYS = 60;
+
 const todayISO = () => {
   const now = new Date();
   const timezoneOffset = now.getTimezoneOffset() * 60_000;
@@ -266,10 +373,20 @@ const todayISO = () => {
 };
 
 const addDaysISO = (date: string, days: number) => {
-  const parsed = new Date(`${date}T00:00:00`);
+  const parsed = new Date(`${date}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) return "";
   parsed.setDate(parsed.getDate() + days);
   return parsed.toISOString().slice(0, 10);
+};
+
+const daysBetweenISO = (startDate: string, endDate: string) => {
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+
+  const millisecondsPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((end.getTime() - start.getTime()) / millisecondsPerDay);
 };
 
 const sanitizePositiveDecimal = (value: string) => {
@@ -309,6 +426,12 @@ const getValidationErrors = (form: FormData) => {
 
   if (form.startDate && form.endDate && form.endDate <= form.startDate) {
     e.endDate = "La fecha de regreso debe ser posterior a la de inicio.";
+  } else if (form.startDate && form.endDate) {
+    const durationDays = daysBetweenISO(form.startDate, form.endDate);
+
+    if (durationDays !== null && durationDays > MAX_TRIP_DURATION_DAYS) {
+      e.endDate = `La duración máxima del viaje es de ${MAX_TRIP_DURATION_DAYS} días.`;
+    }
   }
 
   if (!form.totalBudget.trim()) {
@@ -345,6 +468,18 @@ export function CreateGroupPage() {
   const [created, setCreated] = useState(false);
   const [groupCode, setGroupCode] = useState("");
   const [invitedCount, setInvitedCount] = useState(0);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== "undefined" && !navigator.onLine);
+
+  useEffect(() => {
+    const updateOnlineState = () => setIsOffline(typeof navigator !== "undefined" && !navigator.onLine);
+    window.addEventListener("online", updateOnlineState);
+    window.addEventListener("offline", updateOnlineState);
+    updateOnlineState();
+    return () => {
+      window.removeEventListener("online", updateOnlineState);
+      window.removeEventListener("offline", updateOnlineState);
+    };
+  }, []);
 
   const set = (key: keyof FormData) => (val: string | boolean) => {
     const normalizedValue =
@@ -358,10 +493,16 @@ export function CreateGroupPage() {
       if (
         key === "startDate" &&
         typeof normalizedValue === "string" &&
-        next.endDate &&
-        next.endDate <= normalizedValue
+        next.endDate
       ) {
-        next.endDate = "";
+        const maxEndDate = addDaysISO(normalizedValue, MAX_TRIP_DURATION_DAYS);
+
+        if (
+          next.endDate <= normalizedValue ||
+          (maxEndDate && next.endDate > maxEndDate)
+        ) {
+          next.endDate = "";
+        }
       }
 
       setErrors(getValidationErrors(next));
@@ -381,12 +522,26 @@ export function CreateGroupPage() {
   const minEndDate = form.startDate
     ? addDaysISO(form.startDate, 1)
     : todayISO();
+  const maxEndDate = form.startDate
+    ? addDaysISO(form.startDate, MAX_TRIP_DURATION_DAYS)
+    : undefined;
+  const maxInvitationSlots = Math.max(Number(form.maxMembers || 1) - 1, 0);
+  const canInviteDuringCreation = maxInvitationSlots > 0;
+
+  useEffect(() => {
+    setMembers((current) => current.slice(0, maxInvitationSlots));
+  }, [maxInvitationSlots]);
 
   const handleCreate = async () => {
     if (!validate()) return;
 
     if (!accessToken) {
       setServerError("Tu sesión expiró. Vuelve a iniciar sesión.");
+      return;
+    }
+
+    if (isOffline) {
+      setServerError("Sin conexión. La creación del grupo estará disponible cuando recuperes internet.");
       return;
     }
 
@@ -416,8 +571,10 @@ export function CreateGroupPage() {
       setGroupCode(response.group.codigo_invitacion);
       setCreatedGroupId(response.group.id);
 
-      if (members.length > 0) {
-        const emails = members.map((member) => member.email);
+      if (canInviteDuringCreation && members.length > 0) {
+        const emails = members
+          .slice(0, maxInvitationSlots)
+          .map((member) => member.email);
 
         const invitationsResponse = await groupsService.sendInvitations(
           response.group.id,
@@ -430,9 +587,7 @@ export function CreateGroupPage() {
 
       setCreated(true);
     } catch (error) {
-      setServerError(
-        error instanceof Error ? error.message : "No se pudo crear el grupo",
-      );
+      setServerError(getCreateGroupErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -567,7 +722,7 @@ export function CreateGroupPage() {
 
         <div className="relative max-w-2xl mx-auto px-4 py-8">
           <button
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate("/my-trips")}
             className="flex items-center gap-1.5 font-body text-sm text-[#1E6FD9] hover:underline mb-6"
           >
             <svg
@@ -601,6 +756,7 @@ export function CreateGroupPage() {
             <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
               <SectionLabel
                 title="Información básica"
+                help="Completa los datos generales del viaje. El nombre tiene máximo 60 caracteres y la descripción máximo 300."
                 icon={
                   <svg
                     width="14"
@@ -673,6 +829,7 @@ export function CreateGroupPage() {
             <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
               <SectionLabel
                 title="Fechas y capacidad"
+                help="Define fechas futuras y la capacidad máxima. El regreso debe ser posterior a la salida y el viaje no debe exceder 60 días."
                 icon={
                   <svg
                     width="14"
@@ -735,6 +892,12 @@ export function CreateGroupPage() {
                   placeholder=""
                   value={form.endDate}
                   min={minEndDate}
+                  max={maxEndDate}
+                  hint={
+                    form.startDate
+                      ? `Debe ser posterior a la salida y no exceder ${MAX_TRIP_DURATION_DAYS} días.`
+                      : "Selecciona primero la fecha de salida."
+                  }
                   onChange={set("endDate") as (v: string) => void}
                   error={errors.endDate}
                 />
@@ -786,47 +949,51 @@ export function CreateGroupPage() {
             </div>
 
             {/* Section 3: Members */}
-            <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
-              <SectionLabel
-                title="Invitar al grupo"
-                icon={
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    className="text-white"
-                  >
-                    <path
-                      d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                    <circle
-                      cx="9"
-                      cy="7"
-                      r="4"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    />
-                    <path
-                      d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                }
-              />
-              <MembersSection
-                members={members}
-                onAdd={(m) => setMembers((prev) => [...prev, m])}
-                onRemove={(id) =>
-                  setMembers((prev) => prev.filter((m) => m.id !== id))
-                }
-              />
-            </div>
+            {canInviteDuringCreation && (
+              <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
+                <SectionLabel
+                  title="Invitar al grupo"
+                  help="Agrega correos válidos y solo hasta el límite permitido por la capacidad seleccionada. Si eliges un viaje de una persona, esta sección se oculta."
+                  icon={
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      className="text-white"
+                    >
+                      <path
+                        d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                      <circle
+                        cx="9"
+                        cy="7"
+                        r="4"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      />
+                      <path
+                        d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  }
+                />
+                <MembersSection
+                  members={members}
+                  maxInvitations={maxInvitationSlots}
+                  onAdd={(m) => setMembers((prev) => [...prev, m])}
+                  onRemove={(id) =>
+                    setMembers((prev) => prev.filter((m) => m.id !== id))
+                  }
+                />
+              </div>
+            )}
 
             {/* Section 4: Privacy */}
             <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
@@ -857,24 +1024,46 @@ export function CreateGroupPage() {
               </div>
             </div>
 
+            {isOffline && (
+              <StandardInlineAlert
+                title="Sin conexión — modo lectura activo"
+                message="Puedes revisar la información capturada, pero no se harán búsquedas de destino ni se creará el grupo hasta recuperar internet."
+                tone="warning"
+              />
+            )}
+
             {!isFormValid && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="font-body text-xs text-amber-700">
                   Completa nombre, destino, fechas válidas y presupuesto base
-                  mayor a cero para habilitar la creación del grupo.
+                  mayor a cero para habilitar la creación del grupo. La fecha de
+                  regreso debe ser posterior a la salida y el viaje no puede
+                  exceder {MAX_TRIP_DURATION_DAYS} días.
                 </p>
               </div>
             )}
 
-            {/* Create Button */}
+            {/* Actions */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[0.8fr_1.2fr]">
+              <button
+                type="button"
+                onClick={() => navigate("/my-trips")}
+                disabled={loading}
+                className="w-full rounded-xl border border-[#E2E8F0] bg-white px-6 py-4 font-body text-sm font-medium text-[#1E0A4E] transition hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
             <button
               onClick={handleCreate}
-              disabled={loading || !isFormValid}
-              aria-disabled={loading || !isFormValid}
+              disabled={loading || !isFormValid || isOffline}
+              aria-disabled={loading || !isFormValid || isOffline}
               title={
-                !isFormValid
-                  ? "Completa los campos obligatorios con valores válidos para crear el grupo."
-                  : undefined
+                isOffline
+                  ? "Acción no disponible sin conexión."
+                  : !isFormValid
+                    ? "Completa los campos obligatorios con valores válidos para crear el grupo."
+                    : undefined
               }
               className="w-full font-body font-medium text-sm bg-[#1E6FD9] text-white rounded-xl px-6 py-4 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
@@ -944,10 +1133,12 @@ export function CreateGroupPage() {
                 </>
               )}
             </button>
+            </div>
             {serverError && (
-              <p className="mt-3 font-body text-sm text-red-500 text-center">
-                {serverError}
-              </p>
+              <StandardInlineAlert
+                title="No se puede crear el grupo"
+                message={serverError}
+              />
             )}
           </div>
         </div>

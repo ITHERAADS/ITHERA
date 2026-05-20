@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, FC, ReactNode, SetStateAction } from 'react'
 import { useAuth } from '../../context/useAuth'
+import { useSocket } from '../../hooks/useSocket'
+import { useGroupRealtimeRefresh } from '../../hooks/useGroupRealtimeRefresh'
 import { budgetService, type BudgetCategory, type BudgetSplitType } from '../../services/budget'
 import {
   documentsService,
@@ -77,6 +79,40 @@ const EMPTY_LINK_OPTIONS: ContextLinkOptions = {
   documents: [],
   activities: [],
   subgroupActivities: [],
+}
+
+const VAULT_CACHE_TTL_MS = 2 * 60 * 1000
+const vaultDataCache = new Map<
+  string,
+  { items: TripDocument[]; links: ContextLink[]; options: ContextLinkOptions; savedAt: number }
+>()
+
+function getVaultCache(groupId: string) {
+  const cached = vaultDataCache.get(groupId)
+  if (!cached) return null
+  if (Date.now() - cached.savedAt > VAULT_CACHE_TTL_MS) {
+    vaultDataCache.delete(groupId)
+    return null
+  }
+  return cached
+}
+
+function VaultSkeleton() {
+  return (
+    <div className="space-y-3" aria-busy="true" aria-live="polite">
+      {[0, 1, 2].map((item) => (
+        <div key={item} className="rounded-2xl border border-[#E2E8F0] bg-[#FCFDFE] px-4 py-4">
+          <div className="h-4 w-56 animate-pulse rounded-full bg-[#E8EEF7]" />
+          <div className="mt-3 flex gap-2">
+            <div className="h-7 w-20 animate-pulse rounded-full bg-[#F1F5F9]" />
+            <div className="h-7 w-16 animate-pulse rounded-full bg-[#F1F5F9]" />
+            <div className="h-7 w-28 animate-pulse rounded-full bg-[#F1F5F9]" />
+          </div>
+          <div className="mt-4 h-10 animate-pulse rounded-xl bg-[#F8FAFC]" />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 const entityKey = (entity: ContextEntityRef): string => `${entity.type}:${entity.id}`
@@ -166,6 +202,7 @@ export const DocumentVaultPanel: FC<Props> = ({
   isReadOnly = false,
 }) => {
   const { accessToken } = useAuth()
+  const { socket } = useSocket(accessToken)
   const [items, setItems] = useState<TripDocument[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -193,6 +230,12 @@ export const DocumentVaultPanel: FC<Props> = ({
   const [draftExpenseSplitAmounts, setDraftExpenseSplitAmounts] = useState<Record<string, string>>({})
   const [draftExpenseMemberIds, setDraftExpenseMemberIds] = useState<string[]>([])
   const [expenseModalTab, setExpenseModalTab] = useState<VaultActionTab>('associate')
+  const lastVaultCacheKeyRef = useRef<string | null>(null)
+  const itemsLengthRef = useRef(0)
+
+  useEffect(() => {
+    itemsLengthRef.current = items.length
+  }, [items.length])
 
   const memberOptions = useMemo(
     () =>
@@ -235,7 +278,7 @@ export const DocumentVaultPanel: FC<Props> = ({
     }
   }, [defaultExpensePayer, draftExpenseMemberIds.length, draftExpensePaidBy, memberOptionsSafe])
 
-  const loadContextLinks = async () => {
+  const loadContextLinks = useCallback(async () => {
     if (!groupId || !accessToken) {
       setContextLinks([])
       setLinkOptions(EMPTY_LINK_OPTIONS)
@@ -248,7 +291,17 @@ export const DocumentVaultPanel: FC<Props> = ({
     ])
     setContextLinks(linksResponse.links)
     setLinkOptions(optionsResponse.options)
-  }
+
+    const cached = getVaultCache(String(groupId))
+    if (cached) {
+      vaultDataCache.set(String(groupId), {
+        ...cached,
+        links: linksResponse.links,
+        options: optionsResponse.options,
+        savedAt: Date.now(),
+      })
+    }
+  }, [accessToken, groupId])
 
   const getLinksForDocument = (documentId: string) =>
     contextLinks
@@ -386,28 +439,68 @@ export const DocumentVaultPanel: FC<Props> = ({
     setActionModal({ target: 'document', docId: item.id, mode })
   }
 
-  const load = async () => {
+  const load = useCallback(async (silent = false) => {
     if (!groupId || !accessToken) return
-    setIsLoading(true)
+
+    const cacheKey = String(groupId)
+    const cached = getVaultCache(cacheKey)
+    if (cached && !silent) {
+      setItems(cached.items)
+      setContextLinks(cached.links)
+      setLinkOptions(cached.options)
+    }
+
+    const hasVisibleData = (cached?.items.length ?? itemsLengthRef.current) > 0
+    if (!silent && !hasVisibleData) setIsLoading(true)
     setError(null)
     try {
-      const [documents] = await Promise.all([
+      const [documents, linksResponse, optionsResponse] = await Promise.all([
         documentsService.list(groupId, accessToken),
-        loadContextLinks(),
+        contextLinksService.list(groupId, accessToken),
+        contextLinksService.options(groupId, accessToken),
       ])
+      vaultDataCache.set(cacheKey, {
+        items: documents,
+        links: linksResponse.links,
+        options: optionsResponse.options,
+        savedAt: Date.now(),
+      })
       setItems(documents)
+      setContextLinks(linksResponse.links)
+      setLinkOptions(optionsResponse.options)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudieron cargar los documentos')
+      if (!cached) {
+        setError(err instanceof Error ? err.message : 'No se pudieron cargar los documentos')
+      }
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [accessToken, groupId])
 
 
   useEffect(() => {
+    const cacheKey = groupId ? String(groupId) : null
+    if (cacheKey !== lastVaultCacheKeyRef.current) {
+      lastVaultCacheKeyRef.current = cacheKey
+      setItems([])
+      setContextLinks([])
+      setLinkOptions(EMPTY_LINK_OPTIONS)
+    }
     void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupId, accessToken])
+  }, [groupId, accessToken, load])
+
+  useGroupRealtimeRefresh({
+    socket,
+    groupId,
+    events: ['dashboard_updated'],
+    debounceMs: 250,
+    onRefresh: async (payload) => {
+      const tipo = String(payload.tipo ?? '')
+      if (tipo.includes('documento') || tipo.includes('gasto') || tipo.includes('actividad')) {
+        await load(true)
+      }
+    },
+  })
 
   const handleUpload = async (file: File | null) => {
     if (isReadOnly) return
@@ -483,7 +576,19 @@ export const DocumentVaultPanel: FC<Props> = ({
         Array.from(new Set(nextActivityKeys)),
       )
       await loadContextLinks()
-      setItems((prev) => [created, ...prev])
+      setItems((prev) => {
+        const nextItems = [created, ...prev]
+        if (groupId) {
+          const cached = getVaultCache(String(groupId))
+          vaultDataCache.set(String(groupId), {
+            items: nextItems,
+            links: cached?.links ?? contextLinks,
+            options: cached?.options ?? linkOptions,
+            savedAt: Date.now(),
+          })
+        }
+        return nextItems
+      })
       resetExpenseDraft()
       resetUploadDraft()
     } catch (err) {
@@ -589,7 +694,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                 Nota obligatoria
               </span>
               <span className="rounded-full border border-[#D7DEEA] bg-[#F8FAFC] px-3 py-1.5 font-body text-xs font-semibold text-[#475569]">
-                Contexto opcional
+                Relacionar actividad o gasto
               </span>
             </div>
           </div>
@@ -665,7 +770,9 @@ export const DocumentVaultPanel: FC<Props> = ({
           ))}
         </div>
 
-        {filteredItems.length === 0 ? (
+        {isLoading && items.length === 0 ? (
+          <VaultSkeleton />
+        ) : filteredItems.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-4 py-12 text-center">
             <p className="font-body text-sm font-semibold text-[#1E0A4E]">
               {activeFilter === 'todos' ? 'Todavía no hay documentos guardados.' : 'No hay documentos en esta categoría.'}
@@ -724,7 +831,8 @@ export const DocumentVaultPanel: FC<Props> = ({
                         </p>
                       )}
                       <div className="mt-3">
-                        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#7A8799]">Contexto asociado</p>
+                        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#7A8799]">Asociaciones confirmadas</p>
+                        <p className="mt-1 font-body text-xs text-[#7A8799]">Estos gastos y comprobantes ya estan vinculados a este elemento.</p>
                         {(linkedExpenses.length > 0 || linkedActivities.length > 0) ? (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {linkedExpenses.map((entity) => (
@@ -756,7 +864,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                           </div>
                         ) : (
                           <p className="mt-2 rounded-lg bg-[#F8FAFC] px-2.5 py-1.5 font-body text-xs text-[#7A8799]">
-                            Sin gasto ni actividad asociada.
+                            Aun no hay asociaciones confirmadas.
                           </p>
                         )}
                       </div>
@@ -772,14 +880,14 @@ export const DocumentVaultPanel: FC<Props> = ({
                         }}
                         className="rounded-xl border border-[#D7DEEA] px-3 py-2 font-body text-xs font-semibold text-[#3D4A5C] hover:bg-[#F8FAFC]"
                       >
-                        Relacionar gasto
+                        Elegir gasto
                       </button>
                       <button
                         type="button"
                         onClick={() => openDocumentAction(item, 'activity')}
                         className="rounded-xl border border-[#D7DEEA] px-3 py-2 font-body text-xs font-semibold text-[#5B35B1] hover:bg-[#F3EEFF]"
                       >
-                        Relacionar actividad
+                        Elegir actividad
                       </button>
                       <button
                         type="button"
@@ -859,9 +967,9 @@ export const DocumentVaultPanel: FC<Props> = ({
           <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="font-body text-sm font-semibold text-[#1E0A4E]">Contexto opcional</p>
+                <p className="font-body text-sm font-semibold text-[#1E0A4E]">Vincular este comprobante con una actividad o gasto</p>
                 <p className="mt-1 font-body text-xs text-[#64748B]">
-                  Relaciona este documento con un gasto o una actividad ahora, o súbelo primero y hazlo después.
+                  Relaciona este comprobante con un gasto (taxi, entradas, comida) o una actividad (tour, cena, traslado).
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -873,7 +981,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                   }}
                   className="rounded-xl border border-[#D7DEEA] bg-white px-3 py-2 font-body text-xs font-semibold text-[#1E6FD9]"
                 >
-                  Relacionar gasto
+                  Elegir gasto
                 </button>
                 <button
                   type="button"
@@ -882,7 +990,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                   }}
                   className="rounded-xl border border-[#D7DEEA] bg-white px-3 py-2 font-body text-xs font-semibold text-[#7A4FD6]"
                 >
-                  Relacionar actividad
+                  Elegir actividad
                 </button>
               </div>
             </div>
@@ -919,8 +1027,8 @@ export const DocumentVaultPanel: FC<Props> = ({
 
       <ActionModal
         open={actionModal?.mode === 'expense' && !isReadOnly}
-        title="Relacionar gasto"
-        subtitle="Selecciona un gasto existente o crea uno nuevo para dejarlo asociado al documento."
+        title="Vincular este comprobante con una actividad o gasto"
+        subtitle="Elige o crea el gasto de este comprobante, por ejemplo taxi, entradas o comida."
         confirmLabel={
           expenseModalTab === 'associate'
             ? (actionModal?.target === 'document' && savingLinksDocId ? 'Guardando...' : 'Guardar seleccion')
@@ -1016,8 +1124,8 @@ export const DocumentVaultPanel: FC<Props> = ({
 
       <ActionModal
         open={actionModal?.mode === 'activity' && !isReadOnly}
-        title="Relacionar actividad"
-        subtitle="Selecciona una actividad ya existente del viaje para dejarla asociada al documento."
+        title="Vincular este comprobante con una actividad o gasto"
+        subtitle="Elige la actividad relacionada con este comprobante, por ejemplo tour, cena o traslado."
         confirmLabel={actionModal?.target === 'document' && savingLinksDocId ? 'Guardando...' : 'Guardar seleccion'}
         confirmDisabled={actionModal?.target === 'document' && savingLinksDocId != null}
         onClose={() => setActionModal(null)}

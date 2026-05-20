@@ -1,32 +1,41 @@
-# 🏫 Documento Oficial ADS — Ithera
+# ADS - Documentacion Academica
 
-Esta carpeta contiene el documento oficial entregado para la materia de Análisis y Diseño de Sistemas.
+Esta carpeta agrupa entregables academicos relacionados con la unidad de aprendizaje **Analisis y Diseno de Sistemas**.
 
-## Contenido
-
-| Archivo | Descripción |
-|---------|-------------|
-| `Documento_Oficial_ITHERA_ADS.pdf` | Documento completo de planteamiento inicial y análisis |
-
-## Estructura del documento
-
-El documento oficial cubre:
-
-1. **Introducción** — Problemática, alcance y objetivos
-2. **Análisis** — Actores, RF, RNF, RNB, diagramas de caso de uso
-3. **Diseño** — Pantallas por módulo, bases de datos, diagramas de clases
-4. **Planeación** — Stack tecnológico, estrategia de sincronía, catálogo de APIs
-5. **Gestión** — Work Agreements, Gitflow, tableros de seguimiento
-
-## Datos del proyecto
+## Contexto
 
 | Campo | Valor |
-|-------|-------|
-| Institución | Instituto Politécnico Nacional — ESCOM |
-| Materia | Análisis y Diseño de Sistemas |
+| --- | --- |
+| Proyecto | ITHERA |
+| Institucion | Instituto Politecnico Nacional |
+| Escuela | Escuela Superior de Computo |
+| Carrera | Ingenieria en Sistemas Computacionales |
+| Unidad de aprendizaje | Analisis y Diseno de Sistemas |
+| Ciclo | 2026/2 |
 | Grupo | 5CM3 |
-| Equipo | Equipo 3 |
-| Profesora | Idalia Maldonado Castillo |
-| Fecha de inicio | 2 de marzo de 2026 |
+| Profesora | Idalia Maldonado |
+| Equipo | 3 |
 
-> Sube aquí el PDF oficial: `Documento_Oficial_ITHERA_ADS.pdf`
+## Que debe ir aqui
+
+- Documentos oficiales de ADS.
+- Entregables finales revisados.
+- Versiones exportadas a PDF cuando apliquen.
+- Evidencias academicas que no pertenezcan especificamente a API, arquitectura, GitFlow, workflows o frontend/backend.
+
+## Que no debe ir aqui
+
+- Documentacion tecnica viva del repo.
+- Endpoints REST.
+- Reglas de GitFlow.
+- Reportes temporales o extracciones automaticas ilegibles.
+
+## Convencion sugerida
+
+```text
+ITHERA_ADS_Entrega_Final.pdf
+ITHERA_ADS_Reporte_Sprint_9.docx
+ITHERA_ADS_Anexos.pdf
+```
+
+Si se agrega un documento oficial, actualizar este README con una breve descripcion.

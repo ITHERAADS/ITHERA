@@ -442,11 +442,10 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
           </svg>
         </div>
         <h3 className="mb-2 font-heading text-xl font-bold text-purpleNavbar">
-          Aún no hay planes en el itinerario
+          Aún no hay actividades en el itinerario.
         </h3>
         <p className="mx-auto mb-5 max-w-md font-body text-sm leading-relaxed text-gray500">
-          Crea la primera propuesta para que el viaje empiece a tomar forma.
-          Puedes agregar una actividad, un traslado o un hospedaje.
+          ¡Empieza añadiendo la primera!
         </p>
         <div className="mb-6 grid gap-2 text-left sm:grid-cols-3">
           {["Actividad", "Transporte", "Hospedaje"].map((label) => (
@@ -504,21 +503,24 @@ function HeroCard({
     "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=400&fit=crop";
 
   return (
-    <div className="relative mb-4 min-h-[220px] shrink-0 overflow-hidden rounded-2xl">
+    <div className="relative mb-4 min-h-[280px] shrink-0 overflow-hidden rounded-2xl">
       <img
         src={heroImage}
         alt={destination}
         className="absolute inset-0 h-full w-full object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
-      <div className="absolute left-5 top-5 flex flex-wrap gap-2">
-        <span className="inline-flex items-center gap-2 rounded-xl border border-[#BFD7FF]/50 bg-[#1E6FD9]/45 px-3 py-2 font-body text-[11px] font-bold uppercase tracking-wide text-white shadow-sm backdrop-blur-md">
+      <div className="relative flex min-h-[280px] flex-col justify-between p-5">
+      <div className="flex max-w-full flex-col items-start gap-2 sm:flex-row sm:flex-wrap">
+        <span className="inline-flex max-w-full items-center gap-2 rounded-xl border border-[#BFD7FF]/50 bg-[#1E6FD9]/45 px-3 py-2 font-body text-[11px] font-bold uppercase tracking-wide text-white shadow-sm backdrop-blur-md">
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20 text-[#D9E8FF]">
             <IconMapPinSmall />
           </span>
-          {activeDay !== null
-            ? `DÍA ${activeDay} / ${totalDays}`
-            : `${destination.toUpperCase()}`}
+          <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+            {activeDay !== null
+              ? `DÍA ${activeDay} / ${totalDays}`
+              : `${destination.toUpperCase()}`}
+          </span>
         </span>
         <span className="inline-flex items-center gap-2 rounded-xl border border-[#FFE8B6]/55 bg-[#F59E0B]/45 px-3 py-2 font-body text-[11px] font-bold uppercase tracking-wide text-white shadow-sm backdrop-blur-md">
           <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20 text-[#FFF4D6]">
@@ -527,12 +529,12 @@ function HeroCard({
           {dateLabel}
         </span>
       </div>
-      <div className="absolute bottom-0 left-0 right-0 px-6 pb-5">
-        <h1 className="mb-1 font-heading text-[30px] font-bold leading-tight text-white">
+      <div>
+        <h1 className="mb-3 max-w-4xl break-words font-heading text-2xl font-bold leading-tight text-white [overflow-wrap:anywhere] md:text-[30px]">
           {destination}
         </h1>
         <div className="mb-4 flex flex-wrap gap-2">
-          <span className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/18 px-3 py-2 font-body text-xs font-bold text-white shadow-sm backdrop-blur-md">
+          <span className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/20 px-3 py-2 font-body text-xs font-bold text-white shadow-sm backdrop-blur-md">
             <span className="h-2.5 w-2.5 rounded-full bg-[#35C56A]" />
             {activities.length} actividad{activities.length !== 1 ? "es" : ""} planeada
             {activities.length !== 1 ? "s" : ""}
@@ -566,6 +568,7 @@ function HeroCard({
             </button>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
@@ -2742,7 +2745,7 @@ export function DashboardPage() {
       .filter((day) => day.activities.length > 0);
 
     if (confirmedByDay.length === 0) {
-      window.alert("No hay actividades confirmadas para exportar.");
+      window.alert("El itinerario no tiene elementos confirmados para exportar aún.");
       return;
     }
 

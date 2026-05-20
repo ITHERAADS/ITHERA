@@ -456,6 +456,16 @@ router.delete('/:groupId/members/:memberId', requireAuth, async (req: Request, r
   }
 });
 
+router.patch('/:groupId/close', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const group = await GroupsService.closeGroup(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, message: 'Viaje cerrado correctamente', group });
+  } catch (err: unknown) {
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
+  }
+});
+
 router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { nombre, descripcion, fecha_inicio, fecha_fin, maximo_miembros } = req.body as {
@@ -464,6 +474,8 @@ router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Prom
       fecha_inicio?: string;
       fecha_fin?: string;
       maximo_miembros?: number;
+      modulo_itinerario_bloqueado?: boolean;
+      modulo_presupuesto_bloqueado?: boolean;
     };
 
     if (nombre !== undefined && (!nombre.trim() || nombre.trim().length > GROUP_NAME_MAX_LENGTH)) {

@@ -274,7 +274,7 @@ export const MyWalletView: FC<Props> = ({
       <div className="bg-[#1E0A4E] px-6 pb-8 pt-6">
         <button
           onClick={onBack}
-          className="mb-4 inline-flex items-center gap-2 rounded-lg border border-white/30 bg-white/12 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-white/20 hover:shadow-md"
+          className="mb-4 inline-flex items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-white/20 hover:shadow-md"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M19 12H5M12 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

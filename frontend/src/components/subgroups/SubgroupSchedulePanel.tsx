@@ -2846,11 +2846,11 @@ export function SubgroupSchedulePanel({
                                             <div className="relative flex h-full min-h-[280px] flex-col justify-between p-5 text-white">
                                               <div className="flex flex-wrap items-start justify-between gap-3">
                                                 <div className="flex flex-wrap gap-2">
-                                                  <span className="rounded-full bg-white/16 px-3 py-1 text-xs font-semibold backdrop-blur">
+                                                  <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur">
                                                     Subgrupo
                                                   </span>
                                                   {details?.starts_at && (
-                                                    <span className="rounded-full bg-white/16 px-3 py-1 text-xs font-semibold backdrop-blur">
+                                                    <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur">
                                                       {dt(details.starts_at)}
                                                     </span>
                                                   )}
@@ -2871,7 +2871,7 @@ export function SubgroupSchedulePanel({
                                                             subgroup,
                                                           )
                                                         }
-                                                        className="rounded-full border border-white/30 bg-white/12 px-3 py-1.5 text-xs font-semibold backdrop-blur"
+                                                        className="rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold backdrop-blur"
                                                       >
                                                         Editar
                                                       </button>
@@ -2910,7 +2910,7 @@ export function SubgroupSchedulePanel({
                                                     subgroup.name}
                                                 </h5>
                                                 {details?.location && (
-                                                  <p className="mt-2 max-w-xl text-sm text-white/88">
+                                                  <p className="mt-2 max-w-xl text-sm text-white/90">
                                                     {details.location}
                                                   </p>
                                                 )}
@@ -2951,7 +2951,7 @@ export function SubgroupSchedulePanel({
                                                         : "Unirme a este plan"}
                                                   </button>
                                                 )}
-                                                <div className="rounded-2xl border border-white/18 bg-white/10 px-4 py-3 text-sm text-white/88 backdrop-blur">
+                                                <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white/90 backdrop-blur">
                                                   {subgroup.members.length === 0
                                                     ? "Aun nadie se suma"
                                                     : `${subgroup.members.length} ${subgroup.members.length === 1 ? "persona ya esta dentro" : "personas ya estan dentro"}`}

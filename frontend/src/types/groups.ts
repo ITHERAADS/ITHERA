@@ -32,6 +32,8 @@ export interface Group {
   punto_partida_propuesta_id?: number | string | null
   punto_partida_actualizado_at?: string | null
   presupuesto_total?: number | string | null
+  modulo_itinerario_bloqueado?: boolean
+  modulo_presupuesto_bloqueado?: boolean
 }
 
 export interface GroupHistoryItem {
@@ -63,6 +65,8 @@ export interface CreateGroupPayload {
   destino_formatted_address?: string | null
   destino_photo_name?: string | null
   destino_photo_url?: string | null
+  modulo_itinerario_bloqueado?: boolean
+  modulo_presupuesto_bloqueado?: boolean
 }
 
 export interface UpdateGroupPayload {
@@ -79,10 +83,18 @@ export interface UpdateGroupPayload {
   destino_formatted_address?: string | null
   destino_photo_name?: string | null
   destino_photo_url?: string | null
+  modulo_itinerario_bloqueado?: boolean
+  modulo_presupuesto_bloqueado?: boolean
 }
 
 export interface CreateInvitationsPayload {
   emails: string[]
+}
+
+export interface GroupInviteSettings {
+  expiresAt: string | null
+  maxUses: number | null
+  usedCount: number
 }
 
 export interface GroupInvitationResult {

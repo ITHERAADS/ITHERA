@@ -827,7 +827,7 @@ export function Navbar(props: NavbarProps) {
 
   const navBase = 'fixed top-0 left-0 right-0 z-50 h-20 px-6 flex items-center transition-all duration-300'
   const navTheme = isDashboard
-    ? 'bg-purpleNavbar border-b border-white/10'
+    ? 'border-b border-white/10 bg-[linear-gradient(90deg,#24105E_0%,#2B1163_44%,#5B2BC0_100%)]'
     : scrolled
       ? 'bg-white/90 border-b border-[#E2E8F0] shadow-sm backdrop-blur-xl'
       : 'bg-[#1E0A4E]/20 border-b border-white/10 backdrop-blur-xl'
@@ -851,11 +851,11 @@ export function Navbar(props: NavbarProps) {
         />
       </a>
 
-      {/* Sidebar toggle — dashboard only, always visible */}
+      {/* Sidebar toggle — dashboard only on tablet/desktop; mobile uses its own menu button */}
       {isDashboard && (
         <button
           onClick={(props as DashboardNavbarProps).onToggleSidebar}
-          className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors ml-2 shrink-0"
+          className="ml-2 hidden shrink-0 rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white md:flex"
           aria-label="Alternar sidebar"
         >
           <IconMenu />

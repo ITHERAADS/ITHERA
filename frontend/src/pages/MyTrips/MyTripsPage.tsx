@@ -135,6 +135,15 @@ function IconLuggage() {
   )
 }
 
+function IconPlaneBadge() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M21 3L9.5 14.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M21 3l-7 18-4.5-6.5L3 10l18-7z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function IconWifiOff() {
   return (
     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -336,33 +345,41 @@ function RolBadge({ rol, dark = false }: { rol: string; dark?: boolean }) {
 function FeaturedCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => void }) {
   const g = item.grupos_viaje
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#2D1266] bg-[#1E0A4E] p-5 shadow-lg">
-      <div className="mb-3 flex items-center justify-between">
-        <StatusChip estado="activo"/>
-        <RolBadge rol={item.rol} dark />
-      </div>
-      <h2 className="font-heading text-xl font-bold text-white leading-tight mb-1">
-        {g.nombre}
-      </h2>
-      {g.destino && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-white/50"><IconMap /></span>
-          <p className="font-body text-[13px] text-white/70">{g.destino}</p>
+    <div className="relative overflow-hidden rounded-3xl border border-[#D8C8FF] bg-[linear-gradient(135deg,#1E0A4E_0%,#4F24A8_48%,#7A4FD6_100%)] p-5 shadow-[0_22px_46px_rgba(30,10,78,0.22)]">
+      <div className="absolute -bottom-24 left-10 h-56 w-56 rounded-full bg-[#1E6FD9]/20 blur-3xl" />
+      <div className="absolute -right-20 top-8 h-48 w-48 rounded-full bg-[#D8C8FF]/20 blur-3xl" />
+      <div className="relative">
+        <div className="mb-5 flex items-center justify-between">
+          <StatusChip estado="activo"/>
+          <RolBadge rol={item.rol} dark />
         </div>
-      )}
-      <div className="flex items-center gap-1.5 mb-4">
-        <span className="text-white/50"><IconClock /></span>
-        <p className="font-body text-[12px] text-white/50">
-          {formatRange(g.fecha_inicio, g.fecha_fin)}
-        </p>
-      </div>
-      <div className="flex justify-end">
-        <button
-          onClick={onClick}
-          className="inline-flex min-w-[132px] items-center justify-center rounded-full border border-white/80 bg-white px-5 py-2.5 font-body text-[13px] font-semibold text-[#1E0A4E] shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md"
-        >
-          Abrir viaje →
-        </button>
+        <h2 className="font-heading text-2xl font-extrabold leading-tight text-white">
+          {g.nombre}
+        </h2>
+        <div className="mt-4 grid max-w-2xl gap-2">
+          {g.destino && (
+            <div className="flex min-w-0 items-start gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2.5">
+              <span className="mt-0.5 shrink-0 text-[#D8C8FF]"><IconMap /></span>
+              <p className="min-w-0 break-words font-body text-[13px] font-semibold leading-snug text-white/85 [overflow-wrap:anywhere]">
+                {g.destino}
+              </p>
+            </div>
+          )}
+          <div className="flex min-w-0 items-start gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2.5">
+            <span className="mt-0.5 shrink-0 text-[#BFD7FF]"><IconClock /></span>
+            <p className="min-w-0 break-words font-body text-[13px] font-semibold leading-snug text-white/85">
+              {formatRange(g.fecha_inicio, g.fecha_fin)}
+            </p>
+          </div>
+        </div>
+        <div className="mt-8 flex justify-end">
+          <button
+            onClick={onClick}
+            className="inline-flex min-w-[132px] items-center justify-center rounded-full border border-white/80 bg-white px-5 py-2.5 font-body text-[13px] font-bold text-[#1E0A4E] shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md"
+          >
+            Abrir viaje →
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -377,48 +394,54 @@ function TripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => vo
   return (
     <button
       onClick={onClick}
-      className={`w-full overflow-hidden rounded-2xl border p-5 text-left shadow-sm transition-all hover:shadow-md ${
+      className={`w-full overflow-hidden rounded-3xl border p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
         isAdmin
-          ? 'border-[#2D1266] bg-[#1E0A4E] text-white'
+          ? 'border-[#D8C8FF] bg-[linear-gradient(135deg,#1E0A4E,#5B2BC0)] text-white'
           : 'border-[#C3D3EC] bg-white text-[#1E0A4E] shadow-[0_8px_22px_rgba(30,10,78,0.08)] hover:border-[#1E6FD9]/50'
       }`}
     >
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="mb-4 flex items-center justify-between gap-2">
         <StatusChip estado={g.estado} />
-        <RolBadge rol={item.rol} />
+        <RolBadge rol={item.rol} dark={isAdmin} />
       </div>
 
-      <h2 className={`font-heading text-lg font-bold leading-tight mb-1 ${
+      <h2 className={`mb-4 break-words font-heading text-xl font-extrabold leading-tight [overflow-wrap:anywhere] ${
         isAdmin ? 'text-white' : 'text-[#1E0A4E]'
       }`}>
         {g.nombre}
       </h2>
 
-      {g.destino && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className={isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'}>
-            <IconMap />
-          </span>
-          <p className={`font-body text-[13px] ${
-            isAdmin ? 'text-white/70' : 'text-[#6B7280]'
+      <div className="grid gap-2">
+        {g.destino && (
+          <div className={`flex min-w-0 items-start gap-2 rounded-2xl border px-3 py-2.5 ${
+            isAdmin ? 'border-white/15 bg-white/10' : 'border-[#D9E4F7] bg-[#F8FAFF]'
           }`}>
-            {g.destino}
+            <span className={`mt-0.5 shrink-0 ${isAdmin ? 'text-[#D8C8FF]' : 'text-[#7A4FD6]'}`}>
+              <IconMap />
+            </span>
+            <p className={`min-w-0 break-words font-body text-[13px] font-semibold leading-snug [overflow-wrap:anywhere] ${
+              isAdmin ? 'text-white/85' : 'text-[#475569]'
+            }`}>
+              {g.destino}
+            </p>
+          </div>
+        )}
+
+        <div className={`flex min-w-0 items-start gap-2 rounded-2xl border px-3 py-2.5 ${
+          isAdmin ? 'border-white/15 bg-white/10' : 'border-[#D9E4F7] bg-[#F8FAFF]'
+        }`}>
+          <span className={`mt-0.5 shrink-0 ${isAdmin ? 'text-[#BFD7FF]' : 'text-[#1E6FD9]'}`}>
+            <IconClock />
+          </span>
+          <p className={`min-w-0 break-words font-body text-[13px] font-semibold leading-snug ${
+            isAdmin ? 'text-white/85' : 'text-[#475569]'
+          }`}>
+            {formatRange(g.fecha_inicio, g.fecha_fin)}
           </p>
         </div>
-      )}
-
-      <div className="flex items-center gap-1.5 mb-4">
-        <span className={isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'}>
-          <IconClock />
-        </span>
-        <p className={`font-body text-[12px] ${
-          isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'
-        }`}>
-          {formatRange(g.fecha_inicio, g.fecha_fin)}
-        </p>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span className={`font-body text-xs ${
           isAdmin ? 'text-white/60' : 'text-[#6B7280]'
         }`}>
@@ -428,7 +451,7 @@ function TripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => vo
         <span className={`inline-flex min-w-[132px] items-center justify-center rounded-full border px-5 py-2.5 font-body text-[13px] font-semibold shadow-sm transition-all ${
           isAdmin
             ? 'border-white/80 bg-white text-[#1E0A4E]'
-            : 'border-[#9FC0F4] bg-[#EAF2FF] text-[#1E6FD9]'
+            : 'border-[#D8C8FF] bg-[#F3EEFF] text-[#6D45C0]'
         }`}>
           Abrir viaje →
         </span>
@@ -570,35 +593,67 @@ export function MyTripsPage() {
       ) : error ? (
         <ErrorState onRetry={() => { void fetchTrips() }}/>
       ) : (
-        <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
+        <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#FFFFFF_0%,#F8F6FF_48%,#F3EEFF_100%)]">
 
           {/* ── Header ── */}
-          <div className="bg-white border-b border-[#E2E8F0] px-6 py-5">
-            <h1 className="font-heading text-2xl font-bold text-[#1E0A4E] mb-0.5">
-              Hola, {firstName} 👋
-            </h1>
-            <p className="font-body text-sm text-[#6B7280]">
-              {hasTrips
-                ? `Tienes ${activos.length} viaje${activos.length !== 1 ? 's' : ''} activo${activos.length !== 1 ? 's' : ''}`
-                : 'Empieza creando tu primer viaje o únete a uno existente'}
-            </p>
+          <div className="border-b border-[#D9E4F7] bg-white/85 px-6 py-6 backdrop-blur">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] text-white shadow-[0_14px_28px_rgba(30,10,78,0.22)]">
+                  <IconPlaneBadge />
+                </div>
+                <div className="min-w-0">
+                  <p className="mb-1 inline-flex items-center gap-2 rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#6D45C0]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#7A4FD6]" />
+                    Centro de viajes
+                  </p>
+                  <h1 className="font-heading text-3xl font-extrabold leading-tight text-[#1E0A4E]">
+                    Hola, {firstName}
+                  </h1>
+                  <p className="mt-1 font-body text-sm text-[#64748B]">
+                    {hasTrips
+                      ? `Tienes ${activos.length} viaje${activos.length !== 1 ? 's' : ''} activo${activos.length !== 1 ? 's' : ''}`
+                      : 'Empieza creando tu primer viaje o únete a uno existente'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:w-[320px]">
+                <div className="rounded-2xl border border-[#D8C8FF] bg-[#F3EEFF] px-4 py-3">
+                  <p className="font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#6D45C0]">
+                    Activos
+                  </p>
+                  <p className="mt-1 font-heading text-2xl font-extrabold text-[#1E0A4E]">
+                    {activos.length}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#CFE0FF] bg-[#EEF4FF] px-4 py-3">
+                  <p className="font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#1E6FD9]">
+                    Historial
+                  </p>
+                  <p className="mt-1 font-heading text-2xl font-extrabold text-[#1E0A4E]">
+                    {pasados.length}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* ── Quick actions ── */}
-          <div className="px-6 py-4 flex gap-3">
+          <div className="grid gap-3 px-6 py-4 md:grid-cols-2">
             <button
               onClick={() => navigate('/create-group')}
-              className="flex-1 flex items-center justify-center gap-2 bg-[#1E6FD9] text-white font-body text-sm font-semibold rounded-xl py-3 hover:opacity-90 transition-opacity shadow-sm"
+              className="flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] py-3.5 font-body text-sm font-bold text-white shadow-[0_14px_28px_rgba(30,10,78,0.18)] transition hover:-translate-y-0.5"
             >
               <IconPlus/>
               Crear viaje
             </button>
             <button
               onClick={() => setShowJoin((v) => !v)}
-              className={`flex-1 flex items-center justify-center gap-2 font-body text-sm font-semibold rounded-xl py-3 border transition-all shadow-sm
+              className={`flex items-center justify-center gap-2 rounded-2xl border py-3.5 font-body text-sm font-bold shadow-sm transition-all hover:-translate-y-0.5
                 ${showJoin
                   ? 'bg-[#1E0A4E] text-white border-[#1E0A4E]'
-                  : 'bg-white text-[#1E0A4E] border-[#E2E8F0] hover:border-[#1E0A4E]/30'
+                  : 'bg-white text-[#1E0A4E] border-[#D9E4F7] hover:border-[#7A4FD6]/60'
                 }`}
             >
               <IconKey/>

@@ -58,9 +58,14 @@ const addDaysISO = (date: string, days: number) => {
   return parsed.toISOString().slice(0, 10)
 }
 
-const getValidationError = (form: SettingsForm) => {
+const getValidationError = (form: SettingsForm, currentGroup?: Group | null) => {
   const maxMembers = Number(form.maxMembers)
   const today = todayISO()
+  const originalStartDate = currentGroup?.fecha_inicio ?? ''
+  const originalEndDate = currentGroup?.fecha_fin ?? ''
+  const startDateChanged = Boolean(form.startDate && form.startDate !== originalStartDate)
+  const endDateChanged = Boolean(form.endDate && form.endDate !== originalEndDate)
+  const tripAlreadyStarted = Boolean(originalStartDate && originalStartDate < today)
 
   if (!form.name.trim()) return 'El nombre del viaje es obligatorio.'
   if (form.name.trim().length > GROUP_NAME_MAX_LENGTH) {
@@ -70,10 +75,13 @@ const getValidationError = (form: SettingsForm) => {
   if (form.description.trim().length > GROUP_DESCRIPTION_MAX_LENGTH) {
     return `La descripción permite máximo ${GROUP_DESCRIPTION_MAX_LENGTH} caracteres.`
   }
-  if (form.startDate && form.startDate < today) {
+  if (startDateChanged && tripAlreadyStarted) {
+    return 'No puedes cambiar la fecha de inicio de un viaje que ya comenzó. Solo puedes extender o ajustar la fecha de fin.'
+  }
+  if (startDateChanged && form.startDate < today) {
     return 'La fecha de inicio no puede ser anterior a hoy.'
   }
-  if (form.endDate && form.endDate < today) {
+  if (endDateChanged && form.endDate < today) {
     return 'La fecha de fin no puede ser anterior a hoy.'
   }
   if (form.startDate && form.endDate && form.endDate <= form.startDate) {
@@ -85,6 +93,7 @@ const getValidationError = (form: SettingsForm) => {
 
   return ''
 }
+
 
 export function GroupSettingsPage() {
   const navigate = useNavigate()
@@ -117,8 +126,22 @@ export function GroupSettingsPage() {
   const currentGroupFallback = getCurrentGroup()
   const effectiveGroup = group ?? currentGroupFallback
   const effectiveGroupId = String(group?.id ?? currentGroupFallback?.id ?? groupId ?? '')
-  const formError = getValidationError(form)
-  const minEndDate = form.startDate ? addDaysISO(form.startDate, 1) : todayISO()
+  const formError = getValidationError(form, effectiveGroup)
+  const today = todayISO()
+  const originalStartDate = effectiveGroup?.fecha_inicio ?? ''
+  const originalEndDate = effectiveGroup?.fecha_fin ?? ''
+  const tripAlreadyStarted = Boolean(originalStartDate && originalStartDate < today)
+  const datesWereChanged = Boolean(
+    (form.startDate && form.startDate !== originalStartDate) ||
+    (form.endDate && form.endDate !== originalEndDate)
+  )
+  const destinationWasChanged = Boolean(
+    group &&
+    form.destination.trim() &&
+    form.destination.trim() !== (group.destino ?? '').trim()
+  )
+  const minStartDate = tripAlreadyStarted ? originalStartDate : today
+  const minEndDate = form.startDate ? addDaysISO(form.startDate, 1) : today
   const isAdmin = effectiveGroup?.myRole === 'admin'
   const isReadOnly = isClosedGroup(effectiveGroup) || !isAdmin
 
@@ -212,7 +235,7 @@ export function GroupSettingsPage() {
   const handleSave = async () => {
     if (!accessToken || !group || isReadOnly) return
 
-    const validationError = getValidationError(form)
+    const validationError = getValidationError(form, group)
     if (validationError) {
       setError(validationError)
       return
@@ -442,11 +465,16 @@ export function GroupSettingsPage() {
                 <input
                   type="date"
                   value={form.startDate}
-                  min={todayISO()}
+                  min={minStartDate}
                   onChange={(e) => setField('startDate', e.target.value)}
-                  disabled={isReadOnly}
-                  className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
+                  disabled={isReadOnly || tripAlreadyStarted}
+                  className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]"
                 />
+                {tripAlreadyStarted && !isReadOnly && (
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-[#7A8799]">
+                    El viaje ya comenzó; la fecha de inicio se conserva para no mover actividades existentes.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -459,7 +487,7 @@ export function GroupSettingsPage() {
                   min={minEndDate}
                   onChange={(e) => setField('endDate', e.target.value)}
                   disabled={isReadOnly}
-                  className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm"
+                  className="w-full border border-[#E2E8F0] rounded-xl px-4 py-3 text-sm disabled:bg-[#F8FAFC] disabled:text-[#94A3B8]"
                 />
               </div>
 
@@ -584,6 +612,18 @@ export function GroupSettingsPage() {
                 </div>
               </div>
             </div>
+
+            {datesWereChanged && !formError && !isReadOnly && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
+                Al cambiar las fechas, el sistema validará que todas las actividades existentes sigan dentro del rango del viaje para no romper los días del itinerario.
+              </div>
+            )}
+
+            {destinationWasChanged && !isReadOnly && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
+                Si el destino nuevo está lejos y el viaje ya tiene actividades, el sistema bloqueará el cambio. En ese caso conviene crear un viaje nuevo o mover primero las actividades.
+              </div>
+            )}
 
             {formError && !error && (
               <p className="mt-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">

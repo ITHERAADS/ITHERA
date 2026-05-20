@@ -121,6 +121,143 @@ const validateTripDateRange = (startDate?: string | null, endDate?: string | nul
   }
 };
 
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const toDateOnly = (value?: string | null): string | null => {
+  if (!value) return null;
+  return String(value).slice(0, 10);
+};
+
+const hasTripStarted = (startDate?: string | null): boolean => {
+  const date = toDateOnly(startDate);
+  return Boolean(date && date < todayISO());
+};
+
+const coordinatesAreAvailable = (latitude?: unknown, longitude?: unknown): latitude is number =>
+  Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude));
+
+const distanceInKilometers = (
+  fromLatitude: number,
+  fromLongitude: number,
+  toLatitude: number,
+  toLongitude: number
+): number => {
+  const earthRadiusKm = 6371;
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const deltaLatitude = toRadians(toLatitude - fromLatitude);
+  const deltaLongitude = toRadians(toLongitude - fromLongitude);
+  const startLatitude = toRadians(fromLatitude);
+  const endLatitude = toRadians(toLatitude);
+
+  const a =
+    Math.sin(deltaLatitude / 2) ** 2 +
+    Math.cos(startLatitude) * Math.cos(endLatitude) * Math.sin(deltaLongitude / 2) ** 2;
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const getGroupActivityDateStats = async (groupId: string) => {
+  const { data: itineraries, error: itineraryError } = await supabase
+    .from('itinerarios')
+    .select('id_itinerario')
+    .eq('grupo_id', groupId);
+
+  if (itineraryError) throw new Error(itineraryError.message);
+
+  const itineraryIds = (itineraries ?? [])
+    .map((item: any) => item.id_itinerario)
+    .filter(Boolean);
+
+  if (itineraryIds.length === 0) {
+    return { count: 0, minDate: null as string | null, maxDate: null as string | null };
+  }
+
+  const { data: activities, error: activitiesError } = await supabase
+    .from('actividades')
+    .select('fecha_inicio, fecha_fin, estado')
+    .in('itinerario_id', itineraryIds)
+    .neq('estado', 'cancelada');
+
+  if (activitiesError) throw new Error(activitiesError.message);
+
+  const dates = (activities ?? [])
+    .flatMap((activity: any) => [toDateOnly(activity.fecha_inicio), toDateOnly(activity.fecha_fin)])
+    .filter((date: string | null): date is string => Boolean(date));
+
+  return {
+    count: activities?.length ?? 0,
+    minDate: dates.length > 0 ? dates.reduce((min, date) => (date < min ? date : min), dates[0]) : null,
+    maxDate: dates.length > 0 ? dates.reduce((max, date) => (date > max ? date : max), dates[0]) : null,
+  };
+};
+
+const assertDateUpdateDoesNotBreakExistingPlan = async (
+  groupId: string,
+  nextStartDate?: string | null,
+  nextEndDate?: string | null
+) => {
+  if (!nextStartDate || !nextEndDate) return;
+
+  const stats = await getGroupActivityDateStats(groupId);
+  if (stats.count === 0 || !stats.minDate || !stats.maxDate) return;
+
+  if (stats.minDate < nextStartDate || stats.maxDate > nextEndDate) {
+    throw Object.assign(
+      new Error(
+        `ERR-23-003: El nuevo rango no cubre actividades existentes (${stats.minDate} a ${stats.maxDate}). Ajusta las fechas o mueve primero esas actividades.`
+      ),
+      {
+        statusCode: 409,
+        code: 'TRIP_DATES_CONTAIN_EXISTING_ACTIVITIES',
+        errorCode: 'ERR-23-003',
+        conflict: { minActivityDate: stats.minDate, maxActivityDate: stats.maxDate, activityCount: stats.count },
+      }
+    );
+  }
+};
+
+const assertDestinationUpdateIsSafe = async (currentGroup: any, destinationFields: any) => {
+  const currentPlaceId = currentGroup.destino_place_id ?? null;
+  const nextPlaceId = destinationFields.destino_place_id ?? null;
+  const placeChanged = Boolean(nextPlaceId && currentPlaceId && nextPlaceId !== currentPlaceId);
+  const coordinatesChanged =
+    coordinatesAreAvailable(currentGroup.destino_latitud, currentGroup.destino_longitud) &&
+    coordinatesAreAvailable(destinationFields.destino_latitud, destinationFields.destino_longitud) &&
+    distanceInKilometers(
+      Number(currentGroup.destino_latitud),
+      Number(currentGroup.destino_longitud),
+      Number(destinationFields.destino_latitud),
+      Number(destinationFields.destino_longitud)
+    ) > 50;
+
+  if (!placeChanged && !coordinatesChanged) return;
+
+  const stats = await getGroupActivityDateStats(String(currentGroup.id));
+  if (stats.count === 0) return;
+
+  if (
+    coordinatesAreAvailable(currentGroup.destino_latitud, currentGroup.destino_longitud) &&
+    coordinatesAreAvailable(destinationFields.destino_latitud, destinationFields.destino_longitud)
+  ) {
+    const distance = distanceInKilometers(
+      Number(currentGroup.destino_latitud),
+      Number(currentGroup.destino_longitud),
+      Number(destinationFields.destino_latitud),
+      Number(destinationFields.destino_longitud)
+    );
+
+    if (distance <= 50) return;
+  }
+
+  throw Object.assign(
+    new Error(
+      'ERR-23-003: El destino nuevo está lejos del destino original y el viaje ya tiene actividades. Crea un viaje nuevo o elimina/reagenda las actividades antes de cambiarlo.'
+    ),
+    { statusCode: 409, code: 'TRIP_DESTINATION_CONFLICT', errorCode: 'ERR-23-003' }
+  );
+};
+
 const generateGroupCode = (length = 8): string => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   return Array.from({ length }, () =>
@@ -1980,10 +2117,49 @@ export const updateGroup = async (
       : undefined;
 
   const currentGroup = await getGroupById(groupId);
-  const nextStartDate = payload.fecha_inicio !== undefined ? payload.fecha_inicio || null : currentGroup.fecha_inicio ?? null;
-  const nextEndDate = payload.fecha_fin !== undefined ? payload.fecha_fin || null : currentGroup.fecha_fin ?? null;
+  const currentStartDate = toDateOnly(currentGroup.fecha_inicio ?? null);
+  const currentEndDate = toDateOnly(currentGroup.fecha_fin ?? null);
+  const nextStartDate = payload.fecha_inicio !== undefined ? toDateOnly(payload.fecha_inicio) : currentStartDate;
+  const nextEndDate = payload.fecha_fin !== undefined ? toDateOnly(payload.fecha_fin) : currentEndDate;
+  const startDateChanged = payload.fecha_inicio !== undefined && nextStartDate !== currentStartDate;
+  const endDateChanged = payload.fecha_fin !== undefined && nextEndDate !== currentEndDate;
+  const today = todayISO();
 
   validateTripDateRange(nextStartDate, nextEndDate);
+
+  if (startDateChanged && hasTripStarted(currentStartDate)) {
+    throw Object.assign(
+      new Error('ERR-23-003: No puedes cambiar la fecha de inicio de un viaje que ya comenzó. Solo ajusta la fecha de fin si necesitas extenderlo.'),
+      { statusCode: 409, errorCode: 'ERR-23-003', code: 'TRIP_ALREADY_STARTED' }
+    );
+  }
+
+  if (startDateChanged && nextStartDate && nextStartDate < today) {
+    throw Object.assign(
+      new Error('ERR-23-003: La fecha de inicio no puede ser anterior a hoy.'),
+      { statusCode: 400, errorCode: 'ERR-23-003' }
+    );
+  }
+
+  if (endDateChanged && nextEndDate && nextEndDate < today) {
+    throw Object.assign(
+      new Error('ERR-23-003: La fecha de fin no puede ser anterior a hoy.'),
+      { statusCode: 400, errorCode: 'ERR-23-003' }
+    );
+  }
+
+  if (startDateChanged || endDateChanged) {
+    await assertDateUpdateDoesNotBreakExistingPlan(groupId, nextStartDate, nextEndDate);
+  }
+
+  if (
+    payload.destino !== undefined ||
+    payload.destino_latitud !== undefined ||
+    payload.destino_longitud !== undefined ||
+    payload.destino_place_id !== undefined
+  ) {
+    await assertDestinationUpdateIsSafe(currentGroup, destinationFields);
+  }
 
   const updateData = {
     ...(payload.nombre !== undefined ? { nombre } : {}),
@@ -2009,6 +2185,18 @@ export const updateGroup = async (
     ...(payload.destino_place_id !== undefined || payload.destino_photo_url !== undefined
       ? { destino_photo_url: destinationFields.destino_photo_url }
       : {}),
+    ...((payload.destino !== undefined || payload.destino_latitud !== undefined || payload.destino_longitud !== undefined || payload.destino_place_id !== undefined) &&
+    (currentGroup.punto_partida_tipo ?? 'destino_viaje') === 'destino_viaje'
+      ? {
+          punto_partida_tipo: 'destino_viaje',
+          punto_partida_nombre: payload.destino || currentGroup.destino || null,
+          punto_partida_direccion: destinationFields.destino_formatted_address ?? payload.destino ?? currentGroup.destino ?? null,
+          punto_partida_latitud: destinationFields.destino_latitud,
+          punto_partida_longitud: destinationFields.destino_longitud,
+          punto_partida_place_id: destinationFields.destino_place_id,
+          punto_partida_actualizado_at: new Date().toISOString(),
+        }
+      : {}),
   };
 
   const { data, error } = await supabase
@@ -2020,6 +2208,24 @@ export const updateGroup = async (
 
   if (error || !data) {
     throw new Error(error?.message ?? 'No se pudo actualizar el grupo');
+  }
+
+  if (startDateChanged || endDateChanged) {
+    const { error: itinerarySyncError } = await supabase
+      .from('itinerarios')
+      .update({
+        fecha_inicio: nextStartDate,
+        fecha_fin: nextEndDate,
+        ultima_actualizacion: new Date().toISOString(),
+      })
+      .eq('grupo_id', groupId);
+
+    if (itinerarySyncError) {
+      throw Object.assign(
+        new Error('ERR-23-002: No se pudo sincronizar el rango del itinerario. Inténtalo de nuevo.'),
+        { statusCode: 500, errorCode: 'ERR-23-002' }
+      );
+    }
   }
 
   const actorUsuarioId = await getLocalUserId(authUserId);

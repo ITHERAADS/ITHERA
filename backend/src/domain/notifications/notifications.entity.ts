@@ -50,10 +50,10 @@ export interface UpdatePreferencesPayload {
 
 
 export interface DashboardUpdatedPayload {
-  grupoId: number;
+  grupoId: number | string;
   tipo: string;
   entidadTipo?: string | null;
-  entidadId?: number | null;
+  entidadId?: number | string | null;
   actorUsuarioId?: number | null;
   createdAt: string;
   metadata?: Record<string, unknown>;

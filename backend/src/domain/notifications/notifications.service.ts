@@ -188,7 +188,7 @@ export const emitGroupDashboardUpdated = (
   try {
     const io = getIO();
     const eventPayload: DashboardUpdatedPayload = {
-      grupoId: Number(grupoId),
+      grupoId: Number.isNaN(Number(grupoId)) ? String(grupoId) : Number(grupoId),
       tipo: payload.tipo,
       entidadTipo: payload.entidadTipo ?? null,
       entidadId: payload.entidadId ?? null,

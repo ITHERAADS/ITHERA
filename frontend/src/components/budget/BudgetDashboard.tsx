@@ -991,45 +991,63 @@ export const BudgetDashboard: FC<Props> = ({
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto bg-[#F4F6F8]">
-      <div className="bg-[#1E0A4E] px-6 pt-6 pb-8">
-        <p className="mb-1 font-body text-sm text-white/60">Presupuesto del viaje</p>
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-          <h1 className="font-heading text-2xl font-bold text-white">Finanzas del Grupo</h1>
-          <HelpButton
-            title="Finanzas del grupo"
-            description="Registra gastos, consulta saldos y valida pagos. Los montos deben ser positivos y las divisiones personalizadas deben cuadrar con el total."
-            placement="right"
-          />
-        </div>
-          {canAdjustBudget && (
-            <button
-              onClick={() => { setAdjustValue(String(totalBudget)); setShowAdjustModal(true) }}
-              disabled={isSaving}
-              className="flex items-center gap-1.5 rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 font-body text-xs font-medium text-white/80 transition-colors hover:bg-white/20 disabled:opacity-50"
-            >
-              Ajustar presupuesto
-            </button>
-          )}
-        </div>
+    <div className="flex flex-1 flex-col overflow-y-auto bg-[linear-gradient(180deg,#F8F6FF_0%,#F4F6F8_42%,#FFFFFF_100%)]">
+      <div className="px-6 pt-6">
+        <div className="relative overflow-hidden rounded-3xl border border-[#D8C8FF] bg-[linear-gradient(135deg,#1E0A4E_0%,#3C178B_50%,#7A4FD6_100%)] px-6 pb-6 pt-5 shadow-[0_22px_48px_rgba(30,10,78,0.22)]">
+          <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-[#B89BFF]/25 blur-3xl" />
+          <div className="absolute -bottom-24 left-12 h-52 w-52 rounded-full bg-[#1E6FD9]/20 blur-3xl" />
 
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl border-[0.5px] border-[#E2E8F0] bg-white px-3 py-3">
-            <p className="mb-1 font-body text-[10px] text-[#7A8799]">Total Viaje</p>
-            <p className="font-heading text-base font-bold text-[#3D4A5C]">{formatMXN(totalBudget)}</p>
-          </div>
-          <div className={['rounded-xl border-[0.5px] px-3 py-3', isOverBudget ? 'border-[#EF4444] bg-[#EF4444]' : 'border-[#E2E8F0] bg-white'].join(' ')}>
-            <p className={['mb-1 font-body text-[10px]', isOverBudget ? 'text-white' : 'text-[#7A8799]'].join(' ')}>
-              Comprometido
-            </p>
-            <p className={['font-heading text-base font-bold', isOverBudget ? 'text-white' : 'text-[#EF4444]'].join(' ')}>
-              {formatMXN(comprometido)}
-            </p>
-          </div>
-          <div className="rounded-xl border-[0.5px] border-[#E2E8F0] bg-white px-3 py-3">
-            <p className="mb-1 font-body text-[10px] text-[#7A8799]">Disponible</p>
-            <p className="font-heading text-base font-bold text-[#35C56A]">{formatMXN(disponible)}</p>
+          <div className="relative">
+            <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#D8C8FF]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#B89BFF]" />
+                  Presupuesto del viaje
+                </p>
+                <div className="flex items-center gap-3">
+                  <h1 className="font-heading text-3xl font-extrabold leading-tight text-white">
+                    Finanzas del Grupo
+                  </h1>
+                  <HelpButton
+                    title="Finanzas del grupo"
+                    description="Registra gastos, consulta saldos y valida pagos. Los montos deben ser positivos y las divisiones personalizadas deben cuadrar con el total."
+                    placement="right"
+                  />
+                </div>
+                <p className="mt-2 max-w-xl font-body text-sm leading-relaxed text-white/70">
+                  Controla presupuesto, gastos compartidos y liquidaciones sin perder visibilidad del grupo.
+                </p>
+              </div>
+
+              {canAdjustBudget && (
+                <button
+                  onClick={() => { setAdjustValue(String(totalBudget)); setShowAdjustModal(true) }}
+                  disabled={isSaving}
+                  className="inline-flex items-center justify-center rounded-2xl border border-white/20 bg-white/10 px-4 py-3 font-body text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Ajustar presupuesto
+                </button>
+              )}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-white/15 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(30,10,78,0.12)]">
+                <p className="mb-1 font-body text-[10px] font-bold uppercase tracking-[0.14em] text-[#7A8799]">Total viaje</p>
+                <p className="font-heading text-2xl font-extrabold text-[#1E0A4E]">{formatMXN(totalBudget)}</p>
+              </div>
+              <div className={['rounded-2xl border px-4 py-4 shadow-[0_12px_28px_rgba(30,10,78,0.12)]', isOverBudget ? 'border-[#FCA5A5] bg-[#EF4444]' : 'border-white/15 bg-white'].join(' ')}>
+                <p className={['mb-1 font-body text-[10px] font-bold uppercase tracking-[0.14em]', isOverBudget ? 'text-white/80' : 'text-[#7A8799]'].join(' ')}>
+                  Comprometido
+                </p>
+                <p className={['font-heading text-2xl font-extrabold', isOverBudget ? 'text-white' : 'text-[#EF4444]'].join(' ')}>
+                  {formatMXN(comprometido)}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/15 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(30,10,78,0.12)]">
+                <p className="mb-1 font-body text-[10px] font-bold uppercase tracking-[0.14em] text-[#7A8799]">Disponible</p>
+                <p className="font-heading text-2xl font-extrabold text-[#35C56A]">{formatMXN(disponible)}</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1040,17 +1058,19 @@ export const BudgetDashboard: FC<Props> = ({
         </div>
       )}
 
-      <div className="border-b border-[#E2E8F0] bg-white px-6 py-4">
+      <div className="px-6 pt-4">
+        <div className="rounded-3xl border border-[#E2E8F0] bg-white px-5 py-4 shadow-[0_12px_28px_rgba(30,10,78,0.06)]">
         <div className="mb-2 flex items-center justify-between">
-          <span className="font-body text-xs text-[#7A8799]">Comprometido del total</span>
-          <span className="font-body text-xs font-semibold" style={{ color: barColor }}>
+          <span className="font-body text-sm font-bold text-[#1E0A4E]">Comprometido del total</span>
+          <span className="rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-xs font-bold" style={{ color: barColor }}>
             {pct.toFixed(1)}%
           </span>
         </div>
-        <div className="h-2.5 overflow-hidden rounded-full bg-[#E2E8F0]">
+        <div className="h-3 overflow-hidden rounded-full bg-[#E2E8F0]">
           <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
         </div>
-        <p className="mt-1.5 font-body text-[11px] text-[#7A8799]">{barLabel}</p>
+        <p className="mt-2 font-body text-xs font-medium text-[#7A8799]">{barLabel}</p>
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col gap-4 px-6 py-5">
@@ -1062,12 +1082,12 @@ export const BudgetDashboard: FC<Props> = ({
             </p>
           </div>
         )}
-        <div className="flex gap-3">
+        <div className="grid gap-3 md:grid-cols-2">
           {!isReadOnly && (
             <button
               onClick={() => { setEditingExpense(null); setShowModal(true) }}
               disabled={!groupId || members.length === 0 || isSaving || requiresBudgetSetup}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1E6FD9] py-3 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] py-3.5 font-body text-sm font-bold text-white shadow-[0_14px_28px_rgba(30,10,78,0.18)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
             >
               + Registrar gasto
             </button>
@@ -1075,19 +1095,20 @@ export const BudgetDashboard: FC<Props> = ({
           <button
             onClick={() => setView('wallet')}
             disabled={requiresBudgetSetup}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#1E6FD9] py-3 font-body text-sm font-semibold text-[#1E6FD9] transition-colors hover:bg-[#1E6FD9]/5"
+            className="flex items-center justify-center gap-2 rounded-2xl border border-[#D8C8FF] bg-white py-3.5 font-body text-sm font-bold text-[#6D45C0] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#F7F2FF] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Mi Cartera
           </button>
         </div>
 
-        <div className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3">
+        <div className="rounded-3xl border border-[#E2E8F0] bg-white px-5 py-4 shadow-[0_12px_28px_rgba(30,10,78,0.06)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="font-body text-xs text-[#7A8799]">Liquidacion grupal (sin detalle sensible)</p>
-              <p className="font-body text-sm font-semibold text-[#3D4A5C]">
+              <p className="font-body text-xs font-bold uppercase tracking-[0.14em] text-[#7A8799]">Liquidacion grupal</p>
+              <p className="mt-1 font-body text-base font-extrabold text-[#1E0A4E]">
                 {groupSettlementSummary.totalTransfers} transferencias · {formatMXN(groupSettlementSummary.totalAmount)}
               </p>
+              <p className="mt-0.5 font-body text-xs text-[#7A8799]">Sin detalle sensible para proteger datos individuales.</p>
             </div>
             <div className="flex gap-2">
               <button
@@ -1102,7 +1123,7 @@ export const BudgetDashboard: FC<Props> = ({
                     setError('No se pudo copiar el resumen grupal.')
                   }
                 }}
-                className="rounded-lg border border-[#CBD5E1] px-3 py-1.5 font-body text-xs font-semibold text-[#334155]"
+                className="rounded-xl border border-[#CBD5E1] bg-white px-3 py-2 font-body text-xs font-bold text-[#334155] transition hover:bg-[#F8FAFC]"
                 disabled={copyGroupSummaryState === 'loading'}
               >
                 {copyGroupSummaryState === 'loading' ? 'Copiando...' : copyGroupSummaryState === 'done' ? 'Resumen copiado' : 'Copiar resumen'}
@@ -1214,7 +1235,7 @@ export const BudgetDashboard: FC<Props> = ({
                     }, 700)
                   }
                 }}
-                className="rounded-lg bg-[#1E6FD9] px-3 py-1.5 font-body text-xs font-semibold text-white"
+                className="rounded-xl bg-[#1E6FD9] px-3 py-2 font-body text-xs font-bold text-white shadow-sm transition hover:bg-[#2C8BE6]"
                 disabled={exportingGroupSummary}
               >
                 {exportingGroupSummary ? 'Exportando...' : 'Exportar resumen'}
@@ -1250,10 +1271,21 @@ export const BudgetDashboard: FC<Props> = ({
           </div>
         )}
 
-        <div className="flex flex-col gap-5 rounded-2xl border border-[#E2E8F0] bg-white p-4">
+        <div className="flex flex-col gap-5 rounded-3xl border border-[#E2E8F0] bg-white p-5 shadow-[0_12px_28px_rgba(30,10,78,0.06)]">
           <div>
-            <h3 className="mb-3 font-heading text-sm font-bold text-[#3D4A5C]">Distribucion del gasto</h3>
-            <div className="mb-5 rounded-2xl border border-[#DDD6FE] bg-gradient-to-br from-[#F6F2FF] via-[#F5F9FF] to-[#EEF4FF] p-3 sm:p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="inline-flex items-center gap-2 rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#6D45C0]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#7A4FD6]" />
+                  Categorias
+                </p>
+                <h3 className="mt-2 font-heading text-xl font-extrabold text-[#1E0A4E]">Distribucion del gasto</h3>
+              </div>
+              <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-xs font-bold text-[#1E6FD9]">
+                {formatMXN(chartTotal)}
+              </span>
+            </div>
+            <div className="mb-5 rounded-3xl border border-[#DDD6FE] bg-gradient-to-br from-[#F6F2FF] via-[#FFFFFF] to-[#EEF4FF] p-3 shadow-inner sm:p-4">
               <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
                 <div className="h-80 rounded-2xl border border-white/70 bg-white/35 backdrop-blur-[1px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1574,4 +1606,3 @@ export const BudgetDashboard: FC<Props> = ({
     </div>
   )
 }
-

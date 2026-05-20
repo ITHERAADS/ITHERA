@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useState } from 'react'
 import type { FC } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 import { RegisterExpenseModal } from './RegisterExpenseModal'
@@ -328,6 +328,20 @@ export const BudgetDashboard: FC<Props> = ({
   const canAdjustBudget = dashboard?.myRole === 'admin' && !isReadOnly
   const requiresBudgetSetup = totalBudget <= 0
 
+  const normalizedAdjustValue = adjustValue.trim().replace(',', '.')
+  const parsedAdjustValue = Number(normalizedAdjustValue)
+  const adjustValueDecimals = normalizedAdjustValue.includes('.') ? normalizedAdjustValue.split('.')[1]?.length ?? 0 : 0
+  const adjustValueIsNegative = Number.isFinite(parsedAdjustValue) && parsedAdjustValue < 0
+  const adjustValueHasMoreThanTwoDecimals = Number.isFinite(parsedAdjustValue) && adjustValueDecimals > 2
+  const adjustValueWarning = adjustValue.trim() === ''
+    ? null
+    : adjustValueIsNegative
+      ? 'El presupuesto no puede ser negativo.'
+      : adjustValueHasMoreThanTwoDecimals
+        ? 'Solo se permiten hasta dos decimales.'
+        : null
+  const canSaveAdjustBudget = !isSaving && normalizedAdjustValue !== '' && Number.isFinite(parsedAdjustValue) && !adjustValueIsNegative && !adjustValueHasMoreThanTwoDecimals
+
   const handleSaveExpense = async (expense: Expense) => {
     if (!groupId || !accessToken) return
 
@@ -410,9 +424,20 @@ export const BudgetDashboard: FC<Props> = ({
 
   const handleAdjustBudget = async () => {
     if (!groupId || !accessToken) return
-    const val = parseFloat(adjustValue)
-    if (!Number.isFinite(val) || val < 0) return
-    if (val + 0.01 < comprometido) {
+    const value = Number(normalizedAdjustValue)
+    if (!Number.isFinite(value)) {
+      setError('Ingresa un monto válido para ajustar el presupuesto.')
+      return
+    }
+    if (value < 0) {
+      setError('El presupuesto no puede ser negativo.')
+      return
+    }
+    if (adjustValueHasMoreThanTwoDecimals) {
+      setError('Solo se permiten hasta dos decimales en el monto.')
+      return
+    }
+    if (value + 0.01 < comprometido) {
       setError(`No puedes ajustar por debajo del comprometido actual (${formatMXN(comprometido)}).`)
       return
     }
@@ -420,7 +445,7 @@ export const BudgetDashboard: FC<Props> = ({
     setIsSaving(true)
     setError(null)
     try {
-      applyDashboard(await budgetService.updateBudget(groupId, val, accessToken))
+      applyDashboard(await budgetService.updateBudget(groupId, value, accessToken))
       setShowAdjustModal(false)
       setAdjustValue('')
     } catch (err) {
@@ -766,6 +791,7 @@ export const BudgetDashboard: FC<Props> = ({
               <input
                 type="number"
                 min="0"
+                step="0.01"
                 value={adjustValue}
                 onChange={(e) => setAdjustValue(e.target.value)}
                 placeholder="0.00"
@@ -773,6 +799,11 @@ export const BudgetDashboard: FC<Props> = ({
                 className="w-full rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] py-3 pl-7 pr-4 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
               />
             </div>
+            {adjustValueWarning && (
+              <div className="mb-4 rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-4 py-3 font-body text-sm text-[#C03535]">
+                {adjustValueWarning}
+              </div>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setShowAdjustModal(false)}
@@ -782,7 +813,7 @@ export const BudgetDashboard: FC<Props> = ({
               </button>
               <button
                 onClick={() => void handleAdjustBudget()}
-                disabled={isSaving || !adjustValue || parseFloat(adjustValue) < 0}
+                disabled={!canSaveAdjustBudget}
                 className="flex-1 rounded-xl bg-[#1E6FD9] py-3 font-body text-sm font-semibold text-white transition-colors hover:bg-[#2C8BE6] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Guardar

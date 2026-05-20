@@ -442,11 +442,10 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
           </svg>
         </div>
         <h3 className="mb-2 font-heading text-xl font-bold text-purpleNavbar">
-          Aún no hay planes en el itinerario
+          Aún no hay actividades en el itinerario.
         </h3>
         <p className="mx-auto mb-5 max-w-md font-body text-sm leading-relaxed text-gray500">
-          Crea la primera propuesta para que el viaje empiece a tomar forma.
-          Puedes agregar una actividad, un traslado o un hospedaje.
+          ¡Empieza añadiendo la primera!
         </p>
         <div className="mb-6 grid gap-2 text-left sm:grid-cols-3">
           {["Actividad", "Transporte", "Hospedaje"].map((label) => (
@@ -2742,7 +2741,7 @@ export function DashboardPage() {
       .filter((day) => day.activities.length > 0);
 
     if (confirmedByDay.length === 0) {
-      window.alert("No hay actividades confirmadas para exportar.");
+      window.alert("El itinerario no tiene elementos confirmados para exportar aún.");
       return;
     }
 

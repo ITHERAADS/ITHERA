@@ -1661,6 +1661,11 @@ const applyVoteResultsToDays = (
         ...activity,
         hasVoted: Boolean(voteResult.mi_voto),
         myVote: voteResult.mi_voto ?? null,
+        votes: voteResult.votos_a_favor ?? voteResult.votos ?? 0,
+        votesFor: voteResult.votos_a_favor ?? voteResult.votos ?? 0,
+        votesAgainst: voteResult.votos_en_contra ?? 0,
+        pendingVotes: voteResult.votos_pendientes ?? 0,
+        requiresAdminTieBreak: Boolean(voteResult.requiere_desempate_admin),
       };
     }),
   }));
@@ -1923,7 +1928,15 @@ export function DashboardPage() {
       : undefined;
 
   const openActivityEditor = (activity: DayActivity) => {
+    const activityDayNumber =
+      days.find(
+        (day) =>
+          Array.isArray(day.activities) &&
+          day.activities.some((item) => item.id === activity.id),
+      )
+        ?.dayNumber ?? selectedActivityDay ?? activeDay ?? 1;
     lockProposalForActivity(activity);
+    setSelectedActivityDay(activityDayNumber);
     setEditingActivity(activity);
     setShowActivityModal(true);
   };
@@ -2398,6 +2411,17 @@ export function DashboardPage() {
 
       if (!resolvedGroupId || !accessToken) return;
 
+      const activityName =
+        selectedDayWithContext?.activities.find(
+          (activity) => String(activity.id) === String(activityId),
+        )?.title ?? "esta actividad";
+
+      const confirmed = window.confirm(
+        `¿Seguro que quieres eliminar "${activityName}"? Esta acción no se puede deshacer.`,
+      );
+
+      if (!confirmed) return;
+
       await groupsService.deleteActivity(
         String(resolvedGroupId),
         activityId,
@@ -2405,7 +2429,14 @@ export function DashboardPage() {
       );
       await reloadDashboard();
     },
-    [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard],
+    [
+      groupIdFromState,
+      groupId,
+      currentGroup?.id,
+      accessToken,
+      reloadDashboard,
+      selectedDayWithContext?.activities,
+    ],
   );
 
   const handleOpenSubgroupSlot = useCallback(
@@ -2435,7 +2466,7 @@ export function DashboardPage() {
         (currentGroup?.id ? String(currentGroup.id) : null);
       const busyKey = `slot-delete:${slotId}`;
       if (!resolvedGroupId || !accessToken || subgroupQuickBusyKey) return;
-      if (!window.confirm("Eliminar este horario de subgrupos?")) return;
+      if (!window.confirm("Eliminar este horario de subgrupos y todo su contenido?")) return;
       try {
         setSubgroupQuickBusyKey(busyKey);
         await subgroupScheduleService.deleteSlot(
@@ -3213,6 +3244,7 @@ export function DashboardPage() {
           }}
           onOpenBudget={() => setActiveTab("pagar")}
           onOpenMap={() => setActiveTab("mapas")}
+          isMapViewActive={activeTab === "mapas"}
           onOpenGroupPanel={() =>
             navigate(
               `/grouppanel?groupId=${encodeURIComponent(groupId || currentGroup?.id || "")}`,

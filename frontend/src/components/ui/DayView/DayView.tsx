@@ -25,6 +25,10 @@ export interface Activity {
   time: string;
   location?: string;
   votes?: number;
+  votesFor?: number;
+  votesAgainst?: number;
+  pendingVotes?: number;
+  requiresAdminTieBreak?: boolean;
   proposedBy?: string;
   image: string;
   externalReference?: string | null;
@@ -769,18 +773,25 @@ function ActivityContextBlock({
   activity,
   onOpenBudget,
   onOpenVault,
+  compact = false,
 }: {
   activity: Activity;
   onManageContext?: (activity: Activity) => void;
   onOpenBudget?: () => void;
   onOpenVault?: () => void;
+  compact?: boolean;
 }) {
   const linked = activity.linkedContext ?? [];
   const expenses = linked.filter((entity) => entity.type === "expense");
   const documents = linked.filter((entity) => entity.type === "document");
 
   return (
-    <div className="mt-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-3">
+    <div
+      className={[
+        "mt-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3",
+        compact ? "py-2" : "py-3",
+      ].join(" ")}
+    >
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#64748B]">
           Asociaciones confirmadas
@@ -1037,6 +1048,8 @@ function ActivityCardPending({
   onOpenVault,
   actionButtons,
   isExpired = false,
+  competitionSize = 1,
+  compact = false,
 }: {
   activity: Activity;
   currentUserId?: string | number | null;
@@ -1050,6 +1063,8 @@ function ActivityCardPending({
   onOpenVault?: () => void;
   actionButtons?: ReactNode;
   isExpired?: boolean;
+  competitionSize?: number;
+  compact?: boolean;
 }) {
   const iconColor = getCategoryColor(activity.category);
   const isOwner =
@@ -1060,6 +1075,8 @@ function ActivityCardPending({
   const canDelete = isExpired ? false : isOwner || isAdmin;
   const myVote = activity.myVote ?? null;
   const routeUrl = getGoogleMapsRouteUrl(activity);
+  const isCompetition = competitionSize > 1;
+  const isCompactCompetition = compact && isCompetition;
   const [busyAction, setBusyAction] = useState<
     "accept" | "reject" | "delete" | null
   >(null);
@@ -1079,9 +1096,20 @@ function ActivityCardPending({
   };
 
   return (
-    <div className="bg-white rounded-2xl border-2 border-dashed border-[#E2E8F0] overflow-hidden">
+    <div
+      className={
+        isCompactCompetition
+          ? "overflow-hidden rounded-2xl border border-[#E6DBFF] bg-white shadow-[0_10px_24px_rgba(30,10,78,0.06)] lg:grid lg:grid-cols-[220px_minmax(0,1fr)]"
+          : "overflow-hidden rounded-2xl border-2 border-dashed border-[#E2E8F0] bg-white"
+      }
+    >
       {/* Image */}
-      <div className="relative h-36 overflow-hidden">
+      <div
+        className={[
+          "relative overflow-hidden",
+          isCompactCompetition ? "h-32 lg:h-[190px]" : "h-36",
+        ].join(" ")}
+      >
         <img
           src={activity.image}
           alt={activity.title}
@@ -1099,7 +1127,10 @@ function ActivityCardPending({
         </span>
         {/* Category icon circle */}
         <div
-          className="absolute left-4 -bottom-4 w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center border border-[#E2E8F0] shrink-0"
+          className={[
+            "absolute flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#E2E8F0] bg-white shadow-md",
+            isCompactCompetition ? "bottom-3 left-3" : "-bottom-4 left-4",
+          ].join(" ")}
           style={{ color: iconColor }}
         >
           <CategoryIcon category={activity.category} size={14} />
@@ -1107,11 +1138,16 @@ function ActivityCardPending({
       </div>
 
       {/* Body */}
-      <div className="px-5 pt-6 pb-4">
+      <div className={isCompactCompetition ? "px-4 py-4" : "px-5 pt-6 pb-4"}>
         <h3 className="font-heading font-bold text-purpleNavbar text-[15px] mb-1 leading-snug">
           {activity.title}
         </h3>
-        <p className="font-body text-[13px] text-gray500 mb-3 leading-relaxed">
+        <p
+          className={[
+            "font-body text-[13px] text-gray500 leading-relaxed",
+            isCompactCompetition ? "mb-2 line-clamp-2" : "mb-3",
+          ].join(" ")}
+        >
           {activity.description}
         </p>
 
@@ -1150,7 +1186,7 @@ function ActivityCardPending({
               {activity.routeDistanceText} · {activity.routeDurationText}
             </a>
           )}
-          {activity.votes !== undefined && (
+          {activity.votes !== undefined && !isCompactCompetition && (
             <span className="inline-flex items-center gap-1 font-body text-xs text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 font-medium">
               ↑ {activity.votes} votos
             </span>
@@ -1162,27 +1198,27 @@ function ActivityCardPending({
             Propuesto por {activity.proposedBy}
           </p>
         )}
-        {activity.adminDecisionType === "A" && (
-          <p className="font-body text-xs text-[#1E6FD9] font-semibold mt-1 mb-3">
-            Puesta por el admin directamente (Tipo A)
-          </p>
-        )}
         {isExpired && (
           <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 font-body text-xs font-semibold text-red-700">
             Esta propuesta ya vencio porque su hora programada paso. Solo el
             administrador puede editarla para reprogramarla.
           </div>
         )}
-
         <ActivityContextBlock
           activity={activity}
           onManageContext={onManageContext}
           onOpenBudget={onOpenBudget}
           onOpenVault={onOpenVault}
+          compact={isCompactCompetition}
         />
 
         {/* Accept / Delete row */}
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#EEF2FF] pt-3">
+        <div
+          className={[
+            "flex flex-wrap items-center gap-2 border-t border-[#EEF2FF] pt-3",
+            isCompactCompetition ? "mt-3" : "mt-4",
+          ].join(" ")}
+        >
           {!isExpired && (
             <div className="grid h-11 flex-1 grid-cols-2 overflow-hidden rounded-xl border border-[#D9E2F2] bg-white">
               <button
@@ -1368,6 +1404,9 @@ function ActivitiesBody({
       ? confirmedActivities
       : [...activePendingActivities, ...expiredPendingActivities];
   const nowPosition = getTimelineNowPosition(visibleActivities);
+  const pendingCompetitionGroups = groupPendingActivitiesByStart(
+    visibleActivities,
+  );
 
   const renderConfirmedTimeline = () =>
     confirmedActivities.length > 0 ? (
@@ -1432,33 +1471,59 @@ function ActivitiesBody({
             timeLabel={nowPosition.timeLabel}
           />
         )}
-        {visibleActivities.map((a) => {
-          const isExpired = isPendingActivityExpired(a);
+        {pendingCompetitionGroups.map((group) => {
+          const anchor = group.activities[0];
+          if (!anchor) return null;
+          const isCompetition = group.activities.length > 1;
           return (
             <TimelineItem
-              key={`pending-${a.id}`}
-              activity={a}
-              hasConflict={conflictActivityIds.has(a.id)}
+              key={`pending-group-${group.key}`}
+              activity={anchor}
+              hasConflict={
+                !isCompetition &&
+                group.activities.some((activity) =>
+                  conflictActivityIds.has(activity.id),
+                )
+              }
               isNow={
-                nowPosition?.type === "on" && nowPosition.activityId === a.id
+                nowPosition?.type === "on" &&
+                group.activities.some(
+                  (activity) => nowPosition.activityId === activity.id,
+                )
               }
             >
-              <ActivityCardPending
-                activity={a}
-                currentUserId={currentUserId}
-                currentUserRole={currentUserRole}
-                onAccept={onAccept}
-                onReject={onReject}
-                onDelete={onDelete}
-                onEdit={onEdit}
-                onManageContext={onManageContext}
-                onOpenBudget={onOpenBudget}
-                onOpenVault={onOpenVault}
-                actionButtons={
-                  isExpired ? undefined : renderPendingActions?.(a)
-                }
-                isExpired={isExpired}
-              />
+              <PendingCompetitionFrame
+                time={anchor.time}
+                isCompetition={isCompetition}
+                activities={group.activities}
+              >
+                <div className={isCompetition ? "space-y-3" : undefined}>
+                  {group.activities.map((a) => {
+                    const isExpired = isPendingActivityExpired(a);
+                    return (
+                      <ActivityCardPending
+                        key={a.id}
+                        activity={a}
+                        currentUserId={currentUserId}
+                        currentUserRole={currentUserRole}
+                        onAccept={onAccept}
+                        onReject={onReject}
+                        onDelete={onDelete}
+                        onEdit={onEdit}
+                        onManageContext={onManageContext}
+                        onOpenBudget={onOpenBudget}
+                        onOpenVault={onOpenVault}
+                        actionButtons={
+                          isExpired ? undefined : renderPendingActions?.(a)
+                        }
+                        isExpired={isExpired}
+                        competitionSize={group.activities.length}
+                        compact={isCompetition}
+                      />
+                    );
+                  })}
+                </div>
+              </PendingCompetitionFrame>
             </TimelineItem>
           );
         })}
@@ -1610,6 +1675,111 @@ function isPendingActivityExpired(activity: Activity): boolean {
   if (!value) return false;
   const date = new Date(value);
   return Number.isFinite(date.getTime()) && date.getTime() < Date.now();
+}
+
+function pendingCompetitionKey(activity: Activity): string {
+  if (activity.time) return `time-${activity.time}`;
+  if (!activity.startsAt) return `activity-${activity.id}`;
+  const date = new Date(activity.startsAt);
+  if (!Number.isFinite(date.getTime())) return activity.startsAt.slice(0, 16);
+  return date.toISOString().slice(0, 16);
+}
+
+function groupPendingActivitiesByStart(activities: Activity[]) {
+  const groups = new Map<
+    string,
+    { key: string; activities: Activity[] }
+  >();
+
+  activities.forEach((activity) => {
+    const key = pendingCompetitionKey(activity);
+    const group = groups.get(key) ?? { key, activities: [] };
+    group.activities.push(activity);
+    groups.set(key, group);
+  });
+
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    activities: [...group.activities].sort(
+      (left, right) =>
+        (right.votesFor ?? right.votes ?? 0) -
+          (left.votesFor ?? left.votes ?? 0) ||
+        left.title.localeCompare(right.title),
+    ),
+  }));
+}
+
+function PendingCompetitionFrame({
+  time,
+  isCompetition,
+  activities,
+  children,
+}: {
+  time: string;
+  isCompetition: boolean;
+  activities: Activity[];
+  children: ReactNode;
+}) {
+  if (!isCompetition) return <>{children}</>;
+  const competitionStatus = getCompetitionStatus(activities);
+
+  return (
+    <div className="overflow-hidden rounded-[24px] border border-[#D9C8FF] bg-[linear-gradient(135deg,#FFFFFF_0%,#FBF8FF_45%,#F4EEFF_100%)] p-3 shadow-[0_18px_36px_rgba(122,79,214,0.10)]">
+      <div className="mb-3 rounded-2xl border border-white/80 bg-white/80 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-body text-[11px] font-bold uppercase tracking-[0.16em] text-[#7A4FD6]">
+              Bloque de votacion por horario
+            </p>
+            <p className="mt-0.5 font-heading text-sm font-bold text-[#1E0A4E]">
+              Se elegira 1 actividad para las {time}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[11px] font-semibold text-[#7A4FD6]">
+              {activities.length} opciones
+            </span>
+            <span className="rounded-full bg-[#1E0A4E] px-3 py-1 font-body text-[11px] font-bold text-white">
+              gana 1
+            </span>
+          </div>
+        </div>
+        <div className="mx-auto mt-3 max-w-2xl rounded-2xl border border-[#D9C8FF] bg-[#F3EEFF] px-4 py-2 text-center shadow-[0_10px_22px_rgba(122,79,214,0.08)]">
+          <p className="font-heading text-sm font-bold text-[#5B35B1]">
+            {competitionStatus}
+          </p>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function getCompetitionStatus(activities: Activity[]): string {
+  const ranked = [...activities].sort(
+    (left, right) =>
+      (right.votesFor ?? right.votes ?? 0) -
+        (left.votesFor ?? left.votes ?? 0) ||
+      left.title.localeCompare(right.title),
+  );
+  const leader = ranked[0];
+  if (!leader) return "Sin votos todavia.";
+
+  const leaderVotes = leader.votesFor ?? leader.votes ?? 0;
+  const tiedLeaders = ranked.filter(
+    (activity) => (activity.votesFor ?? activity.votes ?? 0) === leaderVotes,
+  );
+
+  if (tiedLeaders.length > 1) {
+    return leaderVotes > 0
+      ? `Empate entre ${tiedLeaders.length} opciones con ${leaderVotes} voto${leaderVotes === 1 ? "" : "s"}.`
+      : "Empate: ninguna opcion lleva votos todavia.";
+  }
+
+  const secondVotes = ranked[1]?.votesFor ?? ranked[1]?.votes ?? 0;
+  const margin = Math.max(leaderVotes - secondVotes, 0);
+  if (margin === 0) return `${leader.title} va ganando.`;
+  return `${leader.title} va ganando por ${margin} voto${margin === 1 ? "" : "s"}.`;
 }
 
 function DaySectionModal({

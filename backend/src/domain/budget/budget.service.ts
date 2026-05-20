@@ -67,13 +67,16 @@ const emitBudgetDashboardUpdated = (
   actorUsuarioId: string | number | null,
   metadata: Record<string, unknown> = {},
 ): void => {
-  NotificationsService.emitGroupDashboardUpdated(Number(groupId), {
-    tipo,
-    entidadTipo,
-    entidadId: entidadId !== null ? Number(entidadId) : null,
-    actorUsuarioId: actorUsuarioId !== null ? Number(actorUsuarioId) : null,
-    metadata: { itemType: 'presupuesto', ...metadata },
-  });
+  NotificationsService.emitGroupDashboardUpdated(
+    Number.isNaN(Number(groupId)) ? groupId : Number(groupId),
+    {
+      tipo,
+      entidadTipo,
+      entidadId: entidadId !== null ? (Number.isNaN(Number(entidadId)) ? String(entidadId) : Number(entidadId)) : null,
+      actorUsuarioId: actorUsuarioId !== null ? Number(actorUsuarioId) : null,
+      metadata: { itemType: 'presupuesto', ...metadata },
+    }
+  );
 };
 
 const roundMoney = (value: number): number => Math.round(value * 100) / 100;

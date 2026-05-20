@@ -110,6 +110,7 @@ export function GroupSettingsPage() {
   const [confirmAction, setConfirmAction] = useState<'close' | 'delete' | null>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [accessDenied, setAccessDenied] = useState(false)
   const [destinationData, setDestinationData] = useState<GeocodingResult | null>(null)
 
   const groupId = searchParams.get('groupId') || group?.id || ''
@@ -118,7 +119,8 @@ export function GroupSettingsPage() {
   const effectiveGroupId = String(group?.id ?? currentGroupFallback?.id ?? groupId ?? '')
   const formError = getValidationError(form)
   const minEndDate = form.startDate ? addDaysISO(form.startDate, 1) : todayISO()
-  const isReadOnly = isClosedGroup(effectiveGroup)
+  const isAdmin = effectiveGroup?.myRole === 'admin'
+  const isReadOnly = isClosedGroup(effectiveGroup) || !isAdmin
 
   const goToGroupPanel = () => {
     if (!effectiveGroupId) {
@@ -151,13 +153,23 @@ export function GroupSettingsPage() {
       try {
         setLoading(true)
         setError('')
+        setAccessDenied(false)
 
         const history = await groupsService.getMyHistory(accessToken)
-        const allGroups = [...history.activos, ...history.pasados].map((item) => item.grupos_viaje)
-        const foundGroup = allGroups.find((item) => String(item.id) === String(groupId)) || null
+        const allItems = [...history.activos, ...history.pasados]
+        const foundItem = allItems.find((item) => String(item.grupos_viaje?.id) === String(groupId)) || null
 
-        if (!foundGroup) {
-          throw new Error('No se encontró el grupo solicitado')
+        if (!foundItem?.grupos_viaje) {
+          throw new Error('No se encontró el viaje solicitado')
+        }
+
+        const foundGroup = { ...foundItem.grupos_viaje, myRole: foundItem.rol }
+
+        if (foundItem.rol !== 'admin') {
+          setGroup(foundGroup)
+          saveCurrentGroup(foundGroup)
+          setAccessDenied(true)
+          return
         }
 
         setGroup(foundGroup)
@@ -232,8 +244,9 @@ export function GroupSettingsPage() {
         accessToken
       )
 
-      setGroup(response.group)
-      saveCurrentGroup(response.group)
+      const updatedGroup = { ...response.group, myRole: group.myRole }
+      setGroup(updatedGroup)
+      saveCurrentGroup(updatedGroup)
       setSuccess('Cambios guardados correctamente')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo guardar')
@@ -249,8 +262,9 @@ export function GroupSettingsPage() {
       setClosing(true)
       setError('')
       const response = await groupsService.closeGroup(group.id, accessToken)
-      setGroup(response.group)
-      saveCurrentGroup(response.group)
+      const closedGroup = { ...response.group, myRole: group.myRole }
+      setGroup(closedGroup)
+      saveCurrentGroup(closedGroup)
       setConfirmAction(null)
       setSuccess('Viaje cerrado y archivado correctamente')
       navigate('/my-trips#viajes-pasados')
@@ -288,6 +302,37 @@ export function GroupSettingsPage() {
     )
   }
 
+  if (accessDenied) {
+    return (
+      <AppLayout showTripSelector={false} showRightPanel={false}>
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 max-w-md w-full text-center shadow-sm">
+            <h2 className="font-heading text-xl text-[#1E0A4E] mb-2">Acceso restringido</h2>
+            <p className="font-body text-sm leading-relaxed text-[#64748B]">
+              Solo el organizador puede abrir la configuración del viaje. Puedes consultar el panel del grupo o volver al itinerario.
+            </p>
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <button
+                type="button"
+                onClick={goToGroupPanel}
+                className="rounded-xl border border-[#E2E8F0] bg-white px-4 py-3 text-sm font-semibold text-[#1E0A4E] shadow-sm transition hover:bg-[#F8FAFC]"
+              >
+                Ir al panel
+              </button>
+              <button
+                type="button"
+                onClick={goToItinerary}
+                className="rounded-xl bg-[#1E6FD9] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1557B0]"
+              >
+                Volver al itinerario
+              </button>
+            </div>
+          </div>
+        </div>
+      </AppLayout>
+    )
+  }
+
   if (error && !group) {
     return (
       <AppLayout showTripSelector={false} showRightPanel={false}>
@@ -317,7 +362,7 @@ export function GroupSettingsPage() {
       }}
       user={{
         name: localUser?.nombre || 'Usuario',
-        role: 'Admin',
+        role: isAdmin ? 'Organizador' : 'Viajero',
         initials: (localUser?.nombre || 'U').slice(0, 2).toUpperCase(),
         color: '#7A4FD6',
       }}

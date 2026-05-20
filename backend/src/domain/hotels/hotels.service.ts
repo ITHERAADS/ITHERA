@@ -11,7 +11,6 @@ import { HotelOffer, HotelRoomRate, HotelSearchParams } from './hotels.entity';
 const DEFAULT_LIMIT = 12;
 const MAX_TRIP_PEOPLE = 50;
 const MAX_HOTEL_ROOMS = 50;
-const MAX_SEARCH_RANGE_DAYS = 7;
 const DEFAULT_RADIUS_METERS = 15000;
 
 function textLimit(value: string | null | undefined, max = 190): string | null {
@@ -220,9 +219,6 @@ function validateSearchParams(params: HotelSearchParams): void {
     throw Object.assign(new Error('checkOut debe ser posterior a checkIn'), { statusCode: 400 });
   }
 
-  if (nights > MAX_SEARCH_RANGE_DAYS) {
-    throw Object.assign(new Error(`La búsqueda de hospedaje permite máximo ${MAX_SEARCH_RANGE_DAYS} noche(s)`), { statusCode: 400 });
-  }
 
   const hasLocation = Boolean(params.destination || params.placeId || (typeof params.latitude === 'number' && typeof params.longitude === 'number'));
   if (!hasLocation) {

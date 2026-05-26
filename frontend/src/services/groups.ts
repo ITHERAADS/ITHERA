@@ -60,17 +60,18 @@ export const groupsService = {
     }>('/groups/my-history', token)
   },
 
-  joinGroup: async (codigo: string, token: string) => {
+  joinGroup: async (codigo: string, token: string, invitationToken?: string | null) => {
     return apiClient.post<{ ok: boolean; message: string; group: Group & { requiresApproval?: boolean; joinRequestId?: string } }>(
       '/groups/join',
-      { codigo },
+      { codigo, ...(invitationToken ? { invitationToken } : {}) },
       token
     )
   },
 
-  getInvitePreview: async (code: string) => {
+  getInvitePreview: async (code: string, invitationToken?: string | null) => {
+    const query = invitationToken ? `?token=${encodeURIComponent(invitationToken)}` : ''
     return apiClient.get<{ ok: boolean; preview: InvitePreview }>(
-      `/groups/invite-preview/${encodeURIComponent(code)}`
+      `/groups/invite-preview/${encodeURIComponent(code)}${query}`
     )
   },
 

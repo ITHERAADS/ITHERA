@@ -9,6 +9,7 @@ import {
   CreateGroupPayload,
   GroupInvitePreview,
   GroupTravelContext,
+  InvitationStatus,
   JoinGroupPayload,
   MemberRole,
   UpdateGroupPayload,
@@ -289,9 +290,65 @@ const normalizeInviteCode = (code: string): string => code.trim().toUpperCase();
 const generateInviteToken = (): string =>
   `${Date.now()}_${crypto.randomBytes(12).toString('hex')}`;
 
-const getFrontendJoinLink = (code: string): string => {
+const getFrontendJoinLink = (code: string, token?: string | null): string => {
   const baseUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
-  return `${baseUrl}/join-group?code=${encodeURIComponent(code)}`;
+  const params = new URLSearchParams({ code });
+
+  if (token) {
+    params.set('token', token);
+  }
+
+  return `${baseUrl}/join-group?${params.toString()}`;
+};
+
+type PendingEmailInvitation = {
+  id: number | string;
+  grupo_id: number | string;
+  email: string;
+  codigo_invitacion: string;
+  token: string;
+  estado: InvitationStatus | string;
+};
+
+const findPendingEmailInvitationByToken = async (
+  code: string,
+  token?: string | null
+): Promise<PendingEmailInvitation | null> => {
+  const safeToken = token?.trim();
+  if (!safeToken) return null;
+
+  const { data, error } = await supabase
+    .from('grupo_invitaciones')
+    .select('id, grupo_id, email, codigo_invitacion, token, estado')
+    .eq('codigo_invitacion', normalizeInviteCode(code))
+    .eq('token', safeToken)
+    .eq('estado', 'pendiente')
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data as PendingEmailInvitation | null;
+};
+
+const assertEmailInvitationCanBeUsed = (
+  invitation: PendingEmailInvitation | null,
+  userEmail?: string | null
+): PendingEmailInvitation => {
+  if (!invitation) {
+    throw Object.assign(new Error('Esta invitación personal ya fue usada, revocada o no es válida.'), {
+      statusCode: 410,
+      code: 'EMAIL_INVITE_INVALID',
+    });
+  }
+
+  const normalizedUserEmail = userEmail?.trim().toLowerCase();
+  if (!normalizedUserEmail || invitation.email.trim().toLowerCase() !== normalizedUserEmail) {
+    throw Object.assign(new Error('Esta invitación fue enviada a otro correo. Inicia sesión con el correo invitado.'), {
+      statusCode: 403,
+      code: 'EMAIL_INVITE_EMAIL_MISMATCH',
+    });
+  }
+
+  return invitation;
 };
 
 const getFrontendPath = (path: string): string => path;
@@ -306,10 +363,12 @@ const buildInviteEmailHtml = ({
   groupName,
   groupDescription,
   inviteLink,
+  isPrivateGroup,
 }: {
   groupName: string;
   groupDescription?: string | null;
   inviteLink: string;
+  isPrivateGroup?: boolean;
 }) => {
   const safeDescription = groupDescription?.trim();
 
@@ -333,7 +392,11 @@ const buildInviteEmailHtml = ({
     }
 
     <p style="margin:0 0 22px 0;">
-      Da clic en el siguiente botón para unirte:
+      ${
+        isPrivateGroup
+          ? 'Da clic en el siguiente botón para unirte directamente. Esta invitación fue autorizada por el organizador y no requiere solicitar acceso.'
+          : 'Da clic en el siguiente botón para unirte.'
+      }
     </p>
 
     <a
@@ -352,7 +415,11 @@ const buildInviteEmailHtml = ({
     </a>
 
     <p style="margin:24px 0 0 0; font-size:12px; color:#9ca3af;">
-      Si no esperabas esta invitación, puedes ignorar este correo.
+      ${
+        isPrivateGroup
+          ? 'Esta invitación es personal, de un solo uso y solo funciona con el correo al que fue enviada. Si no esperabas esta invitación, puedes ignorar este correo.'
+          : 'Si no esperabas esta invitación, puedes ignorar este correo.'
+      }
     </p>
   `;
 
@@ -852,6 +919,15 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
   const localUser = await getLocalUserRecord(authUserId);
   const usuarioId = String(localUser.id_usuario);
   const normalizedCode = normalizeInviteCode(payload.codigo);
+  const invitationToken = payload.invitationToken?.trim();
+  const emailInvitation = await findPendingEmailInvitationByToken(normalizedCode, invitationToken);
+
+  if (invitationToken && !emailInvitation) {
+    throw Object.assign(new Error('Esta invitación personal ya fue usada, revocada o no es válida.'), {
+      statusCode: 410,
+      code: 'EMAIL_INVITE_INVALID',
+    });
+  }
 
   const { data: grupo, error: groupError } = await supabase
     .from('grupos_viaje')
@@ -883,9 +959,20 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
 
   await ensureUserHasAvailableDates(localUser.id_usuario, grupo.fecha_inicio ?? null, grupo.fecha_fin ?? null, 'join');
 
+  const validatedEmailInvitation = invitationToken
+    ? assertEmailInvitationCanBeUsed(emailInvitation, localUser.email)
+    : null;
+
+  if (validatedEmailInvitation && String(validatedEmailInvitation.grupo_id) !== String(grupo.id)) {
+    throw Object.assign(new Error('La invitación personal no corresponde a este grupo.'), {
+      statusCode: 400,
+      code: 'EMAIL_INVITE_GROUP_MISMATCH',
+    });
+  }
+
   const isPublicGroup = grupo.es_publico === true;
 
-  if (!isPublicGroup) {
+  if (!isPublicGroup && !validatedEmailInvitation) {
     const { data: existingRequest, error: requestLookupError } = await supabase
       .from('grupo_solicitudes_union')
       .select('id, estado')
@@ -976,7 +1063,34 @@ export const joinGroupByCode = async (authUserId: string, payload: JoinGroupPayl
 
   if (insertError) throw new Error(insertError.message);
 
-  if (localUser.email) {
+  if (validatedEmailInvitation) {
+    const { data: acceptedInvite, error: acceptInviteError } = await supabase
+      .from('grupo_invitaciones')
+      .update({
+        estado: 'aceptada',
+        accepted_by: localUser.id_usuario,
+        accepted_at: new Date().toISOString(),
+      })
+      .eq('id', validatedEmailInvitation.id)
+      .eq('estado', 'pendiente')
+      .select('id')
+      .maybeSingle();
+
+    if (acceptInviteError) throw new Error(acceptInviteError.message);
+
+    if (!acceptedInvite) {
+      await supabase
+        .from('grupo_miembros')
+        .delete()
+        .eq('grupo_id', grupo.id)
+        .eq('usuario_id', localUser.id_usuario);
+
+      throw Object.assign(new Error('Esta invitación personal ya fue usada. Solicita una nueva al organizador.'), {
+        statusCode: 409,
+        code: 'EMAIL_INVITE_ALREADY_USED',
+      });
+    }
+  } else if (localUser.email) {
     await supabase
       .from('grupo_invitaciones')
       .update({
@@ -1503,9 +1617,18 @@ export const getInviteInfo = async (authUserId: string, groupId: string) => {
 };
 
 export const getInvitePreviewByCode = async (
-  codigo: string
+  codigo: string,
+  invitationToken?: string
 ): Promise<GroupInvitePreview> => {
   const normalizedCode = normalizeInviteCode(codigo);
+  const emailInvitation = await findPendingEmailInvitationByToken(normalizedCode, invitationToken);
+
+  if (invitationToken && !emailInvitation) {
+    throw Object.assign(new Error('Esta invitación personal ya fue usada, revocada o no es válida.'), {
+      statusCode: 410,
+      code: 'EMAIL_INVITE_INVALID',
+    });
+  }
 
   const { data: grupo, error } = await supabase
     .from('grupos_viaje')
@@ -1537,7 +1660,9 @@ export const getInvitePreviewByCode = async (
     es_publico: grupo.es_publico ?? false,
     canJoin,
     cannotJoinReason: canJoin ? null : 'GROUP_CAPACITY_REACHED',
-    requiresApproval: grupo.es_publico !== true,
+    requiresApproval: emailInvitation ? false : grupo.es_publico !== true,
+    emailInvitation: Boolean(emailInvitation),
+    invitedEmail: emailInvitation?.email ?? null,
   };
 };
 
@@ -1648,7 +1773,7 @@ export const createGroupInvitations = async (
         email,
         status: 'already_invited',
         codigo: grupo.codigo_invitacion,
-        inviteLink: getFrontendJoinLink(grupo.codigo_invitacion),
+        inviteLink: getFrontendJoinLink(grupo.codigo_invitacion, existingInvite.token),
       });
       continue;
     }
@@ -1670,7 +1795,7 @@ export const createGroupInvitations = async (
 
     if (insertError) throw new Error(insertError.message);
 
-    const inviteLink = getFrontendJoinLink(grupo.codigo_invitacion);
+    const inviteLink = getFrontendJoinLink(grupo.codigo_invitacion, token);
 
     results.push({
       id: String(createdInvite.id),
@@ -1684,6 +1809,7 @@ export const createGroupInvitations = async (
       groupName: grupo.nombre,
       groupDescription: grupo.descripcion ?? null,
       inviteLink,
+      isPrivateGroup: grupo.es_publico !== true,
     });
 
     sendEmail({

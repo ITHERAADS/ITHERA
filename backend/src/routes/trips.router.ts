@@ -175,14 +175,14 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
 
 router.post('/join', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { codigo } = req.body as { codigo?: string };
+    const { codigo, invitationToken } = req.body as { codigo?: string; invitationToken?: string };
 
     if (!codigo) {
       res.status(400).json({ ok: false, error: 'El código de invitación es requerido' });
       return;
     }
 
-    const grupo = await GroupsService.joinGroupByCode(req.user!.id, { codigo });
+    const grupo = await GroupsService.joinGroupByCode(req.user!.id, { codigo, invitationToken });
     res.status(200).json({
       ok: true,
       message: grupo.requiresApproval
@@ -208,7 +208,8 @@ router.get('/my-history', requireAuth, async (req: Request, res: Response): Prom
 
 router.get('/invite-preview/:code', async (req: Request, res: Response): Promise<void> => {
   try {
-    const preview = await GroupsService.getInvitePreviewByCode(req.params.code);
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined;
+    const preview = await GroupsService.getInvitePreviewByCode(req.params.code, token);
     res.status(200).json({ ok: true, preview });
   } catch (err: unknown) {
     const { status, body } = buildRouteErrorResponse(err);

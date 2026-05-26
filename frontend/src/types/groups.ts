@@ -127,6 +127,8 @@ export interface InvitePreview {
   canJoin: boolean
   cannotJoinReason?: 'GROUP_CAPACITY_REACHED' | string | null
   requiresApproval?: boolean
+  emailInvitation?: boolean
+  invitedEmail?: string | null
 }
 
 export interface GroupJoinRequest {

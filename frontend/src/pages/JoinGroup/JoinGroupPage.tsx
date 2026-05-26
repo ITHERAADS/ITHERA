@@ -41,6 +41,7 @@ export function JoinGroupPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const code = params.get("code")?.trim().toUpperCase() ?? "";
+  const invitationToken = params.get("token")?.trim() ?? "";
 
   const { accessToken, localUser, loading: authLoading } = useAuth();
 
@@ -64,7 +65,7 @@ export function JoinGroupPage() {
         setError("");
         setJoinError("");
 
-        const response = await groupsService.getInvitePreview(code);
+        const response = await groupsService.getInvitePreview(code, invitationToken || undefined);
         setPreview(response.preview);
       } catch (err) {
         setError(
@@ -78,11 +79,11 @@ export function JoinGroupPage() {
     }
 
     loadPreview();
-  }, [code]);
+  }, [code, invitationToken]);
 
   const handleJoin = async () => {
     if (!accessToken) {
-      const redirectTo = `/join-group?code=${encodeURIComponent(code)}`;
+      const redirectTo = `/join-group?code=${encodeURIComponent(code)}${invitationToken ? `&token=${encodeURIComponent(invitationToken)}` : ""}`;
       sessionStorage.setItem("ithera_post_login_redirect", redirectTo);
       navigate(`/login?redirect=${encodeURIComponent(redirectTo)}`);
       return;
@@ -92,7 +93,7 @@ export function JoinGroupPage() {
       setJoining(true);
       setJoinError("");
 
-      const response = await groupsService.joinGroup(code, accessToken);
+      const response = await groupsService.joinGroup(code, accessToken, invitationToken || undefined);
 
       if (response.group.requiresApproval) {
         setRequestPending(true);
@@ -236,7 +237,13 @@ export function JoinGroupPage() {
                 </div>
               )}
 
-              {preview.requiresApproval && preview.canJoin && (
+              {preview.emailInvitation && preview.canJoin && (
+                <p className="mt-4 rounded-xl bg-[#EAFBF1] px-4 py-3 text-sm text-[#166534]">
+                  Esta es una invitación personal enviada por el organizador. Al aceptarla entrarás directamente al grupo sin solicitar acceso. Solo puede usarse una vez y debe coincidir con el correo invitado{preview.invitedEmail ? ` (${preview.invitedEmail})` : ""}.
+                </p>
+              )}
+
+              {!preview.emailInvitation && preview.requiresApproval && preview.canJoin && (
                 <p className="mt-4 rounded-xl bg-[#FFF8E6] px-4 py-3 text-sm text-[#8A5A00]">
                   Este grupo es privado. Al aceptar, se enviará una solicitud al
                   administrador para aprobación.
@@ -268,9 +275,11 @@ export function JoinGroupPage() {
                     {joining
                       ? "Procesando..."
                       : localUser
-                        ? preview.requiresApproval
-                          ? "Solicitar acceso"
-                          : "Aceptar invitación"
+                        ? preview.emailInvitation
+                          ? "Aceptar invitación directa"
+                          : preview.requiresApproval
+                            ? "Solicitar acceso"
+                            : "Aceptar invitación"
                         : "Iniciar sesión para aceptar"}
                   </button>
                 )}

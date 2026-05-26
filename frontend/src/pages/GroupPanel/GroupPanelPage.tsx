@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppLayout } from "../../components/layout/AppLayout";
 import { InviteModal } from "../../components/InviteModal/InviteModal";
@@ -25,6 +25,67 @@ type InviteMember = {
   name: string;
   role: "Admin" | "Miembro";
 };
+
+type InviteSettingsState = { expiresAt: string | null; maxUses: number | null; usedCount: number };
+
+type GroupPanelCache = {
+  group: Group | null;
+  members: GroupMember[];
+  invitations: GroupInvitation[];
+  joinRequests: GroupJoinRequest[];
+  adminDelegations: AdminDelegationRequest[];
+  inviteLink: string;
+  qrBase64: string;
+  inviteSettings: InviteSettingsState;
+  savedAt: number;
+};
+
+type GroupPanelRealtimePayload = {
+  grupoId?: string | number;
+  groupId?: string | number;
+  tipo?: string;
+  metadata?: {
+    targetUsuarioId?: string | number;
+    memberId?: string | number;
+    [key: string]: unknown;
+  };
+};
+
+const GROUP_PANEL_CACHE_TTL_MS = 10 * 60 * 1000;
+const getGroupPanelCacheKey = (groupId: string) => `ithera:group-panel:${groupId}`;
+
+function readGroupPanelCache(groupId: string): GroupPanelCache | null {
+  if (!groupId || typeof window === "undefined") return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(getGroupPanelCacheKey(groupId));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as GroupPanelCache;
+    if (!parsed || Date.now() - Number(parsed.savedAt ?? 0) > GROUP_PANEL_CACHE_TTL_MS) {
+      window.sessionStorage.removeItem(getGroupPanelCacheKey(groupId));
+      return null;
+    }
+
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeGroupPanelCache(groupId: string, snapshot: GroupPanelCache) {
+  if (!groupId || typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(
+      getGroupPanelCacheKey(groupId),
+      JSON.stringify({ ...snapshot, savedAt: Date.now() }),
+    );
+  } catch {
+    // La caché es una mejora de UX; si el navegador la bloquea, el flujo sigue funcionando.
+  }
+}
+
 
 function getInitials(name: string) {
   return name
@@ -56,18 +117,38 @@ export function GroupPanelPage() {
   const { accessToken, localUser } = useAuth();
   const { socket } = useSocket(accessToken);
 
-  const [group, setGroup] = useState<Group | null>(getCurrentGroup());
-  const [members, setMembers] = useState<GroupMember[]>([]);
-  const [invitations, setInvitations] = useState<GroupInvitation[]>([]);
-  const [joinRequests, setJoinRequests] = useState<GroupJoinRequest[]>([]);
-  const [inviteLink, setInviteLink] = useState("");
-  const [qrBase64, setQrBase64] = useState("");
-  const [inviteSettings, setInviteSettings] = useState<{ expiresAt: string | null; maxUses: number | null; usedCount: number }>({
+  const initialCurrentGroup = useMemo(() => getCurrentGroup(), []);
+  const groupId = searchParams.get("groupId") || initialCurrentGroup?.id || "";
+  const initialGroup =
+    initialCurrentGroup && String(initialCurrentGroup.id) === String(groupId)
+      ? initialCurrentGroup
+      : null;
+  const cachedPanel = useMemo(() => readGroupPanelCache(groupId), [groupId]);
+  const realtimeRefreshTimerRef = useRef<number | null>(null);
+  const latestPanelSnapshotRef = useRef<GroupPanelCache>(cachedPanel ?? {
+    group: initialGroup,
+    members: [],
+    invitations: [],
+    joinRequests: [],
+    adminDelegations: [],
+    inviteLink: "",
+    qrBase64: "",
+    inviteSettings: { expiresAt: null, maxUses: null, usedCount: 0 },
+    savedAt: Date.now(),
+  });
+
+  const [group, setGroup] = useState<Group | null>(cachedPanel?.group ?? initialGroup);
+  const [members, setMembers] = useState<GroupMember[]>(cachedPanel?.members ?? []);
+  const [invitations, setInvitations] = useState<GroupInvitation[]>(cachedPanel?.invitations ?? []);
+  const [joinRequests, setJoinRequests] = useState<GroupJoinRequest[]>(cachedPanel?.joinRequests ?? []);
+  const [inviteLink, setInviteLink] = useState(cachedPanel?.inviteLink ?? "");
+  const [qrBase64, setQrBase64] = useState(cachedPanel?.qrBase64 ?? "");
+  const [inviteSettings, setInviteSettings] = useState<InviteSettingsState>(cachedPanel?.inviteSettings ?? {
     expiresAt: null,
     maxUses: null,
     usedCount: 0,
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedPanel);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -75,11 +156,9 @@ export function GroupPanelPage() {
     null,
   );
   const [roleChangeLoading, setRoleChangeLoading] = useState(false);
-  const [adminDelegations, setAdminDelegations] = useState<AdminDelegationRequest[]>([]);
+  const [adminDelegations, setAdminDelegations] = useState<AdminDelegationRequest[]>(cachedPanel?.adminDelegations ?? []);
   const [delegationActionLoading, setDelegationActionLoading] = useState<string | null>(null);
   const [joinRequestActionLoading, setJoinRequestActionLoading] = useState<string | null>(null);
-
-  const groupId = searchParams.get("groupId") || group?.id || "";
 
   const currentMember = members.find(
     (member) => String(member.usuario_id) === String(localUser?.id_usuario),
@@ -98,6 +177,22 @@ export function GroupPanelPage() {
   const outgoingAdminDelegation = adminDelegations.find(
     (request) => String(request.from_user_id) === String(localUser?.id_usuario),
   );
+
+  const persistPanelCache = useCallback(
+    (nextSnapshot: Partial<GroupPanelCache>) => {
+      if (!groupId) return;
+
+      const snapshot: GroupPanelCache = {
+        ...latestPanelSnapshotRef.current,
+        ...nextSnapshot,
+        savedAt: Date.now(),
+      };
+
+      latestPanelSnapshotRef.current = snapshot;
+      writeGroupPanelCache(groupId, snapshot);
+    },
+    [groupId],
+  );
   const loadAdminData = useCallback(
     async (targetGroup: Group | null, targetMembers: GroupMember[]) => {
       if (!accessToken || !groupId) return;
@@ -113,11 +208,21 @@ export function GroupPanelPage() {
         !isClosedGroup(targetGroup);
 
       if (!canManage || reachedCapacity) {
+        const emptyInviteSettings = { expiresAt: null, maxUses: null, usedCount: 0 };
         setInviteLink("");
         setQrBase64("");
-        setInviteSettings({ expiresAt: null, maxUses: null, usedCount: 0 });
+        setInviteSettings(emptyInviteSettings);
         setInvitations([]);
         setJoinRequests([]);
+        persistPanelCache({
+          group: targetGroup,
+          members: targetMembers,
+          invitations: [],
+          joinRequests: [],
+          inviteLink: "",
+          qrBase64: "",
+          inviteSettings: emptyInviteSettings,
+        });
         return;
       }
 
@@ -132,13 +237,24 @@ export function GroupPanelPage() {
             : Promise.resolve({ requests: [] }),
         ]);
 
+      const nextInviteSettings = inviteRes.inviteSettings ?? { expiresAt: null, maxUses: null, usedCount: 0 };
+
       setInviteLink(inviteRes.inviteLink);
-      setInviteSettings(inviteRes.inviteSettings ?? { expiresAt: null, maxUses: null, usedCount: 0 });
+      setInviteSettings(nextInviteSettings);
       setQrBase64(qrRes.qrBase64);
       setInvitations(invitationsRes.invitations);
       setJoinRequests(joinRequestsRes.requests);
+      persistPanelCache({
+        group: targetGroup,
+        members: targetMembers,
+        invitations: invitationsRes.invitations,
+        joinRequests: joinRequestsRes.requests,
+        inviteLink: inviteRes.inviteLink,
+        qrBase64: qrRes.qrBase64,
+        inviteSettings: nextInviteSettings,
+      });
     },
-    [accessToken, groupId, localUser?.id_usuario],
+    [accessToken, groupId, localUser?.id_usuario, persistPanelCache],
   );
 
   const goToItinerary = () => {
@@ -156,7 +272,9 @@ export function GroupPanelPage() {
     });
   };
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading ?? true;
+
     if (!accessToken || !groupId) {
       setLoading(false);
       setError("No se recibió un groupId válido");
@@ -164,7 +282,7 @@ export function GroupPanelPage() {
     }
 
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       setError("");
 
       const [groupRes, membersRes] = await Promise.all([
@@ -189,9 +307,16 @@ export function GroupPanelPage() {
 
       try {
         const delegationRes = await groupsService.getAdminDelegations(groupId, accessToken);
-        setAdminDelegations(delegationRes.requests ?? []);
+        const nextDelegations = delegationRes.requests ?? [];
+        setAdminDelegations(nextDelegations);
+        persistPanelCache({
+          group: loadedGroup,
+          members: membersRes.members,
+          adminDelegations: nextDelegations,
+        });
       } catch {
         setAdminDelegations([]);
+        persistPanelCache({ group: loadedGroup, members: membersRes.members, adminDelegations: [] });
       }
 
       void loadAdminData(loadedGroup, membersRes.members).catch(() => {
@@ -209,25 +334,132 @@ export function GroupPanelPage() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken, groupId, loadAdminData, localUser?.id_usuario, navigate]);
+  }, [accessToken, groupId, loadAdminData, localUser?.id_usuario, navigate, persistPanelCache]);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    void loadData({ showLoading: !cachedPanel });
+  }, [cachedPanel, loadData]);
+
+  const refreshMembersSnapshot = useCallback(async () => {
+    if (!accessToken || !groupId) return;
+
+    const [groupRes, membersRes] = await Promise.all([
+      groupsService.getGroupDetails(groupId, accessToken),
+      groupsService.getMembers(groupId, accessToken),
+    ]);
+
+    const loadedCurrentMember = membersRes.members.find(
+      (member) => String(member.usuario_id) === String(localUser?.id_usuario),
+    );
+
+    if (!loadedCurrentMember) {
+      clearCurrentGroup();
+      navigate("/my-trips", { replace: true });
+      return;
+    }
+
+    const loadedGroup = { ...groupRes.group, myRole: loadedCurrentMember.rol };
+    setGroup(loadedGroup);
+    saveCurrentGroup(loadedGroup);
+    setMembers(membersRes.members);
+    persistPanelCache({ group: loadedGroup, members: membersRes.members });
+
+    try {
+      const delegationRes = await groupsService.getAdminDelegations(groupId, accessToken);
+      const nextDelegations = delegationRes.requests ?? [];
+      setAdminDelegations(nextDelegations);
+      persistPanelCache({ adminDelegations: nextDelegations });
+    } catch {
+      setAdminDelegations([]);
+      persistPanelCache({ adminDelegations: [] });
+    }
+
+  }, [accessToken, groupId, localUser?.id_usuario, navigate, persistPanelCache]);
+
+  const refreshJoinRequestsSnapshot = useCallback(async () => {
+    if (!accessToken || !groupId || !canManageGroup || !isPrivateGroup) return;
+
+    const requestsRes = await groupsService.getJoinRequests(groupId, accessToken);
+    setJoinRequests(requestsRes.requests);
+    persistPanelCache({ joinRequests: requestsRes.requests });
+  }, [accessToken, canManageGroup, groupId, isPrivateGroup, persistPanelCache]);
+
+  const refreshInvitationsSnapshot = useCallback(async () => {
+    if (!accessToken || !groupId || !canManageGroup) return;
+
+    const invitationsRes = await groupsService.getInvitations(groupId, accessToken);
+    setInvitations(invitationsRes.invitations);
+    persistPanelCache({ invitations: invitationsRes.invitations });
+  }, [accessToken, canManageGroup, groupId, persistPanelCache]);
+
+  const refreshForRealtimePayload = useCallback(async (payload: GroupPanelRealtimePayload) => {
+    const tipo = String(payload.tipo ?? "");
+
+    if (tipo === "grupo_actualizado") {
+      await refreshMembersSnapshot();
+      return;
+    }
+
+    if (tipo === "miembro_unido" || tipo === "miembro_agregado") {
+      await Promise.all([refreshMembersSnapshot(), refreshInvitationsSnapshot()]);
+      return;
+    }
+
+    if (
+      tipo === "miembro_eliminado" ||
+      tipo === "miembro_actualizado" ||
+      tipo === "rol_actualizado" ||
+      tipo === "delegacion_admin_pendiente" ||
+      tipo === "delegacion_admin_aceptada" ||
+      tipo === "delegacion_admin_rechazada"
+    ) {
+      await refreshMembersSnapshot();
+      return;
+    }
+
+    if (
+      tipo === "solicitud_union_creada" ||
+      tipo === "solicitud_union_resuelta" ||
+      tipo === "solicitud_union_rechazada"
+    ) {
+      await refreshJoinRequestsSnapshot();
+      return;
+    }
+
+    if (tipo === "solicitud_union_aprobada") {
+      await Promise.all([refreshMembersSnapshot(), refreshJoinRequestsSnapshot()]);
+      return;
+    }
+
+    if (tipo === "invitacion_enviada" || tipo === "invitacion_aceptada") {
+      await refreshInvitationsSnapshot();
+      return;
+    }
+
+    await loadData({ showLoading: false });
+  }, [
+    loadData,
+    refreshInvitationsSnapshot,
+    refreshJoinRequestsSnapshot,
+    refreshMembersSnapshot,
+  ]);
+
+  const scheduleRealtimeRefresh = useCallback((payload: GroupPanelRealtimePayload) => {
+    if (realtimeRefreshTimerRef.current !== null) {
+      window.clearTimeout(realtimeRefreshTimerRef.current);
+    }
+
+    realtimeRefreshTimerRef.current = window.setTimeout(() => {
+      void refreshForRealtimePayload(payload).catch(() => {
+        void loadData({ showLoading: false });
+      });
+    }, 180);
+  }, [loadData, refreshForRealtimePayload]);
 
   useEffect(() => {
     if (!socket || !groupId) return;
 
-    const handleRealtime = (payload: {
-      grupoId?: string | number;
-      groupId?: string | number;
-      tipo?: string;
-      metadata?: {
-        targetUsuarioId?: string | number;
-        memberId?: string | number;
-        [key: string]: unknown;
-      };
-    }) => {
+    const handleRealtime = (payload: GroupPanelRealtimePayload) => {
       const payloadGroupId = payload.grupoId ?? payload.groupId;
       if (
         payloadGroupId !== undefined &&
@@ -254,21 +486,7 @@ export function GroupPanelPage() {
         return;
       }
 
-      if (
-        payload.tipo === "miembro_agregado" ||
-        payload.tipo === "miembro_eliminado" ||
-        payload.tipo === "miembro_actualizado" ||
-        payload.tipo === "rol_actualizado" ||
-        payload.tipo === "solicitud_union_creada" ||
-        payload.tipo === "solicitud_union_resuelta" ||
-        payload.tipo === "grupo_actualizado" ||
-        payload.tipo === "delegacion_admin_pendiente" ||
-        payload.tipo === "delegacion_admin_aceptada" ||
-        payload.tipo === "delegacion_admin_rechazada" ||
-        payload.tipo === undefined
-      ) {
-        void loadData();
-      }
+      scheduleRealtimeRefresh(payload);
     };
 
     socket.emit("join_room", { tripId: groupId });
@@ -277,12 +495,17 @@ export function GroupPanelPage() {
     socket.on("group_deleted", handleRealtime);
 
     return () => {
+      if (realtimeRefreshTimerRef.current !== null) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+        realtimeRefreshTimerRef.current = null;
+      }
+
       socket.emit("leave_room", { tripId: groupId });
       socket.off("dashboard_updated", handleRealtime);
       socket.off("group_members_updated", handleRealtime);
       socket.off("group_deleted", handleRealtime);
     };
-  }, [groupId, loadData, localUser?.id_usuario, navigate, socket]);
+  }, [groupId, localUser?.id_usuario, navigate, scheduleRealtimeRefresh, socket]);
 
   const inviteMembers: InviteMember[] = useMemo(
     () =>
@@ -313,11 +536,14 @@ export function GroupPanelPage() {
 
       if (nextRole === "admin" && response.member?.pendingDelegation) {
         const delegationRes = await groupsService.getAdminDelegations(group.id, accessToken);
-        setAdminDelegations(delegationRes.requests ?? []);
+        const nextDelegations = delegationRes.requests ?? [];
+        setAdminDelegations(nextDelegations);
+        persistPanelCache({ adminDelegations: nextDelegations });
         alert("Solicitud de administración enviada. El integrante debe aceptarla antes de que cambien los roles.");
       } else {
         const refreshed = await groupsService.getMembers(group.id, accessToken);
         setMembers(refreshed.members);
+        persistPanelCache({ members: refreshed.members });
       }
       setRoleChangeTarget(null);
     } catch (err) {
@@ -351,6 +577,7 @@ export function GroupPanelPage() {
       ]);
       setMembers(membersRes.members);
       setJoinRequests(requestsRes.requests);
+      persistPanelCache({ members: membersRes.members, joinRequests: requestsRes.requests });
     } catch (err) {
       alert(
         err instanceof Error ? err.message : "No se pudo atender la solicitud",
@@ -380,10 +607,12 @@ export function GroupPanelPage() {
         groupsService.getAdminDelegations(group.id, accessToken),
         groupsService.getGroupDetails(group.id, accessToken),
       ]);
+      const nextDelegations = delegationRes.requests ?? [];
       setMembers(membersRes.members);
-      setAdminDelegations(delegationRes.requests ?? []);
+      setAdminDelegations(nextDelegations);
       setGroup(groupRes.group);
       saveCurrentGroup(groupRes.group);
+      persistPanelCache({ group: groupRes.group, members: membersRes.members, adminDelegations: nextDelegations });
     } catch (err) {
       alert(
         err instanceof Error
@@ -409,6 +638,7 @@ export function GroupPanelPage() {
 
       const refreshed = await groupsService.getMembers(group.id, accessToken);
       setMembers(refreshed.members);
+      persistPanelCache({ members: refreshed.members });
     } catch (err) {
       alert(
         err instanceof Error ? err.message : "No se pudo eliminar al miembro",
@@ -970,6 +1200,7 @@ export function GroupPanelPage() {
           members={inviteMembers}
           onInviteSettingsUpdated={(settings) => {
             setInviteSettings(settings);
+            persistPanelCache({ inviteSettings: settings });
           }}
           onInvitationsSent={async () => {
             if (!accessToken) return;
@@ -986,6 +1217,11 @@ export function GroupPanelPage() {
             setMembers(membersRes.members);
             setInvitations(invitationsRes.invitations);
             setJoinRequests(joinRequestsRes.requests);
+            persistPanelCache({
+              members: membersRes.members,
+              invitations: invitationsRes.invitations,
+              joinRequests: joinRequestsRes.requests,
+            });
           }}
         />
       )}

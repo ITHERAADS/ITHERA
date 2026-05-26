@@ -99,6 +99,7 @@ export interface UpdateGroupPayload {
 
 export interface JoinGroupPayload {
   codigo: string;
+  invitationToken?: string;
 }
 
 export interface CreateGroupInvitationsPayload {
@@ -131,6 +132,8 @@ export interface GroupInvitePreview {
   canJoin: boolean;
   cannotJoinReason?: 'GROUP_CAPACITY_REACHED' | string | null;
   requiresApproval?: boolean;
+  emailInvitation?: boolean;
+  invitedEmail?: string | null;
 }
 
 export interface GroupJoinRequest {

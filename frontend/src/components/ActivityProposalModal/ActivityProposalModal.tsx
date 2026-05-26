@@ -38,6 +38,7 @@ type ActivityProposalModalProps = {
   group: Group | null
   token?: string | null
   selectedDayNumber?: number | null
+  onSelectedDayChange?: (dayNumber: number) => void
   editingActivity?: Activity | null
   isCurrentUserAdmin?: boolean
   currentUserId?: string | null
@@ -66,7 +67,84 @@ const documentCategoryLabels: Record<TripDocumentCategory, string> = {
   otro: 'Otro',
 }
 
-const todayValue = () => new Date().toISOString().split('T')[0]
+const todayValue = () => {
+  const now = new Date()
+  const yyyy = now.getFullYear()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+const dateKeyToLocalDate = (dateKey?: string | null): Date | null => {
+  if (!dateKey) return null
+  const match = String(dateKey).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0)
+  return Number.isFinite(date.getTime()) ? date : null
+}
+
+const toDateKey = (date: Date): string => {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+const toLocalDateTimeWithOffset = (dateKey: string, timeKey: string): string => {
+  const localDate = new Date(`${dateKey}T${timeKey}:00`)
+  if (!Number.isFinite(localDate.getTime())) return `${dateKey}T${timeKey}:00`
+
+  const offsetMinutes = -localDate.getTimezoneOffset()
+  const sign = offsetMinutes >= 0 ? '+' : '-'
+  const absoluteOffset = Math.abs(offsetMinutes)
+  const hours = String(Math.floor(absoluteOffset / 60)).padStart(2, '0')
+  const minutes = String(absoluteOffset % 60).padStart(2, '0')
+
+  return `${dateKey}T${timeKey}:00${sign}${hours}:${minutes}`
+}
+
+const formatDayOptionDate = (dateKey: string): string => {
+  const date = dateKeyToLocalDate(dateKey)
+  if (!date) return dateKey
+  return new Intl.DateTimeFormat('es-MX', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date)
+}
+
+const getTodayLocalDateKey = (): string => {
+  const now = new Date()
+  return toDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0))
+}
+
+const getTripDayOptions = (group: Group | null): Array<{ dayNumber: number; dateKey: string; isPast: boolean }> => {
+  const start = dateKeyToLocalDate(group?.fecha_inicio)
+  const end = dateKeyToLocalDate(group?.fecha_fin ?? group?.fecha_inicio ?? null)
+  if (!start || !end || end < start) return []
+
+  const today = getTodayLocalDateKey()
+  const options: Array<{ dayNumber: number; dateKey: string; isPast: boolean }> = []
+  const cursor = new Date(start)
+  let dayNumber = 1
+
+  while (cursor <= end && dayNumber <= 60) {
+    const dateKey = toDateKey(cursor)
+    options.push({
+      dayNumber,
+      dateKey,
+      isPast: dateKey < today,
+    })
+    cursor.setDate(cursor.getDate() + 1)
+    dayNumber += 1
+  }
+
+  return options
+}
+
 const activityContextKey = (entity: { type: 'expense' | 'document'; id: string }) => `${entity.type}:${entity.id}`
 
 const pickCreatedExpenseId = (
@@ -179,6 +257,7 @@ export function ActivityProposalModal({
   group,
   token,
   selectedDayNumber,
+  onSelectedDayChange,
   editingActivity,
   isCurrentUserAdmin = false,
   currentUserId = null,
@@ -188,6 +267,7 @@ export function ActivityProposalModal({
 }: ActivityProposalModalProps) {
   const [query, setQuery] = useState('')
   const [description, setDescription] = useState('')
+  const [assignedDayNumber, setAssignedDayNumber] = useState<number | null>(selectedDayNumber ?? null)
   const [timeValue, setTimeValue] = useState('12:00')
   const [results, setResults] = useState<EnrichedPlaceResult[]>([])
   const [suggestions, setSuggestions] = useState<EnrichedPlaceAutocompleteResult[]>([])
@@ -249,18 +329,42 @@ export function ActivityProposalModal({
     return safeMemberOptions[0]?.id ?? ''
   }, [currentUserId, safeMemberOptions])
 
-  const selectedActivityDate = useMemo(() => {
-    const startDate = group?.fecha_inicio
-    if (!startDate || !selectedDayNumber) return null
+  const dayOptions = useMemo(() => getTripDayOptions(group), [group])
 
-    const selectedDate = new Date(
-      new Date(`${startDate}T12:00:00`).getTime() + (selectedDayNumber - 1) * 86400000
-    )
-    const yyyy = selectedDate.getFullYear()
-    const mm = String(selectedDate.getMonth() + 1).padStart(2, '0')
-    const dd = String(selectedDate.getDate()).padStart(2, '0')
-    return `${yyyy}-${mm}-${dd}`
-  }, [group?.fecha_inicio, selectedDayNumber])
+  const selectedActivityDate = useMemo(() => {
+    const selectedOption = dayOptions.find((option) => option.dayNumber === assignedDayNumber)
+    if (selectedOption) return selectedOption.dateKey
+
+    const startDate = dateKeyToLocalDate(group?.fecha_inicio)
+    if (!startDate || !assignedDayNumber) return null
+
+    const selectedDate = new Date(startDate)
+    selectedDate.setDate(startDate.getDate() + (assignedDayNumber - 1))
+    return toDateKey(selectedDate)
+  }, [assignedDayNumber, dayOptions, group?.fecha_inicio])
+
+  const selectedDayIsPast = useMemo(() => {
+    if (!selectedActivityDate) return false
+    return selectedActivityDate < getTodayLocalDateKey()
+  }, [selectedActivityDate])
+
+  useEffect(() => {
+    if (!open) return
+
+    const requestedDay = selectedDayNumber ?? null
+    const requestedOption = requestedDay != null
+      ? dayOptions.find((option) => option.dayNumber === requestedDay)
+      : undefined
+    const fallbackOption = dayOptions.find((option) => !option.isPast) ?? dayOptions[0]
+    const nextDay = requestedOption && !requestedOption.isPast
+      ? requestedOption.dayNumber
+      : fallbackOption?.dayNumber ?? requestedDay
+
+    setAssignedDayNumber(nextDay ?? null)
+    if (nextDay && nextDay !== requestedDay) {
+      onSelectedDayChange?.(nextDay)
+    }
+  }, [dayOptions, onSelectedDayChange, open, selectedDayNumber])
 
   const routeOrigin = useMemo(() => {
     if (group?.punto_partida_latitud != null && group.punto_partida_longitud != null) {
@@ -294,7 +398,7 @@ export function ActivityProposalModal({
 
   const getActivityDate = useCallback(() => {
     if (!selectedActivityDate) return null
-    return `${selectedActivityDate}T${timeValue}:00`
+    return toLocalDateTimeWithOffset(selectedActivityDate, timeValue)
   }, [selectedActivityDate, timeValue])
 
   const resetContextDraft = () => {
@@ -635,6 +739,8 @@ export function ActivityProposalModal({
         latitude: selectedPlace.latitude,
         longitude: selectedPlace.longitude,
         selectedTime: timeValue,
+        selectedDayNumber: assignedDayNumber,
+        selectedDate: selectedActivityDate,
         primaryCategory: selectedPlace.primaryCategory,
         photoName: selectedPlace.photoName ?? null,
         photoUrl: selectedPlace.photoUrl ?? null,
@@ -687,6 +793,18 @@ export function ActivityProposalModal({
     }
     if (!selectedPlace) {
       setError('Selecciona un lugar para proponer la actividad.')
+      return
+    }
+    if (!assignedDayNumber || !selectedActivityDate) {
+      setError('Selecciona el dia del itinerario donde se agregara la actividad.')
+      return
+    }
+    if (selectedDayIsPast) {
+      setError('No puedes agregar actividades en dias anteriores al actual.')
+      return
+    }
+    if (!/^([01]\d|2[0-3]):(00|30)$/.test(timeValue)) {
+      setError('La hora debe estar en intervalos de 30 minutos, por ejemplo 09:00 o 09:30.')
       return
     }
     if (selectedPlaceIsLongRoute && !skipLongRouteConfirmation) {
@@ -1015,6 +1133,8 @@ export function ActivityProposalModal({
     )
   }
 
+  const canSubmitActivity = Boolean(selectedPlace && assignedDayNumber && selectedActivityDate && !selectedDayIsPast)
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl">
@@ -1119,14 +1239,49 @@ export function ActivityProposalModal({
 
           <div>
             <label className="mb-1.5 block font-body text-xs font-semibold uppercase tracking-wide text-[#1E0A4E]/60">
+              Dia de asignacion
+            </label>
+            <select
+              value={assignedDayNumber ?? ''}
+              onChange={(event) => {
+                const nextDay = Number(event.target.value)
+                setAssignedDayNumber(Number.isFinite(nextDay) ? nextDay : null)
+                if (Number.isFinite(nextDay)) onSelectedDayChange?.(nextDay)
+                setError('')
+              }}
+              className="w-full rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm outline-none transition focus:border-bluePrimary focus:ring-2 focus:ring-bluePrimary/10"
+            >
+              {dayOptions.length === 0 && <option value="">Fechas del viaje no disponibles</option>}
+              {dayOptions.map((option) => (
+                <option key={option.dayNumber} value={option.dayNumber} disabled={option.isPast}>
+                  Dia {option.dayNumber} - {formatDayOptionDate(option.dateKey)}{option.isPast ? ' (dia pasado)' : ''}
+                </option>
+              ))}
+            </select>
+            {selectedActivityDate && (
+              <p className={`mt-1.5 font-body text-xs ${selectedDayIsPast ? 'text-red-600' : 'text-[#64748B]'}`}>
+                La actividad se guardara el {formatDayOptionDate(selectedActivityDate)}.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1.5 block font-body text-xs font-semibold uppercase tracking-wide text-[#1E0A4E]/60">
               Hora estimada
             </label>
             <input
               type="time"
+              step={1800}
               value={timeValue}
-              onChange={(e) => setTimeValue(e.target.value)}
+              onChange={(e) => {
+                setTimeValue(e.target.value)
+                setError('')
+              }}
               className="w-full rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm outline-none transition focus:border-bluePrimary focus:ring-2 focus:ring-bluePrimary/10"
             />
+            <p className="mt-1.5 font-body text-xs text-[#64748B]">
+              Usa intervalos de 30 minutos para evitar choques de horario.
+            </p>
           </div>
 
           {selectedPlace && (
@@ -1303,7 +1458,7 @@ export function ActivityProposalModal({
             <button
               type="button"
               onClick={() => void handleSave(true)}
-              disabled={saving || !selectedPlace}
+              disabled={saving || !canSubmitActivity}
               aria-busy={saving}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#1E6FD9] bg-[#EEF4FF] px-4 py-3 font-body text-sm font-semibold text-[#1E6FD9] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1314,7 +1469,7 @@ export function ActivityProposalModal({
           <button
             type="button"
             onClick={() => void handleSave(false)}
-            disabled={saving || !selectedPlace}
+            disabled={saving || !canSubmitActivity}
             aria-busy={saving}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-bluePrimary px-4 py-3 font-body text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >

@@ -1922,6 +1922,14 @@ export function DashboardPage() {
     [days, getLinksForActivity],
   );
 
+
+  const getFirstEditableDayNumber = useCallback(() => {
+    const tripStartDate = group?.fecha_inicio ?? currentGroup?.fecha_inicio ?? null;
+    const availableDay = daysWithContext.find(
+      (day) => !isPastItineraryDay(tripStartDate, day.dayNumber),
+    );
+    return availableDay?.dayNumber ?? daysWithContext[0]?.dayNumber ?? 1;
+  }, [currentGroup?.fecha_inicio, daysWithContext, group?.fecha_inicio]);
   const selectedDayWithContext =
     activeDay !== null
       ? daysWithContext.find((day) => day.dayNumber === activeDay)
@@ -3700,7 +3708,9 @@ export function DashboardPage() {
                 ? () => {}
                 : () =>
                     openActivityModalForDay(
-                      activeDay ?? daysWithContext[0]?.dayNumber ?? 1,
+                      activeDay !== null && !isPastItineraryDay(group?.fecha_inicio ?? currentGroup?.fecha_inicio ?? null, activeDay)
+                        ? activeDay
+                        : getFirstEditableDayNumber(),
                     )
             }
             onExportPdf={handleExportConfirmedItineraryPdf}
@@ -3752,7 +3762,9 @@ export function DashboardPage() {
                 ? undefined
                 : () =>
                     openActivityModalForDay(
-                      activeDay ?? daysWithContext[0]?.dayNumber ?? 1,
+                      activeDay !== null && !isPastItineraryDay(group?.fecha_inicio ?? currentGroup?.fecha_inicio ?? null, activeDay)
+                        ? activeDay
+                        : getFirstEditableDayNumber(),
                     )
             }
           />
@@ -3830,6 +3842,11 @@ export function DashboardPage() {
         group={group}
         token={accessToken}
         selectedDayNumber={selectedActivityDay}
+        onSelectedDayChange={(dayNumber) => {
+          setSelectedActivityDay(dayNumber);
+          setActiveDay(dayNumber);
+          setExpandedDay(dayNumber);
+        }}
         isCurrentUserAdmin={isCurrentUserAdmin}
         currentUserId={
           localUser?.id_usuario != null ? String(localUser.id_usuario) : null

@@ -51,6 +51,50 @@ const assertItineraryMutationIsNotInPast = (value?: string | null): void => {
   }
 };
 
+const assertActivityDateIsInsideTripRange = (
+  startsAt: string | null | undefined,
+  tripStartDate: string | null | undefined,
+  tripEndDate: string | null | undefined,
+): void => {
+  const activityDate = getDateOnlyInMexico(startsAt ?? null);
+  const startDate = getDateOnlyInMexico(tripStartDate ?? null);
+  const endDate = getDateOnlyInMexico(tripEndDate ?? tripStartDate ?? null);
+
+  if (!activityDate) {
+    throw Object.assign(
+      new Error("Selecciona el dia del itinerario donde se agregara la actividad."),
+      { statusCode: 400 },
+    );
+  }
+
+  if (startDate && activityDate < startDate) {
+    throw Object.assign(
+      new Error("La actividad no puede programarse antes del inicio del viaje."),
+      { statusCode: 400 },
+    );
+  }
+
+  if (endDate && activityDate > endDate) {
+    throw Object.assign(
+      new Error("La actividad no puede programarse despues del fin del viaje."),
+      { statusCode: 400 },
+    );
+  }
+};
+
+const assertActivityTimeUsesHalfHourStep = (startsAt: string | null | undefined): void => {
+  if (!startsAt) return;
+  const match = String(startsAt).match(/T([01]\d|2[0-3]):([0-5]\d)/);
+  if (!match) return;
+
+  if (match[2] !== "00" && match[2] !== "30") {
+    throw Object.assign(
+      new Error("La hora de la actividad debe estar en intervalos de 30 minutos."),
+      { statusCode: 400 },
+    );
+  }
+};
+
 const ensureGroupMember = async (authUserId: string, groupId: string) => {
   const usuarioId = await getLocalUserId(authUserId);
 
@@ -112,20 +156,23 @@ const formatDateLabel = (date: string): string => {
 const formatTimeLabel = (value?: string | null): string => {
   if (!value) return "Hora pendiente";
 
-  const match = value.match(/T([01]\d|2[0-3]):([0-5]\d)/);
-  if (match) {
-    return `${match[1]}:${match[2]}`;
+  const normalizedValue = String(value);
+  const hasExplicitTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalizedValue);
+
+  if (!hasExplicitTimezone) {
+    const localMatch = normalizedValue.match(/T([01]\d|2[0-3]):([0-5]\d)/);
+    if (localMatch) return `${localMatch[1]}:${localMatch[2]}`;
   }
 
-  try {
-    return new Intl.DateTimeFormat("es-MX", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    }).format(new Date(value));
-  } catch {
-    return "Hora pendiente";
-  }
+  const parsed = new Date(normalizedValue);
+  if (Number.isNaN(parsed.getTime())) return "Hora pendiente";
+
+  return new Intl.DateTimeFormat("es-MX", {
+    timeZone: "America/Mexico_City",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(parsed);
 };
 
 const resolveActivityDateTime = (
@@ -165,7 +212,7 @@ const resolveActivityDateTime = (
     null;
 
   if (typeof hhmm === "string" && /^([01]\d|2[0-3]):([0-5]\d)$/.test(hhmm)) {
-    return `${fallbackDate}T${hhmm}:00.000Z`;
+    return `${fallbackDate}T${hhmm}:00`;
   }
 
   return null;
@@ -179,8 +226,7 @@ const diffDays = (startDate: string, currentDate: string): number => {
 };
 
 const getActivityDate = (activity: any, fallbackDate: string): string => {
-  if (!activity.fecha_inicio) return fallbackDate;
-  return String(activity.fecha_inicio).slice(0, 10);
+  return getDateOnlyInMexico(activity.fecha_inicio ?? null) ?? fallbackDate;
 };
 
 const toActivityRange = (startsAt?: string | null, endsAt?: string | null) => {
@@ -198,7 +244,7 @@ const toActivityRange = (startsAt?: string | null, endsAt?: string | null) => {
   return {
     startsAt,
     endsAt: endsAt ?? startsAt,
-    day: String(startsAt).slice(0, 10),
+    day: getDateOnlyInMexico(startsAt) ?? String(startsAt).slice(0, 10),
     startMs,
     endMs,
   };
@@ -410,7 +456,7 @@ export const getGroupItinerary = async (
 
   if (itineraryIds.length === 0) {
     const startDate =
-      group.fecha_inicio ?? new Date().toISOString().slice(0, 10);
+      group.fecha_inicio ?? getTodayDateOnly();
     const endDate = group.fecha_fin ?? startDate;
     const totalDays = Math.max(1, diffDays(startDate, endDate) + 1);
 
@@ -655,7 +701,7 @@ export const getGroupItinerary = async (
 
   const activityDates = (activities ?? [])
     .map((activity: any) =>
-      activity.fecha_inicio ? String(activity.fecha_inicio).slice(0, 10) : null,
+      activity.fecha_inicio ? getDateOnlyInMexico(String(activity.fecha_inicio)) : null,
     )
     .filter((date: string | null): date is string => Boolean(date));
 
@@ -663,7 +709,7 @@ export const getGroupItinerary = async (
     itinerary.fecha_inicio ??
     group.fecha_inicio ??
     minDate(activityDates) ??
-    new Date().toISOString().slice(0, 10);
+    getTodayDateOnly();
   const plannedEndDate =
     itinerary.fecha_fin ??
     group.fecha_fin ??
@@ -802,6 +848,12 @@ export const createGroupActivity = async (
     itinerary = createdItinerary;
   }
 
+  assertActivityDateIsInsideTripRange(
+    payload.fecha_inicio ?? null,
+    group.fecha_inicio ?? null,
+    group.fecha_fin ?? null,
+  );
+  assertActivityTimeUsesHalfHourStep(payload.fecha_inicio ?? null);
   assertItineraryMutationIsNotInPast(payload.fecha_inicio ?? null);
 
   await ensureNoGroupActivityCollision({
@@ -1004,6 +1056,7 @@ export const updateGroupActivity = async (
       ? payload.fecha_fin
       : ((currentActivity as any).fecha_fin ?? nextStartsAt ?? null);
 
+  assertActivityTimeUsesHalfHourStep(nextStartsAt ?? null);
   assertItineraryMutationIsNotInPast(nextStartsAt ?? null);
 
   await ensureNoGroupActivityCollision({

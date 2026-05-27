@@ -45,6 +45,7 @@ import {
   type SubgroupSlot,
 } from "../../services/subgroups";
 import { useSocket } from "../../hooks/useSocket";
+import { useNetworkMonitor } from "../../hooks/useNetworkMonitor";
 import type { Group, TravelStartLocation } from "../../types/groups";
 
 function IconDownload({ size = 14 }: { size?: number }) {
@@ -640,7 +641,7 @@ function TimelineStrip({
               Selecciona un día para revisar el avance
             </p>
             <p className="font-body text-xs text-gray500">
-              También puedes empezar creando una propuesta para el primer día.
+              También puedes empezar creando una propuesta para un día del viaje.
             </p>
           </div>
         </div>
@@ -651,7 +652,7 @@ function TimelineStrip({
             className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-bluePrimary px-4 py-2 font-body text-xs font-semibold text-white hover:bg-[#1E5EEA]"
           >
             <IconPlus size={13} />
-            Proponer plan
+            Proponer actividad
           </button>
         )}
       </div>
@@ -1675,6 +1676,7 @@ export function DashboardPage() {
   const [searchParams] = useSearchParams();
   const { localUser, accessToken } = useAuth();
   const { socket, isConnected: isSocketConnected } = useSocket(accessToken);
+  const isBrowserOnline = useNetworkMonitor();
 
   const location = useLocation();
   const routeState = location.state as {
@@ -1922,14 +1924,6 @@ export function DashboardPage() {
     [days, getLinksForActivity],
   );
 
-
-  const getFirstEditableDayNumber = useCallback(() => {
-    const tripStartDate = group?.fecha_inicio ?? currentGroup?.fecha_inicio ?? null;
-    const availableDay = daysWithContext.find(
-      (day) => !isPastItineraryDay(tripStartDate, day.dayNumber),
-    );
-    return availableDay?.dayNumber ?? daysWithContext[0]?.dayNumber ?? 1;
-  }, [currentGroup?.fecha_inicio, daysWithContext, group?.fecha_inicio]);
   const selectedDayWithContext =
     activeDay !== null
       ? daysWithContext.find((day) => day.dayNumber === activeDay)
@@ -3221,7 +3215,7 @@ export function DashboardPage() {
         initials,
         color: "#1E6FD9",
       }}
-      isOnline
+      isOnline={isBrowserOnline && isSocketConnected}
       sidebarContent={
         <SidebarDashboard
           activeDay={activeDay}
@@ -3708,9 +3702,7 @@ export function DashboardPage() {
                 ? () => {}
                 : () =>
                     openActivityModalForDay(
-                      activeDay !== null && !isPastItineraryDay(group?.fecha_inicio ?? currentGroup?.fecha_inicio ?? null, activeDay)
-                        ? activeDay
-                        : getFirstEditableDayNumber(),
+                      activeDay ?? daysWithContext[0]?.dayNumber ?? 1,
                     )
             }
             onExportPdf={handleExportConfirmedItineraryPdf}
@@ -3762,9 +3754,7 @@ export function DashboardPage() {
                 ? undefined
                 : () =>
                     openActivityModalForDay(
-                      activeDay !== null && !isPastItineraryDay(group?.fecha_inicio ?? currentGroup?.fecha_inicio ?? null, activeDay)
-                        ? activeDay
-                        : getFirstEditableDayNumber(),
+                      activeDay ?? daysWithContext[0]?.dayNumber ?? 1,
                     )
             }
           />
@@ -3842,11 +3832,6 @@ export function DashboardPage() {
         group={group}
         token={accessToken}
         selectedDayNumber={selectedActivityDay}
-        onSelectedDayChange={(dayNumber) => {
-          setSelectedActivityDay(dayNumber);
-          setActiveDay(dayNumber);
-          setExpandedDay(dayNumber);
-        }}
         isCurrentUserAdmin={isCurrentUserAdmin}
         currentUserId={
           localUser?.id_usuario != null ? String(localUser.id_usuario) : null

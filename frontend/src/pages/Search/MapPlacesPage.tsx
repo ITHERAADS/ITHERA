@@ -62,7 +62,10 @@ function buildTripDays(group: Group | null) {
   const days: Array<{ value: string; label: string; isoDate: string }> = []
   let index = 1
   for (let cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
-    const isoDate = cursor.toISOString().slice(0, 10)
+    const year = cursor.getFullYear()
+    const month = String(cursor.getMonth() + 1).padStart(2, '0')
+    const day = String(cursor.getDate()).padStart(2, '0')
+    const isoDate = `${year}-${month}-${day}`
     const label = new Intl.DateTimeFormat('es-MX', { weekday: 'short', day: '2-digit', month: 'short' }).format(cursor)
     days.push({ value: String(index), label: `Día ${index} · ${label}`, isoDate })
     index += 1
@@ -70,11 +73,186 @@ function buildTripDays(group: Group | null) {
   return days
 }
 
+function getTodayIsoInMexico() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+
+  const year = parts.find((part) => part.type === 'year')?.value
+  const month = parts.find((part) => part.type === 'month')?.value
+  const day = parts.find((part) => part.type === 'day')?.value
+
+  return year && month && day ? `${year}-${month}-${day}` : new Date().toISOString().slice(0, 10)
+}
+
+function isPastTripDay(isoDate?: string | null) {
+  return Boolean(isoDate && isoDate < getTodayIsoInMexico())
+}
+
+function getFirstAvailableTripDay(days: Array<{ value: string; isoDate: string }>) {
+  return days.find((day) => !isPastTripDay(day.isoDate)) ?? null
+}
+
+function toLocalDateTimeWithOffset(dateKey: string, timeKey: string) {
+  const localDate = new Date(`${dateKey}T${timeKey}:00`)
+  const offsetMinutes = -localDate.getTimezoneOffset()
+  const sign = offsetMinutes >= 0 ? '+' : '-'
+  const absOffset = Math.abs(offsetMinutes)
+  const hours = String(Math.floor(absOffset / 60)).padStart(2, '0')
+  const minutes = String(absOffset % 60).padStart(2, '0')
+  return `${dateKey}T${timeKey}:00${sign}${hours}:${minutes}`
+}
+
 function buildDateTime(group: Group | null, dayValue: string, timeValue: string) {
   const days = buildTripDays(group)
   const selected = days.find((day) => day.value === dayValue) ?? days[0]
   if (!selected) return null
-  return `${selected.isoDate}T${timeValue}:00`
+  return toLocalDateTimeWithOffset(selected.isoDate, timeValue)
+}
+
+const WEEKDAY_ALIASES: Record<string, string[]> = {
+  domingo: ['domingo', 'dom', 'sunday', 'sun'],
+  lunes: ['lunes', 'lun', 'monday', 'mon'],
+  martes: ['martes', 'mar', 'tuesday', 'tue'],
+  miércoles: ['miércoles', 'miercoles', 'mié', 'mie', 'wednesday', 'wed'],
+  jueves: ['jueves', 'jue', 'thursday', 'thu'],
+  viernes: ['viernes', 'vie', 'friday', 'fri'],
+  sábado: ['sábado', 'sabado', 'sáb', 'sab', 'saturday', 'sat'],
+}
+
+const normalizeOpeningText = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u00A0\u202F]/g, ' ')
+    .replace(/[–—]/g, '-')
+    .toLowerCase()
+    .trim()
+
+const toMinutesFromTimeText = (raw: string, inferredMeridiem?: 'am' | 'pm') => {
+  const normalized = normalizeOpeningText(raw)
+  const match = normalized.match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)?/)
+  if (!match) return null
+
+  let hour = Number(match[1])
+  const minute = match[2] ? Number(match[2]) : 0
+  const meridiemText = match[3]?.replace(/[^apm]/g, '')
+  const meridiem = meridiemText?.startsWith('p') ? 'pm' : meridiemText?.startsWith('a') ? 'am' : inferredMeridiem
+
+  if (meridiem === 'pm' && hour < 12) hour += 12
+  if (meridiem === 'am' && hour === 12) hour = 0
+  if (hour > 23 || minute > 59) return null
+  return hour * 60 + minute
+}
+
+type OpeningHoursValidation = {
+  status: 'valid' | 'invalid' | 'unknown'
+  message: string | null
+  rangesLabel: string | null
+}
+
+function getOpeningDescriptionForDate(place: PlaceResult, isoDate: string | null) {
+  const descriptions = place.regularOpeningHours?.weekdayDescriptions ?? []
+  if (!isoDate || descriptions.length === 0) return null
+
+  const weekday = new Intl.DateTimeFormat('es-MX', { weekday: 'long' }).format(new Date(`${isoDate}T12:00:00`))
+  const aliases = WEEKDAY_ALIASES[weekday] ?? [weekday]
+
+  return descriptions.find((description) => {
+    const dayName = normalizeOpeningText(description.split(':')[0] ?? '')
+    return aliases.some((alias) => dayName.includes(normalizeOpeningText(alias)))
+  }) ?? null
+}
+
+function validateTimeAgainstOpeningHours(place: PlaceResult, isoDate: string | null, timeValue: string): OpeningHoursValidation {
+  const openingDescription = getOpeningDescriptionForDate(place, isoDate)
+  if (!openingDescription) {
+    return {
+      status: 'unknown',
+      message: 'Google Maps no proporcionó horario de atención para ese día. Puedes continuar, pero verifica el horario antes de confirmar.',
+      rangesLabel: null,
+    }
+  }
+
+  const separatorIndex = openingDescription.indexOf(':')
+  const detail = (separatorIndex >= 0 ? openingDescription.slice(separatorIndex + 1) : openingDescription).trim()
+  const normalizedDetail = normalizeOpeningText(detail)
+
+  if (!detail || normalizedDetail.includes('cerrado') || normalizedDetail.includes('closed')) {
+    return {
+      status: 'invalid',
+      message: 'El lugar aparece cerrado el día seleccionado. Elige otro día u otra actividad.',
+      rangesLabel: 'Cerrado',
+    }
+  }
+
+  if (normalizedDetail.includes('24')) {
+    return { status: 'valid', message: 'Este es el horario obtenido de Google Maps. Verifica para mayor seguridad antes de confirmar la actividad.', rangesLabel: 'Abierto 24 horas' }
+  }
+
+  const selectedMinutes = toMinutesFromTimeText(timeValue)
+  if (selectedMinutes == null) {
+    return {
+      status: 'invalid',
+      message: 'Selecciona una hora válida para programar la actividad.',
+      rangesLabel: detail,
+    }
+  }
+
+  const ranges = detail.split(',').map((range) => range.trim()).filter(Boolean)
+  const parsedRanges = ranges.map((range) => {
+    const [startRaw, endRaw] = range.split('-').map((part) => part?.trim())
+    if (!startRaw || !endRaw) return null
+
+    const normalizedStart = normalizeOpeningText(startRaw)
+    const normalizedEnd = normalizeOpeningText(endRaw)
+    const startHourMatch = normalizedStart.match(/(\d{1,2})/)
+    const endHourMatch = normalizedEnd.match(/(\d{1,2})/)
+    const startHasMeridiem = /(?:a\.?\s*m\.?|p\.?\s*m\.?|am|pm)/.test(normalizedStart)
+    const endMeridiem = normalizedEnd.includes('p') ? 'pm' : normalizedEnd.includes('a') ? 'am' : undefined
+    const shouldInferStartAsPm =
+      !startHasMeridiem &&
+      endMeridiem === 'pm' &&
+      startHourMatch &&
+      endHourMatch &&
+      Number(startHourMatch[1]) <= Number(endHourMatch[1]) &&
+      Number(startHourMatch[1]) <= 7
+
+    const start = toMinutesFromTimeText(startRaw, shouldInferStartAsPm ? 'pm' : undefined)
+    const end = toMinutesFromTimeText(endRaw)
+    if (start == null || end == null) return null
+    return { start, end }
+  }).filter((range): range is { start: number; end: number } => Boolean(range))
+
+  if (parsedRanges.length === 0) {
+    return {
+      status: 'unknown',
+      message: 'No pudimos interpretar el horario de Google Maps. Verifica manualmente antes de confirmar.',
+      rangesLabel: detail,
+    }
+  }
+
+  const isInsideRange = parsedRanges.some(({ start, end }) => {
+    if (start <= end) return selectedMinutes >= start && selectedMinutes <= end
+    return selectedMinutes >= start || selectedMinutes <= end
+  })
+
+  if (!isInsideRange) {
+    return {
+      status: 'invalid',
+      message: `El lugar no aparece abierto a las ${timeValue}. Selecciona una hora dentro del horario disponible.`,
+      rangesLabel: detail,
+    }
+  }
+
+  return {
+    status: 'valid',
+    message: 'Este es el horario obtenido de Google Maps. Verifica para mayor seguridad antes de confirmar la actividad.',
+    rangesLabel: detail,
+  }
 }
 
 function distanceMetersFromDestination(place: PlaceResult, destinationCoords: { lat: number; lng: number } | null) {
@@ -157,6 +335,17 @@ const MapPlacesPage = () => {
   }
 
   const tripDays = useMemo(() => buildTripDays(group), [group])
+  const selectedTripDay = useMemo(
+    () => tripDays.find((day) => day.value === proposalDay) ?? tripDays[0] ?? null,
+    [proposalDay, tripDays],
+  )
+  const openingHoursValidation = useMemo(
+    () => selectedPlace ? validateTimeAgainstOpeningHours(selectedPlace, selectedTripDay?.isoDate ?? null, proposalTime) : null,
+    [proposalTime, selectedPlace, selectedTripDay?.isoDate],
+  )
+  const firstAvailableTripDay = useMemo(() => getFirstAvailableTripDay(tripDays), [tripDays])
+  const selectedDayIsPast = isPastTripDay(selectedTripDay?.isoDate)
+  const searchLoading = viewMode === 'loading'
 
   const clearMarkers = useCallback(() => {
     markers.current.forEach(({ marker }) => marker.setMap(null))
@@ -354,12 +543,33 @@ const MapPlacesPage = () => {
 
   const handlePropose = async () => {
     if (!group?.id || !selectedPlace || !accessToken) return
+    const availableDay = firstAvailableTripDay
+    if (availableDay && (!selectedTripDay || isPastTripDay(selectedTripDay.isoDate))) {
+      setProposalDay(availableDay.value)
+    }
     setProposalOpen(true)
   }
 
   const handleConfirmProposal = async () => {
     if (!group?.id || !selectedPlace || !accessToken) return
     const activityDate = buildDateTime(group, proposalDay, proposalTime)
+    const hoursValidation = validateTimeAgainstOpeningHours(selectedPlace, selectedTripDay?.isoDate ?? null, proposalTime)
+
+    if (!activityDate || !selectedTripDay) {
+      setMessage('Selecciona un día válido del viaje antes de confirmar la actividad.')
+      return
+    }
+
+    if (isPastTripDay(selectedTripDay.isoDate)) {
+      setMessage('No puedes programar actividades en días pasados del viaje. Selecciona un día disponible.')
+      return
+    }
+
+    if (hoursValidation.status === 'invalid') {
+      setMessage(hoursValidation.message ?? 'Selecciona una hora dentro del horario de atención del lugar.')
+      return
+    }
+
     setMessage(null)
     setProposalSaving(true)
     try {
@@ -406,7 +616,7 @@ const MapPlacesPage = () => {
                 onChange={(event) => { setQuery(event.target.value); setShowSuggestions(event.target.value.trim().length >= 3) }}
                 onFocus={() => setShowSuggestions(query.trim().length >= 3 && Boolean(suggestions.length))}
                 onBlur={(event) => { if (!searchBoxRef.current?.contains(event.relatedTarget as Node | null)) setShowSuggestions(false) }}
-                onKeyDown={(event) => { if (event.key === 'Enter') void handleSearch() }}
+                onKeyDown={(event) => { if (event.key === 'Enter' && !searchLoading) void handleSearch() }}
                 className="w-full bg-transparent text-sm text-[#1E0A4E] outline-none placeholder:text-gray-400"
                 placeholder="Buscar lugares, restaurantes, actividades..."
               />
@@ -421,7 +631,7 @@ const MapPlacesPage = () => {
                 </div>
               )}
             </div>
-            <button onClick={() => void handleSearch()} className="w-full rounded-2xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1557B0] sm:w-auto">Buscar</button>
+            <button onClick={() => void handleSearch()} disabled={searchLoading || !query.trim()} className="w-full rounded-2xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1557B0] disabled:cursor-not-allowed disabled:bg-[#8DB8EF] sm:w-auto">{searchLoading ? 'Buscando...' : 'Buscar'}</button>
           </header>
 
           <main className="relative min-h-[620px] flex-1 overflow-hidden">
@@ -489,6 +699,8 @@ const MapPlacesPage = () => {
                 selectedDay={proposalDay}
                 selectedTime={proposalTime}
                 saving={proposalSaving}
+                openingHoursValidation={openingHoursValidation}
+                selectedDayIsPast={selectedDayIsPast}
                 onDayChange={setProposalDay}
                 onTimeChange={setProposalTime}
                 onClose={() => !proposalSaving && setProposalOpen(false)}
@@ -609,25 +821,79 @@ function PlaceModal({ place, onClose, onPropose }: { place: PlaceResult; onClose
   )
 }
 
-function ProposalModal({ place, tripDays, selectedDay, selectedTime, saving, onDayChange, onTimeChange, onClose, onConfirm }: { place: PlaceResult; tripDays: Array<{ value: string; label: string }>; selectedDay: string; selectedTime: string; saving: boolean; onDayChange: (value: string) => void; onTimeChange: (value: string) => void; onClose: () => void; onConfirm: () => void }) {
+function ProposalModal({
+  place,
+  tripDays,
+  selectedDay,
+  selectedTime,
+  saving,
+  openingHoursValidation,
+  selectedDayIsPast,
+  onDayChange,
+  onTimeChange,
+  onClose,
+  onConfirm,
+}: {
+  place: PlaceResult
+  tripDays: Array<{ value: string; label: string; isoDate?: string }>
+  selectedDay: string
+  selectedTime: string
+  saving: boolean
+  openingHoursValidation: OpeningHoursValidation | null
+  selectedDayIsPast: boolean
+  onDayChange: (value: string) => void
+  onTimeChange: (value: string) => void
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const isBlockedBySchedule = openingHoursValidation?.status === 'invalid'
+  const isBlockedByPastDay = selectedDayIsPast
+  const isConfirmDisabled = saving || isBlockedBySchedule || isBlockedByPastDay || !selectedTime
+  const scheduleMessage = openingHoursValidation?.message
+  const scheduleRanges = openingHoursValidation?.rangesLabel
+
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 p-6">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <h2 className="font-heading text-xl font-bold text-[#1E0A4E]">Programar actividad</h2>
-        <p className="mt-2 text-sm text-gray-500">Elige el día del viaje y la hora estimada para proponer <b>{place.name}</b>.</p>
+        <p className="mt-2 text-sm text-gray-500">Elige el día del viaje y una hora dentro del horario de atención de <b>{place.name}</b>.</p>
         <div className="mt-5 space-y-4">
           <label className="block text-xs font-bold uppercase text-gray-500">Día del viaje
             <select value={selectedDay} onChange={(event) => onDayChange(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-3 text-sm normal-case text-[#1E0A4E] outline-none focus:border-[#1E6FD9]">
-              {(tripDays.length ? tripDays : [{ value: '1', label: 'Día 1' }]).map((day) => <option key={day.value} value={day.value}>{day.label}</option>)}
+              {(tripDays.length ? tripDays : [{ value: '1', label: 'Día 1', isoDate: '' }]).map((day) => {
+                const disabled = isPastTripDay(day.isoDate)
+                return (
+                  <option key={day.value} value={day.value} disabled={disabled}>
+                    {day.label}{disabled ? ' · día pasado' : ''}
+                  </option>
+                )
+              })}
             </select>
           </label>
+          {isBlockedByPastDay && (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+              No puedes programar actividades en días pasados. Selecciona un día disponible del viaje.
+            </p>
+          )}
           <label className="block text-xs font-bold uppercase text-gray-500">Hora estimada
-            <input type="time" value={selectedTime} onChange={(event) => onTimeChange(event.target.value)} className="mt-2 w-full rounded-xl border border-gray-200 bg-[#F8FAFC] px-4 py-3 text-sm normal-case text-[#1E0A4E] outline-none focus:border-[#1E6FD9]" />
+            <input type="time" step={1800} value={selectedTime} onChange={(event) => onTimeChange(event.target.value)} className={`mt-2 w-full rounded-xl border bg-[#F8FAFC] px-4 py-3 text-sm normal-case text-[#1E0A4E] outline-none focus:border-[#1E6FD9] ${isBlockedBySchedule ? 'border-red-300' : 'border-gray-200'}`} />
           </label>
+          {(scheduleMessage || scheduleRanges) && (
+            <div className={`rounded-2xl border px-4 py-3 text-xs leading-relaxed ${
+              isBlockedBySchedule
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : openingHoursValidation?.status === 'valid'
+                  ? 'border-blue-200 bg-blue-50 text-blue-700'
+                  : 'border-amber-200 bg-amber-50 text-amber-700'
+            }`}>
+              {scheduleRanges && <p className="font-semibold">Horario Google Maps: {scheduleRanges}</p>}
+              {scheduleMessage && <p className={scheduleRanges ? 'mt-1' : ''}>{scheduleMessage}</p>}
+            </div>
+          )}
         </div>
         <div className="mt-6 flex gap-3">
-          <button onClick={onClose} disabled={saving} className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-[#1E0A4E] disabled:opacity-50">Cancelar</button>
-          <button onClick={onConfirm} disabled={saving} className="flex-1 rounded-xl bg-[#1E6FD9] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1557B0] disabled:bg-[#8DB8EF]">{saving ? 'Proponiendo...' : 'Confirmar'}</button>
+          <button onClick={onClose} disabled={saving} className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-[#1E0A4E] disabled:cursor-not-allowed disabled:opacity-50">Cancelar</button>
+          <button onClick={onConfirm} disabled={isConfirmDisabled} className="flex-1 rounded-xl bg-[#1E6FD9] px-4 py-3 text-sm font-semibold text-white hover:bg-[#1557B0] disabled:cursor-not-allowed disabled:bg-[#8DB8EF]">{saving ? 'Confirmando...' : 'Confirmar'}</button>
         </div>
       </div>
     </div>

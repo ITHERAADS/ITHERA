@@ -4,6 +4,8 @@ import { AppLayout } from '../../components/layout/AppLayout'
 import { SidebarDashboard } from '../../components/layout/AppLayout/SidebarDashboard'
 import { useAuth } from '../../context/useAuth'
 import { groupsService, type ItineraryDay } from '../../services/groups'
+import { useNetworkMonitor } from '../../hooks/useNetworkMonitor'
+import { useSocket } from '../../hooks/useSocket'
 import type { NavUserInfo } from '../../components/layout/Navbar'
 import type { Group } from '../../types/groups'
 
@@ -92,6 +94,8 @@ function SearchBottomNavbar({ group }: { group?: Group | null }) {
 export function SearchIntegratedShell({ children, group, user }: { children: ReactNode; group?: Group | null; user: NavUserInfo }) {
   const navigate = useNavigate()
   const { accessToken } = useAuth()
+  const isBrowserOnline = useNetworkMonitor()
+  const { isConnected: isSocketConnected } = useSocket(accessToken)
   const [days, setDays] = useState<ItineraryDay[]>([])
   const [activeDay, setActiveDay] = useState<number | null>(null)
 
@@ -175,6 +179,7 @@ export function SearchIntegratedShell({ children, group, user }: { children: Rea
       trip={tripMeta}
       user={user}
       sidebarContent={sidebarContent}
+      isOnline={isBrowserOnline && isSocketConnected}
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>

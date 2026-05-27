@@ -731,15 +731,22 @@ function DashboardNavContent({
         <span className="hidden md:block w-px h-5 bg-white/10 mx-1" />
 
         {/* Online chip */}
-        {isOnline && (
-          <div className="hidden md:flex items-center gap-1.5 bg-greenAccent/20 border border-greenAccent/30 rounded-full px-3 py-1">
-            <span className="relative flex w-2 h-2 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-greenAccent opacity-75" />
-              <span className="relative inline-flex rounded-full w-2 h-2 bg-greenAccent" />
-            </span>
-            <span className="font-body text-xs font-medium text-greenAccent">En línea</span>
-          </div>
-        )}
+        <div
+          className={`hidden md:flex items-center gap-1.5 rounded-full border px-3 py-1 ${
+            isOnline
+              ? 'border-greenAccent/30 bg-greenAccent/20'
+              : 'border-red-300/40 bg-red-500/15'
+          }`}
+          title={isOnline ? 'Conectado y sincronizando en tiempo real' : 'Sin conexión o WebSocket desconectado'}
+        >
+          <span className="relative flex w-2 h-2 shrink-0">
+            {isOnline && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-greenAccent opacity-75" />}
+            <span className={`relative inline-flex h-2 w-2 rounded-full ${isOnline ? 'bg-greenAccent' : 'bg-red-400'}`} />
+          </span>
+          <span className={`font-body text-xs font-medium ${isOnline ? 'text-greenAccent' : 'text-red-100'}`}>
+            {isOnline ? 'En línea' : 'Sin conexión'}
+          </span>
+        </div>
 
         {/* Divider */}
         <span className="hidden md:block w-px h-5 bg-white/10 mx-1" />

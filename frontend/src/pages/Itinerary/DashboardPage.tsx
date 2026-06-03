@@ -1379,7 +1379,7 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
             </span>
           </div>
           <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
-            {filteredActivities.map((activity, idx) => (
+            {filteredActivities.map((activity) => (
               <button
                 key={activity.id}
                 type="button"

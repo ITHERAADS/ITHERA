@@ -1025,12 +1025,12 @@ export const BudgetDashboard: FC<Props> = ({
           <div className="relative">
             <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#D8C8FF]">
+                <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 font-body text-xs font-bold uppercase tracking-[0.16em] text-[#D8C8FF]">
                   <span className="h-1.5 w-1.5 rounded-full bg-[#B89BFF]" />
                   Presupuesto del viaje
                 </p>
                 <div className="flex items-center gap-3">
-                  <h1 className="font-heading text-3xl font-extrabold leading-tight text-white">
+                  <h1 className="font-heading text-4xl font-extrabold leading-tight text-white">
                     Finanzas del Grupo
                   </h1>
                   <HelpButton
@@ -1039,7 +1039,7 @@ export const BudgetDashboard: FC<Props> = ({
                     placement="right"
                   />
                 </div>
-                <p className="mt-2 max-w-xl font-body text-sm leading-relaxed text-white/70">
+                <p className="mt-2 max-w-2xl font-body text-base leading-relaxed text-white/75">
                   Controla presupuesto, gastos compartidos y liquidaciones sin perder visibilidad del grupo.
                 </p>
               </div>
@@ -1048,7 +1048,7 @@ export const BudgetDashboard: FC<Props> = ({
                 <button
                   onClick={() => { setAdjustValue(String(totalBudget)); setShowAdjustModal(true) }}
                   disabled={isSaving}
-                  className="inline-flex items-center justify-center rounded-2xl border border-white/20 bg-white/10 px-4 py-3 font-body text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center justify-center rounded-2xl border border-white/20 bg-white/10 px-5 py-3.5 font-body text-base font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Ajustar presupuesto
                 </button>
@@ -1057,20 +1057,20 @@ export const BudgetDashboard: FC<Props> = ({
 
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-2xl border border-white/15 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(30,10,78,0.12)]">
-                <p className="mb-1 font-body text-[10px] font-bold uppercase tracking-[0.14em] text-[#7A8799]">Total viaje</p>
-                <p className="font-heading text-2xl font-extrabold text-[#1E0A4E]">{formatMXN(totalBudget)}</p>
+                <p className="mb-1 font-body text-xs font-extrabold uppercase tracking-[0.14em] text-[#64748B]">Total viaje</p>
+                <p className="font-heading text-3xl font-extrabold text-[#1E0A4E]">{formatMXN(totalBudget)}</p>
               </div>
               <div className={['rounded-2xl border px-4 py-4 shadow-[0_12px_28px_rgba(30,10,78,0.12)]', isOverBudget ? 'border-[#FCA5A5] bg-[#EF4444]' : 'border-white/15 bg-white'].join(' ')}>
-                <p className={['mb-1 font-body text-[10px] font-bold uppercase tracking-[0.14em]', isOverBudget ? 'text-white/80' : 'text-[#7A8799]'].join(' ')}>
+                <p className={['mb-1 font-body text-xs font-extrabold uppercase tracking-[0.14em]', isOverBudget ? 'text-white/85' : 'text-[#64748B]'].join(' ')}>
                   Comprometido
                 </p>
-                <p className={['font-heading text-2xl font-extrabold', isOverBudget ? 'text-white' : 'text-[#EF4444]'].join(' ')}>
+                <p className={['font-heading text-3xl font-extrabold', isOverBudget ? 'text-white' : 'text-[#DC2626]'].join(' ')}>
                   {formatMXN(comprometido)}
                 </p>
               </div>
               <div className="rounded-2xl border border-white/15 bg-white px-4 py-4 shadow-[0_12px_28px_rgba(30,10,78,0.12)]">
-                <p className="mb-1 font-body text-[10px] font-bold uppercase tracking-[0.14em] text-[#7A8799]">Disponible</p>
-                <p className="font-heading text-2xl font-extrabold text-[#35C56A]">{formatMXN(disponible)}</p>
+                <p className="mb-1 font-body text-xs font-extrabold uppercase tracking-[0.14em] text-[#64748B]">Disponible</p>
+                <p className="font-heading text-3xl font-extrabold text-[#15803D]">{formatMXN(disponible)}</p>
               </div>
             </div>
           </div>
@@ -1086,15 +1086,15 @@ export const BudgetDashboard: FC<Props> = ({
       <div className="px-6 pt-4">
         <div className="rounded-3xl border border-[#E2E8F0] bg-white px-5 py-4 shadow-[0_12px_28px_rgba(30,10,78,0.06)]">
           <div className="mb-2 flex items-center justify-between">
-            <span className="font-body text-sm font-bold text-[#1E0A4E]">Comprometido del total</span>
-            <span className="rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-xs font-bold" style={{ color: barColor }}>
+            <span className="font-body text-base font-extrabold text-[#1E0A4E]">Comprometido del total</span>
+            <span className="rounded-full bg-[#F3EEFF] px-3 py-1.5 font-body text-sm font-extrabold" style={{ color: barColor }}>
               {pct.toFixed(1)}%
             </span>
           </div>
           <div className="h-3 overflow-hidden rounded-full bg-[#E2E8F0]">
             <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: barColor }} />
           </div>
-          <p className="mt-2 font-body text-xs font-medium text-[#7A8799]">{barLabel}</p>
+          <p className="mt-2 font-body text-sm font-semibold text-[#64748B]">{barLabel}</p>
         </div>
       </div>
 
@@ -1112,7 +1112,7 @@ export const BudgetDashboard: FC<Props> = ({
             <button
               onClick={() => { setEditingExpense(null); setShowModal(true) }}
               disabled={!groupId || members.length === 0 || isSaving || requiresBudgetSetup}
-              className="flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] py-3.5 font-body text-sm font-bold text-white shadow-[0_14px_28px_rgba(30,10,78,0.18)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] py-4 font-body text-base font-extrabold text-white shadow-[0_14px_28px_rgba(30,10,78,0.18)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
             >
               + Registrar gasto
             </button>
@@ -1120,7 +1120,7 @@ export const BudgetDashboard: FC<Props> = ({
           <button
             onClick={() => setView('wallet')}
             disabled={requiresBudgetSetup}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-[#D8C8FF] bg-white py-3.5 font-body text-sm font-bold text-[#6D45C0] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#F7F2FF] disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center justify-center gap-2 rounded-2xl border border-[#D8C8FF] bg-white py-4 font-body text-base font-extrabold text-[#5B2BC0] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#F7F2FF] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Mi Cartera
           </button>
@@ -1129,11 +1129,11 @@ export const BudgetDashboard: FC<Props> = ({
         <div className="rounded-3xl border border-[#E2E8F0] bg-white px-5 py-4 shadow-[0_12px_28px_rgba(30,10,78,0.06)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="font-body text-xs font-bold uppercase tracking-[0.14em] text-[#7A8799]">Liquidacion grupal</p>
-              <p className="mt-1 font-body text-base font-extrabold text-[#1E0A4E]">
+              <p className="font-body text-sm font-extrabold uppercase tracking-[0.14em] text-[#64748B]">Liquidacion grupal</p>
+              <p className="mt-1 font-body text-xl font-extrabold text-[#1E0A4E]">
                 {groupSettlementSummary.totalTransfers} transferencias · {formatMXN(groupSettlementSummary.totalAmount)}
               </p>
-              <p className="mt-0.5 font-body text-xs text-[#7A8799]">Sin detalle sensible para proteger datos individuales.</p>
+              <p className="mt-0.5 font-body text-sm font-medium text-[#64748B]">Sin detalle sensible para proteger datos individuales.</p>
             </div>
             <div className="flex gap-2">
               <button
@@ -1148,7 +1148,7 @@ export const BudgetDashboard: FC<Props> = ({
                     setError('No se pudo copiar el resumen grupal.')
                   }
                 }}
-                className="rounded-xl border border-[#CBD5E1] bg-white px-3 py-2 font-body text-xs font-bold text-[#334155] transition hover:bg-[#F8FAFC]"
+                className="rounded-xl border border-[#CBD5E1] bg-white px-4 py-2.5 font-body text-sm font-extrabold text-[#334155] transition hover:bg-[#F8FAFC]"
                 disabled={copyGroupSummaryState === 'loading'}
               >
                 {copyGroupSummaryState === 'loading' ? 'Copiando...' : copyGroupSummaryState === 'done' ? 'Resumen copiado' : 'Copiar resumen'}
@@ -1260,7 +1260,7 @@ export const BudgetDashboard: FC<Props> = ({
                     }, 700)
                   }
                 }}
-                className="rounded-xl bg-[#1E6FD9] px-3 py-2 font-body text-xs font-bold text-white shadow-sm transition hover:bg-[#2C8BE6]"
+                className="rounded-xl bg-[#1E6FD9] px-4 py-2.5 font-body text-sm font-extrabold text-white shadow-sm transition hover:bg-[#2C8BE6]"
                 disabled={exportingGroupSummary}
               >
                 {exportingGroupSummary ? 'Exportando...' : 'Exportar resumen'}
@@ -1271,19 +1271,19 @@ export const BudgetDashboard: FC<Props> = ({
 
         {requiresBudgetSetup && (
           <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3">
-            <p className="font-body text-sm text-[#92400E]">
+	            <p className="font-body text-base font-semibold text-[#92400E]">
               Debes definir un presupuesto total para habilitar gastos y cartera.
             </p>
             {canAdjustBudget ? (
               <button
                 type="button"
                 onClick={() => { setAdjustValue(''); setShowAdjustModal(true) }}
-                className="mt-2 rounded-lg bg-[#1E6FD9] px-3 py-2 font-body text-xs font-semibold text-white hover:bg-[#2C8BE6]"
+	                className="mt-3 rounded-xl bg-[#1E6FD9] px-4 py-2.5 font-body text-sm font-bold text-white hover:bg-[#2C8BE6]"
               >
                 Definir presupuesto inicial
               </button>
             ) : (
-              <p className="mt-2 font-body text-xs text-[#92400E]">
+	              <p className="mt-2 font-body text-sm font-semibold text-[#92400E]">
                 Solo un administrador puede configurarlo.
               </p>
             )}
@@ -1291,7 +1291,7 @@ export const BudgetDashboard: FC<Props> = ({
         )}
 
         {error && (
-          <div className="rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-4 py-3 font-body text-sm text-[#C03535]">
+          <div className="rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-4 py-3 font-body text-base font-semibold text-[#C03535]">
             {error}
           </div>
         )}
@@ -1300,13 +1300,13 @@ export const BudgetDashboard: FC<Props> = ({
           <div>
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <p className="inline-flex items-center gap-2 rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#6D45C0]">
+                <p className="inline-flex items-center gap-2 rounded-full bg-[#F3EEFF] px-3 py-1.5 font-body text-xs font-extrabold uppercase tracking-[0.16em] text-[#5B2BC0]">
                   <span className="h-1.5 w-1.5 rounded-full bg-[#7A4FD6]" />
                   Categorias
                 </p>
-                <h3 className="mt-2 font-heading text-xl font-extrabold text-[#1E0A4E]">Distribucion del gasto</h3>
+                <h3 className="mt-2 font-heading text-2xl font-extrabold text-[#1E0A4E]">Distribucion del gasto</h3>
               </div>
-              <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-xs font-bold text-[#1E6FD9]">
+              <span className="rounded-full bg-[#EEF4FF] px-3 py-1.5 font-body text-sm font-extrabold text-[#1E6FD9]">
                 {formatMXN(chartTotal)}
               </span>
             </div>
@@ -1339,14 +1339,14 @@ export const BudgetDashboard: FC<Props> = ({
                         }}
                         contentStyle={{ backgroundColor: '#FFFFFF', border: '1px solid #D9CCFF', borderRadius: '10px' }}
                       />
-                      <text x="50%" y="46%" textAnchor="middle" className="fill-[#6B7FA6] text-[11px] font-semibold">
+                      <text x="50%" y="46%" textAnchor="middle" className="fill-[#475569] text-[13px] font-bold">
                         Total comprometido
                       </text>
-                      <text x="50%" y="54%" textAnchor="middle" className="fill-[#1E0A4E] text-[15px] font-bold">
+                      <text x="50%" y="54%" textAnchor="middle" className="fill-[#1E0A4E] text-[18px] font-extrabold">
                         {formatMXN(chartTotal)}
                       </text>
                       {chartVisibleData.length === 0 && (
-                        <text x="50%" y="61%" textAnchor="middle" className="fill-[#8EA0BF] text-[10px] font-medium">
+                        <text x="50%" y="61%" textAnchor="middle" className="fill-[#64748B] text-[12px] font-semibold">
                           Aun no hay gastos
                         </text>
                       )}
@@ -1356,17 +1356,17 @@ export const BudgetDashboard: FC<Props> = ({
 
                 <div className="flex flex-col gap-2">
                   <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-                    <div className="rounded-xl border border-[#DCE5F5] bg-white px-3 py-2.5">
-                      <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-[#6B7FA6]">Categoria principal</p>
-                      <p className="mt-1 font-body text-sm font-bold text-[#1E0A4E]">{topCategory?.name ?? 'Sin datos'}</p>
-                    </div>
-                    <div className="rounded-xl border border-[#DCE5F5] bg-white px-3 py-2.5">
-                      <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-[#6B7FA6]">Categorias activas</p>
-                      <p className="mt-1 font-body text-sm font-bold text-[#1E0A4E]">{activeCategoriesCount}</p>
-                    </div>
-                    <div className="rounded-xl border border-[#DCE5F5] bg-white px-3 py-2.5">
-                      <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-[#6B7FA6]">Promedio activo</p>
-                      <p className="mt-1 font-body text-sm font-bold text-[#1E0A4E]">{formatMXN(averagePerCategory)}</p>
+	                    <div className="rounded-xl border border-[#DCE5F5] bg-white px-3 py-3">
+	                      <p className="font-body text-xs font-extrabold uppercase tracking-wide text-[#64748B]">Categoria principal</p>
+	                      <p className="mt-1 font-body text-base font-extrabold text-[#1E0A4E]">{topCategory?.name ?? 'Sin datos'}</p>
+	                    </div>
+	                    <div className="rounded-xl border border-[#DCE5F5] bg-white px-3 py-3">
+	                      <p className="font-body text-xs font-extrabold uppercase tracking-wide text-[#64748B]">Categorias activas</p>
+	                      <p className="mt-1 font-body text-base font-extrabold text-[#1E0A4E]">{activeCategoriesCount}</p>
+	                    </div>
+	                    <div className="rounded-xl border border-[#DCE5F5] bg-white px-3 py-3">
+	                      <p className="font-body text-xs font-extrabold uppercase tracking-wide text-[#64748B]">Promedio activo</p>
+	                      <p className="mt-1 font-body text-base font-extrabold text-[#1E0A4E]">{formatMXN(averagePerCategory)}</p>
                     </div>
                   </div>
 
@@ -1378,7 +1378,7 @@ export const BudgetDashboard: FC<Props> = ({
                         <div
                           key={item.categoria}
                           className={[
-                            'rounded-xl border px-3 py-2 shadow-[0_1px_0_rgba(30,10,78,0.04)]',
+	                            'rounded-xl border px-3 py-3 shadow-[0_1px_0_rgba(30,10,78,0.04)]',
                             isZero ? 'border-[#E6ECF7] bg-[#F8FAFD]' : 'border-[#DCE5F5] bg-white/95',
                           ].join(' ')}
                         >
@@ -1388,15 +1388,15 @@ export const BudgetDashboard: FC<Props> = ({
                                 className="h-2.5 w-2.5 rounded-full ring-2 ring-white"
                                 style={{ backgroundColor: isZero ? '#C6D3EA' : item.fill }}
                               />
-                              <span className={['font-body text-xs font-semibold', isZero ? 'text-[#7A8799]' : 'text-[#2E3A59]'].join(' ')}>
+	                              <span className={['font-body text-sm font-bold', isZero ? 'text-[#64748B]' : 'text-[#2E3A59]'].join(' ')}>
                                 {item.name}
                               </span>
                             </div>
                             <div className="text-right">
-                              <p className={['font-body text-xs font-semibold', isZero ? 'text-[#7A8799]' : 'text-[#1E0A4E]'].join(' ')}>
+	                              <p className={['font-body text-sm font-extrabold', isZero ? 'text-[#64748B]' : 'text-[#1E0A4E]'].join(' ')}>
                                 {formatMXN(item.value)}
                               </p>
-                              <p className="font-body text-[11px] text-[#6B7FA6]">{pctValue.toFixed(1)}%</p>
+	                              <p className="font-body text-xs font-semibold text-[#64748B]">{pctValue.toFixed(1)}%</p>
                             </div>
                           </div>
                           <div className="h-1.5 overflow-hidden rounded-full bg-[#E8EEF9]">

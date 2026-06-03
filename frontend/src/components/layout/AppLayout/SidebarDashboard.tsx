@@ -72,15 +72,15 @@ export function SidebarDashboard({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className={`font-body text-[13px] leading-tight ${isActive ? 'font-bold text-white' : 'font-semibold text-white/70'}`}>
+            <p className={`font-body text-sm leading-tight ${isActive ? 'font-bold text-white' : 'font-semibold text-white/70'}`}>
               Dia {day.dayNumber}
             </p>
-            <p className={`mt-0.5 truncate font-body text-[11px] leading-tight ${isActive ? 'text-white/70' : 'text-white/40'}`}>
+            <p className={`mt-0.5 truncate font-body text-[13px] leading-tight ${isActive ? 'text-white/70' : 'text-white/40'}`}>
               {day.date}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className={`rounded-full px-2 py-0.5 font-body text-[10px] font-semibold ${isActive ? 'bg-greenAccent/20 text-greenAccent' : 'bg-white/10 text-white/45'}`}>
+            <span className={`rounded-full px-2 py-0.5 font-body text-xs font-semibold ${isActive ? 'bg-greenAccent/20 text-greenAccent' : 'bg-white/10 text-white/45'}`}>
               {count}
             </span>
             {isActive && <span className="h-2 w-2 rounded-full bg-greenAccent" />}
@@ -95,13 +95,20 @@ export function SidebarDashboard({
       <section className="mb-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
-            <p className="inline-flex items-center gap-2 rounded-full bg-[#1E6FD9]/20 px-2.5 py-1 font-body text-[10px] font-bold uppercase tracking-widest text-[#BFD7FF]">
+            <p className="inline-flex items-center gap-2 rounded-full bg-[#1E6FD9]/20 px-2.5 py-1 font-body text-xs font-bold uppercase tracking-widest text-[#BFD7FF]">
               <span className="h-1.5 w-1.5 rounded-full bg-[#5EA0FF]" />
               Itinerario
             </p>
-            <p className="mt-0.5 font-body text-[11px] text-white/45">
-              {days.length} dia{days.length !== 1 ? 's' : ''} · {totalActivities} actividad{totalActivities !== 1 ? 'es' : ''}
-            </p>
+            <div className="mt-2 flex gap-2">
+              <div className="flex items-center gap-1.5 rounded-xl bg-[#1E6FD9]/25 px-2.5 py-1.5">
+                <span className="font-heading text-base font-extrabold leading-none text-[#7DC4FF]">{days.length}</span>
+                <span className="font-body text-xs font-semibold text-[#BFD7FF]">día{days.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="flex items-center gap-1.5 rounded-xl bg-[#35C56A]/20 px-2.5 py-1.5">
+                <span className="font-heading text-base font-extrabold leading-none text-[#6EEEA0]">{totalActivities}</span>
+                <span className="font-body text-xs font-semibold text-[#9AF0B8]">actividad{totalActivities !== 1 ? 'es' : ''}</span>
+              </div>
+            </div>
           </div>
           <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/10 text-white/60">
             <IconCalendarMini />
@@ -111,14 +118,13 @@ export function SidebarDashboard({
         {selectedDay ? (
           <div className="space-y-2">
             <div>
-              <p className="mb-1.5 font-body text-[10px] font-semibold uppercase tracking-wide text-white/35">Dia seleccionado</p>
               {renderDayButton(selectedDay, true)}
             </div>
 
             <button
               type="button"
               onClick={() => setItineraryOpen((open) => !open)}
-              className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 font-body text-[12px] font-semibold text-white/70 transition-colors duration-200 hover:bg-white/10 hover:text-white"
+              className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 font-body text-sm font-semibold text-white/70 transition-colors duration-200 hover:bg-white/10 hover:text-white"
             >
               <span>{itineraryOpen ? 'Ocultar dias' : 'Ver todos los dias'}</span>
               <IconChevron open={itineraryOpen} />
@@ -138,7 +144,7 @@ export function SidebarDashboard({
       </section>
 
       <div className="mt-4 border-t border-white/10 pt-4">
-        <p className="mb-2 inline-flex items-center gap-2 rounded-full bg-[#7A4FD6]/25 px-3 py-1 font-body text-[10px] font-bold uppercase tracking-widest text-[#D8C8FF]">
+        <p className="mb-2 inline-flex items-center gap-2 rounded-full bg-[#7A4FD6]/25 px-3 py-1 font-body text-xs font-bold uppercase tracking-widest text-[#D8C8FF]">
           <span className="h-1.5 w-1.5 rounded-full bg-[#B89BFF]" />
           Panel del grupo
         </p>
@@ -149,10 +155,7 @@ export function SidebarDashboard({
             onClick={onOpenGroupPanel}
             className="flex w-full items-center justify-between rounded-xl border border-white/0 px-3 py-2 text-left transition-all duration-200 hover:border-[#7A4FD6]/35 hover:bg-white/10"
           >
-            <div className="min-w-0">
-              <p className="font-body text-[13px] font-semibold leading-tight text-white/85">Panel del grupo</p>
-              <p className="mt-0.5 truncate font-body text-[11px] leading-tight text-white/50">Miembros e invitaciones</p>
-            </div>
+            <p className="font-body text-sm font-semibold leading-tight text-white/85">Miembros e invitaciones</p>
             <span className="font-body text-xs text-white/45">›</span>
           </button>
 
@@ -163,8 +166,8 @@ export function SidebarDashboard({
               className="flex w-full items-center justify-between rounded-xl border border-white/0 px-3 py-2 text-left transition-all duration-200 hover:border-[#35C56A]/30 hover:bg-white/10"
             >
               <div className="min-w-0">
-                <p className="font-body text-[13px] font-semibold leading-tight text-white/85">Configuración</p>
-                <p className="mt-0.5 truncate font-body text-[11px] leading-tight text-white/50">Reglas y ajustes del viaje</p>
+                <p className="font-body text-sm font-semibold leading-tight text-white/85">Configuración</p>
+                <p className="mt-0.5 truncate font-body text-[13px] leading-tight text-white/50">Reglas y ajustes del viaje</p>
               </div>
               <span className="font-body text-xs text-white/45">›</span>
             </button>

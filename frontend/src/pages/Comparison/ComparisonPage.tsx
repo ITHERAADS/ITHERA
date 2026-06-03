@@ -850,10 +850,10 @@ function normalizeRealtimeProposalComment(
 function TableRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-stretch border-t border-[#E2E8F0]">
-      <div className="sticky left-0 z-10 flex w-36 shrink-0 items-center border-r border-[#DCE5F3] bg-[#F2F5FC] py-3 pl-4 pr-3 font-body text-[11px] font-semibold text-[#94A3B8]">
+      <div className="sticky left-0 z-10 flex w-44 shrink-0 items-center border-r border-[#DCE5F3] bg-[#F2F5FC] py-4 pl-4 pr-3 font-body text-base font-extrabold text-[#64748B]">
         {label}
       </div>
-      <div className="flex min-w-0 flex-1 gap-3 px-4">{children}</div>
+      <div className="flex min-w-0 flex-1 gap-4 px-4">{children}</div>
     </div>
   );
 }
@@ -1380,16 +1380,16 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           <div className="flex min-w-0 items-start gap-3">
             <button
               onClick={onBack}
-              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-2xl border border-white bg-white/90 px-3.5 font-body text-xs font-bold text-[#1E0A4E] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+              className="inline-flex h-12 shrink-0 items-center gap-2 rounded-2xl border border-white bg-white/90 px-4 font-body text-sm font-extrabold text-[#1E0A4E] shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
             >
               <IconArrowLeft size={14} />
               Regresar
             </button>
             <div className="min-w-0">
-              <h1 className="font-heading text-[26px] font-bold leading-tight text-[#1E0A4E]">
+              <h1 className="font-heading text-3xl font-extrabold leading-tight text-[#1E0A4E]">
                 Comparar opciones
               </h1>
-              <p className="mt-0.5 max-w-xl font-body text-sm leading-relaxed text-[#64748B]">
+              <p className="mt-1 max-w-2xl font-body text-base font-medium leading-relaxed text-[#64748B]">
                 Compara propuestas de vuelos y hospedajes con votos, comentarios
                 y edición controlada.
               </p>
@@ -1397,16 +1397,16 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           </div>
 
           {exceedsBudget ? (
-            <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 font-body text-xs font-bold text-[#EF4444] shadow-sm">
+            <span className="inline-flex w-fit shrink-0 items-center gap-2 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-2.5 font-body text-sm font-extrabold text-[#DC2626] shadow-sm">
               <IconWarning size={13} />
               Supera disponible
             </span>
           ) : (
-            <span className="inline-flex w-fit shrink-0 flex-col rounded-2xl border border-[#E2E8F0] bg-white/95 px-3.5 py-2 text-right shadow-sm">
-              <span className="font-body text-[10px] font-bold uppercase tracking-[0.18em] text-[#94A3B8]">
+            <span className="inline-flex w-fit shrink-0 flex-col rounded-2xl border border-[#E2E8F0] bg-white/95 px-4 py-2.5 text-right shadow-sm">
+              <span className="font-body text-xs font-extrabold uppercase tracking-[0.18em] text-[#64748B]">
                 Disponible real
               </span>
-              <span className="font-heading text-sm font-bold leading-tight text-[#1E0A4E]">
+              <span className="font-heading text-lg font-extrabold leading-tight text-[#1E0A4E]">
                 {budgetLoading
                   ? "Consultando..."
                   : hasRealBudget
@@ -1421,37 +1421,37 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3 font-body text-sm text-[#EF4444]">
+        <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-4 font-body text-base font-semibold text-[#DC2626]">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="rounded-xl border border-[#35C56A]/30 bg-[#35C56A]/10 p-3 font-body text-sm font-semibold text-[#35C56A]">
+        <div className="rounded-xl border border-[#35C56A]/30 bg-[#35C56A]/10 p-4 font-body text-base font-extrabold text-[#15803D]">
           {success}
         </div>
       )}
 
       {editingProposal && (
         <div className="rounded-[26px] border border-white/80 bg-white p-5 shadow-xl shadow-[#1E0A4E]/10 ring-1 ring-[#E2E8F0]/70">
-          <h2 className="font-heading text-base font-bold text-[#1E0A4E]">
+          <h2 className="font-heading text-xl font-extrabold text-[#1E0A4E]">
             Editar propuesta
           </h2>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <label className="font-body text-xs font-semibold text-[#1E0A4E]">
+            <label className="font-body text-sm font-extrabold text-[#1E0A4E]">
               Título
               <input
                 value={editTitle}
                 onChange={(event) => setEditTitle(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-[#1E6FD9]"
+                className="mt-1 w-full rounded-xl border border-[#E2E8F0] px-3 py-2.5 text-base outline-none focus:border-[#1E6FD9]"
               />
             </label>
-            <label className="font-body text-xs font-semibold text-[#1E0A4E]">
+            <label className="font-body text-sm font-extrabold text-[#1E0A4E]">
               Descripción
               <input
                 value={editDescription}
                 onChange={(event) => setEditDescription(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-[#E2E8F0] px-3 py-2 text-sm outline-none focus:border-[#1E6FD9]"
+                className="mt-1 w-full rounded-xl border border-[#E2E8F0] px-3 py-2.5 text-base outline-none focus:border-[#1E6FD9]"
               />
             </label>
           </div>
@@ -1459,7 +1459,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
             <button
               onClick={saveProposalEdit}
               disabled={actionLoading !== null || !editTitle.trim()}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-4 py-2 font-body text-xs font-bold text-white shadow-sm disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-4 py-2.5 font-body text-sm font-extrabold text-white shadow-sm disabled:opacity-60"
             >
               {actionLoading === `${editingProposal.id}-edit` && (
                 <InlineSpinner size={12} />
@@ -1470,7 +1470,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
             </button>
             <button
               onClick={() => setEditingProposal(null)}
-              className="rounded-xl border border-[#E2E8F0] px-4 py-2 font-body text-xs font-semibold text-[#64748B]"
+              className="rounded-xl border border-[#E2E8F0] px-4 py-2.5 font-body text-sm font-bold text-[#64748B]"
             >
               Cancelar
             </button>
@@ -1488,7 +1488,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
               setSelected(null);
             }}
             className={[
-              "rounded-xl px-4 py-2 font-body text-xs font-bold transition-all",
+              "rounded-xl px-4 py-2.5 font-body text-sm font-extrabold transition-all",
               filter === item
                 ? "bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] text-white shadow-md shadow-[#1E6FD9]/20"
                 : "text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#1E0A4E]",
@@ -1505,27 +1505,28 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
       {filteredProposals.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white p-8 text-center">
-          <p className="font-heading text-lg font-bold text-[#1E0A4E]">
+          <p className="font-heading text-xl font-extrabold text-[#1E0A4E]">
             Aún no hay vuelos u hospedajes para comparar
           </p>
-          <p className="mt-1 font-body text-sm text-[#6B7280]">
+          <p className="mt-1 font-body text-base font-medium text-[#6B7280]">
             Busca un vuelo u hospedaje y presiona “Proponer” para guardarlo en
             este grupo.
           </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-[#D5DEEE] bg-[#F7F8FD]">
-        <div className="overflow-x-auto overscroll-x-contain pb-2">
-          <div className="min-w-max">
-            <div className="flex items-stretch gap-3 bg-[#F2F5FC] p-4">
-                <div className="sticky left-0 z-10 w-36 shrink-0 border-r border-[#DCE5F3] bg-[#F2F5FC]" />
-                {filteredProposals.map((proposal, index) => (
-                  <div key={proposal.id} className="w-[332px] shrink-0 pr-0">
-                    <div className="group relative overflow-hidden rounded-2xl shadow-lg shadow-[#1E0A4E]/10">
+        <div className="pb-2">
+          <div>
+            <div className="flex items-stretch border-b border-[#E2E8F0] bg-[#F2F5FC]">
+	                <div className="sticky left-0 z-10 w-44 shrink-0 border-r border-[#DCE5F3] bg-[#F2F5FC]" />
+              <div className="flex min-w-0 flex-1 gap-4 px-4 py-4">
+	                {filteredProposals.map((proposal, index) => (
+	                  <div key={proposal.id} className="flex-1 min-w-0">
+	                    <div className="group relative overflow-hidden rounded-2xl shadow-lg shadow-[#1E0A4E]/10">
                       <img
                         src={getImageUrl(proposal, index)}
                         alt={getTitle(proposal)}
-                        className="h-[128px] w-full object-cover transition-transform duration-500 group-hover:scale-105"
+	                        className="h-[150px] w-full object-cover transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
                       />
                       <button
@@ -1542,25 +1543,26 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                         <IconX size={10} />
                       </button>
                     </div>
-                    <div className="mt-2 flex items-start gap-1">
+	                    <div className="mt-3 flex items-start gap-2">
                       <span className="mt-0.5">
                         <CategoryIcon type={proposal.tipo} />
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate font-body text-sm font-semibold leading-tight text-[#1E0A4E]">
-                          {getTitle(proposal)}
-                        </p>
-                        <p className="mt-0.5 truncate font-body text-[11px] text-[#6B7280]">
-                          {getSubtitle(proposal)}
-                        </p>
-                        <p className="mt-0.5 truncate font-body text-[10px] text-[#94A3B8]">
-                          {proposal.estado}
-                        </p>
+	                        <p className="line-clamp-2 font-body text-base font-extrabold leading-tight text-[#1E0A4E]">
+	                          {getTitle(proposal)}
+	                        </p>
+	                        <p className="mt-1 line-clamp-2 font-body text-sm font-semibold leading-snug text-[#64748B]">
+	                          {getSubtitle(proposal)}
+	                        </p>
+	                        <p className="mt-1 font-body text-xs font-bold uppercase tracking-wide text-[#64748B]">
+	                          {proposal.estado}
+	                        </p>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
+	              </div>
 
               <TableRow label="Precio">
                 {filteredProposals.map((proposal) => {
@@ -1571,12 +1573,12 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     filteredProposals.length > 1;
 
                   return (
-                    <div key={proposal.id} className="w-[332px] shrink-0 py-3">
-                      <span className="font-heading text-base font-bold leading-none text-[#1E0A4E]">
+	                    <div key={proposal.id} className="flex flex-1 min-w-0 flex-col items-start gap-2 py-4">
+	                      <span className="font-heading text-xl font-extrabold leading-none text-[#1E0A4E]">
                         {formatMoney(price, getCurrency(proposal))}
                       </span>
                       {isBestPrice && (
-                        <span className="mt-1 inline-flex rounded-full bg-[#35C56A]/10 px-2 py-0.5 text-[10px] font-bold text-[#35C56A]">
+	                        <span className="inline-flex rounded-full bg-[#35C56A]/10 px-2.5 py-1 text-xs font-extrabold text-[#15803D]">
                           Mejor precio
                         </span>
                       )}
@@ -1587,8 +1589,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
               <TableRow label="Tipo">
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
-                    <span className="font-body text-sm text-[#1E0A4E]">
+	                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+	                    <span className="font-body text-base font-semibold text-[#1E0A4E]">
                       {proposal.tipo === "vuelo"
                         ? getSlice(proposal, "returnSlice")
                           ? "Vuelo redondo"
@@ -1609,8 +1611,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
-                    <span className="font-body text-xs text-[#6B7280]">
+	                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+	                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                       {getHotelOccupancyText(proposal)}
                     </span>
                   </div>
@@ -1627,8 +1629,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
-                    <span className="font-body text-xs text-[#6B7280]">
+	                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+	                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                       {getRouteOrLocation(proposal)}
                     </span>
                   </div>
@@ -1645,8 +1647,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
-                    <span className="font-body text-xs text-[#6B7280]">
+	                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+	                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                       {getOutboundText(proposal)}
                     </span>
                   </div>
@@ -1663,8 +1665,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
-                    <span className="font-body text-xs text-[#6B7280]">
+	                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+	                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                       {getStayOrReturnText(proposal)}
                     </span>
                   </div>
@@ -1685,9 +1687,9 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     {filteredProposals.map((proposal) => (
                       <div
                         key={proposal.id}
-                        className="w-[332px] shrink-0 py-3"
+                        className="flex-1 min-w-0 py-4"
                       >
-                        <span className="font-body text-xs text-[#6B7280]">
+                        <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                           {proposal.tipo === "hospedaje"
                             ? getHotelRoomText(proposal)
                             : getDurationText(proposal)}
@@ -1708,9 +1710,9 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     {filteredProposals.map((proposal) => (
                       <div
                         key={proposal.id}
-                        className="w-[332px] shrink-0 py-3"
+                        className="flex-1 min-w-0 py-4"
                       >
-                        <span className="font-body text-xs text-[#6B7280]">
+                        <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                           {proposal.tipo === "hospedaje"
                             ? getHotelBoardText(proposal)
                             : getDurationText(proposal)}
@@ -1727,9 +1729,9 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     {filteredProposals.map((proposal) => (
                       <div
                         key={proposal.id}
-                        className="w-[332px] shrink-0 py-3"
+                        className="flex-1 min-w-0 py-4"
                       >
-                        <span className="font-body text-xs text-[#6B7280]">
+                        <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                           {proposal.tipo === "hospedaje"
                             ? getHotelRatingText(proposal)
                             : getSubtitle(proposal)}
@@ -1742,8 +1744,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
               <TableRow label="Proveedor">
                 {filteredProposals.map((proposal) => (
-                  <div key={proposal.id} className="w-[332px] shrink-0 py-3">
-                    <span className="inline-flex rounded-full bg-[#F0F4FF] px-2 py-1 font-body text-[11px] font-semibold text-[#1E0A4E]/70">
+                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+                    <span className="inline-flex rounded-full bg-[#F0F4FF] px-3 py-1.5 font-body text-sm font-bold text-[#1E0A4E]/80">
                       {getProviderText(proposal)}
                     </span>
                   </div>
@@ -1754,13 +1756,13 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 {filteredProposals.map((proposal) => {
                   const result = resultsByProposalId.get(proposal.id);
                   return (
-                    <div key={proposal.id} className="w-[332px] shrink-0 py-3">
-                      <p className="font-body text-xs font-semibold text-[#1E0A4E]">
+                    <div key={proposal.id} className="flex-1 min-w-0 py-4">
+                      <p className="font-body text-base font-extrabold text-[#1E0A4E]">
                         {result
                           ? `${result.votos_a_favor} a favor · ${result.votos_en_contra} en contra`
                           : "Sin votos"}
                       </p>
-                      <p className="mt-0.5 font-body text-[11px] text-[#94A3B8]">
+                      <p className="mt-1 font-body text-sm font-semibold text-[#64748B]">
                         {voteLabel(result)}
                       </p>
                     </div>
@@ -1776,7 +1778,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                   return (
                     <div
                       key={proposal.id}
-                      className="w-[332px] shrink-0 space-y-3 py-4"
+                      className="flex-1 min-w-0 space-y-3 py-4"
                     >
                       <div className="min-h-[126px] rounded-[28px] border border-[#E2E8F0] bg-white/95 p-3.5 shadow-sm shadow-[#1E0A4E]/5">
                         <div className="grid grid-cols-2 gap-2.5">
@@ -1787,7 +1789,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                             }}
                             disabled={actionLoading !== null || hasVoted}
                             className={[
-                              "inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-2xl px-4 font-body text-[12px] font-bold shadow-sm transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0",
+                              "inline-flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl px-4 font-body text-sm font-extrabold shadow-sm transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0",
                               selectedColumn || result?.mi_voto === "a_favor"
                                 ? "bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] text-white shadow-[#1E6FD9]/25"
                                 : "bg-[#1E6FD9] text-white hover:bg-[#185DB8]",
@@ -1810,7 +1812,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                           <button
                             onClick={() => handleVote(proposal.id, "en_contra")}
                             disabled={actionLoading !== null || hasVoted}
-                            className="inline-flex h-11 min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-[#FCA5A5] bg-white px-4 font-body text-[12px] font-bold text-[#EF4444] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#FEF2F2] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+	                            className="inline-flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-[#FCA5A5] bg-white px-4 font-body text-sm font-extrabold text-[#DC2626] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#FEF2F2] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                           >
                             {actionLoading === `${proposal.id}-en_contra` && (
                               <InlineSpinner size={13} />
@@ -1893,7 +1895,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
                           if (isConfirmed) {
                             return (
-                              <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-center font-body text-xs font-bold text-[#15803D]">
+	                              <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2.5 text-center font-body text-sm font-extrabold text-[#15803D]">
                                 {proposal.tipo === "vuelo"
                                   ? "Vuelo comprado"
                                   : "Hospedaje reservado"}
@@ -1909,7 +1911,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                                 )
                               }
                               disabled={actionLoading !== null}
-                              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-3 py-2.5 font-body text-xs font-bold text-white shadow-lg shadow-[#1E6FD9]/20 transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+	                              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-3 py-3 font-body text-sm font-extrabold text-white shadow-lg shadow-[#1E6FD9]/20 transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                             >
                               {actionLoading === `${proposal.id}-checkout` && (
                                 <InlineSpinner size={13} />
@@ -1930,7 +1932,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                                 handleAdminDecision(proposal.id, "aprobar")
                               }
                               disabled={actionLoading !== null}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#35C56A] px-3 py-2.5 font-body text-[11px] font-bold text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+	                              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#35C56A] px-3 py-3 font-body text-sm font-extrabold text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                             >
                               {actionLoading === `${proposal.id}-aprobar` && (
                                 <InlineSpinner size={12} />
@@ -1942,7 +1944,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                                 handleAdminDecision(proposal.id, "rechazar")
                               }
                               disabled={actionLoading !== null}
-                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-2.5 font-body text-[11px] font-bold text-[#64748B] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+	                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-3 font-body text-sm font-extrabold text-[#64748B] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                             >
                               {actionLoading === `${proposal.id}-rechazar` && (
                                 <InlineSpinner size={12} />
@@ -1980,13 +1982,13 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     <div className="bg-gradient-to-r from-[#1E0A4E] to-[#7A4FD6] px-5 py-5 text-white">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="font-body text-[10px] font-bold uppercase tracking-[0.28em] text-white/55">
+	                          <p className="font-body text-xs font-extrabold uppercase tracking-[0.24em] text-white/70">
                             Chat de propuesta
                           </p>
-                          <h3 className="mt-2 truncate font-heading text-lg font-bold">
+	                          <h3 className="mt-2 truncate font-heading text-xl font-extrabold">
                             {activeProposal?.titulo ?? "Propuesta"}
                           </h3>
-                          <p className="mt-1 truncate font-body text-xs text-white/75">
+	                          <p className="mt-1 truncate font-body text-sm font-medium text-white/80">
                             {activeProposal?.tipo === "vuelo"
                               ? "Vuelo"
                               : activeProposal?.tipo === "hospedaje"
@@ -2007,20 +2009,20 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     </div>
 
                     <div className="grid grid-cols-[auto_1fr] gap-0 border-b border-[#E2E8F0] bg-white px-5 py-3">
-                      <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 text-center font-body text-xs font-bold text-[#1E6FD9]">
+	                      <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 text-center font-body text-sm font-extrabold text-[#1E6FD9]">
                         {activeComments.length}
                         <br />
-                        <span className="text-[10px] font-semibold">
+	                        <span className="text-xs font-bold">
                           comentarios
                         </span>
                       </div>
                       <div className="min-w-0 px-3 py-2">
-                        <p className="truncate font-body text-xs font-semibold text-[#64748B]">
+	                        <p className="truncate font-body text-sm font-bold text-[#64748B]">
                           {activeProposal
                             ? getRouteOrLocation(activeProposal)
                             : "Conversación del grupo"}
                         </p>
-                        <p className="mt-0.5 truncate font-body text-[11px] text-[#94A3B8]">
+	                        <p className="mt-1 truncate font-body text-xs font-semibold text-[#64748B]">
                           {activeProposal
                             ? getOutboundText(activeProposal)
                             : "Sin datos adicionales"}
@@ -2034,10 +2036,10 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#7A4FD6]">
                             <IconMessage size={20} />
                           </span>
-                          <p className="font-heading text-sm font-bold text-[#1E0A4E]">
+	                          <p className="font-heading text-base font-extrabold text-[#1E0A4E]">
                             Sé el primero en comentar
                           </p>
-                          <p className="mt-1 max-w-xs font-body text-xs text-[#64748B]">
+	                          <p className="mt-1 max-w-xs font-body text-sm font-medium text-[#64748B]">
                             Coordina esta opción con el grupo sin salir de la
                             comparativa.
                           </p>
@@ -2055,16 +2057,16 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                               className="rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3 shadow-sm shadow-[#1E0A4E]/5"
                             >
                               <div className="mb-2 flex items-center justify-between gap-3">
-                                <p className="min-w-0 truncate font-body text-xs font-bold text-[#1E0A4E]">
+                                <p className="min-w-0 truncate font-body text-sm font-extrabold text-[#1E0A4E]">
                                   {comment.authorName ??
                                     (isOwnComment ? "Tú" : "Integrante")}
                                 </p>
-                                <p className="shrink-0 font-body text-[11px] text-[#64748B]">
+                                <p className="shrink-0 font-body text-xs font-semibold text-[#64748B]">
                                   {formatCommentDate(comment.createdAt)}
                                 </p>
                               </div>
 
-                              <p className="whitespace-pre-wrap break-words font-body text-sm leading-relaxed text-[#334155]">
+                              <p className="whitespace-pre-wrap break-words font-body text-base leading-relaxed text-[#334155]">
                                 {comment.contenido}
                               </p>
 
@@ -2075,7 +2077,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                                       editComment(openCommentsFor, comment)
                                     }
                                     disabled={actionLoading !== null}
-                                    className="font-body text-xs font-semibold text-[#1E6FD9] transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="font-body text-sm font-bold text-[#1E6FD9] transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                                     aria-label="Editar comentario"
                                     title="Editar comentario"
                                   >
@@ -2086,7 +2088,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                                       deleteComment(openCommentsFor, comment)
                                     }
                                     disabled={actionLoading !== null}
-                                    className="font-body text-xs font-semibold text-[#EF4444] transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="font-body text-sm font-bold text-[#EF4444] transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                                     aria-label="Eliminar comentario"
                                     title="Eliminar comentario"
                                   >
@@ -2111,7 +2113,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                             }))
                           }
                           placeholder="Escribe un comentario..."
-                          className="min-w-0 flex-1 rounded-2xl border border-[#DDE6F3] bg-white px-4 py-3 font-body text-sm outline-none transition-colors focus:border-[#7A4FD6] focus:ring-2 focus:ring-[#7A4FD6]/10"
+	                          className="min-w-0 flex-1 rounded-2xl border border-[#DDE6F3] bg-white px-4 py-3 font-body text-base outline-none transition-colors focus:border-[#7A4FD6] focus:ring-2 focus:ring-[#7A4FD6]/10"
                         />
                         <button
                           onClick={() => addComment(openCommentsFor)}
@@ -2139,7 +2141,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           {filteredProposals.length === 1 && (
             <div className="border-t border-[#E2E8F0] p-4">
               <div className="rounded-xl border border-[#E2E8F0] bg-[#F0EEF8] p-4 text-center">
-                <p className="inline-flex items-center justify-center gap-1.5 font-body text-sm text-[#6B7280]">
+	                <p className="inline-flex items-center justify-center gap-1.5 font-body text-base font-semibold text-[#64748B]">
                   <IconArrowRight size={14} />
                   Agrega otra opción para comparar
                 </p>
@@ -2152,7 +2154,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
       {hiddenIds.length > 0 && (
         <button
           onClick={() => setHiddenIds([])}
-          className="rounded-xl border-2 border-dashed border-[#E2E8F0] py-4 font-body text-sm text-[#6B7280] transition-colors hover:border-[#1E6FD9]/30 hover:text-[#1E6FD9]"
+	          className="rounded-xl border-2 border-dashed border-[#E2E8F0] py-4 font-body text-base font-bold text-[#64748B] transition-colors hover:border-[#1E6FD9]/30 hover:text-[#1E6FD9]"
         >
           <span className="inline-flex items-center justify-center gap-2">
             <IconPlus size={14} />
@@ -2166,7 +2168,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           <span className="mt-0.5 shrink-0 text-[#EF4444]">
             <IconWarning size={14} />
           </span>
-          <p className="font-body text-xs text-[#EF4444]">
+	          <p className="font-body text-sm font-semibold leading-relaxed text-[#DC2626]">
             Esta opción cuesta {formatMoney(selectedPrice, selectedCurrency)} y
             supera el presupuesto disponible real del grupo (
             {formatMoney(budgetAvailable ?? 0, "MXN")}). El voto se registra,

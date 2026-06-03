@@ -689,7 +689,7 @@ function TimelineNowMarker({
     <div className="relative grid grid-cols-[64px_28px_minmax(0,1fr)] gap-3">
       <div className="relative z-10 flex justify-end pt-1">
         {timeLabel && (
-          <span className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border border-[#E2D8FF] bg-white px-2.5 font-body text-[11px] font-bold text-[#7A4FD6]">
+          <span className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border border-[#E2D8FF] bg-white px-2.5 font-body text-[13px] font-bold text-[#7A4FD6]">
             {timeLabel}
           </span>
         )}
@@ -701,7 +701,7 @@ function TimelineNowMarker({
         <span className="h-7 w-7 rounded-full border-[6px] border-white bg-[#7A4FD6] shadow-[0_0_0_8px_rgba(232,222,255,0.95),0_12px_28px_rgba(122,79,214,0.28)]" />
       </div>
       <div className="flex min-h-[34px] items-center">
-        <span className="inline-flex rounded-full border border-[#E2D8FF] bg-[#F7F2FF] px-3 py-1.5 font-body text-[11px] font-bold text-[#5B35B1]">
+        <span className="inline-flex rounded-full border border-[#E2D8FF] bg-[#F7F2FF] px-3 py-1.5 font-body text-[13px] font-bold text-[#5B35B1]">
           {label}
         </span>
       </div>
@@ -726,7 +726,7 @@ function TimelineItem({
     <div className="relative grid grid-cols-[64px_28px_minmax(0,1fr)] gap-3">
       <div className="relative z-10 flex justify-end pt-1.5">
         <span
-          className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border px-2.5 font-body text-[11px] font-bold"
+          className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border px-2.5 font-body text-[13px] font-bold"
           style={{
             color: accentColor,
             borderColor: hasConflict ? "#FECACA" : "#E2D8FF",
@@ -741,12 +741,12 @@ function TimelineItem({
 
       <div className="min-w-0">
         {hasConflict && (
-          <span className="mb-2 inline-flex items-center rounded-full bg-[#FEF2F2] px-2.5 py-1 font-body text-[11px] font-semibold text-[#B91C1C]">
+          <span className="mb-2 inline-flex items-center rounded-full bg-[#FEF2F2] px-2.5 py-1 font-body text-[13px] font-semibold text-[#B91C1C]">
             Conflicto de horario
           </span>
         )}
         {isNow && (
-          <span className="mb-2 inline-flex items-center rounded-full border border-[#E2D8FF] bg-[#F7F2FF] px-3 py-1.5 font-body text-[11px] font-bold text-[#5B35B1]">
+          <span className="mb-2 inline-flex items-center rounded-full border border-[#E2D8FF] bg-[#F7F2FF] px-3 py-1.5 font-body text-[13px] font-bold text-[#5B35B1]">
             Ahora
           </span>
         )}
@@ -762,7 +762,7 @@ function SectionLabel({ emoji, text }: { emoji: string; text: string }) {
   return (
     <div className="flex items-center gap-2 mb-3 mt-4 first:mt-0">
       <span className="text-sm leading-none">{emoji}</span>
-      <span className="font-body text-[11px] font-semibold text-gray500 uppercase tracking-wider">
+      <span className="font-body text-[13px] font-semibold text-gray500 uppercase tracking-wider">
         {text}
       </span>
     </div>
@@ -793,13 +793,13 @@ function ActivityContextBlock({
       ].join(" ")}
     >
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+        <p className="font-body text-sm font-semibold uppercase tracking-wide text-[#64748B]">
           Asociaciones confirmadas
         </p>
       </div>
 
       {linked.length === 0 ? (
-        <p className="font-body text-xs text-[#7A8799]">
+        <p className="font-body text-sm text-[#7A8799]">
           Aun no hay asociaciones confirmadas.
         </p>
       ) : (
@@ -809,7 +809,7 @@ function ActivityContextBlock({
               key={`${entity.type}:${entity.id}`}
               type="button"
               onClick={onOpenBudget}
-              className="max-w-full rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#1E6FD9] hover:bg-[#E2EDFF]"
+              className="max-w-full rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-2.5 py-1 font-body text-[13px] font-semibold text-[#1E6FD9] hover:bg-[#E2EDFF]"
               title={entity.label}
             >
               Gasto: <span className="font-medium">{entity.label}</span>
@@ -820,7 +820,7 @@ function ActivityContextBlock({
               key={`${entity.type}:${entity.id}`}
               type="button"
               onClick={onOpenVault}
-              className="max-w-full rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#5B35B1] hover:bg-[#ECE4FF]"
+              className="max-w-full rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-2.5 py-1 font-body text-[13px] font-semibold text-[#5B35B1] hover:bg-[#ECE4FF]"
               title={entity.label}
             >
               Documento: <span className="font-medium">{entity.label}</span>
@@ -848,10 +848,10 @@ function SubgroupSlotCard({
       <div className="flex flex-col gap-4 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="inline-flex rounded-full bg-[#1E0A4E] px-3 py-1 font-body text-[11px] font-bold uppercase tracking-[0.14em] text-white">
+            <span className="inline-flex rounded-full bg-[#1E0A4E] px-3 py-1 font-body text-[13px] font-bold uppercase tracking-[0.14em] text-white">
               Subgrupos
             </span>
-            <span className="inline-flex rounded-full border border-[#D8C8FF] bg-white px-3 py-1 font-body text-[11px] font-bold text-[#6D45C0]">
+            <span className="inline-flex rounded-full border border-[#D8C8FF] bg-white px-3 py-1 font-body text-[13px] font-bold text-[#6D45C0]">
               {activity.time}
             </span>
           </div>
@@ -864,10 +864,10 @@ function SubgroupSlotCard({
             </p>
           )}
           <div className="mt-4 flex flex-wrap gap-2">
-            <span className="rounded-full bg-white px-3 py-1 font-body text-xs font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
+            <span className="rounded-full bg-white px-3 py-1 font-body text-sm font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
               {slot?.groupCount ?? 0} opcion{slot?.groupCount === 1 ? "" : "es"}
             </span>
-            <span className="rounded-full bg-white px-3 py-1 font-body text-xs font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
+            <span className="rounded-full bg-white px-3 py-1 font-body text-sm font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
               {slot?.participantCount ?? 0} participante
               {slot?.participantCount === 1 ? "" : "s"}
             </span>
@@ -931,7 +931,7 @@ function ActivityCardConfirmed({
           loading="lazy"
         />
         {/* Confirmed badge */}
-        <span className="absolute top-3 left-3 inline-flex items-center gap-1 font-body text-[11px] font-bold text-white bg-greenAccent rounded-full px-3 py-1 shadow-sm">
+        <span className="absolute top-3 left-3 inline-flex items-center gap-1 font-body text-[13px] font-bold text-white bg-greenAccent rounded-full px-3 py-1 shadow-sm">
           <IconCheck size={10} />
           CONFIRMADO
         </span>
@@ -946,23 +946,23 @@ function ActivityCardConfirmed({
 
       {/* Body */}
       <div className="px-5 pt-6 pb-4">
-        <h3 className="font-heading font-bold text-purpleNavbar text-[15px] mb-1 leading-snug">
+        <h3 className="font-heading font-bold text-purpleNavbar text-base mb-1 leading-snug">
           {activity.title}
         </h3>
-        <p className="font-body text-[13px] text-gray500 mb-3 leading-relaxed">
+        <p className="font-body text-sm text-gray500 mb-3 leading-relaxed">
           {activity.description}
         </p>
 
         {/* Info chips */}
         <div className="flex flex-wrap gap-2 mb-3">
-          <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+          <span className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1">
             <span className="text-bluePrimary">
               <IconClock />
             </span>
             {activity.time}
           </span>
           {activity.location && (
-            <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+            <span className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1">
               <span className="text-bluePrimary">
                 <IconMapPin />
               </span>
@@ -980,7 +980,7 @@ function ActivityCardConfirmed({
               onClick={(event) => {
                 if (!routeUrl) event.preventDefault();
               }}
-              className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
+              className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
             >
               <span className="text-bluePrimary">
                 <IconMapPin />
@@ -993,7 +993,7 @@ function ActivityCardConfirmed({
         {/* Confirmation status */}
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-greenAccent shrink-0" />
-          <span className="font-body text-xs text-greenAccent font-medium">
+          <span className="font-body text-sm text-greenAccent font-medium">
             Reservación confirmada
           </span>
         </div>
@@ -1119,7 +1119,7 @@ function ActivityCardPending({
         {/* Pending badge */}
         <span
           className={[
-            "absolute top-3 left-3 font-body text-[11px] font-bold text-white rounded-full px-3 py-1",
+            "absolute top-3 left-3 font-body text-[13px] font-bold text-white rounded-full px-3 py-1",
             isExpired ? "bg-[#BE123C]" : "bg-purpleMedium",
           ].join(" ")}
         >
@@ -1139,12 +1139,12 @@ function ActivityCardPending({
 
       {/* Body */}
       <div className={isCompactCompetition ? "px-4 py-4" : "px-5 pt-6 pb-4"}>
-        <h3 className="font-heading font-bold text-purpleNavbar text-[15px] mb-1 leading-snug">
+        <h3 className="font-heading font-bold text-purpleNavbar text-base mb-1 leading-snug">
           {activity.title}
         </h3>
         <p
           className={[
-            "font-body text-[13px] text-gray500 leading-relaxed",
+            "font-body text-sm text-gray500 leading-relaxed",
             isCompactCompetition ? "mb-2 line-clamp-2" : "mb-3",
           ].join(" ")}
         >
@@ -1153,14 +1153,14 @@ function ActivityCardPending({
 
         {/* Info chips */}
         <div className="flex flex-wrap gap-2 mb-2">
-          <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+          <span className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1">
             <span className="text-bluePrimary">
               <IconClock />
             </span>
             {activity.time}
           </span>
           {activity.location && (
-            <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+            <span className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1">
               <span className="text-bluePrimary">
                 <IconMapPin />
               </span>
@@ -1178,7 +1178,7 @@ function ActivityCardPending({
               onClick={(event) => {
                 if (!routeUrl) event.preventDefault();
               }}
-              className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
+              className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
             >
               <span className="text-bluePrimary">
                 <IconMapPin />
@@ -1187,19 +1187,19 @@ function ActivityCardPending({
             </a>
           )}
           {activity.votes !== undefined && !isCompactCompetition && (
-            <span className="inline-flex items-center gap-1 font-body text-xs text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 font-medium">
+            <span className="inline-flex items-center gap-1 font-body text-sm text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 font-medium">
               ↑ {activity.votes} votos
             </span>
           )}
         </div>
 
         {activity.proposedBy && (
-          <p className="font-body text-xs text-gray500 italic mt-1 mb-3">
+          <p className="font-body text-sm text-gray500 italic mt-1 mb-3">
             Propuesto por {activity.proposedBy}
           </p>
         )}
         {isExpired && (
-          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 font-body text-xs font-semibold text-red-700">
+          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 font-body text-sm font-semibold text-red-700">
             Esta propuesta ya vencio porque su hora programada paso. Solo el
             administrador puede editarla para reprogramarla.
           </div>
@@ -1307,7 +1307,7 @@ function AddActivityRow({ onClick }: { onClick?: () => void }) {
       <span className="text-gray500 group-hover:text-bluePrimary transition-colors">
         <IconSearch size={16} />
       </span>
-      <span className="font-body text-[13px] font-semibold text-gray500 group-hover:text-bluePrimary transition-colors">
+      <span className="font-body text-sm font-semibold text-gray500 group-hover:text-bluePrimary transition-colors">
         Buscar y proponer actividad
       </span>
     </button>
@@ -1325,7 +1325,7 @@ function EmptyDayState({ onClick }: { onClick?: () => void }) {
       <p className="font-heading text-base font-bold text-purpleNavbar">
         Aún no hay actividades para este día
       </p>
-      <p className="mb-4 mt-1 max-w-sm font-body text-xs leading-relaxed text-gray500">
+      <p className="mb-4 mt-1 max-w-sm font-body text-sm leading-relaxed text-gray500">
         Agrega una propuesta para reservar tiempo en el itinerario y abrir la
         votación del grupo.
       </p>
@@ -1452,7 +1452,7 @@ function ActivitiesBody({
       </div>
     ) : (
       <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-        <p className="font-body text-xs text-gray500">
+        <p className="font-body text-sm text-gray500">
           Aun no hay actividades confirmadas para este dia.
         </p>
       </div>
@@ -1536,7 +1536,7 @@ function ActivitiesBody({
       </div>
     ) : (
       <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-        <p className="font-body text-xs text-gray500">
+        <p className="font-body text-sm text-gray500">
           No hay propuestas pendientes para este dia.
         </p>
       </div>
@@ -1592,7 +1592,7 @@ function ActivitiesBody({
           />
           <span
             className={[
-              "rounded-full px-3 py-1 font-body text-[11px] font-semibold",
+              "rounded-full px-3 py-1 font-body text-[13px] font-semibold",
               visibleSection === "confirmadas"
                 ? "bg-greenAccent/10 text-greenAccent"
                 : "bg-purpleMedium/10 text-purpleMedium",
@@ -1652,16 +1652,16 @@ function DaySectionSwitcher({
           {icon}
         </span>
         <span>
-          <span className="block font-body text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
+          <span className="block font-body text-[13px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
             Seccion
           </span>
-          <span className="mt-0.5 block font-heading text-sm font-bold">
+          <span className="mt-0.5 block font-heading text-base font-bold">
             {label}
           </span>
         </span>
       </span>
       <span
-        className={`rounded-full px-2.5 py-1 font-body text-xs font-semibold ${badgeStyles}`}
+        className={`rounded-full px-2.5 py-1 font-body text-sm font-semibold ${badgeStyles}`}
       >
         {count}
       </span>
@@ -1728,7 +1728,7 @@ function PendingCompetitionFrame({
       <div className="mb-3 rounded-2xl border border-white/80 bg-white/80 px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="font-body text-[11px] font-bold uppercase tracking-[0.16em] text-[#7A4FD6]">
+            <p className="font-body text-[13px] font-bold uppercase tracking-[0.16em] text-[#7A4FD6]">
               Bloque de votacion por horario
             </p>
             <p className="mt-0.5 font-heading text-sm font-bold text-[#1E0A4E]">
@@ -1736,10 +1736,10 @@ function PendingCompetitionFrame({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[11px] font-semibold text-[#7A4FD6]">
+            <span className="rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[13px] font-semibold text-[#7A4FD6]">
               {activities.length} opciones
             </span>
-            <span className="rounded-full bg-[#1E0A4E] px-3 py-1 font-body text-[11px] font-bold text-white">
+            <span className="rounded-full bg-[#1E0A4E] px-3 py-1 font-body text-[13px] font-bold text-white">
               gana 1
             </span>
           </div>
@@ -1809,7 +1809,7 @@ function DaySectionModal({
         <div className="border-b border-[#E2E8F0] px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
+              <p className="font-body text-[13px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
                 Vista del día
               </p>
               <h3 className="mt-2 font-heading text-2xl font-bold text-[#1E0A4E]">
@@ -1902,15 +1902,15 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
         {/* Left side */}
         <div className="flex items-center gap-3">
           {/* Day badge */}
-          <span className="font-body text-[11px] font-bold text-bluePrimary bg-bluePrimary/10 rounded-full px-3 py-1 shrink-0 leading-none">
+          <span className="font-body text-[13px] font-bold text-bluePrimary bg-bluePrimary/10 rounded-full px-3 py-1 shrink-0 leading-none">
             DÍA {dayNumber}
           </span>
 
           <div className="flex flex-col items-start gap-0.5">
-            <span className="font-body text-sm font-bold text-gray700 leading-none">
+            <span className="font-body text-base font-bold text-gray700 leading-none">
               {date}
             </span>
-            <span className="font-body text-[13px] text-gray500 leading-none">
+            <span className="font-body text-sm text-gray500 leading-none">
               {isEmpty
                 ? "Sin actividades · listo para planear"
                 : `${confirmedCount} confirmada${confirmedCount !== 1 ? "s" : ""} · ${pendingCount} por confirmar`}
@@ -1922,14 +1922,14 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
         <div className="flex items-center gap-2 shrink-0">
           {isEmpty && !isPastDay && onAddActivity && (
             <span
-              className="hidden rounded-xl bg-greenAccent/10 px-3 py-1.5 font-body text-[11px] font-bold text-greenAccent sm:inline-flex"
+              className="hidden rounded-xl bg-greenAccent/10 px-3 py-1.5 font-body text-[13px] font-bold text-greenAccent sm:inline-flex"
               aria-hidden="true"
             >
               Agregar
             </span>
           )}
           {pendingCount > 0 && (
-            <span className="font-body text-[11px] text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 leading-none">
+            <span className="font-body text-[13px] text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 leading-none">
               {pendingCount} por confirmar
             </span>
           )}
@@ -1954,7 +1954,7 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
           {isEmpty ? (
             isPastDay ? (
               <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-                <p className="font-body text-xs text-gray500">
+                <p className="font-body text-sm text-gray500">
                   Este dia ya paso. Solo puedes consultar la linea del tiempo
                   confirmada.
                 </p>

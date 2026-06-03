@@ -21,17 +21,17 @@ export interface RightPanelHelpProps {
 
 const DEFAULT_TIPS: HelpTip[] = [
   {
-    icon: '✈️',
+    icon: '01',
     title: 'Agrega actividades',
     description: 'Propone vuelos, hoteles y actividades para que el grupo vote.',
   },
   {
-    icon: '👥',
+    icon: '02',
     title: 'Invita a tu grupo',
     description: 'Comparte el link de invitación para que todos puedan colaborar.',
   },
   {
-    icon: '💬',
+    icon: '03',
     title: 'Coordínense en el chat',
     description: 'Usa el chat grupal para coordinarte en tiempo real con el equipo.',
   },
@@ -83,7 +83,7 @@ export function RightPanelHelp({
               key={i}
               className="flex items-start gap-3 bg-white border border-[#E2E8F0] rounded-xl px-4 py-3"
             >
-              <span className="text-xl shrink-0 leading-none mt-0.5">{tip.icon}</span>
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#F3EEFF] font-body text-[11px] font-bold leading-none text-[#7A4FD6]">{tip.icon}</span>
               <div className="flex-1 min-w-0">
                 <p className="font-body text-xs font-semibold text-gray700 leading-tight">
                   {tip.title}

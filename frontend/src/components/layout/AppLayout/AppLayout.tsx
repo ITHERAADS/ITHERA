@@ -20,6 +20,8 @@ export interface AppLayoutProps {
   trip?: TripMeta
   user?: NavUserInfo
   isOnline?: boolean
+  onOpenChat?: () => void
+  chatUnreadCount?: number
 }
 
 function IconCalendar() {
@@ -39,16 +41,6 @@ function IconUsers() {
       <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
       <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
       <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function IconHome() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M3 11.5L12 4l9 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5.5 10.5V20h13v-9.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.5 20v-5h5v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -81,22 +73,23 @@ function IconSuitcaseSmall() {
 }
 
 const GENERAL_NAV = [
-  { to: '/my-trips', label: 'Inicio', icon: <IconHome /> },
-  { to: '/create-group', label: 'Grupos', icon: <IconCompass /> },
-  { to: '/profile', label: 'Configuración', icon: <IconSettings /> },
+  { to: '/my-trips', label: 'Mis viajes', icon: <IconSuitcaseSmall />, iconColor: 'text-[#9AF0B8]' },
+  { to: '/create-group', label: 'Crear grupo', icon: <IconCompass />, iconColor: 'text-[#BFD7FF]' },
+  { to: '/my-trips#viajes-pasados', label: 'Viajes pasados', icon: <IconCalendar />, iconColor: 'text-[#FFD166]' },
+  { to: '/profile', label: 'Configuración', icon: <IconSettings />, iconColor: 'text-[#D8C8FF]' },
 ]
 
 function GeneralNav({ currentPath, onNavigate }: { currentPath: string; onNavigate: (to: string) => void }) {
   return (
     <nav className="flex h-full flex-col space-y-5">
       <div>
-        <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#35C56A]/15 px-3 py-1 font-body text-[10px] font-bold uppercase tracking-widest text-[#9AF0B8]">
+        <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#35C56A]/15 px-3 py-1 font-body text-xs font-bold uppercase tracking-widest text-[#9AF0B8]">
           <span className="h-1.5 w-1.5 rounded-full bg-[#35C56A]" />
           Navegación
         </p>
         <ul className="flex flex-col gap-1">
           {GENERAL_NAV.map((item) => {
-            const isActive = currentPath === item.to
+            const isActive = !item.to.includes('#') && currentPath === item.to
             return (
               <li key={`${item.to}-${item.label}`}>
                 <button
@@ -108,7 +101,7 @@ function GeneralNav({ currentPath, onNavigate }: { currentPath: string; onNaviga
                       : 'text-white/75 hover:bg-white/10 hover:text-white'
                   }`}
                 >
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${isActive ? 'bg-[#EAF2FF] text-[#1E6FD9]' : 'bg-white/10 text-[#BFD7FF]'}`}>
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${isActive ? 'bg-[#EAF2FF] text-[#1E6FD9]' : `bg-white/10 ${item.iconColor}`}`}>
                     {item.icon}
                   </span>
                   {item.label}
@@ -119,44 +112,6 @@ function GeneralNav({ currentPath, onNavigate }: { currentPath: string; onNaviga
         </ul>
       </div>
 
-      <div className="border-t border-white/10 pt-5">
-        <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-[#1E6FD9]/20 px-3 py-1 font-body text-[10px] font-bold uppercase tracking-widest text-[#BFD7FF]">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#2C8BE6]" />
-          Viajes
-        </p>
-        <button
-          type="button"
-          onClick={() => onNavigate('/my-trips')}
-          className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left font-body text-sm font-semibold text-white/75 transition-colors duration-150 hover:bg-white/10 hover:text-white"
-        >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/10 text-[#9AF0B8]">
-            <IconSuitcaseSmall />
-          </span>
-          Mis viajes
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('/my-trips#viajes-pasados')}
-          className="mt-2 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left font-body text-sm font-semibold text-white/75 transition-colors duration-150 hover:bg-white/10 hover:text-white"
-        >
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/10 text-[#FFD166]">
-            <IconCalendar />
-          </span>
-          Viajes pasados
-        </button>
-      </div>
-
-      <div className="mt-auto overflow-hidden rounded-3xl border border-white/15 bg-[linear-gradient(135deg,rgba(122,79,214,0.36),rgba(30,10,78,0.50)_48%,rgba(30,111,217,0.18))] p-4 shadow-[0_14px_32px_rgba(0,0,0,0.16)]">
-        <p className="font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#D8C8FF]">
-          Próxima ruta
-        </p>
-        <p className="mt-2 font-heading text-base font-extrabold leading-tight text-white">
-          Organiza, invita y despega.
-        </p>
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
-          <div className="h-full w-2/3 rounded-full bg-[linear-gradient(90deg,#9B7CFF,#2C8BE6)]" />
-        </div>
-      </div>
     </nav>
   )
 }
@@ -171,6 +126,8 @@ export function AppLayout({
   trip,
   user,
   isOnline = true,
+  onOpenChat,
+  chatUnreadCount,
 }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
@@ -200,6 +157,8 @@ export function AppLayout({
         showTripSelector={showTripSelector}
         centerTitle={centerTitle}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
+        onOpenChat={onOpenChat}
+        chatUnreadCount={chatUnreadCount}
       />
 
       <div className="flex min-w-0 flex-1 overflow-hidden pt-20">
@@ -217,25 +176,22 @@ export function AppLayout({
                     <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-[#1E6FD9]/25 blur-2xl" />
                     <div className="absolute -bottom-10 left-4 h-20 w-20 rounded-full bg-[#35C56A]/20 blur-2xl" />
                     <div className="relative">
-                      <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 font-body text-[9px] font-bold uppercase tracking-[0.16em] text-[#9AF0B8]">
+                      <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 font-body text-[11px] font-bold uppercase tracking-[0.16em] text-[#9AF0B8]">
                         <span className="h-1.5 w-1.5 rounded-full bg-[#35C56A]" />
                         Viaje activo
                       </p>
-                      <h2 className="max-w-full break-words font-heading text-[16px] font-extrabold leading-tight text-white" title={trip.name}>
+                      <h2 className="max-w-full break-words font-heading text-lg font-extrabold leading-tight text-white" title={trip.name}>
                         {trip.name}
                       </h2>
-                      <p className="mt-1 line-clamp-2 max-w-full break-words font-body text-[12px] leading-snug text-white/60" title={trip.subtitle}>
-                        {trip.subtitle}
-                      </p>
 
-                      <div className="mt-3 grid gap-2">
-                        <div className="flex max-w-full items-start gap-2 rounded-xl border border-[#BFD7FF]/20 bg-[#1E6FD9]/20 px-2.5 py-2">
-                          <span className="mt-0.5 shrink-0 text-[#BFD7FF]"><IconCalendar /></span>
-                          <span className="min-w-0 break-words font-body text-[10.5px] font-semibold leading-snug text-[#D9E8FF]">{trip.dates}</span>
+                      <div className="mt-3 grid gap-1.5">
+                        <div className="flex items-center gap-2 rounded-xl border border-[#BFD7FF]/20 bg-[#1E6FD9]/20 px-2.5 py-1.5">
+                          <span className="shrink-0 text-[#BFD7FF]"><IconCalendar /></span>
+                          <span className="min-w-0 font-body text-xs font-semibold leading-snug text-[#D9E8FF]">{trip.dates}</span>
                         </div>
-                        <div className="flex max-w-full items-center gap-2 rounded-xl border border-[#BFF4CE]/20 bg-[#35C56A]/15 px-2.5 py-2">
-                          <span className="mt-0.5 shrink-0 text-[#9AF0B8]"><IconUsers /></span>
-                          <span className="min-w-0 break-words font-body text-[10.5px] font-semibold leading-snug text-[#D7FBE2]">{trip.people}</span>
+                        <div className="flex items-center gap-2 rounded-xl border border-[#BFF4CE]/20 bg-[#35C56A]/15 px-2.5 py-1.5">
+                          <span className="shrink-0 text-[#9AF0B8]"><IconUsers /></span>
+                          <span className="font-body text-xs font-semibold leading-none text-[#D7FBE2]">{trip.people}</span>
                         </div>
                       </div>
                     </div>
@@ -253,14 +209,10 @@ export function AppLayout({
             )}
 
             {trip && (
-              <div className="mt-4 shrink-0 border-t border-white/10 pt-4">
-                <p className="mb-2 inline-flex items-center gap-2 rounded-full bg-[#35C56A]/15 px-3 py-1 font-body text-[10px] font-bold uppercase tracking-widest text-[#9AF0B8]">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#35C56A]" />
-                  Viajes
-                </p>
+              <div className="mt-4 shrink-0 border-t border-white/10 pt-2">
                 <button
                   onClick={goToCurrentTrips}
-                  className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 font-body text-sm text-white/60 transition-colors duration-150 hover:bg-white/10 hover:text-white"
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 font-body text-base text-white/60 transition-colors duration-150 hover:bg-white/10 hover:text-white"
                 >
                   <span>Mis viajes</span>
                   <span className="text-white/40">›</span>

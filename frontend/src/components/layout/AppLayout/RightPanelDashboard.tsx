@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Socket } from 'socket.io-client'
 import { GoogleMiniMap } from '../../GoogleMiniMap/GoogleMiniMap'
 import { useAuth } from '../../../context/useAuth'
@@ -70,19 +71,6 @@ function IconSearch() {
   )
 }
 
-function IconChat() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
 
 function SectionDivider({
   label,
@@ -96,7 +84,7 @@ function SectionDivider({
   return (
     <div className="mb-2 flex items-center gap-2">
       <span
-        className="inline-flex items-center gap-2 rounded-full px-3 py-1 font-body text-[10px] font-bold uppercase tracking-widest"
+        className="inline-flex items-center gap-2 rounded-full px-3 py-1 font-body text-xs font-bold uppercase tracking-widest"
         style={{ color, backgroundColor: background }}
       >
         <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} />
@@ -105,6 +93,32 @@ function SectionDivider({
       <span className="h-px flex-1 rounded-full bg-[#E2E8F0]" />
     </div>
   )
+}
+
+function formatLocationShort(label: string | null | undefined, formattedAddress: string | null | undefined): string {
+  const source = label || formattedAddress || ''
+  if (!source) return 'Ubicación no disponible'
+
+  const parts = source.split(', ').map((p) => p.trim()).filter(Boolean)
+  if (parts.length <= 2) return source
+
+  // Find the part that starts with a zip code (e.g., "77500 Cancún") and extract city from it
+  const zipIdx = parts.findIndex((p) => /^\d{4,6}\s+\S/.test(p))
+  if (zipIdx !== -1) {
+    const cityWithZip = parts[zipIdx] ?? ''
+    const city = cityWithZip.replace(/^\d+\s*/, '')
+    const rest = parts.slice(zipIdx + 1)
+    return [city, ...rest].filter(Boolean).join(', ')
+  }
+
+  // If no zip found but looks like a street address (starts with number or common street words),
+  // skip the first 2 parts and show the rest
+  const looksLikeStreet = /^\d|^(blvd|calle|av\.|ave|carretera|km\.)/i.test(parts[0] ?? '')
+  if (looksLikeStreet && parts.length > 3) {
+    return parts.slice(2).join(', ')
+  }
+
+  return source
 }
 
 function toNumberOrNull(value: unknown): number | null {
@@ -151,12 +165,10 @@ export function RightPanelDashboard({
   group,
   isLoading = false,
   socket,
-  onOpenChat,
   onOpenBudget,
   onOpenGroupPanel,
   onOpenMap,
   isMapViewActive = false,
-  unreadCount = 0,
   totalBudget,
   committedBudget,
 }: {
@@ -164,12 +176,10 @@ export function RightPanelDashboard({
   group?: Group | null
   isLoading?: boolean
   socket?: Socket | null
-  onOpenChat?: () => void
   onOpenBudget?: () => void
   onOpenGroupPanel?: () => void
   onOpenMap?: () => void
   isMapViewActive?: boolean
-  unreadCount?: number
   totalBudget?: number
   committedBudget?: number
 }) {
@@ -177,7 +187,9 @@ export function RightPanelDashboard({
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const popoverRef = useRef<HTMLDivElement | null>(null)
+  const participantTriggerRef = useRef<HTMLDivElement | null>(null)
+  const floatingPopoverRef = useRef<HTMLDivElement | null>(null)
+  const [popoverAnchorY, setPopoverAnchorY] = useState(0)
 
   const groupId = group?.id ? String(group.id) : null
   const fallbackStartLocation = useMemo(() => buildSidebarStartLocation(group), [group])
@@ -285,7 +297,11 @@ export function RightPanelDashboard({
   useEffect(() => {
     if (!popoverOpen) return
     const handler = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        !participantTriggerRef.current?.contains(target) &&
+        !floatingPopoverRef.current?.contains(target)
+      ) {
         setPopoverOpen(false)
         setSearch('')
       }
@@ -340,99 +356,57 @@ export function RightPanelDashboard({
       <section className="shrink-0">
         <SectionDivider label="Participantes" color="#1E6FD9" background="#EEF4FF" />
 
-        {/* Trigger: avatars + summary text — wrapped with popover in same ref for click-outside */}
-        <div ref={popoverRef} className="relative">
-          <button
-            type="button"
-            onClick={() => { setPopoverOpen((o) => !o); setSearch('') }}
-            className="w-full text-left"
-          >
-            {participants.length > 0 && (
-              <div className="mb-2 flex items-center -space-x-2 overflow-hidden">
-                {visibleParticipants.map((participant) => (
-                  <ParticipantAvatar
-                    key={participant.id}
-                    name={participant.name}
-                    color={participant.color}
-                    avatarUrl={participant.avatarUrl}
-                    className="w-9 h-9 border-2 border-white text-sm"
-                  />
-                ))}
-                {hiddenParticipantsCount > 0 && (
-                  <div
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-white bg-[#1E0A4E] text-[11px] font-bold text-white"
-                    title={`${hiddenParticipantsCount} participante(s) más`}
-                  >
-                    +{hiddenParticipantsCount}
-                  </div>
-                )}
-              </div>
-            )}
-            <p className="font-body text-xs text-gray500 hover:text-gray700 transition-colors">
-              {participants.length} participante{participants.length !== 1 ? 's' : ''} · {onlineCount} en línea
-            </p>
-          </button>
-
-          {onOpenGroupPanel && (
+        <div className="overflow-hidden rounded-2xl border border-[#BFDBFE] bg-gradient-to-br from-[#EFF6FF] to-[#DBEAFE]">
+          {/* Avatars row */}
+          <div ref={participantTriggerRef} className="px-4 pt-3 pb-2">
             <button
               type="button"
-              onClick={onOpenGroupPanel}
-              className="mt-3 w-full rounded-xl border border-[#D9E2F2] bg-white px-3 py-2 text-left font-body text-xs font-semibold text-bluePrimary transition-colors hover:border-bluePrimary/40 hover:bg-[#EEF4FF]"
+              onClick={() => {
+                if (participantTriggerRef.current) {
+                  const rect = participantTriggerRef.current.getBoundingClientRect()
+                  setPopoverAnchorY(rect.top)
+                }
+                setPopoverOpen((o) => !o)
+                setSearch('')
+              }}
+              className="w-full text-left"
             >
-              Invitar o gestionar miembros
-            </button>
-          )}
-
-          {/* Popover */}
-          {popoverOpen && (
-            <div className="absolute top-full left-0 mt-2 w-full bg-white rounded-xl shadow-lg border border-[#E2E8F0] z-50 overflow-hidden">
-              {/* Search */}
-              <div className="flex items-center gap-2 px-3 py-2.5 border-b border-[#E2E8F0]">
-                <IconSearch />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar miembro..."
-                  autoFocus
-                  className="flex-1 font-body text-xs outline-none text-gray700 placeholder-gray-400 bg-transparent"
-                />
-              </div>
-
-              {/* List */}
-              <div className="max-h-[280px] overflow-y-auto">
-                {filteredParticipants.length === 0 ? (
-                  <p className="font-body text-xs text-gray500 text-center py-4">Sin resultados</p>
-                ) : (
-                  filteredParticipants.map((participant) => (
-                    <div
+              {participants.length > 0 && (
+                <div className="mb-2 flex items-center -space-x-2 overflow-hidden">
+                  {visibleParticipants.map((participant) => (
+                    <ParticipantAvatar
                       key={participant.id}
-                      className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-[#F0EEF8] transition-colors"
+                      name={participant.name}
+                      color={participant.color}
+                      avatarUrl={participant.avatarUrl}
+                      className="w-9 h-9 border-2 border-white text-sm"
+                    />
+                  ))}
+                  {hiddenParticipantsCount > 0 && (
+                    <div
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-white bg-[#1E0A4E] text-[13px] font-bold text-white"
+                      title={`${hiddenParticipantsCount} participante(s) más`}
                     >
-                      <ParticipantAvatar
-                        name={participant.name}
-                        color={participant.color}
-                        avatarUrl={participant.avatarUrl}
-                        className="w-7 h-7 text-[10px]"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-body text-xs font-semibold text-gray700 truncate leading-none">
-                          {participant.name}
-                        </p>
-                        <p
-                          className="font-body text-[10px] mt-0.5 leading-none"
-                          style={{ color: participant.color }}
-                        >
-                          {participant.role}
-                        </p>
-                      </div>
-                      {participant.isOnline && (
-                        <span className="w-2 h-2 rounded-full bg-greenAccent shrink-0" />
-                      )}
+                      +{hiddenParticipantsCount}
                     </div>
-                  ))
-                )}
-              </div>
+                  )}
+                </div>
+              )}
+              <p className="font-body text-sm font-semibold text-[#1E40AF] transition-colors hover:text-[#1E3A8A]">
+                {participants.length} participante{participants.length !== 1 ? 's' : ''} · <span className="text-[#059669]">{onlineCount} en línea</span>
+              </p>
+            </button>
+          </div>
+
+          {onOpenGroupPanel && (
+            <div className="border-t border-[#BFDBFE] px-4 py-2.5">
+              <button
+                type="button"
+                onClick={onOpenGroupPanel}
+                className="w-full font-body text-sm font-semibold text-[#1D4ED8] transition-colors hover:text-[#1E40AF]"
+              >
+                Invitar o gestionar miembros →
+              </button>
             </div>
           )}
         </div>
@@ -440,59 +414,60 @@ export function RightPanelDashboard({
 
       {/* Mini map */}
       <section className="shrink-0">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <SectionDivider label="Punto de partida" color="#7A4FD6" background="#F3EEFF" />
-          </div>
-          {startLocation?.source === 'hotel_reservado' && (
-            <span className="rounded-full bg-greenAccent/10 px-2 py-0.5 font-body text-[10px] font-bold text-greenAccent">
-              Hotel reservado
-            </span>
-          )}
-        </div>
+        <SectionDivider label="Punto de partida" color="#7A4FD6" background="#F3EEFF" />
 
-        <div className="mb-1.5">
-          <GoogleMiniMap
-            lat={startLocation?.latitude}
-            lng={startLocation?.longitude}
-            title={startLocation?.label || group?.nombre || 'Punto de partida'}
-          />
-        </div>
-
-        <p className="font-body text-xs font-bold text-purpleNavbar leading-none">
-          {startLocation?.label || 'Punto de partida pendiente'}
-        </p>
-
-        <p className="font-body text-[11px] text-gray500 mt-0.5 leading-none">
-          {startLocation?.formattedAddress || 'Ubicación no disponible'}
-        </p>
-
-        {startLocation?.latitude != null && startLocation?.longitude != null && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${startLocation.latitude},${startLocation.longitude}`}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-lg bg-[#EEF4FF] px-2.5 py-1.5 font-body text-[11px] font-semibold text-bluePrimary hover:bg-[#E2EDFF]"
-            >
-              Abrir mapa
-            </a>
-            {onOpenMap && (
-              <button
-                type="button"
-                onClick={onOpenMap}
-                aria-pressed={isMapViewActive}
-                className={`rounded-lg border px-2.5 py-1.5 font-body text-[11px] font-semibold transition-colors ${
-                  isMapViewActive
-                    ? "border-[#1E6FD9] bg-[#EEF4FF] text-[#1E6FD9]"
-                    : "border-[#D9E2F2] text-[#475569] hover:bg-white"
-                }`}
-              >
-                {isMapViewActive ? "Viendo rutas" : "Ver rutas"}
-              </button>
+        <div className="overflow-hidden rounded-2xl border border-[#DDD6FE] bg-gradient-to-br from-[#F5F3FF] to-[#EDE9FE]">
+          {/* Map */}
+          <div className="relative overflow-hidden">
+            <GoogleMiniMap
+              lat={startLocation?.latitude}
+              lng={startLocation?.longitude}
+              title={startLocation?.label || group?.nombre || 'Punto de partida'}
+            />
+            {startLocation?.source === 'hotel_reservado' && (
+              <span className="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-0.5 font-body text-[11px] font-bold text-greenAccent shadow-sm">
+                Hotel
+              </span>
             )}
           </div>
-        )}
+
+          {/* Location label */}
+          <div className="px-3 py-2.5">
+            <p
+              className="line-clamp-1 font-body text-sm font-semibold text-[#5B21B6] leading-snug"
+              title={startLocation?.formattedAddress || startLocation?.label || ''}
+            >
+              {formatLocationShort(startLocation?.label, startLocation?.formattedAddress)}
+            </p>
+          </div>
+
+          {startLocation?.latitude != null && startLocation?.longitude != null && (
+            <div className="flex gap-0 border-t border-[#DDD6FE] divide-x divide-[#DDD6FE]">
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${startLocation.latitude},${startLocation.longitude}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 py-2 text-center font-body text-xs font-semibold text-[#6D28D9] hover:bg-[#EDE9FE] transition-colors"
+              >
+                Abrir mapa
+              </a>
+              {onOpenMap && (
+                <button
+                  type="button"
+                  onClick={onOpenMap}
+                  aria-pressed={isMapViewActive}
+                  className={`flex-1 py-2 font-body text-xs font-semibold transition-colors ${
+                    isMapViewActive
+                      ? 'bg-[#EDE9FE] text-[#5B21B6]'
+                      : 'text-[#6D28D9] hover:bg-[#EDE9FE]'
+                  }`}
+                >
+                  {isMapViewActive ? 'Rutas activas' : 'Ver rutas'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </section>
 
       {/* Mini budget */}
@@ -500,99 +475,123 @@ export function RightPanelDashboard({
         <SectionDivider label="Presupuesto" color="#35C56A" background="#EAFBF1" />
 
         {budgetData === null ? (
-          <p className="font-body text-xs text-gray500">Sin presupuesto definido</p>
+          <div className="rounded-2xl border border-[#D1FAE5] bg-[#F0FDF4] px-4 py-3">
+            <p className="font-body text-sm text-[#6B7280]">Sin presupuesto definido</p>
+          </div>
         ) : (
-          <>
-            <div className="flex flex-col gap-1.5 mb-3">
-              <div className="flex items-center justify-between">
-                <span className="font-body text-[11px] text-gray500">Total</span>
-                <span className="font-body text-[11px] font-semibold text-[#1E0A4E]">
-                  {formatMXN(totalBudget!)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="font-body text-[11px] text-gray500">Comprometido</span>
-                <span className={`font-body text-[11px] font-semibold ${budgetData.isOverBudget ? 'text-[#B91C1C]' : 'text-[#EF4444]'}`}>
+          <div className="overflow-hidden rounded-2xl border border-[#D1FAE5] bg-gradient-to-br from-[#F0FDF4] to-[#ECFDF5]">
+            {/* Total destacado */}
+            <div className="border-b border-[#D1FAE5] px-4 py-3">
+              <p className="font-body text-xs font-bold uppercase tracking-wide text-[#047857]">Presupuesto total</p>
+              <p className="mt-0.5 font-heading text-2xl font-extrabold text-[#065F46]">
+                {formatMXN(totalBudget!)}
+              </p>
+            </div>
+
+            {/* Comprometido y disponible */}
+            <div className="grid grid-cols-2 divide-x divide-[#D1FAE5]">
+              <div className="px-4 py-3">
+                <p className="font-body text-xs font-bold uppercase tracking-wide text-[#B91C1C]">Comprometido</p>
+                <p className={`mt-0.5 font-heading text-lg font-bold ${budgetData.isOverBudget ? 'text-[#B91C1C]' : 'text-[#DC2626]'}`}>
                   {formatMXN(budgetData.committed)}
-                </span>
+                </p>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="font-body text-[11px] text-gray500">Disponible</span>
-                <span className={`font-body text-[11px] font-semibold ${budgetData.available < 0 ? 'text-[#B91C1C]' : 'text-[#35C56A]'}`}>
+              <div className="px-4 py-3">
+                <p className="font-body text-xs font-bold uppercase tracking-wide text-[#047857]">Disponible</p>
+                <p className={`mt-0.5 font-heading text-lg font-bold ${budgetData.available < 0 ? 'text-[#B91C1C]' : 'text-[#059669]'}`}>
                   {formatMXN(budgetData.available)}
-                </span>
+                </p>
               </div>
             </div>
 
-            <div className="h-1.5 bg-[#E2E8F0] rounded-full overflow-hidden mb-1">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${budgetData.pct}%`,
-                  background: 'linear-gradient(90deg, #1E6FD9, #7A4FD6)',
-                }}
-              />
+            {/* Barra de progreso */}
+            <div className="px-4 pb-3">
+              <div className="h-2 overflow-hidden rounded-full bg-[#D1FAE5]">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${budgetData.pct}%`,
+                    background: budgetData.isOverBudget
+                      ? 'linear-gradient(90deg, #EF4444, #B91C1C)'
+                      : 'linear-gradient(90deg, #34D399, #059669)',
+                  }}
+                />
+              </div>
+              <p className={`mt-1 font-body text-xs font-semibold text-right ${budgetData.isOverBudget ? 'text-[#DC2626]' : 'text-[#059669]'}`}>
+                {budgetData.isOverBudget ? '⚠ Presupuesto excedido' : `${budgetData.pct.toFixed(0)}% comprometido`}
+              </p>
             </div>
-            <p className="font-body text-[10px] text-gray500 text-right">
-              {budgetData.isOverBudget ? 'Presupuesto excedido' : `${budgetData.pct.toFixed(0)}% comprometido`}
-            </p>
+
             {onOpenBudget && (
-              <button
-                type="button"
-                onClick={onOpenBudget}
-                className="mt-3 w-full rounded-xl border border-[#D9E2F2] bg-white px-3 py-2 text-left font-body text-xs font-semibold text-bluePrimary transition-colors hover:border-bluePrimary/40 hover:bg-[#EEF4FF]"
-              >
-                Ajustar presupuesto
-              </button>
+              <div className="border-t border-[#D1FAE5] px-4 py-2.5">
+                <button
+                  type="button"
+                  onClick={onOpenBudget}
+                  className="w-full font-body text-sm font-semibold text-[#059669] transition-colors hover:text-[#047857]"
+                >
+                  Ajustar presupuesto →
+                </button>
+              </div>
             )}
-          </>
+          </div>
         )}
       </section>
 
-      {/* Open chat button */}
-      <section className="shrink-0">
-        <SectionDivider label="Comunicacion" color="#DB2777" background="#FCE7F3" />
-        <button
-          type="button"
-          onClick={onOpenChat}
-          disabled={!onOpenChat}
-          className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-2.5 hover:bg-[#F0EEF8] hover:border-[#7A4FD6]/30 transition-colors group shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+      {/* Participant search portal — floats to the left of the right panel */}
+      {popoverOpen && createPortal(
+        <div
+          ref={floatingPopoverRef}
+          className="fixed z-[200] w-[260px] overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-[0_16px_40px_rgba(15,23,42,0.18)]"
+          style={{ right: 292, top: popoverAnchorY }}
         >
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-8 h-8 rounded-xl flex items-center justify-center text-white shrink-0"
-              style={{ background: 'linear-gradient(135deg, #1E0A4E, #7A4FD6)' }}
-            >
-              <IconChat />
-            </div>
-            <div className="text-left">
-              <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">
-                Chat del grupo
-              </p>
-              <p className="font-body text-[11px] text-gray500 mt-0.5 leading-none">
-                {onlineCount > 0 ? `${onlineCount} en línea` : 'Abrir chat'}
-              </p>
-            </div>
+          <div className="border-b border-[#E2E8F0] px-4 py-3">
+            <p className="font-body text-sm font-bold text-[#1E0A4E]">Participantes del viaje</p>
           </div>
+          <div className="flex items-center gap-2 border-b border-[#E2E8F0] px-3 py-2.5">
+            <IconSearch />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar miembro..."
+              autoFocus
+              className="flex-1 bg-transparent font-body text-sm text-gray700 outline-none placeholder-gray-400"
+            />
+          </div>
+          <div className="max-h-[320px] overflow-y-auto">
+            {filteredParticipants.length === 0 ? (
+              <p className="py-4 text-center font-body text-sm text-gray500">Sin resultados</p>
+            ) : (
+              filteredParticipants.map((participant) => (
+                <div
+                  key={participant.id}
+                  className="flex items-center gap-2.5 px-3 py-2.5 transition-colors hover:bg-[#F0EEF8]"
+                >
+                  <ParticipantAvatar
+                    name={participant.name}
+                    color={participant.color}
+                    avatarUrl={participant.avatarUrl}
+                    className="h-8 w-8 shrink-0 text-xs"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-body text-sm font-semibold leading-none text-gray700">
+                      {participant.name}
+                    </p>
+                    <p className="mt-0.5 font-body text-xs leading-none" style={{ color: participant.color }}>
+                      {participant.role}
+                    </p>
+                  </div>
+                  {participant.isOnline && (
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-greenAccent" />
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
 
-          {unreadCount > 0 ? (
-            <span className="w-5 h-5 rounded-full bg-[#EF4444] flex items-center justify-center font-body text-[10px] font-bold text-white shrink-0">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          ) : (
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              className="text-gray500 group-hover:text-[#7A4FD6] transition-colors shrink-0"
-              aria-hidden="true"
-            >
-              <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-        </button>
-      </section>
     </>
   )
 }

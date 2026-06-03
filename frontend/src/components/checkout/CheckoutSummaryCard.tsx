@@ -3,13 +3,8 @@ import type { Proposal, ProposalDetailFlight, ProposalDetailHotel } from '../../
 function formatMoney(value: number | string | null | undefined, currency?: string | null) {
   const amount = Number(value ?? 0)
   const safeCurrency = currency ?? 'MXN'
-
   if (!Number.isFinite(amount)) return `$0 ${safeCurrency}`
-
-  return new Intl.NumberFormat('es-MX', {
-    style: 'currency',
-    currency: safeCurrency,
-  }).format(amount)
+  return new Intl.NumberFormat('es-MX', { style: 'currency', currency: safeCurrency }).format(amount)
 }
 
 function isFlightProposal(proposal: Proposal): proposal is Proposal & { detalle?: ProposalDetailFlight | null } {
@@ -54,64 +49,79 @@ export function CheckoutSummaryCard({ proposal }: { proposal: Proposal }) {
   const hotelDetail = getHotelDetail(proposal)
 
   return (
-    <div className="rounded-3xl border border-white/60 bg-white/90 p-5 shadow-xl shadow-[#1E0A4E]/10 backdrop-blur">
+    <div className="flex flex-col gap-5 rounded-3xl border border-white/60 bg-white/90 p-6 shadow-xl shadow-[#1E0A4E]/10 backdrop-blur">
+      {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-body text-xs font-bold uppercase tracking-[0.2em] text-[#7A4FD6]">
+        <div className="min-w-0">
+          <p className="font-body text-sm font-bold uppercase tracking-[0.18em] text-[#7A4FD6]">
             {isFlight ? 'Compra de vuelo' : 'Reserva de hospedaje'}
           </p>
-          <h2 className="mt-1 font-heading text-xl font-bold text-[#1E0A4E]">
+          <h2 className="mt-1.5 font-heading text-2xl font-extrabold leading-snug text-[#1E0A4E]">
             {proposal.titulo}
           </h2>
-          <p className="mt-1 font-body text-sm text-[#64748B]">
+          <p className="mt-1.5 font-body text-base text-[#64748B]">
             {proposal.descripcion || 'Propuesta aprobada por el grupo.'}
           </p>
         </div>
-        <span className="rounded-full bg-[#35C56A]/10 px-3 py-1 font-body text-xs font-bold text-[#35C56A]">
+        <span className="shrink-0 rounded-full bg-[#35C56A]/12 px-3.5 py-1.5 font-body text-sm font-bold text-[#35C56A]">
           Ganadora
         </span>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+      {/* Info grid */}
+      <div className="grid gap-3 sm:grid-cols-2">
         {isFlight ? (
           <>
-            <Info label="Aerolínea" value={textValue(flightDetail.aerolinea, 'No especificada')} />
-            <Info label="Vuelo" value={textValue(flightDetail.numero_vuelo, 'No especificado')} />
-            <Info label="Origen" value={routeValue(flightDetail.origen_nombre, flightDetail.origen_codigo)} />
-            <Info label="Destino" value={routeValue(flightDetail.destino_nombre, flightDetail.destino_codigo)} />
-            <Info label="Salida" value={textValue(flightDetail.salida, 'No especificada')} />
-            <Info label="Llegada" value={textValue(flightDetail.llegada, 'No especificada')} />
+            <Info label="Aerolínea" value={textValue(flightDetail.aerolinea, 'No especificada')} color="blue" />
+            <Info label="Vuelo" value={textValue(flightDetail.numero_vuelo, 'No especificado')} color="purple" />
+            <Info label="Origen" value={routeValue(flightDetail.origen_nombre, flightDetail.origen_codigo)} color="blue" />
+            <Info label="Destino" value={routeValue(flightDetail.destino_nombre, flightDetail.destino_codigo)} color="purple" />
+            <Info label="Salida" value={textValue(flightDetail.salida, 'No especificada')} color="green" />
+            <Info label="Llegada" value={textValue(flightDetail.llegada, 'No especificada')} color="green" />
           </>
         ) : (
           <>
-            <Info label="Hotel" value={textValue(hotelDetail.nombre, proposal.titulo)} />
-            <Info label="Dirección" value={textValue(hotelDetail.direccion, 'No especificada')} />
-            <Info label="Check-in" value={textValue(hotelDetail.check_in, 'No especificado')} />
-            <Info label="Check-out" value={textValue(hotelDetail.check_out, 'No especificado')} />
-            <Info label="Proveedor" value={textValue(hotelDetail.proveedor, 'ITHERA')} />
-            <Info label="Calificación" value={textValue(hotelDetail.calificacion, 'No especificada')} />
+            <Info label="Hotel" value={textValue(hotelDetail.nombre, proposal.titulo)} color="blue" />
+            <Info label="Dirección" value={textValue(hotelDetail.direccion, 'No especificada')} color="purple" />
+            <Info label="Check-in" value={textValue(hotelDetail.check_in, 'No especificado')} color="green" />
+            <Info label="Check-out" value={textValue(hotelDetail.check_out, 'No especificado')} color="green" />
+            <Info label="Proveedor" value={textValue(hotelDetail.proveedor, 'ITHERA')} color="blue" />
+            <Info label="Calificación" value={textValue(hotelDetail.calificacion, 'No especificada')} color="amber" />
           </>
         )}
       </div>
 
-      <div className="mt-5 rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] p-4 text-white">
-        <p className="font-body text-xs uppercase tracking-[0.18em] text-white/75">Total</p>
-        <p className="mt-1 font-heading text-2xl font-bold">
-          {formatMoney(getAmount(proposal), getCurrency(proposal))}
-        </p>
-        <p className="mt-1 font-body text-xs text-white/75">
-          El comprobante PDF se guardará automáticamente en la bóveda.
-        </p>
+      {/* Total */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1251A3] via-[#1E6FD9] to-[#7A4FD6] p-5 text-white">
+        <div className="absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute -bottom-8 left-4 h-24 w-24 rounded-full bg-white/[0.07] blur-xl" />
+        <div className="relative">
+          <p className="font-body text-sm font-bold uppercase tracking-[0.18em] text-white/65">Total</p>
+          <p className="mt-1 font-heading text-4xl font-extrabold leading-none">
+            {formatMoney(getAmount(proposal), getCurrency(proposal))}
+          </p>
+          <p className="mt-2 font-body text-sm text-white/70">
+            El comprobante PDF se guardará automáticamente en la bóveda.
+          </p>
+        </div>
       </div>
     </div>
   )
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+const colorMap = {
+  blue:   { border: 'border-[#BFDBFE]', bg: 'bg-[#EFF6FF]', label: 'text-[#1E6FD9]' },
+  purple: { border: 'border-[#DDD6FE]', bg: 'bg-[#F5F3FF]', label: 'text-[#7A4FD6]' },
+  green:  { border: 'border-[#BBF7D0]', bg: 'bg-[#F0FDF4]', label: 'text-[#16794A]' },
+  amber:  { border: 'border-[#FDE68A]', bg: 'bg-[#FFFBEB]', label: 'text-[#92400E]' },
+}
+
+function Info({ label, value, color = 'blue' }: { label: string; value: string; color?: keyof typeof colorMap }) {
+  const c = colorMap[color]
   return (
-    <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
-      <p className="font-body text-[11px] font-bold uppercase tracking-wide text-[#94A3B8]">{label}</p>
-      <p className="mt-1 line-clamp-2 font-body text-sm font-semibold text-[#1E0A4E]">{value}</p>
+    <div className={`rounded-2xl border ${c.border} ${c.bg} px-4 py-3`}>
+      <p className={`font-body text-xs font-bold uppercase tracking-wide ${c.label}`}>{label}</p>
+      <p className="mt-1.5 font-body text-base font-semibold leading-snug text-[#1E0A4E]">{value}</p>
     </div>
   )
 }

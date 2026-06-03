@@ -2388,54 +2388,79 @@ export function SubgroupSchedulePanel({
   return (
     <>
       <div className="space-y-5">
-        <section className="overflow-hidden rounded-[28px] border border-[#E2E8F0] bg-white shadow-[0_20px_70px_rgba(30,10,78,0.08)]">
-          <div className="relative overflow-hidden px-6 py-6 md:px-8">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(122,79,214,0.18),_transparent_36%),radial-gradient(circle_at_top_right,_rgba(30,111,217,0.12),_transparent_30%)]" />
-            <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#D9D5F8] bg-[#F6F2FF] px-3 py-1 text-xs font-semibold text-[#6D45C0]">
-                  <span className="h-2 w-2 rounded-full bg-[#7A4FD6]" />
-                  Momentos para dividirse y reencontrarse
-                </div>
-                <div className="flex items-center gap-3">
-                  <h2 className="font-heading text-[30px] leading-tight text-[#1E0A4E]">
-                    Vista de subgrupos
-                  </h2>
-                  <HelpButton
-                    title="Subgrupos"
-                    description="Crea horarios solo para hoy o fechas futuras del viaje. Los horarios de días pasados quedan como historial y ya no cuentan como activos."
-                    placement="right"
-                  />
-                </div>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#64748B]">
-                  Organiza ratos libres del viaje para que cada quien elija
-                  plan, vea quien ya esta dentro y vuelva al grupo con todo
-                  claro.
-                </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-3 py-1.5 text-xs font-semibold text-[#1E6FD9]">
-                    {actionableSlots.length}{" "}
-                    {actionableSlots.length === 1
-                      ? "horario activo"
-                      : "horarios activos"}
+        <section className="relative mb-4 min-h-[260px] shrink-0 overflow-hidden rounded-2xl">
+          <img
+            src={group?.destino_photo_url || "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=400&fit=crop"}
+            alt={group?.destino || "Destino"}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
+          <div className="relative flex min-h-[260px] flex-col justify-between p-5">
+            <div className="flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-2 rounded-xl border border-[#BFD7FF]/50 bg-[#1E6FD9]/45 px-3 py-2 font-body text-[13px] font-bold uppercase tracking-wide text-white shadow-sm backdrop-blur-md">
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z" stroke="white" strokeWidth="2" strokeLinejoin="round" />
+                    <circle cx="12" cy="10" r="2.5" stroke="white" strokeWidth="2" />
+                  </svg>
+                </span>
+                {(group?.destino || "Destino pendiente").toUpperCase()}
+              </span>
+              {(tripStartDate || tripEndDate) && (
+                <span className="inline-flex items-center gap-2 rounded-xl border border-[#FFD166]/60 bg-[#F59E0B]/80 px-3 py-2 font-body text-[13px] font-bold text-white shadow-md backdrop-blur-md">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <rect x="3" y="4" width="18" height="18" rx="2" stroke="white" strokeWidth="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                      <line x1="8" y1="2" x2="8" y2="6" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                      <line x1="3" y1="10" x2="21" y2="10" stroke="white" strokeWidth="2" />
+                    </svg>
                   </span>
-                  <span className="rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-3 py-1.5 text-xs font-semibold text-[#6D45C0]">
-                    {actionableOptionCount} opciones disponibles
-                  </span>
-                  <span className="rounded-full border border-[#D7DEEA] bg-white px-3 py-1.5 text-xs font-semibold text-[#475569]">
-                    Cada persona puede elegir un plan o quedar libre
-                  </span>
-                </div>
-              </div>
-              {isAdmin && (!tripEndDate || tripEndDate >= todayValue()) && (
-                <button
-                  type="button"
-                  onClick={openCreateSlotModal}
-                  className="inline-flex items-center justify-center rounded-2xl bg-[#1E6FD9] px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(30,111,217,0.28)] transition hover:translate-y-[-1px]"
-                >
-                  Crear horario
-                </button>
+                  {tripStartDate ?? ''}{tripStartDate && tripEndDate ? ' → ' : ''}{tripEndDate ?? ''}
+                </span>
               )}
+            </div>
+
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-xl border border-[#D8C8FF]/60 bg-[#7A4FD6]/45 px-3 py-1.5 font-body text-xs font-bold uppercase tracking-wider text-white backdrop-blur-md">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#D8C8FF]" />
+                Horario de subgrupos
+                <HelpButton
+                  title="Subgrupos"
+                  description="Crea horarios solo para hoy o fechas futuras del viaje. Los horarios de días pasados quedan como historial y ya no cuentan como activos."
+                  placement="right"
+                />
+              </div>
+              <h2
+                className="mb-3 font-heading text-3xl font-bold leading-tight text-white md:text-[36px]"
+                style={{ textShadow: "0 2px 16px rgba(0,0,0,0.85), 0 1px 4px rgba(0,0,0,0.6)" }}
+              >
+                {group?.nombre || "Vista de subgrupos"}
+              </h2>
+              <div className="mb-4 flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/20 px-3 py-2 font-body text-sm font-bold text-white shadow-sm backdrop-blur-md">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#35C56A]" />
+                  {actionableSlots.length} horario{actionableSlots.length !== 1 ? "s" : ""} activo{actionableSlots.length !== 1 ? "s" : ""}
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-xl border border-[#E9D5FF]/40 bg-[#7A4FD6]/35 px-3 py-2 font-body text-sm font-bold text-white shadow-sm backdrop-blur-md">
+                  <span className="h-2.5 w-2.5 rounded-full bg-[#D8C8FF]" />
+                  {actionableOptionCount} opciones disponibles
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {isAdmin && (!tripEndDate || tripEndDate >= todayValue()) && (
+                  <button
+                    type="button"
+                    onClick={openCreateSlotModal}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#35C56A] px-4 py-2.5 font-body text-base font-semibold text-white transition-opacity hover:opacity-90"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" stroke="white" strokeWidth="2.5" strokeLinecap="round" />
+                    </svg>
+                    Crear horario
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </section>
@@ -2490,60 +2515,74 @@ export function SubgroupSchedulePanel({
         )}
 
         <div className="space-y-3">
+          {/* Day card carousel */}
+          <div className="overflow-x-auto rounded-2xl bg-[linear-gradient(135deg,#24105E_0%,#1E0A4E_52%,#2B1163_100%)] px-4 py-3 shadow-[0_8px_28px_rgba(30,10,78,0.22)]">
+            <div className="flex gap-2">
+              {subgroupDayGroups.map((dayGroup) => {
+                const isActive = expandedSubgroupDay === dayGroup.key;
+                const optionCount = dayGroup.slots.reduce(
+                  (sum, slot) => sum + slot.subgroups.length,
+                  0,
+                );
+                const isEmpty = dayGroup.slots.length === 0;
+                return (
+                  <button
+                    key={dayGroup.key}
+                    type="button"
+                    onClick={() =>
+                      setExpandedSubgroupDay((current) =>
+                        current === dayGroup.key ? null : dayGroup.key,
+                      )
+                    }
+                    className={[
+                      "flex shrink-0 flex-col items-center gap-1.5 rounded-2xl px-5 py-3 transition-all duration-200 min-w-[110px]",
+                      isActive
+                        ? "bg-white shadow-[0_10px_28px_rgba(0,0,0,0.22)]"
+                        : "border border-white/10 bg-white/[0.07] hover:bg-white/[0.14]",
+                    ].join(" ")}
+                  >
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-body text-[11px] font-bold uppercase tracking-wider ${
+                      isActive ? "bg-[#1E6FD9]/12 text-[#1E6FD9]" : "bg-white/10 text-white/55"
+                    }`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-[#1E6FD9]" : "bg-white/30"}`} />
+                      DÍA {dayGroup.dayNumber}
+                    </span>
+                    <span className={`font-body text-sm font-semibold leading-tight text-center ${isActive ? "text-[#1E0A4E]" : "text-white/80"}`}>
+                      {dayGroup.label}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {isEmpty ? (
+                        <span className={`rounded-full px-2 py-0.5 font-body text-xs font-medium ${isActive ? "bg-[#F1F5F9] text-[#94A3B8]" : "bg-white/10 text-white/35"}`}>
+                          Sin horarios
+                        </span>
+                      ) : (
+                        <>
+                          {dayGroup.slots.length > 0 && (
+                            <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 font-body text-xs font-semibold ${isActive ? "bg-[#D1FAE5] text-[#065F46]" : "bg-[#35C56A]/20 text-[#9AF0B8]"}`}>
+                              <span className="text-[10px]">●</span> {dayGroup.slots.length}
+                            </span>
+                          )}
+                          {optionCount > 0 && (
+                            <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 font-body text-xs font-semibold ${isActive ? "bg-[#F3EEFF] text-[#7A4FD6]" : "bg-[#7A4FD6]/25 text-[#D8C8FF]"}`}>
+                              <span className="text-[10px]">●</span> {optionCount}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Expanded day content */}
           {subgroupDayGroups.map((dayGroup) => {
             const expanded = expandedSubgroupDay === dayGroup.key;
-            const optionCount = dayGroup.slots.reduce(
-              (sum, slot) => sum + slot.subgroups.length,
-              0,
-            );
+            if (!expanded) return null;
 
             return (
-              <section
-                key={dayGroup.key}
-                className="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-sm"
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpandedSubgroupDay((current) =>
-                      current === dayGroup.key ? null : dayGroup.key,
-                    )
-                  }
-                  className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-[#F8FAFC]"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="shrink-0 rounded-full bg-[#EEF4FF] px-3 py-1 text-[11px] font-bold text-[#1E6FD9]">
-                      DIA {dayGroup.dayNumber}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="font-body text-sm font-bold leading-tight text-[#1E0A4E]">
-                        {dayGroup.label}
-                      </p>
-                      <p className="mt-0.5 font-body text-xs leading-tight text-[#64748B]">
-                        {dayGroup.slots.length === 0
-                          ? "Sin horarios de subgrupos"
-                          : `${dayGroup.slots.length} horario${dayGroup.slots.length === 1 ? "" : "s"} · ${optionCount} opcion${optionCount === 1 ? "" : "es"}`}
-                      </p>
-                    </div>
-                  </div>
-                  <span
-                    className={`text-[#64748B] transition-transform ${expanded ? "rotate-180" : ""}`}
-                    aria-hidden="true"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M6 9l6 6 6-6"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </span>
-                </button>
-
-                {expanded && (
-                  <div className="space-y-5 border-t border-[#E2E8F0] bg-[#FBFCFF] px-5 py-5">
+              <div key={dayGroup.key} className="space-y-5">
                     {dayGroup.slots.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-[#CBD5E1] bg-white px-5 py-8 text-center">
                         <p className="font-semibold text-[#1E0A4E]">
@@ -3179,9 +3218,7 @@ export function SubgroupSchedulePanel({
                         })}
                       </>
                     )}
-                  </div>
-                )}
-              </section>
+              </div>
             );
           })}
         </div>

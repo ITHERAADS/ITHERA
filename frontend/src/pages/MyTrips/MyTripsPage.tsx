@@ -30,6 +30,32 @@ import type { GroupHistoryItem } from '../../types/groups'
   return `${fmt(start!, !sameYear)} – ${fmt(end, true)}`
 }
 
+function formatTripDate(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): string {
+  if (!start && !end) return 'Fechas por definir'
+
+  const dayMonth = (iso: string) =>
+    new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long' }).format(new Date(iso))
+  const dayMonthYear = (iso: string) =>
+    new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
+
+  if (!end) return `Desde el ${dayMonthYear(start!)}`
+
+  const s = new Date(start!)
+  const e = new Date(end)
+  const days = Math.round((e.getTime() - s.getTime()) / 86400000)
+  const dur = days > 0 ? ` · ${days} ${days === 1 ? 'día' : 'días'}` : ''
+
+  if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+    const monthYear = new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric' }).format(e)
+    return `${s.getDate()} al ${e.getDate()} de ${monthYear}${dur}`
+  }
+
+  return `${dayMonth(start!)} → ${dayMonthYear(end)}${dur}`
+}
+
 function getFirstName(nombre: string | null | undefined): string {
   if (!nombre) return 'viajero'
   return nombre.split(' ')[0]
@@ -344,34 +370,55 @@ function RolBadge({ rol, dark = false }: { rol: string; dark?: boolean }) {
 
 function FeaturedCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => void }) {
   const g = item.grupos_viaje
+  const photoUrl = g.destino_photo_url ?? null
+
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-[#D8C8FF] bg-[linear-gradient(135deg,#1E0A4E_0%,#4F24A8_48%,#7A4FD6_100%)] p-5 shadow-[0_22px_46px_rgba(30,10,78,0.22)]">
-      <div className="absolute -bottom-24 left-10 h-56 w-56 rounded-full bg-[#1E6FD9]/20 blur-3xl" />
+    <div className="relative overflow-hidden rounded-3xl shadow-[0_22px_46px_rgba(30,10,78,0.28)]">
+      {/* Destination photo */}
+      {photoUrl && (
+        <img
+          src={photoUrl}
+          alt={g.nombre}
+          className="absolute inset-0 h-full w-full object-cover"
+          loading="lazy"
+        />
+      )}
+
+      {/* Purple gradient overlay — photo bleeds through */}
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(30,10,78,0.90)_0%,rgba(79,36,168,0.80)_50%,rgba(122,79,214,0.88)_100%)]" />
+
+      {/* Ambient glow blobs */}
+      <div className="absolute -bottom-24 left-10 h-56 w-56 rounded-full bg-[#1E6FD9]/25 blur-3xl" />
       <div className="absolute -right-20 top-8 h-48 w-48 rounded-full bg-[#D8C8FF]/20 blur-3xl" />
-      <div className="relative">
+
+      {/* Content */}
+      <div className="relative z-10 p-5 sm:p-6">
         <div className="mb-5 flex items-center justify-between">
-          <StatusChip estado="activo"/>
+          <StatusChip estado="activo" />
           <RolBadge rol={item.rol} dark />
         </div>
-        <h2 className="font-heading text-2xl font-extrabold leading-tight text-white">
+
+        <h2 className="font-heading text-2xl font-extrabold leading-tight text-white sm:text-3xl">
           {g.nombre}
         </h2>
-        <div className="mt-4 grid max-w-2xl gap-2">
+
+        <div className="mt-4 grid gap-3">
           {g.destino && (
-            <div className="flex min-w-0 items-start gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2.5">
-              <span className="mt-0.5 shrink-0 text-[#D8C8FF]"><IconMap /></span>
-              <p className="min-w-0 break-words font-body text-[13px] font-semibold leading-snug text-white/85 [overflow-wrap:anywhere]">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <span className="mt-0.5 shrink-0 text-[#FFD166]"><IconMap /></span>
+              <p className="min-w-0 break-words font-body text-sm font-semibold leading-snug text-[#FFD166] [overflow-wrap:anywhere]">
                 {g.destino}
               </p>
             </div>
           )}
-          <div className="flex min-w-0 items-start gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2.5">
-            <span className="mt-0.5 shrink-0 text-[#BFD7FF]"><IconClock /></span>
-            <p className="min-w-0 break-words font-body text-[13px] font-semibold leading-snug text-white/85">
-              {formatRange(g.fecha_inicio, g.fecha_fin)}
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span className="mt-0.5 shrink-0 text-[#9AF0B8]"><IconClock /></span>
+            <p className="font-body text-sm font-semibold leading-snug text-[#9AF0B8]">
+              {formatTripDate(g.fecha_inicio, g.fecha_fin)}
             </p>
           </div>
         </div>
+
         <div className="mt-8 flex justify-end">
           <button
             onClick={onClick}
@@ -390,71 +437,85 @@ function FeaturedCard({ item, onClick }: { item: GroupHistoryItem; onClick: () =
 function TripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => void }) {
   const g = item.grupos_viaje
   const isAdmin = item.rol === 'admin'
+  const photoUrl = g.destino_photo_url ?? null
 
   return (
     <button
       onClick={onClick}
-      className={`w-full overflow-hidden rounded-3xl border p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${
-        isAdmin
-          ? 'border-[#D8C8FF] bg-[linear-gradient(135deg,#1E0A4E,#5B2BC0)] text-white'
-          : 'border-[#C3D3EC] bg-white text-[#1E0A4E] shadow-[0_8px_22px_rgba(30,10,78,0.08)] hover:border-[#1E6FD9]/50'
-      }`}
+      className="relative w-full overflow-hidden rounded-3xl text-left shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl"
     >
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <StatusChip estado={g.estado} />
-        <RolBadge rol={item.rol} dark={isAdmin} />
-      </div>
+      {/* Destination photo layer */}
+      {photoUrl && (
+        <img
+          src={photoUrl}
+          alt={g.nombre}
+          className="absolute inset-0 h-full w-full object-cover"
+          loading="lazy"
+        />
+      )}
 
-      <h2 className={`mb-4 break-words font-heading text-xl font-extrabold leading-tight [overflow-wrap:anywhere] ${
-        isAdmin ? 'text-white' : 'text-[#1E0A4E]'
-      }`}>
-        {g.nombre}
-      </h2>
+      {/* Gradient overlay */}
+      <div className={`absolute inset-0 ${
+        isAdmin
+          ? photoUrl
+            ? 'bg-[linear-gradient(135deg,rgba(30,10,78,0.88)_0%,rgba(91,43,192,0.80)_55%,rgba(59,31,168,0.86)_100%)]'
+            : 'bg-[linear-gradient(135deg,#1E0A4E,#5B2BC0)]'
+          : photoUrl
+            ? 'bg-[linear-gradient(135deg,rgba(255,255,255,0.93)_0%,rgba(240,238,248,0.91)_100%)]'
+            : 'bg-white'
+      }`} />
 
-      <div className="grid gap-2">
-        {g.destino && (
-          <div className={`flex min-w-0 items-start gap-2 rounded-2xl border px-3 py-2.5 ${
-            isAdmin ? 'border-white/15 bg-white/10' : 'border-[#D9E4F7] bg-[#F8FAFF]'
-          }`}>
-            <span className={`mt-0.5 shrink-0 ${isAdmin ? 'text-[#D8C8FF]' : 'text-[#7A4FD6]'}`}>
-              <IconMap />
+      {/* Content */}
+      <div className="relative z-10 p-5">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <StatusChip estado={g.estado} />
+          <RolBadge rol={item.rol} dark={isAdmin} />
+        </div>
+
+        <h2 className={`mb-4 break-words font-heading text-xl font-extrabold leading-tight [overflow-wrap:anywhere] ${
+          isAdmin ? 'text-white' : 'text-[#1E0A4E]'
+        }`}>
+          {g.nombre}
+        </h2>
+
+        <div className="grid gap-2.5">
+          {g.destino && (
+            <div className="flex min-w-0 items-start gap-2">
+              <span className={`mt-0.5 shrink-0 ${isAdmin ? 'text-[#FFD166]' : 'text-[#D97706]'}`}>
+                <IconMap />
+              </span>
+              <p className={`min-w-0 line-clamp-2 break-words font-body text-sm font-semibold leading-snug [overflow-wrap:anywhere] ${
+                isAdmin ? 'text-[#FFD166]' : 'text-[#D97706]'
+              }`}>
+                {g.destino}
+              </p>
+            </div>
+          )}
+
+          <div className="flex min-w-0 items-start gap-2">
+            <span className={`mt-0.5 shrink-0 ${isAdmin ? 'text-[#9AF0B8]' : 'text-[#059669]'}`}>
+              <IconClock />
             </span>
-            <p className={`min-w-0 break-words font-body text-[13px] font-semibold leading-snug [overflow-wrap:anywhere] ${
-              isAdmin ? 'text-white/85' : 'text-[#475569]'
+            <p className={`font-body text-sm font-semibold leading-snug ${
+              isAdmin ? 'text-[#9AF0B8]' : 'text-[#059669]'
             }`}>
-              {g.destino}
+              {formatTripDate(g.fecha_inicio, g.fecha_fin)}
             </p>
           </div>
-        )}
-
-        <div className={`flex min-w-0 items-start gap-2 rounded-2xl border px-3 py-2.5 ${
-          isAdmin ? 'border-white/15 bg-white/10' : 'border-[#D9E4F7] bg-[#F8FAFF]'
-        }`}>
-          <span className={`mt-0.5 shrink-0 ${isAdmin ? 'text-[#BFD7FF]' : 'text-[#1E6FD9]'}`}>
-            <IconClock />
-          </span>
-          <p className={`min-w-0 break-words font-body text-[13px] font-semibold leading-snug ${
-            isAdmin ? 'text-white/85' : 'text-[#475569]'
-          }`}>
-            {formatRange(g.fecha_inicio, g.fecha_fin)}
-          </p>
         </div>
-      </div>
 
-      <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <span className={`font-body text-xs ${
-          isAdmin ? 'text-white/60' : 'text-[#6B7280]'
-        }`}>
-          {isAdmin ? 'Tú organizas este viaje' : 'Participas como viajero'}
-        </span>
-
-        <span className={`inline-flex min-w-[132px] items-center justify-center rounded-full border px-5 py-2.5 font-body text-[13px] font-semibold shadow-sm transition-all ${
-          isAdmin
-            ? 'border-white/80 bg-white text-[#1E0A4E]'
-            : 'border-[#D8C8FF] bg-[#F3EEFF] text-[#6D45C0]'
-        }`}>
-          Abrir viaje →
-        </span>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className={`font-body text-xs ${isAdmin ? 'text-white/60' : 'text-[#6B7280]'}`}>
+            {isAdmin ? 'Tú organizas este viaje' : 'Participas como viajero'}
+          </span>
+          <span className={`inline-flex min-w-[132px] items-center justify-center rounded-full border px-5 py-2.5 font-body text-[13px] font-semibold shadow-sm transition-all ${
+            isAdmin
+              ? 'border-white/80 bg-white text-[#1E0A4E]'
+              : 'border-[#D8C8FF] bg-[#F3EEFF] text-[#6D45C0]'
+          }`}>
+            Abrir viaje →
+          </span>
+        </div>
       </div>
     </button>
   )

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AppLayout } from "../../components/layout/AppLayout";
+import { AppLayout, SidebarCreateGroup } from "../../components/layout/AppLayout";
 import { useAuth } from "../../context/useAuth";
 import { groupsService, saveCurrentGroup } from "../../services/groups";
 import { isNetworkError } from "../../services/apiClient";
@@ -27,6 +27,190 @@ interface FormData {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+function IconCalPicker() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" strokeWidth="2" />
+      <path d="M8 2v4M16 2v4M3 10h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconChevSmall() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <polyline points="6 9 12 15 18 9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+const DAY_NAMES = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
+const MONTH_NAMES_ES = [
+  "enero","febrero","marzo","abril","mayo","junio",
+  "julio","agosto","septiembre","octubre","noviembre","diciembre",
+];
+
+function isoFromYMD(y: number, m: number, d: number) {
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function DatePickerField({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  error,
+  hint,
+  placeholder = "Selecciona una fecha",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  min?: string;
+  max?: string;
+  error?: string;
+  hint?: string;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const initView = () => {
+    const base = value || min || new Date().toISOString().slice(0, 10);
+    const d = new Date(base + "T00:00:00");
+    return isNaN(d.getTime()) ? new Date() : new Date(d.getFullYear(), d.getMonth(), 1);
+  };
+  const [viewDate, setViewDate] = useState<Date>(initView);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const vy = viewDate.getFullYear();
+  const vm = viewDate.getMonth();
+  const firstDow = new Date(vy, vm, 1).getDay();
+  const daysInMonth = new Date(vy, vm + 1, 0).getDate();
+
+  const formatDisplay = (iso: string) =>
+    new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "long", year: "numeric" }).format(
+      new Date(iso + "T00:00:00"),
+    );
+
+  const selectDay = (day: number) => { onChange(isoFromYMD(vy, vm, day)); setOpen(false); };
+  const isDisabled = (day: number) => {
+    const iso = isoFromYMD(vy, vm, day);
+    return (!!min && iso < min) || (!!max && iso > max);
+  };
+  const isSelected = (day: number) => value === isoFromYMD(vy, vm, day);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const isTodayDay = (day: number) => isoFromYMD(vy, vm, day) === todayIso;
+
+  const cells: (number | null)[] = [
+    ...Array(firstDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+
+  return (
+    <div className="relative flex flex-col gap-2" ref={ref}>
+      <label className="font-body text-sm font-extrabold uppercase tracking-[0.14em] text-[#4B2FA3]">
+        {label}
+      </label>
+
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`flex w-full items-center gap-3 rounded-2xl border bg-white px-4 py-3.5 text-left font-body text-base font-medium shadow-sm outline-none transition-all duration-200 ${
+          error
+            ? "border-red-400"
+            : open
+              ? "border-[#7A4FD6] ring-2 ring-[#7A4FD6]/15"
+              : "border-[#D8C8FF] hover:border-[#7A4FD6]/60"
+        }`}
+      >
+        <span className={`shrink-0 ${value ? "text-[#7A4FD6]" : "text-[#94A3B8]"}`}>
+          <IconCalPicker />
+        </span>
+        <span className={`flex-1 ${value ? "text-[#1E0A4E]" : "text-[#94A3B8]"}`}>
+          {value ? formatDisplay(value) : placeholder}
+        </span>
+        <span className={`shrink-0 transition-transform duration-200 ${open ? "rotate-180 text-[#7A4FD6]" : "text-[#94A3B8]"}`}>
+          <IconChevSmall />
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-[60] overflow-hidden rounded-2xl border border-[#D8C8FF] bg-white shadow-[0_16px_40px_rgba(30,10,78,0.18)]">
+          <div className="flex items-center justify-between bg-[linear-gradient(135deg,#1E0A4E_0%,#7A4FD6_100%)] px-4 py-3">
+            <button
+              type="button"
+              onClick={() => setViewDate(new Date(vy, vm - 1, 1))}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-xl font-bold text-white/70 transition-colors hover:bg-white/15 hover:text-white"
+            >‹</button>
+            <span className="font-body text-sm font-extrabold capitalize text-white">
+              {MONTH_NAMES_ES[vm]} {vy}
+            </span>
+            <button
+              type="button"
+              onClick={() => setViewDate(new Date(vy, vm + 1, 1))}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-xl font-bold text-white/70 transition-colors hover:bg-white/15 hover:text-white"
+            >›</button>
+          </div>
+
+          <div className="grid grid-cols-7 border-b border-[#EDE9FB] px-3 py-2">
+            {DAY_NAMES.map((d) => (
+              <div key={d} className="text-center font-body text-[11px] font-bold uppercase tracking-wide text-[#94A3B8]">
+                {d}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-y-1 px-3 py-3">
+            {cells.map((day, i) => (
+              <div key={i} className="flex items-center justify-center">
+                {day !== null && (
+                  <button
+                    type="button"
+                    disabled={isDisabled(day)}
+                    onClick={() => selectDay(day)}
+                    className={`h-8 w-8 rounded-xl font-body text-sm font-semibold transition-all ${
+                      isSelected(day)
+                        ? "bg-[#7A4FD6] text-white shadow-md shadow-[#7A4FD6]/30"
+                        : isDisabled(day)
+                          ? "cursor-not-allowed text-[#CBD5E1]"
+                          : isTodayDay(day)
+                            ? "bg-[#F3EEFF] text-[#7A4FD6] ring-1 ring-[#7A4FD6]/40 hover:bg-[#7A4FD6] hover:text-white"
+                            : "text-[#1E0A4E] hover:bg-[#F3EEFF] hover:text-[#7A4FD6]"
+                    }`}
+                  >
+                    {day}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {value && (
+            <div className="border-t border-[#EDE9FB] px-4 py-2.5 text-center">
+              <span className="font-body text-xs font-semibold capitalize text-[#7A4FD6]">
+                {formatDisplay(value)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {hint && !error && <p className="font-body text-sm font-medium text-[#64748B]">{hint}</p>}
+      {error && <p className="font-body text-sm font-bold text-red-500">{error}</p>}
+    </div>
+  );
+}
 
 function InputField({
   label,
@@ -56,8 +240,8 @@ function InputField({
   multiline?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="font-body text-xs font-semibold text-[#1E0A4E]/60 uppercase tracking-wide">
+    <div className="flex flex-col gap-2">
+      <label className="font-body text-sm font-extrabold text-[#4B2FA3] uppercase tracking-[0.14em]">
         {label}
       </label>
       {multiline ? (
@@ -67,11 +251,11 @@ function InputField({
           maxLength={maxLength}
           onChange={(e) => onChange(e.target.value)}
           rows={4}
-          className={`w-full resize-none font-body text-sm text-[#1E0A4E] placeholder-gray-400 border rounded-xl px-4 py-3 outline-none transition-all duration-200 bg-white
+          className={`w-full resize-none font-body text-base font-medium text-[#1E0A4E] placeholder-[#94A3B8] border rounded-2xl px-4 py-3.5 outline-none transition-all duration-200 bg-white shadow-sm
             ${
               error
                 ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100"
-                : "border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10"
+                : "border-[#D8C8FF] focus:border-[#7A4FD6] focus:ring-2 focus:ring-[#7A4FD6]/15"
             }
           `}
         />
@@ -94,28 +278,28 @@ function InputField({
             if (type === "number") e.currentTarget.blur();
           }}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full font-body text-sm text-[#1E0A4E] placeholder-gray-400 border rounded-xl px-4 py-3 outline-none transition-all duration-200 bg-white
+          className={`w-full font-body text-base font-medium text-[#1E0A4E] placeholder-[#94A3B8] border rounded-2xl px-4 py-3.5 outline-none transition-all duration-200 bg-white shadow-sm
             ${
               error
                 ? "border-red-400 focus:border-red-500 focus:ring-2 focus:ring-red-100"
-                : "border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10"
+                : "border-[#D8C8FF] focus:border-[#7A4FD6] focus:ring-2 focus:ring-[#7A4FD6]/15"
             }
           `}
         />
       )}
       <div className="flex items-center justify-between gap-2">
         {hint && !error && (
-          <p className="font-body text-[11px] text-[#1E0A4E]/40">{hint}</p>
+          <p className="font-body text-sm font-medium text-[#64748B]">{hint}</p>
         )}
         {maxLength !== undefined && (
           <p
-            className={`font-body text-[11px] ${value.length >= maxLength ? "text-red-500" : "text-[#1E0A4E]/40"}`}
+            className={`font-body text-sm font-bold ${value.length >= maxLength ? "text-red-500" : "text-[#64748B]"}`}
           >
             {value.length}/{maxLength}
           </p>
         )}
       </div>
-      {error && <p className="font-body text-xs text-red-500">{error}</p>}
+      {error && <p className="font-body text-sm font-bold text-red-500">{error}</p>}
     </div>
   );
 }
@@ -184,7 +368,7 @@ function MembersSection({
 
   return (
     <div className="flex flex-col gap-3">
-      <label className="font-body text-xs font-semibold text-[#1E0A4E]/60 uppercase tracking-wide">
+      <label className="font-body text-sm font-extrabold text-[#4B2FA3] uppercase tracking-[0.14em]">
         Invitar miembros (opcional)
       </label>
 
@@ -207,15 +391,15 @@ function MembersSection({
           onKeyDown={(e) => e.key === "Enter" && canAddEmail && handleAdd()}
           disabled={hasReachedInvitationLimit}
           aria-invalid={Boolean(error)}
-          className={`flex-1 font-body text-sm text-[#1E0A4E] placeholder-gray-400 border rounded-xl px-4 py-3 outline-none transition-all duration-200 bg-white disabled:bg-[#F4F6F8] disabled:text-[#7A8799]
-            ${error ? "border-red-400" : "border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10"}
+          className={`flex-1 font-body text-base font-medium text-[#1E0A4E] placeholder-[#94A3B8] border rounded-2xl px-4 py-3.5 outline-none transition-all duration-200 bg-white shadow-sm disabled:bg-[#F4F6F8] disabled:text-[#7A8799]
+            ${error ? "border-red-400" : "border-[#D8C8FF] focus:border-[#7A4FD6] focus:ring-2 focus:ring-[#7A4FD6]/15"}
           `}
         />
         <button
           onClick={handleAdd}
           type="button"
           disabled={!canAddEmail}
-          className="font-body text-sm font-semibold bg-[#1E6FD9] text-white rounded-xl px-4 py-3 hover:bg-[#1a5fc2] transition-colors whitespace-nowrap flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#1E6FD9]"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] px-5 py-3.5 font-body text-base font-extrabold text-white shadow-[0_12px_24px_rgba(30,10,78,0.16)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <line
@@ -241,7 +425,7 @@ function MembersSection({
         </button>
       </div>
       {!error && (
-        <p className="font-body text-[11px] text-[#1E0A4E]/40">
+        <p className="font-body text-sm font-medium text-[#64748B]">
           Puedes agregar{" "}
           {maxInvitations === 1
             ? "1 invitación"
@@ -249,22 +433,22 @@ function MembersSection({
           como máximo para la capacidad seleccionada.
         </p>
       )}
-      {error && <p className="font-body text-xs text-red-500">{error}</p>}
+      {error && <p className="font-body text-sm font-bold text-red-500">{error}</p>}
 
       {members.length > 0 && (
         <div className="space-y-2">
           {members.map((m) => (
             <div
               key={m.id}
-              className="flex items-center justify-between bg-[#F0EEF8] rounded-xl px-4 py-2.5 border border-[#E2E8F0]"
+              className="flex items-center justify-between rounded-2xl border border-[#D8C8FF] bg-[#F7F2FF] px-4 py-3"
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-7 h-7 rounded-full bg-[#1E6FD9]/10 flex items-center justify-center shrink-0">
-                  <span className="font-heading font-bold text-[#1E6FD9] text-[11px] uppercase">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#E8F0FF]">
+                  <span className="font-heading text-sm font-extrabold uppercase text-[#1E6FD9]">
                     {m.email[0]}
                   </span>
                 </div>
-                <span className="font-body text-sm text-[#1E0A4E] break-all">
+                <span className="break-all font-body text-base font-semibold text-[#1E0A4E]">
                   {m.email}
                 </span>
               </div>
@@ -313,12 +497,12 @@ function SectionLabel({
   help?: string;
 }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3">
+    <div className="mb-5 flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
-        <div className="w-7 h-7 bg-[#1E0A4E] rounded-lg flex items-center justify-center">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] shadow-[0_10px_22px_rgba(30,10,78,0.16)]">
           {icon}
         </div>
-        <h3 className="font-heading font-semibold text-[#1E0A4E] text-sm">
+        <h3 className="font-heading text-xl font-extrabold text-[#1E0A4E]">
           {title}
         </h3>
       </div>
@@ -346,10 +530,10 @@ function StandardInlineAlert({
   return (
     <div
       role="alert"
-      className={`rounded-xl border px-4 py-3 font-body ${toneClasses[tone]}`}
+      className={`rounded-2xl border px-5 py-4 font-body ${toneClasses[tone]}`}
     >
-      <p className="text-sm font-semibold">{title}</p>
-      <p className="mt-1 text-sm leading-relaxed">{message}</p>
+      <p className="text-base font-extrabold">{title}</p>
+      <p className="mt-1 text-base font-medium leading-relaxed">{message}</p>
     </div>
   );
 }
@@ -519,6 +703,12 @@ export function CreateGroupPage() {
 
   const validationErrors = getValidationErrors(form);
   const isFormValid = Object.keys(validationErrors).length === 0;
+  const sidebarStep: 1 | 2 | 3 =
+    form.name.trim() && form.destination.trim()
+      ? form.startDate && form.endDate && form.totalBudget.trim()
+        ? 3
+        : 2
+      : 1;
   const minEndDate = form.startDate
     ? addDaysISO(form.startDate, 1)
     : todayISO();
@@ -605,8 +795,9 @@ export function CreateGroupPage() {
         }}
         showTripSelector={false}
         showRightPanel={false}
+        sidebarContent={<SidebarCreateGroup currentStep={3} />}
       >
-        <div className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="flex flex-1 items-center justify-center bg-[linear-gradient(180deg,#FFFFFF_0%,#F8F6FF_52%,#F3EEFF_100%)] px-4 py-12">
           <div
             className="fixed inset-0 opacity-40 pointer-events-none"
             style={{
@@ -615,15 +806,15 @@ export function CreateGroupPage() {
               backgroundSize: "24px 24px",
             }}
           />
-          <div className="relative w-full max-w-md">
-            <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-8 text-center">
-              <div className="w-16 h-16 bg-[#35C56A]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="relative w-full max-w-xl">
+            <div className="overflow-hidden rounded-3xl border border-[#D8C8FF] bg-white p-8 text-center shadow-[0_22px_48px_rgba(30,10,78,0.16)]">
+              <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-[#EAFBF1]">
                 <svg
                   width="28"
                   height="28"
                   viewBox="0 0 24 24"
                   fill="none"
-                  className="text-[#35C56A]"
+                  className="text-[#15803D]"
                 >
                   <path
                     d="M22 11.08V12a10 10 0 11-5.93-9.14"
@@ -640,26 +831,26 @@ export function CreateGroupPage() {
                   />
                 </svg>
               </div>
-              <h2 className="font-heading font-bold text-[#1E0A4E] text-2xl mb-2">
-                ¡Grupo creado!
+              <h2 className="mb-2 font-heading text-4xl font-extrabold text-[#1E0A4E]">
+                Grupo creado
               </h2>
-              <p className="font-body text-sm text-[#7A8799] mb-6">
+              <p className="mb-6 font-body text-base font-medium leading-relaxed text-[#64748B]">
                 {invitedCount > 0
                   ? `Grupo creado correctamente. También se generaron ${invitedCount} invitación(es) por correo.`
                   : "Comparte este código con tu equipo para que se unan al viaje."}
               </p>
-              <div className="bg-[#1E0A4E] rounded-2xl p-5 mb-6">
-                <p className="font-body text-xs text-white/40 uppercase tracking-wider mb-2">
+              <div className="mb-6 rounded-3xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] p-6">
+                <p className="mb-2 font-body text-sm font-extrabold uppercase tracking-[0.16em] text-[#D8C8FF]">
                   Código del grupo
                 </p>
-                <p className="font-heading font-bold text-white text-2xl tracking-widest">
+                <p className="font-heading text-4xl font-extrabold tracking-widest text-white">
                   {groupCode}
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <button
                   onClick={() => navigator.clipboard.writeText(groupCode)}
-                  className="font-body text-sm border border-[#E2E8F0] text-[#3D4A5C] rounded-xl px-4 py-3 hover:border-[#1E6FD9] hover:text-[#1E6FD9] transition-colors flex items-center justify-center gap-2"
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-[#D8C8FF] bg-white px-4 py-4 font-body text-base font-extrabold text-[#5B2BC0] transition hover:-translate-y-0.5 hover:bg-[#F7F2FF]"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                     <rect
@@ -686,7 +877,7 @@ export function CreateGroupPage() {
                       `/dashboard?groupId=${encodeURIComponent(createdGroupId)}`,
                     )
                   }
-                  className="font-body font-medium text-sm bg-[#1E6FD9] text-white rounded-xl px-4 py-3 hover:opacity-90 transition-opacity flex items-center justify-center"
+                  className="flex items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] px-4 py-4 font-body text-base font-extrabold text-white shadow-[0_14px_28px_rgba(30,10,78,0.18)] transition hover:-translate-y-0.5"
                 >
                   Ir al grupo →
                 </button>
@@ -709,8 +900,9 @@ export function CreateGroupPage() {
       }}
       showTripSelector={false}
       showRightPanel={false}
+      sidebarContent={<SidebarCreateGroup currentStep={sidebarStep} />}
     >
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#FFFFFF_0%,#F8F6FF_46%,#F3EEFF_100%)]">
         <div
           className="fixed inset-0 opacity-40 pointer-events-none"
           style={{
@@ -720,10 +912,10 @@ export function CreateGroupPage() {
           }}
         />
 
-        <div className="relative max-w-2xl mx-auto px-4 py-8">
+        <div className="relative mx-auto max-w-5xl px-4 py-8 lg:px-8">
           <button
             onClick={() => navigate("/my-trips")}
-            className="flex items-center gap-1.5 font-body text-sm text-[#1E6FD9] hover:underline mb-6"
+            className="mb-5 inline-flex items-center gap-2 rounded-2xl border border-[#D8C8FF] bg-white px-4 py-2.5 font-body text-sm font-extrabold text-[#5B2BC0] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#F7F2FF]"
           >
             <svg
               width="14"
@@ -742,18 +934,26 @@ export function CreateGroupPage() {
             </svg>
             Volver
           </button>
-          <div className="mb-8">
-            <h1 className="font-heading font-bold text-[#1E0A4E] text-3xl mb-2">
-              Crear nuevo grupo
-            </h1>
-            <p className="font-body text-sm text-[#7A8799]">
-              Configura tu viaje grupal y empieza a planear juntos.
-            </p>
+          <div className="relative mb-6 overflow-hidden rounded-3xl border border-[#D8C8FF] bg-[linear-gradient(135deg,#1E0A4E_0%,#3C178B_52%,#7A4FD6_100%)] px-6 py-7 shadow-[0_22px_48px_rgba(30,10,78,0.18)]">
+            <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-[#B89BFF]/25 blur-3xl" />
+            <div className="absolute -bottom-24 left-12 h-52 w-52 rounded-full bg-[#1E6FD9]/20 blur-3xl" />
+            <div className="relative">
+              <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 font-body text-xs font-extrabold uppercase tracking-[0.16em] text-[#D8C8FF]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#B89BFF]" />
+                Nuevo viaje grupal
+              </p>
+              <h1 className="font-heading text-4xl font-extrabold leading-tight text-white">
+                Crear nuevo grupo
+              </h1>
+              <p className="mt-2 max-w-2xl font-body text-base font-medium leading-relaxed text-white/75">
+                Configura destino, fechas, presupuesto e integrantes con una experiencia más clara para empezar a planear juntos.
+              </p>
+            </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-5">
             {/* Section 1: Basic Info */}
-            <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
+            <div className="rounded-3xl border border-[#D9E4F7] bg-white p-6 shadow-[0_14px_34px_rgba(30,10,78,0.08)]">
               <SectionLabel
                 title="Información básica"
                 help="Completa los datos generales del viaje. El nombre tiene máximo 60 caracteres y la descripción máximo 300."
@@ -796,7 +996,7 @@ export function CreateGroupPage() {
               <div className="space-y-4">
                 <InputField
                   label="Nombre del grupo"
-                  placeholder="Ej: Cancún Squad 2025 🌴"
+	                  placeholder="Ej: Cancún verano 2026"
                   value={form.name}
                   onChange={set("name") as (v: string) => void}
                   error={errors.name}
@@ -826,7 +1026,7 @@ export function CreateGroupPage() {
             </div>
 
             {/* Section 2: Dates & Members */}
-            <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
+            <div className="rounded-3xl border border-[#D9E4F7] bg-white p-6 shadow-[0_14px_34px_rgba(30,10,78,0.08)]">
               <SectionLabel
                 title="Fechas y capacidad"
                 help="Define fechas futuras y la capacidad máxima. El regreso debe ser posterior a la salida y el viaje no debe exceder 60 días."
@@ -876,26 +1076,24 @@ export function CreateGroupPage() {
                   </svg>
                 }
               />
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
+              <div className="grid gap-4 md:grid-cols-2">
+                <DatePickerField
                   label="Fecha de salida"
-                  type="date"
-                  placeholder=""
+                  placeholder="¿Cuándo salen?"
                   value={form.startDate}
                   min={todayISO()}
                   onChange={set("startDate") as (v: string) => void}
                   error={errors.startDate}
                 />
-                <InputField
+                <DatePickerField
                   label="Fecha de regreso"
-                  type="date"
-                  placeholder=""
+                  placeholder="¿Cuándo regresan?"
                   value={form.endDate}
                   min={minEndDate}
                   max={maxEndDate}
                   hint={
                     form.startDate
-                      ? `Debe ser posterior a la salida y no exceder ${MAX_TRIP_DURATION_DAYS} días.`
+                      ? `Posterior a la salida · máx. ${MAX_TRIP_DURATION_DAYS} días`
                       : "Selecciona primero la fecha de salida."
                   }
                   onChange={set("endDate") as (v: string) => void}
@@ -903,7 +1101,7 @@ export function CreateGroupPage() {
                 />
               </div>
               <div className="mt-4">
-                <label className="font-body text-xs font-semibold text-[#1E0A4E]/60 uppercase tracking-wide block mb-1.5">
+                <label className="mb-2 block font-body text-sm font-extrabold uppercase tracking-[0.14em] text-[#4B2FA3]">
                   Máximo de miembros
                 </label>
                 <div className="flex items-center gap-3">
@@ -913,21 +1111,21 @@ export function CreateGroupPage() {
                     max={50}
                     value={form.maxMembers}
                     onChange={(e) => set("maxMembers")(e.target.value)}
-                    className="flex-1 accent-[#1E6FD9]"
+                    className="flex-1 accent-[#7A4FD6]"
                   />
-                  <div className="w-14 h-10 bg-[#F4F6F8] border border-[#E2E8F0] rounded-xl flex items-center justify-center">
-                    <span className="font-heading font-bold text-[#1E0A4E] text-sm">
+                  <div className="flex h-12 w-16 items-center justify-center rounded-2xl border border-[#D8C8FF] bg-[#F3EEFF]">
+                    <span className="font-heading text-xl font-extrabold text-[#1E0A4E]">
                       {form.maxMembers}
                     </span>
                   </div>
                 </div>
                 <div className="mt-2 flex items-start justify-between gap-3">
-                  <p className="font-body text-[11px] text-[#1E0A4E]/40">
+                  <p className="font-body text-sm font-medium text-[#64748B]">
                     Puedes crear el viaje solo para ti. Después podrás invitar a
                     más integrantes si lo necesitas.
                   </p>
                   {errors.maxMembers && (
-                    <p className="font-body text-xs text-red-500 text-right">
+                    <p className="text-right font-body text-sm font-bold text-red-500">
                       {errors.maxMembers}
                     </p>
                   )}
@@ -950,7 +1148,7 @@ export function CreateGroupPage() {
 
             {/* Section 3: Members */}
             {canInviteDuringCreation && (
-              <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
+              <div className="rounded-3xl border border-[#D9E4F7] bg-white p-6 shadow-[0_14px_34px_rgba(30,10,78,0.08)]">
                 <SectionLabel
                   title="Invitar al grupo"
                   help="Agrega correos válidos y solo hasta el límite permitido por la capacidad seleccionada. Si eliges un viaje de una persona, esta sección se oculta."
@@ -996,13 +1194,13 @@ export function CreateGroupPage() {
             )}
 
             {/* Section 4: Privacy */}
-            <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm p-6">
+            <div className="rounded-3xl border border-[#D9E4F7] bg-white p-6 shadow-[0_14px_34px_rgba(30,10,78,0.08)]">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-heading font-semibold text-[#1E0A4E] text-sm mb-0.5">
+                  <h3 className="mb-1 font-heading text-xl font-extrabold text-[#1E0A4E]">
                     Grupo público
                   </h3>
-                  <p className="font-body text-xs text-[#7A8799]">
+                  <p className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                     Activado: cualquiera con el código entra sin aprobación.
                     Desactivado: el admin aprueba solicitudes.
                   </p>
@@ -1011,13 +1209,13 @@ export function CreateGroupPage() {
                   role="switch"
                   aria-checked={form.isPublic}
                   onClick={() => set("isPublic")(!form.isPublic)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#1E6FD9]/30 ${
-                    form.isPublic ? "bg-[#1E6FD9]" : "bg-gray-200"
+                  className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-[#7A4FD6]/30 ${
+                    form.isPublic ? "bg-[#7A4FD6]" : "bg-[#CBD5E1]"
                   }`}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${
-                      form.isPublic ? "translate-x-5" : "translate-x-0"
+                    className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow transition-transform duration-200 ${
+                      form.isPublic ? "translate-x-6" : "translate-x-0"
                     }`}
                   />
                 </button>
@@ -1033,8 +1231,8 @@ export function CreateGroupPage() {
             )}
 
             {!isFormValid && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <p className="font-body text-xs text-amber-700">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+                <p className="font-body text-base font-semibold leading-relaxed text-amber-800">
                   Completa nombre, destino, fechas válidas y presupuesto base
                   mayor a cero para habilitar la creación del grupo. La fecha de
                   regreso debe ser posterior a la salida y el viaje no puede
@@ -1049,7 +1247,7 @@ export function CreateGroupPage() {
                 type="button"
                 onClick={() => navigate("/my-trips")}
                 disabled={loading}
-                className="w-full rounded-xl border border-[#E2E8F0] bg-white px-6 py-4 font-body text-sm font-medium text-[#1E0A4E] transition hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-2xl border border-[#D8C8FF] bg-white px-6 py-4 font-body text-base font-extrabold text-[#5B2BC0] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#F7F2FF] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Cancelar
               </button>
@@ -1065,7 +1263,7 @@ export function CreateGroupPage() {
                     ? "Completa los campos obligatorios con valores válidos para crear el grupo."
                     : undefined
               }
-              className="w-full font-body font-medium text-sm bg-[#1E6FD9] text-white rounded-xl px-6 py-4 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] px-6 py-4 font-body text-base font-extrabold text-white shadow-[0_14px_28px_rgba(30,10,78,0.18)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
             >
               {loading ? (
                 <>

@@ -72,6 +72,8 @@ export interface DayViewProps {
   renderConfirmedActions?: (activity: Activity) => ReactNode;
   renderPendingActions?: (activity: Activity) => ReactNode;
   isPastDay?: boolean;
+  actionsDisabled?: boolean;
+  actionsDisabledReason?: string;
 }
 
 export interface DayViewHandle {
@@ -894,6 +896,8 @@ function ActivityCardConfirmed({
   onOpenBudget,
   onOpenVault,
   actionButtons,
+  actionsDisabled = false,
+  actionsDisabledReason,
 }: {
   activity: Activity;
   currentUserId?: string | number | null;
@@ -904,6 +908,8 @@ function ActivityCardConfirmed({
   onOpenBudget?: () => void;
   onOpenVault?: () => void;
   actionButtons?: ReactNode;
+  actionsDisabled?: boolean;
+  actionsDisabledReason?: string;
 }) {
   if (activity.kind === "subgroup-slot") {
     return (
@@ -1008,10 +1014,17 @@ function ActivityCardConfirmed({
             {actionButtons}
             {canEdit && (
               <button
-                onClick={() => onEdit?.(activity.id)}
-                className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0"
+                onClick={() => {
+                  if (!actionsDisabled) onEdit?.(activity.id);
+                }}
+                disabled={actionsDisabled}
+                title={
+                  actionsDisabled
+                    ? actionsDisabledReason
+                    : "Editar (volverá a votación)"
+                }
+                className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label="Editar actividad confirmada"
-                title="Editar (volverá a votación)"
               >
                 <IconEdit size={14} />
               </button>
@@ -1019,8 +1032,12 @@ function ActivityCardConfirmed({
 
             {canDelete && (
               <button
-                onClick={() => onDelete?.(activity.id)}
-                className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
+                onClick={() => {
+                  if (!actionsDisabled) onDelete?.(activity.id);
+                }}
+                disabled={actionsDisabled}
+                title={actionsDisabled ? actionsDisabledReason : undefined}
+                className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label="Eliminar actividad confirmada"
               >
                 <IconTrash size={14} />
@@ -1048,6 +1065,8 @@ function ActivityCardPending({
   onOpenVault,
   actionButtons,
   isExpired = false,
+  actionsDisabled = false,
+  actionsDisabledReason,
   competitionSize = 1,
   compact = false,
 }: {
@@ -1063,6 +1082,8 @@ function ActivityCardPending({
   onOpenVault?: () => void;
   actionButtons?: ReactNode;
   isExpired?: boolean;
+  actionsDisabled?: boolean;
+  actionsDisabledReason?: string;
   competitionSize?: number;
   compact?: boolean;
 }) {
@@ -1081,12 +1102,13 @@ function ActivityCardPending({
     "accept" | "reject" | "delete" | null
   >(null);
   const isActionBusy = busyAction !== null;
+  const isDisabledByState = isActionBusy || actionsDisabled;
 
   const runCardAction = async (
     action: "accept" | "reject" | "delete",
     callback?: (id: string) => void | Promise<void>,
   ) => {
-    if (!callback || isActionBusy) return;
+    if (!callback || isActionBusy || actionsDisabled) return;
     try {
       setBusyAction(action);
       await Promise.resolve(callback(activity.id));
@@ -1224,8 +1246,9 @@ function ActivityCardPending({
               <button
                 type="button"
                 onClick={() => void runCardAction("accept", onAccept)}
-                disabled={isActionBusy}
+                disabled={isDisabledByState}
                 aria-busy={busyAction === "accept"}
+                title={actionsDisabled ? actionsDisabledReason : undefined}
                 className={`inline-flex items-center justify-center gap-1.5 border-r border-[#D9E2F2] px-3 font-body text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   myVote === "a_favor"
                     ? "bg-[#16A34A] text-white hover:bg-[#15803D]"
@@ -1242,8 +1265,9 @@ function ActivityCardPending({
               <button
                 type="button"
                 onClick={() => void runCardAction("reject", onReject)}
-                disabled={isActionBusy}
+                disabled={isDisabledByState}
                 aria-busy={busyAction === "reject"}
+                title={actionsDisabled ? actionsDisabledReason : undefined}
                 className={`inline-flex items-center justify-center gap-1.5 px-3 font-body text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   myVote === "en_contra"
                     ? "bg-[#BE123C] text-white hover:bg-[#9F1239]"
@@ -1263,8 +1287,9 @@ function ActivityCardPending({
                 <button
                   type="button"
                   onClick={() => void runCardAction("delete", onDelete)}
-                  disabled={isActionBusy}
+                  disabled={isDisabledByState}
                   aria-busy={busyAction === "delete"}
+                  title={actionsDisabled ? actionsDisabledReason : undefined}
                   className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Eliminar propuesta"
                 >
@@ -1280,7 +1305,8 @@ function ActivityCardPending({
                 <button
                   type="button"
                   onClick={() => onEdit?.(activity.id)}
-                  disabled={isActionBusy}
+                  disabled={isDisabledByState}
+                  title={actionsDisabled ? actionsDisabledReason : undefined}
                   className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Editar propuesta"
                 >
@@ -1358,6 +1384,8 @@ function ActivitiesBody({
   renderConfirmedActions,
   renderPendingActions,
   isPastDay = false,
+  actionsDisabled = false,
+  actionsDisabledReason,
 }: {
   activities: Activity[];
   currentUserId?: string | number | null;
@@ -1373,6 +1401,8 @@ function ActivitiesBody({
   renderConfirmedActions?: (activity: Activity) => ReactNode;
   renderPendingActions?: (activity: Activity) => ReactNode;
   isPastDay?: boolean;
+  actionsDisabled?: boolean;
+  actionsDisabledReason?: string;
 }) {
   const [activeSection, setActiveSection] = useState<
     "confirmadas" | "pendientes"
@@ -1404,9 +1434,8 @@ function ActivitiesBody({
       ? confirmedActivities
       : [...activePendingActivities, ...expiredPendingActivities];
   const nowPosition = getTimelineNowPosition(visibleActivities);
-  const pendingCompetitionGroups = groupPendingActivitiesByStart(
-    visibleActivities,
-  );
+  const pendingCompetitionGroups =
+    groupPendingActivitiesByStart(visibleActivities);
 
   const renderConfirmedTimeline = () =>
     confirmedActivities.length > 0 ? (
@@ -1440,6 +1469,8 @@ function ActivitiesBody({
               onOpenBudget={onOpenBudget}
               onOpenVault={onOpenVault}
               actionButtons={renderConfirmedActions?.(a)}
+              actionsDisabled={actionsDisabled}
+              actionsDisabledReason={actionsDisabledReason}
             />
           </TimelineItem>
         ))}
@@ -1517,6 +1548,8 @@ function ActivitiesBody({
                           isExpired ? undefined : renderPendingActions?.(a)
                         }
                         isExpired={isExpired}
+                        actionsDisabled={actionsDisabled}
+                        actionsDisabledReason={actionsDisabledReason}
                         competitionSize={group.activities.length}
                         compact={isCompetition}
                       />
@@ -1686,10 +1719,7 @@ function pendingCompetitionKey(activity: Activity): string {
 }
 
 function groupPendingActivitiesByStart(activities: Activity[]) {
-  const groups = new Map<
-    string,
-    { key: string; activities: Activity[] }
-  >();
+  const groups = new Map<string, { key: string; activities: Activity[] }>();
 
   activities.forEach((activity) => {
     const key = pendingCompetitionKey(activity);
@@ -1859,6 +1889,8 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
     renderConfirmedActions,
     renderPendingActions,
     isPastDay = false,
+    actionsDisabled = false,
+    actionsDisabledReason,
   },
   ref,
 ) {
@@ -1979,6 +2011,8 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
                 isPastDay ? undefined : renderPendingActions
               }
               isPastDay={isPastDay}
+              actionsDisabled={actionsDisabled}
+              actionsDisabledReason={actionsDisabledReason}
               onAddActivity={() => onAddActivity?.(dayNumber)}
             />
           )}

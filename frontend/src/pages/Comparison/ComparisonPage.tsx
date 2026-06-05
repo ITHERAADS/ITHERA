@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/useAuth";
 import { useSocket } from "../../hooks/useSocket";
 import { useGroupRealtimeRefresh } from "../../hooks/useGroupRealtimeRefresh";
+import { useNetworkMonitor } from "../../hooks/useNetworkMonitor";
 import { getCurrentGroup } from "../../services/groups";
 import {
   proposalsService,
@@ -19,6 +20,7 @@ import {
   type VoteResult,
 } from "../../services/proposals";
 import { budgetService, type BudgetSummary } from "../../services/budget";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 
 export interface ComparisonPageProps {
   onBack: () => void;
@@ -878,6 +880,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
   );
   const [loading, setLoading] = useState(!cachedComparison);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const isBrowserOnline = useNetworkMonitor();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [openCommentsFor, setOpenCommentsFor] = useState<string | null>(null);
@@ -894,6 +897,12 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
     cachedComparison?.budgetSummary ?? null,
   );
   const [budgetLoading, setBudgetLoading] = useState(false);
+  const [proposalPendingDelete, setProposalPendingDelete] =
+    useState<Proposal | null>(null);
+  const [commentPendingDelete, setCommentPendingDelete] = useState<{
+    proposalId: string;
+    comment: ProposalComment;
+  } | null>(null);
 
   const localUserId = localUser?.id_usuario ? String(localUser.id_usuario) : "";
   const isAdmin = currentGroup?.myRole === "admin";
@@ -1152,6 +1161,13 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
     voto: "a_favor" | "en_contra" | "abstencion",
   ) => {
     if (!accessToken || !groupId) return;
+
+    if (!isBrowserOnline) {
+      setSuccess(null);
+      setError("Sin conexión. Reconecta para votar en la propuesta.");
+      return;
+    }
+
     try {
       setActionLoading(`${proposalId}-${voto}`);
       setSuccess(null);
@@ -1182,6 +1198,15 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
     decision: "aprobar" | "rechazar",
   ) => {
     if (!accessToken || !groupId) return;
+
+    if (!isBrowserOnline) {
+      setSuccess(null);
+      setError(
+        "Sin conexión. Restablece tu conexión para aceptar o descartar propuestas.",
+      );
+      return;
+    }
+
     try {
       setActionLoading(`${proposalId}-${decision}`);
       setSuccess(null);
@@ -1242,17 +1267,15 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
   const deleteProposal = async (proposal: Proposal) => {
     if (!accessToken) return;
-    const confirmed = window.confirm(
-      `¿Eliminar la propuesta "${getTitle(proposal)}"? Esta acción no se puede deshacer.`,
-    );
-    if (!confirmed) return;
 
     try {
       setActionLoading(`${proposal.id}-delete`);
+      setSuccess(null);
       setError(null);
       await proposalsService.deleteProposal(proposal.id, accessToken);
       setHiddenIds((prev) => prev.filter((id) => id !== proposal.id));
       if (selected === proposal.id) setSelected(null);
+      setProposalPendingDelete(null);
       await loadData();
       setSuccess("Propuesta eliminada correctamente.");
     } catch (err) {
@@ -1332,11 +1355,10 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
     comment: ProposalComment,
   ) => {
     if (!accessToken || !groupId) return;
-    const confirmed = window.confirm("¿Eliminar este comentario?");
-    if (!confirmed) return;
 
     try {
       setActionLoading(`${proposalId}-${comment.id}-delete`);
+      setSuccess(null);
       setError(null);
       await proposalsService.deleteComment(
         groupId,
@@ -1345,6 +1367,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
         accessToken,
       );
       await loadComments(proposalId);
+      setCommentPendingDelete(null);
       setSuccess("Comentario eliminado.");
     } catch (err) {
       setError(
@@ -1432,6 +1455,13 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
         </div>
       )}
 
+      {!isBrowserOnline && (
+        <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] p-4 font-body text-base font-semibold text-[#92400E]">
+          Sin conexión. Las acciones de aceptar, descartar o eliminar propuestas
+          permanecen deshabilitadas hasta reconectar.
+        </div>
+      )}
+
       {editingProposal && (
         <div className="rounded-[26px] border border-white/80 bg-white p-5 shadow-xl shadow-[#1E0A4E]/10 ring-1 ring-[#E2E8F0]/70">
           <h2 className="font-heading text-xl font-extrabold text-[#1E0A4E]">
@@ -1515,54 +1545,54 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-[#D5DEEE] bg-[#F7F8FD]">
-        <div className="pb-2">
-          <div>
-            <div className="flex items-stretch border-b border-[#E2E8F0] bg-[#F2F5FC]">
-	                <div className="sticky left-0 z-10 w-44 shrink-0 border-r border-[#DCE5F3] bg-[#F2F5FC]" />
-              <div className="flex min-w-0 flex-1 gap-4 px-4 py-4">
-	                {filteredProposals.map((proposal, index) => (
-	                  <div key={proposal.id} className="flex-1 min-w-0">
-	                    <div className="group relative overflow-hidden rounded-2xl shadow-lg shadow-[#1E0A4E]/10">
-                      <img
-                        src={getImageUrl(proposal, index)}
-                        alt={getTitle(proposal)}
-	                        className="h-[150px] w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                        loading="lazy"
-                      />
-                      <button
-                        onClick={() => removeOption(proposal.id)}
-                        disabled={filteredProposals.length <= 1}
-                        className={[
-                          "absolute right-2 top-2 rounded-full bg-black/45 p-1.5 text-white backdrop-blur transition-all",
-                          filteredProposals.length <= 1
-                            ? "cursor-not-allowed opacity-30"
-                            : "hover:bg-black/60",
-                        ].join(" ")}
-                        aria-label={`Quitar ${getTitle(proposal)}`}
-                      >
-                        <IconX size={10} />
-                      </button>
-                    </div>
-	                    <div className="mt-3 flex items-start gap-2">
-                      <span className="mt-0.5">
-                        <CategoryIcon type={proposal.tipo} />
-                      </span>
-                      <div className="min-w-0">
-	                        <p className="line-clamp-2 font-body text-base font-extrabold leading-tight text-[#1E0A4E]">
-	                          {getTitle(proposal)}
-	                        </p>
-	                        <p className="mt-1 line-clamp-2 font-body text-sm font-semibold leading-snug text-[#64748B]">
-	                          {getSubtitle(proposal)}
-	                        </p>
-	                        <p className="mt-1 font-body text-xs font-bold uppercase tracking-wide text-[#64748B]">
-	                          {proposal.estado}
-	                        </p>
+          <div className="pb-2">
+            <div>
+              <div className="flex items-stretch border-b border-[#E2E8F0] bg-[#F2F5FC]">
+                <div className="sticky left-0 z-10 w-44 shrink-0 border-r border-[#DCE5F3] bg-[#F2F5FC]" />
+                <div className="flex min-w-0 flex-1 gap-4 px-4 py-4">
+                  {filteredProposals.map((proposal, index) => (
+                    <div key={proposal.id} className="flex-1 min-w-0">
+                      <div className="group relative overflow-hidden rounded-2xl shadow-lg shadow-[#1E0A4E]/10">
+                        <img
+                          src={getImageUrl(proposal, index)}
+                          alt={getTitle(proposal)}
+                          className="h-[150px] w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          loading="lazy"
+                        />
+                        <button
+                          onClick={() => removeOption(proposal.id)}
+                          disabled={filteredProposals.length <= 1}
+                          className={[
+                            "absolute right-2 top-2 rounded-full bg-black/45 p-1.5 text-white backdrop-blur transition-all",
+                            filteredProposals.length <= 1
+                              ? "cursor-not-allowed opacity-30"
+                              : "hover:bg-black/60",
+                          ].join(" ")}
+                          aria-label={`Quitar ${getTitle(proposal)}`}
+                        >
+                          <IconX size={10} />
+                        </button>
+                      </div>
+                      <div className="mt-3 flex items-start gap-2">
+                        <span className="mt-0.5">
+                          <CategoryIcon type={proposal.tipo} />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="line-clamp-2 font-body text-base font-extrabold leading-tight text-[#1E0A4E]">
+                            {getTitle(proposal)}
+                          </p>
+                          <p className="mt-1 line-clamp-2 font-body text-sm font-semibold leading-snug text-[#64748B]">
+                            {getSubtitle(proposal)}
+                          </p>
+                          <p className="mt-1 font-body text-xs font-bold uppercase tracking-wide text-[#64748B]">
+                            {proposal.estado}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-	              </div>
 
               <TableRow label="Precio">
                 {filteredProposals.map((proposal) => {
@@ -1573,12 +1603,15 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     filteredProposals.length > 1;
 
                   return (
-	                    <div key={proposal.id} className="flex flex-1 min-w-0 flex-col items-start gap-2 py-4">
-	                      <span className="font-heading text-xl font-extrabold leading-none text-[#1E0A4E]">
+                    <div
+                      key={proposal.id}
+                      className="flex flex-1 min-w-0 flex-col items-start gap-2 py-4"
+                    >
+                      <span className="font-heading text-xl font-extrabold leading-none text-[#1E0A4E]">
                         {formatMoney(price, getCurrency(proposal))}
                       </span>
                       {isBestPrice && (
-	                        <span className="inline-flex rounded-full bg-[#35C56A]/10 px-2.5 py-1 text-xs font-extrabold text-[#15803D]">
+                        <span className="inline-flex rounded-full bg-[#35C56A]/10 px-2.5 py-1 text-xs font-extrabold text-[#15803D]">
                           Mejor precio
                         </span>
                       )}
@@ -1589,8 +1622,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
               <TableRow label="Tipo">
                 {filteredProposals.map((proposal) => (
-	                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
-	                    <span className="font-body text-base font-semibold text-[#1E0A4E]">
+                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+                    <span className="font-body text-base font-semibold text-[#1E0A4E]">
                       {proposal.tipo === "vuelo"
                         ? getSlice(proposal, "returnSlice")
                           ? "Vuelo redondo"
@@ -1611,8 +1644,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-	                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
-	                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
+                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                       {getHotelOccupancyText(proposal)}
                     </span>
                   </div>
@@ -1629,8 +1662,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-	                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
-	                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
+                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                       {getRouteOrLocation(proposal)}
                     </span>
                   </div>
@@ -1647,8 +1680,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-	                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
-	                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
+                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                       {getOutboundText(proposal)}
                     </span>
                   </div>
@@ -1665,8 +1698,8 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                 }
               >
                 {filteredProposals.map((proposal) => (
-	                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
-	                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
+                  <div key={proposal.id} className="flex-1 min-w-0 py-4">
+                    <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                       {getStayOrReturnText(proposal)}
                     </span>
                   </div>
@@ -1685,10 +1718,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     }
                   >
                     {filteredProposals.map((proposal) => (
-                      <div
-                        key={proposal.id}
-                        className="flex-1 min-w-0 py-4"
-                      >
+                      <div key={proposal.id} className="flex-1 min-w-0 py-4">
                         <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                           {proposal.tipo === "hospedaje"
                             ? getHotelRoomText(proposal)
@@ -1708,10 +1738,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     }
                   >
                     {filteredProposals.map((proposal) => (
-                      <div
-                        key={proposal.id}
-                        className="flex-1 min-w-0 py-4"
-                      >
+                      <div key={proposal.id} className="flex-1 min-w-0 py-4">
                         <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                           {proposal.tipo === "hospedaje"
                             ? getHotelBoardText(proposal)
@@ -1727,10 +1754,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     }
                   >
                     {filteredProposals.map((proposal) => (
-                      <div
-                        key={proposal.id}
-                        className="flex-1 min-w-0 py-4"
-                      >
+                      <div key={proposal.id} className="flex-1 min-w-0 py-4">
                         <span className="font-body text-base font-medium leading-relaxed text-[#64748B]">
                           {proposal.tipo === "hospedaje"
                             ? getHotelRatingText(proposal)
@@ -1787,7 +1811,11 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                               setSelected(proposal.id);
                               handleVote(proposal.id, "a_favor");
                             }}
-                            disabled={actionLoading !== null || hasVoted}
+                            disabled={
+                              actionLoading !== null ||
+                              hasVoted ||
+                              !isBrowserOnline
+                            }
                             className={[
                               "inline-flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl px-4 font-body text-sm font-extrabold shadow-sm transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0",
                               selectedColumn || result?.mi_voto === "a_favor"
@@ -1811,8 +1839,12 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                           </button>
                           <button
                             onClick={() => handleVote(proposal.id, "en_contra")}
-                            disabled={actionLoading !== null || hasVoted}
-	                            className="inline-flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-[#FCA5A5] bg-white px-4 font-body text-sm font-extrabold text-[#DC2626] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#FEF2F2] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                            disabled={
+                              actionLoading !== null ||
+                              hasVoted ||
+                              !isBrowserOnline
+                            }
+                            className="inline-flex h-12 min-w-0 items-center justify-center gap-1.5 rounded-2xl border border-[#FCA5A5] bg-white px-4 font-body text-sm font-extrabold text-[#DC2626] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#FEF2F2] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                           >
                             {actionLoading === `${proposal.id}-en_contra` && (
                               <InlineSpinner size={13} />
@@ -1856,7 +1888,9 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                               <ActionIconButton
                                 label="Editar propuesta"
                                 onClick={() => startEditProposal(proposal)}
-                                disabled={actionLoading !== null}
+                                disabled={
+                                  actionLoading !== null || !isBrowserOnline
+                                }
                                 loading={
                                   actionLoading === `${proposal.id}-edit`
                                 }
@@ -1866,8 +1900,12 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                               </ActionIconButton>
                               <ActionIconButton
                                 label="Eliminar propuesta"
-                                onClick={() => deleteProposal(proposal)}
-                                disabled={actionLoading !== null}
+                                onClick={() =>
+                                  setProposalPendingDelete(proposal)
+                                }
+                                disabled={
+                                  actionLoading !== null || !isBrowserOnline
+                                }
                                 loading={
                                   actionLoading === `${proposal.id}-delete`
                                 }
@@ -1895,7 +1933,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
 
                           if (isConfirmed) {
                             return (
-	                              <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2.5 text-center font-body text-sm font-extrabold text-[#15803D]">
+                              <div className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2.5 text-center font-body text-sm font-extrabold text-[#15803D]">
                                 {proposal.tipo === "vuelo"
                                   ? "Vuelo comprado"
                                   : "Hospedaje reservado"}
@@ -1910,8 +1948,10 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                                   `/checkout/${proposal.tipo === "vuelo" ? "flight" : "hotel"}/${proposal.id}`,
                                 )
                               }
-                              disabled={actionLoading !== null}
-	                              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-3 py-3 font-body text-sm font-extrabold text-white shadow-lg shadow-[#1E6FD9]/20 transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                              disabled={
+                                actionLoading !== null || !isBrowserOnline
+                              }
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-3 py-3 font-body text-sm font-extrabold text-white shadow-lg shadow-[#1E6FD9]/20 transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                             >
                               {actionLoading === `${proposal.id}-checkout` && (
                                 <InlineSpinner size={13} />
@@ -1931,8 +1971,10 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                               onClick={() =>
                                 handleAdminDecision(proposal.id, "aprobar")
                               }
-                              disabled={actionLoading !== null}
-	                              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#35C56A] px-3 py-3 font-body text-sm font-extrabold text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                              disabled={
+                                actionLoading !== null || !isBrowserOnline
+                              }
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#35C56A] px-3 py-3 font-body text-sm font-extrabold text-white shadow-sm transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                             >
                               {actionLoading === `${proposal.id}-aprobar` && (
                                 <InlineSpinner size={12} />
@@ -1943,8 +1985,10 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                               onClick={() =>
                                 handleAdminDecision(proposal.id, "rechazar")
                               }
-                              disabled={actionLoading !== null}
-	                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-3 font-body text-sm font-extrabold text-[#64748B] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                              disabled={
+                                actionLoading !== null || !isBrowserOnline
+                              }
+                              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-[#CBD5E1] bg-white px-3 py-3 font-body text-sm font-extrabold text-[#64748B] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#F8FAFC] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                             >
                               {actionLoading === `${proposal.id}-rechazar` && (
                                 <InlineSpinner size={12} />
@@ -1982,13 +2026,13 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     <div className="bg-gradient-to-r from-[#1E0A4E] to-[#7A4FD6] px-5 py-5 text-white">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-	                          <p className="font-body text-xs font-extrabold uppercase tracking-[0.24em] text-white/70">
+                          <p className="font-body text-xs font-extrabold uppercase tracking-[0.24em] text-white/70">
                             Chat de propuesta
                           </p>
-	                          <h3 className="mt-2 truncate font-heading text-xl font-extrabold">
+                          <h3 className="mt-2 truncate font-heading text-xl font-extrabold">
                             {activeProposal?.titulo ?? "Propuesta"}
                           </h3>
-	                          <p className="mt-1 truncate font-body text-sm font-medium text-white/80">
+                          <p className="mt-1 truncate font-body text-sm font-medium text-white/80">
                             {activeProposal?.tipo === "vuelo"
                               ? "Vuelo"
                               : activeProposal?.tipo === "hospedaje"
@@ -2009,20 +2053,18 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     </div>
 
                     <div className="grid grid-cols-[auto_1fr] gap-0 border-b border-[#E2E8F0] bg-white px-5 py-3">
-	                      <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 text-center font-body text-sm font-extrabold text-[#1E6FD9]">
+                      <div className="rounded-xl bg-[#EFF6FF] px-3 py-2 text-center font-body text-sm font-extrabold text-[#1E6FD9]">
                         {activeComments.length}
                         <br />
-	                        <span className="text-xs font-bold">
-                          comentarios
-                        </span>
+                        <span className="text-xs font-bold">comentarios</span>
                       </div>
                       <div className="min-w-0 px-3 py-2">
-	                        <p className="truncate font-body text-sm font-bold text-[#64748B]">
+                        <p className="truncate font-body text-sm font-bold text-[#64748B]">
                           {activeProposal
                             ? getRouteOrLocation(activeProposal)
                             : "Conversación del grupo"}
                         </p>
-	                        <p className="mt-1 truncate font-body text-xs font-semibold text-[#64748B]">
+                        <p className="mt-1 truncate font-body text-xs font-semibold text-[#64748B]">
                           {activeProposal
                             ? getOutboundText(activeProposal)
                             : "Sin datos adicionales"}
@@ -2036,10 +2078,10 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F5F3FF] text-[#7A4FD6]">
                             <IconMessage size={20} />
                           </span>
-	                          <p className="font-heading text-base font-extrabold text-[#1E0A4E]">
+                          <p className="font-heading text-base font-extrabold text-[#1E0A4E]">
                             Sé el primero en comentar
                           </p>
-	                          <p className="mt-1 max-w-xs font-body text-sm font-medium text-[#64748B]">
+                          <p className="mt-1 max-w-xs font-body text-sm font-medium text-[#64748B]">
                             Coordina esta opción con el grupo sin salir de la
                             comparativa.
                           </p>
@@ -2076,7 +2118,9 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                                     onClick={() =>
                                       editComment(openCommentsFor, comment)
                                     }
-                                    disabled={actionLoading !== null}
+                                    disabled={
+                                      actionLoading !== null || !isBrowserOnline
+                                    }
                                     className="font-body text-sm font-bold text-[#1E6FD9] transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                                     aria-label="Editar comentario"
                                     title="Editar comentario"
@@ -2085,9 +2129,14 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                                   </button>
                                   <button
                                     onClick={() =>
-                                      deleteComment(openCommentsFor, comment)
+                                      setCommentPendingDelete({
+                                        proposalId: openCommentsFor,
+                                        comment,
+                                      })
                                     }
-                                    disabled={actionLoading !== null}
+                                    disabled={
+                                      actionLoading !== null || !isBrowserOnline
+                                    }
                                     className="font-body text-sm font-bold text-[#EF4444] transition-colors hover:underline disabled:cursor-not-allowed disabled:opacity-60"
                                     aria-label="Eliminar comentario"
                                     title="Eliminar comentario"
@@ -2113,7 +2162,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                             }))
                           }
                           placeholder="Escribe un comentario..."
-	                          className="min-w-0 flex-1 rounded-2xl border border-[#DDE6F3] bg-white px-4 py-3 font-body text-base outline-none transition-colors focus:border-[#7A4FD6] focus:ring-2 focus:ring-[#7A4FD6]/10"
+                          className="min-w-0 flex-1 rounded-2xl border border-[#DDE6F3] bg-white px-4 py-3 font-body text-base outline-none transition-colors focus:border-[#7A4FD6] focus:ring-2 focus:ring-[#7A4FD6]/10"
                         />
                         <button
                           onClick={() => addComment(openCommentsFor)}
@@ -2141,7 +2190,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           {filteredProposals.length === 1 && (
             <div className="border-t border-[#E2E8F0] p-4">
               <div className="rounded-xl border border-[#E2E8F0] bg-[#F0EEF8] p-4 text-center">
-	                <p className="inline-flex items-center justify-center gap-1.5 font-body text-base font-semibold text-[#64748B]">
+                <p className="inline-flex items-center justify-center gap-1.5 font-body text-base font-semibold text-[#64748B]">
                   <IconArrowRight size={14} />
                   Agrega otra opción para comparar
                 </p>
@@ -2154,7 +2203,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
       {hiddenIds.length > 0 && (
         <button
           onClick={() => setHiddenIds([])}
-	          className="rounded-xl border-2 border-dashed border-[#E2E8F0] py-4 font-body text-base font-bold text-[#64748B] transition-colors hover:border-[#1E6FD9]/30 hover:text-[#1E6FD9]"
+          className="rounded-xl border-2 border-dashed border-[#E2E8F0] py-4 font-body text-base font-bold text-[#64748B] transition-colors hover:border-[#1E6FD9]/30 hover:text-[#1E6FD9]"
         >
           <span className="inline-flex items-center justify-center gap-2">
             <IconPlus size={14} />
@@ -2168,7 +2217,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           <span className="mt-0.5 shrink-0 text-[#EF4444]">
             <IconWarning size={14} />
           </span>
-	          <p className="font-body text-sm font-semibold leading-relaxed text-[#DC2626]">
+          <p className="font-body text-sm font-semibold leading-relaxed text-[#DC2626]">
             Esta opción cuesta {formatMoney(selectedPrice, selectedCurrency)} y
             supera el presupuesto disponible real del grupo (
             {formatMoney(budgetAvailable ?? 0, "MXN")}). El voto se registra,
@@ -2176,6 +2225,55 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
           </p>
         </div>
       )}
+
+      <ConfirmDialog
+        open={proposalPendingDelete !== null}
+        title="Eliminar propuesta"
+        description="Esta acción no se puede deshacer. La propuesta se quitará del tablero cuando el backend confirme la eliminación."
+        details={
+          proposalPendingDelete ? getTitle(proposalPendingDelete) : undefined
+        }
+        confirmLabel="Eliminar propuesta"
+        cancelLabel="Conservar"
+        variant="danger"
+        loading={
+          proposalPendingDelete
+            ? actionLoading === `${proposalPendingDelete.id}-delete`
+            : false
+        }
+        onCancel={() => {
+          if (actionLoading === null) setProposalPendingDelete(null);
+        }}
+        onConfirm={() => {
+          if (proposalPendingDelete) void deleteProposal(proposalPendingDelete);
+        }}
+      />
+
+      <ConfirmDialog
+        open={commentPendingDelete !== null}
+        title="Eliminar comentario"
+        description="El comentario se eliminará del hilo de la propuesta para todos los integrantes."
+        confirmLabel="Eliminar comentario"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={
+          commentPendingDelete
+            ? actionLoading ===
+              `${commentPendingDelete.proposalId}-${commentPendingDelete.comment.id}-delete`
+            : false
+        }
+        onCancel={() => {
+          if (actionLoading === null) setCommentPendingDelete(null);
+        }}
+        onConfirm={() => {
+          if (commentPendingDelete) {
+            void deleteComment(
+              commentPendingDelete.proposalId,
+              commentPendingDelete.comment,
+            );
+          }
+        }}
+      />
     </div>
   );
 }

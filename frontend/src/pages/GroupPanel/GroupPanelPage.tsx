@@ -11,6 +11,9 @@ import {
   clearCurrentGroup,
 } from "../../services/groups";
 import { HelpButton } from "../../components/ui/HelpButton";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
+import { ToastContainer } from "../../components/ui/Toast/ToastContainer";
+import { useToast } from "../../hooks/useToast";
 import type {
   Group,
   GroupInvitation,
@@ -26,7 +29,11 @@ type InviteMember = {
   role: "Admin" | "Miembro";
 };
 
-type InviteSettingsState = { expiresAt: string | null; maxUses: number | null; usedCount: number };
+type InviteSettingsState = {
+  expiresAt: string | null;
+  maxUses: number | null;
+  usedCount: number;
+};
 
 type GroupPanelCache = {
   group: Group | null;
@@ -52,7 +59,8 @@ type GroupPanelRealtimePayload = {
 };
 
 const GROUP_PANEL_CACHE_TTL_MS = 10 * 60 * 1000;
-const getGroupPanelCacheKey = (groupId: string) => `ithera:group-panel:${groupId}`;
+const getGroupPanelCacheKey = (groupId: string) =>
+  `ithera:group-panel:${groupId}`;
 
 function readGroupPanelCache(groupId: string): GroupPanelCache | null {
   if (!groupId || typeof window === "undefined") return null;
@@ -62,7 +70,10 @@ function readGroupPanelCache(groupId: string): GroupPanelCache | null {
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as GroupPanelCache;
-    if (!parsed || Date.now() - Number(parsed.savedAt ?? 0) > GROUP_PANEL_CACHE_TTL_MS) {
+    if (
+      !parsed ||
+      Date.now() - Number(parsed.savedAt ?? 0) > GROUP_PANEL_CACHE_TTL_MS
+    ) {
       window.sessionStorage.removeItem(getGroupPanelCacheKey(groupId));
       return null;
     }
@@ -85,7 +96,6 @@ function writeGroupPanelCache(groupId: string, snapshot: GroupPanelCache) {
     // La caché es una mejora de UX; si el navegador la bloquea, el flujo sigue funcionando.
   }
 }
-
 
 function getInitials(name: string) {
   return name
@@ -125,46 +135,73 @@ export function GroupPanelPage() {
       : null;
   const cachedPanel = useMemo(() => readGroupPanelCache(groupId), [groupId]);
   const realtimeRefreshTimerRef = useRef<number | null>(null);
-  const latestPanelSnapshotRef = useRef<GroupPanelCache>(cachedPanel ?? {
-    group: initialGroup,
-    members: [],
-    invitations: [],
-    joinRequests: [],
-    adminDelegations: [],
-    inviteLink: "",
-    qrBase64: "",
-    inviteSettings: { expiresAt: null, maxUses: null, usedCount: 0 },
-    savedAt: Date.now(),
-  });
+  const latestPanelSnapshotRef = useRef<GroupPanelCache>(
+    cachedPanel ?? {
+      group: initialGroup,
+      members: [],
+      invitations: [],
+      joinRequests: [],
+      adminDelegations: [],
+      inviteLink: "",
+      qrBase64: "",
+      inviteSettings: { expiresAt: null, maxUses: null, usedCount: 0 },
+      savedAt: Date.now(),
+    },
+  );
 
-  const [group, setGroup] = useState<Group | null>(cachedPanel?.group ?? initialGroup);
-  const [members, setMembers] = useState<GroupMember[]>(cachedPanel?.members ?? []);
-  const [invitations, setInvitations] = useState<GroupInvitation[]>(cachedPanel?.invitations ?? []);
-  const [joinRequests, setJoinRequests] = useState<GroupJoinRequest[]>(cachedPanel?.joinRequests ?? []);
+  const [group, setGroup] = useState<Group | null>(
+    cachedPanel?.group ?? initialGroup,
+  );
+  const [members, setMembers] = useState<GroupMember[]>(
+    cachedPanel?.members ?? [],
+  );
+  const [invitations, setInvitations] = useState<GroupInvitation[]>(
+    cachedPanel?.invitations ?? [],
+  );
+  const [joinRequests, setJoinRequests] = useState<GroupJoinRequest[]>(
+    cachedPanel?.joinRequests ?? [],
+  );
   const [inviteLink, setInviteLink] = useState(cachedPanel?.inviteLink ?? "");
   const [qrBase64, setQrBase64] = useState(cachedPanel?.qrBase64 ?? "");
-  const [inviteSettings, setInviteSettings] = useState<InviteSettingsState>(cachedPanel?.inviteSettings ?? {
-    expiresAt: null,
-    maxUses: null,
-    usedCount: 0,
-  });
+  const [inviteSettings, setInviteSettings] = useState<InviteSettingsState>(
+    cachedPanel?.inviteSettings ?? {
+      expiresAt: null,
+      maxUses: null,
+      usedCount: 0,
+    },
+  );
   const [loading, setLoading] = useState(!cachedPanel);
   const [error, setError] = useState("");
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [roleChangeTarget, setRoleChangeTarget] = useState<GroupMember | null>(
     null,
   );
   const [roleChangeLoading, setRoleChangeLoading] = useState(false);
-  const [adminDelegations, setAdminDelegations] = useState<AdminDelegationRequest[]>(cachedPanel?.adminDelegations ?? []);
-  const [delegationActionLoading, setDelegationActionLoading] = useState<string | null>(null);
-  const [joinRequestActionLoading, setJoinRequestActionLoading] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<GroupMember | null>(null);
+  const [removeLoadingId, setRemoveLoadingId] = useState<string | null>(null);
+  const [forcedNotice, setForcedNotice] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
+  const [adminDelegations, setAdminDelegations] = useState<
+    AdminDelegationRequest[]
+  >(cachedPanel?.adminDelegations ?? []);
+  const [delegationActionLoading, setDelegationActionLoading] = useState<
+    string | null
+  >(null);
+  const [joinRequestActionLoading, setJoinRequestActionLoading] = useState<
+    string | null
+  >(null);
 
   const currentMember = members.find(
     (member) => String(member.usuario_id) === String(localUser?.id_usuario),
   );
 
-  const isAdmin = currentMember ? currentMember.rol === "admin" : group?.myRole === "admin";
+  const isAdmin = currentMember
+    ? currentMember.rol === "admin"
+    : group?.myRole === "admin";
   const isReadOnly = isClosedGroup(group);
   const canManageGroup = isAdmin && !isReadOnly;
   const isPrivateGroup = group?.es_publico !== true;
@@ -208,7 +245,11 @@ export function GroupPanelPage() {
         !isClosedGroup(targetGroup);
 
       if (!canManage || reachedCapacity) {
-        const emptyInviteSettings = { expiresAt: null, maxUses: null, usedCount: 0 };
+        const emptyInviteSettings = {
+          expiresAt: null,
+          maxUses: null,
+          usedCount: 0,
+        };
         setInviteLink("");
         setQrBase64("");
         setInviteSettings(emptyInviteSettings);
@@ -237,7 +278,11 @@ export function GroupPanelPage() {
             : Promise.resolve({ requests: [] }),
         ]);
 
-      const nextInviteSettings = inviteRes.inviteSettings ?? { expiresAt: null, maxUses: null, usedCount: 0 };
+      const nextInviteSettings = inviteRes.inviteSettings ?? {
+        expiresAt: null,
+        maxUses: null,
+        usedCount: 0,
+      };
 
       setInviteLink(inviteRes.inviteLink);
       setInviteSettings(nextInviteSettings);
@@ -272,69 +317,91 @@ export function GroupPanelPage() {
     });
   };
 
-  const loadData = useCallback(async (options?: { showLoading?: boolean }) => {
-    const showLoading = options?.showLoading ?? true;
+  const loadData = useCallback(
+    async (options?: { showLoading?: boolean }) => {
+      const showLoading = options?.showLoading ?? true;
 
-    if (!accessToken || !groupId) {
-      setLoading(false);
-      setError("No se recibió un groupId válido");
-      return;
-    }
-
-    try {
-      if (showLoading) setLoading(true);
-      setError("");
-
-      const [groupRes, membersRes] = await Promise.all([
-        groupsService.getGroupDetails(groupId, accessToken),
-        groupsService.getMembers(groupId, accessToken),
-      ]);
-
-      const loadedCurrentMember = membersRes.members.find(
-        (member) => String(member.usuario_id) === String(localUser?.id_usuario),
-      );
-
-      if (!loadedCurrentMember) {
-        clearCurrentGroup();
-        navigate("/my-trips", { replace: true });
+      if (!accessToken || !groupId) {
+        setLoading(false);
+        setError("No se recibió un groupId válido");
         return;
       }
-
-      const loadedGroup = { ...groupRes.group, myRole: loadedCurrentMember.rol };
-      setGroup(loadedGroup);
-      saveCurrentGroup(loadedGroup);
-      setMembers(membersRes.members);
 
       try {
-        const delegationRes = await groupsService.getAdminDelegations(groupId, accessToken);
-        const nextDelegations = delegationRes.requests ?? [];
-        setAdminDelegations(nextDelegations);
-        persistPanelCache({
-          group: loadedGroup,
-          members: membersRes.members,
-          adminDelegations: nextDelegations,
-        });
-      } catch {
-        setAdminDelegations([]);
-        persistPanelCache({ group: loadedGroup, members: membersRes.members, adminDelegations: [] });
-      }
+        if (showLoading) setLoading(true);
+        setError("");
 
-      void loadAdminData(loadedGroup, membersRes.members).catch(() => {
-        setInvitations([]);
-        setJoinRequests([]);
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "No se pudo cargar el grupo";
-      if (/no perteneces|permisos|forbidden|403/i.test(message)) {
-        clearCurrentGroup();
-        navigate("/my-trips", { replace: true });
-        return;
+        const [groupRes, membersRes] = await Promise.all([
+          groupsService.getGroupDetails(groupId, accessToken),
+          groupsService.getMembers(groupId, accessToken),
+        ]);
+
+        const loadedCurrentMember = membersRes.members.find(
+          (member) =>
+            String(member.usuario_id) === String(localUser?.id_usuario),
+        );
+
+        if (!loadedCurrentMember) {
+          clearCurrentGroup();
+          navigate("/my-trips", { replace: true });
+          return;
+        }
+
+        const loadedGroup = {
+          ...groupRes.group,
+          myRole: loadedCurrentMember.rol,
+        };
+        setGroup(loadedGroup);
+        saveCurrentGroup(loadedGroup);
+        setMembers(membersRes.members);
+
+        try {
+          const delegationRes = await groupsService.getAdminDelegations(
+            groupId,
+            accessToken,
+          );
+          const nextDelegations = delegationRes.requests ?? [];
+          setAdminDelegations(nextDelegations);
+          persistPanelCache({
+            group: loadedGroup,
+            members: membersRes.members,
+            adminDelegations: nextDelegations,
+          });
+        } catch {
+          setAdminDelegations([]);
+          persistPanelCache({
+            group: loadedGroup,
+            members: membersRes.members,
+            adminDelegations: [],
+          });
+        }
+
+        void loadAdminData(loadedGroup, membersRes.members).catch(() => {
+          setInvitations([]);
+          setJoinRequests([]);
+        });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "No se pudo cargar el grupo";
+        if (/no perteneces|permisos|forbidden|403/i.test(message)) {
+          clearCurrentGroup();
+          navigate("/my-trips", { replace: true });
+          return;
+        }
+        setError(message);
+      } finally {
+        setLoading(false);
       }
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken, groupId, loadAdminData, localUser?.id_usuario, navigate, persistPanelCache]);
+    },
+    [
+      accessToken,
+      groupId,
+      loadAdminData,
+      localUser?.id_usuario,
+      navigate,
+      persistPanelCache,
+    ],
+  );
 
   useEffect(() => {
     void loadData({ showLoading: !cachedPanel });
@@ -365,7 +432,10 @@ export function GroupPanelPage() {
     persistPanelCache({ group: loadedGroup, members: membersRes.members });
 
     try {
-      const delegationRes = await groupsService.getAdminDelegations(groupId, accessToken);
+      const delegationRes = await groupsService.getAdminDelegations(
+        groupId,
+        accessToken,
+      );
       const nextDelegations = delegationRes.requests ?? [];
       setAdminDelegations(nextDelegations);
       persistPanelCache({ adminDelegations: nextDelegations });
@@ -373,13 +443,21 @@ export function GroupPanelPage() {
       setAdminDelegations([]);
       persistPanelCache({ adminDelegations: [] });
     }
-
-  }, [accessToken, groupId, localUser?.id_usuario, navigate, persistPanelCache]);
+  }, [
+    accessToken,
+    groupId,
+    localUser?.id_usuario,
+    navigate,
+    persistPanelCache,
+  ]);
 
   const refreshJoinRequestsSnapshot = useCallback(async () => {
     if (!accessToken || !groupId || !canManageGroup || !isPrivateGroup) return;
 
-    const requestsRes = await groupsService.getJoinRequests(groupId, accessToken);
+    const requestsRes = await groupsService.getJoinRequests(
+      groupId,
+      accessToken,
+    );
     setJoinRequests(requestsRes.requests);
     persistPanelCache({ joinRequests: requestsRes.requests });
   }, [accessToken, canManageGroup, groupId, isPrivateGroup, persistPanelCache]);
@@ -387,74 +465,89 @@ export function GroupPanelPage() {
   const refreshInvitationsSnapshot = useCallback(async () => {
     if (!accessToken || !groupId || !canManageGroup) return;
 
-    const invitationsRes = await groupsService.getInvitations(groupId, accessToken);
+    const invitationsRes = await groupsService.getInvitations(
+      groupId,
+      accessToken,
+    );
     setInvitations(invitationsRes.invitations);
     persistPanelCache({ invitations: invitationsRes.invitations });
   }, [accessToken, canManageGroup, groupId, persistPanelCache]);
 
-  const refreshForRealtimePayload = useCallback(async (payload: GroupPanelRealtimePayload) => {
-    const tipo = String(payload.tipo ?? "");
+  const refreshForRealtimePayload = useCallback(
+    async (payload: GroupPanelRealtimePayload) => {
+      const tipo = String(payload.tipo ?? "");
 
-    if (tipo === "grupo_actualizado") {
-      await refreshMembersSnapshot();
-      return;
-    }
+      if (tipo === "grupo_actualizado") {
+        await refreshMembersSnapshot();
+        return;
+      }
 
-    if (tipo === "miembro_unido" || tipo === "miembro_agregado") {
-      await Promise.all([refreshMembersSnapshot(), refreshInvitationsSnapshot()]);
-      return;
-    }
+      if (tipo === "miembro_unido" || tipo === "miembro_agregado") {
+        await Promise.all([
+          refreshMembersSnapshot(),
+          refreshInvitationsSnapshot(),
+        ]);
+        return;
+      }
 
-    if (
-      tipo === "miembro_eliminado" ||
-      tipo === "miembro_actualizado" ||
-      tipo === "rol_actualizado" ||
-      tipo === "delegacion_admin_pendiente" ||
-      tipo === "delegacion_admin_aceptada" ||
-      tipo === "delegacion_admin_rechazada"
-    ) {
-      await refreshMembersSnapshot();
-      return;
-    }
+      if (
+        tipo === "miembro_eliminado" ||
+        tipo === "miembro_actualizado" ||
+        tipo === "rol_actualizado" ||
+        tipo === "delegacion_admin_pendiente" ||
+        tipo === "delegacion_admin_aceptada" ||
+        tipo === "delegacion_admin_rechazada"
+      ) {
+        await refreshMembersSnapshot();
+        return;
+      }
 
-    if (
-      tipo === "solicitud_union_creada" ||
-      tipo === "solicitud_union_resuelta" ||
-      tipo === "solicitud_union_rechazada"
-    ) {
-      await refreshJoinRequestsSnapshot();
-      return;
-    }
+      if (
+        tipo === "solicitud_union_creada" ||
+        tipo === "solicitud_union_resuelta" ||
+        tipo === "solicitud_union_rechazada"
+      ) {
+        await refreshJoinRequestsSnapshot();
+        return;
+      }
 
-    if (tipo === "solicitud_union_aprobada") {
-      await Promise.all([refreshMembersSnapshot(), refreshJoinRequestsSnapshot()]);
-      return;
-    }
+      if (tipo === "solicitud_union_aprobada") {
+        await Promise.all([
+          refreshMembersSnapshot(),
+          refreshJoinRequestsSnapshot(),
+        ]);
+        return;
+      }
 
-    if (tipo === "invitacion_enviada" || tipo === "invitacion_aceptada") {
-      await refreshInvitationsSnapshot();
-      return;
-    }
+      if (tipo === "invitacion_enviada" || tipo === "invitacion_aceptada") {
+        await refreshInvitationsSnapshot();
+        return;
+      }
 
-    await loadData({ showLoading: false });
-  }, [
-    loadData,
-    refreshInvitationsSnapshot,
-    refreshJoinRequestsSnapshot,
-    refreshMembersSnapshot,
-  ]);
+      await loadData({ showLoading: false });
+    },
+    [
+      loadData,
+      refreshInvitationsSnapshot,
+      refreshJoinRequestsSnapshot,
+      refreshMembersSnapshot,
+    ],
+  );
 
-  const scheduleRealtimeRefresh = useCallback((payload: GroupPanelRealtimePayload) => {
-    if (realtimeRefreshTimerRef.current !== null) {
-      window.clearTimeout(realtimeRefreshTimerRef.current);
-    }
+  const scheduleRealtimeRefresh = useCallback(
+    (payload: GroupPanelRealtimePayload) => {
+      if (realtimeRefreshTimerRef.current !== null) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+      }
 
-    realtimeRefreshTimerRef.current = window.setTimeout(() => {
-      void refreshForRealtimePayload(payload).catch(() => {
-        void loadData({ showLoading: false });
-      });
-    }, 180);
-  }, [loadData, refreshForRealtimePayload]);
+      realtimeRefreshTimerRef.current = window.setTimeout(() => {
+        void refreshForRealtimePayload(payload).catch(() => {
+          void loadData({ showLoading: false });
+        });
+      }, 180);
+    },
+    [loadData, refreshForRealtimePayload],
+  );
 
   useEffect(() => {
     if (!socket || !groupId) return;
@@ -469,8 +562,11 @@ export function GroupPanelPage() {
 
       if (payload.tipo === "grupo_eliminado") {
         clearCurrentGroup();
-        alert("Este grupo fue eliminado por el administrador.");
-        navigate("/my-trips");
+        setForcedNotice({
+          title: "Grupo eliminado",
+          description:
+            "Este grupo fue eliminado por el administrador. Te regresaremos a Mis viajes.",
+        });
         return;
       }
 
@@ -481,8 +577,11 @@ export function GroupPanelPage() {
 
       if (payload.tipo === "miembro_eliminado" && affectsCurrentUser) {
         clearCurrentGroup();
-        alert("Fuiste removido de este viaje. Te regresamos a Mis viajes.");
-        navigate("/my-trips");
+        setForcedNotice({
+          title: "Fuiste removido del viaje",
+          description:
+            "Tu acceso a este viaje fue revocado. Te regresaremos a Mis viajes.",
+        });
         return;
       }
 
@@ -505,7 +604,13 @@ export function GroupPanelPage() {
       socket.off("group_members_updated", handleRealtime);
       socket.off("group_deleted", handleRealtime);
     };
-  }, [groupId, localUser?.id_usuario, navigate, scheduleRealtimeRefresh, socket]);
+  }, [
+    groupId,
+    localUser?.id_usuario,
+    navigate,
+    scheduleRealtimeRefresh,
+    socket,
+  ]);
 
   const inviteMembers: InviteMember[] = useMemo(
     () =>
@@ -532,14 +637,24 @@ export function GroupPanelPage() {
       setRoleChangeLoading(true);
       const nextRole = member.rol === "admin" ? "viajero" : "admin";
 
-      const response = await groupsService.updateMemberRole(member.id, nextRole, accessToken);
+      const response = await groupsService.updateMemberRole(
+        member.id,
+        nextRole,
+        accessToken,
+      );
 
       if (nextRole === "admin" && response.member?.pendingDelegation) {
-        const delegationRes = await groupsService.getAdminDelegations(group.id, accessToken);
+        const delegationRes = await groupsService.getAdminDelegations(
+          group.id,
+          accessToken,
+        );
         const nextDelegations = delegationRes.requests ?? [];
         setAdminDelegations(nextDelegations);
         persistPanelCache({ adminDelegations: nextDelegations });
-        alert("Solicitud de administración enviada. El integrante debe aceptarla antes de que cambien los roles.");
+        toast.show(
+          "Solicitud de administración enviada. El integrante debe aceptarla antes de que cambien los roles.",
+          "info",
+        );
       } else {
         const refreshed = await groupsService.getMembers(group.id, accessToken);
         setMembers(refreshed.members);
@@ -547,8 +662,9 @@ export function GroupPanelPage() {
       }
       setRoleChangeTarget(null);
     } catch (err) {
-      alert(
+      toast.show(
         err instanceof Error ? err.message : "No se pudo actualizar el rol",
+        "error",
       );
     } finally {
       setRoleChangeLoading(false);
@@ -577,10 +693,14 @@ export function GroupPanelPage() {
       ]);
       setMembers(membersRes.members);
       setJoinRequests(requestsRes.requests);
-      persistPanelCache({ members: membersRes.members, joinRequests: requestsRes.requests });
+      persistPanelCache({
+        members: membersRes.members,
+        joinRequests: requestsRes.requests,
+      });
     } catch (err) {
-      alert(
+      toast.show(
         err instanceof Error ? err.message : "No se pudo atender la solicitud",
+        "error",
       );
     } finally {
       setJoinRequestActionLoading(null);
@@ -612,12 +732,17 @@ export function GroupPanelPage() {
       setAdminDelegations(nextDelegations);
       setGroup(groupRes.group);
       saveCurrentGroup(groupRes.group);
-      persistPanelCache({ group: groupRes.group, members: membersRes.members, adminDelegations: nextDelegations });
+      persistPanelCache({
+        group: groupRes.group,
+        members: membersRes.members,
+        adminDelegations: nextDelegations,
+      });
     } catch (err) {
-      alert(
+      toast.show(
         err instanceof Error
           ? err.message
           : "No se pudo responder la solicitud de administración",
+        "error",
       );
     } finally {
       setDelegationActionLoading(null);
@@ -627,22 +752,22 @@ export function GroupPanelPage() {
   const handleRemove = async (member: GroupMember) => {
     if (!accessToken || !group || !canManageGroup) return;
 
-    const confirmed = window.confirm(
-      `¿Seguro que quieres expulsar a ${member.nombre || member.email} del grupo?`,
-    );
-
-    if (!confirmed) return;
-
     try {
+      setRemoveLoadingId(member.id);
       await groupsService.removeMember(group.id, member.id, accessToken);
 
       const refreshed = await groupsService.getMembers(group.id, accessToken);
       setMembers(refreshed.members);
       persistPanelCache({ members: refreshed.members });
+      setRemoveTarget(null);
+      toast.show("Integrante expulsado correctamente.", "success");
     } catch (err) {
-      alert(
+      toast.show(
         err instanceof Error ? err.message : "No se pudo eliminar al miembro",
+        "error",
       );
+    } finally {
+      setRemoveLoadingId(null);
     }
   };
 
@@ -831,7 +956,9 @@ export function GroupPanelPage() {
                     </p>
                     <p className="mt-1 font-heading text-2xl font-extrabold text-[#1E0A4E]">
                       {members.length}
-                      {group.maximo_miembros ? ` / ${group.maximo_miembros}` : ""}
+                      {group.maximo_miembros
+                        ? ` / ${group.maximo_miembros}`
+                        : ""}
                     </p>
                     <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
                       <div
@@ -871,7 +998,18 @@ export function GroupPanelPage() {
                   Delegación de administración pendiente
                 </p>
                 <p className="mt-1 font-body text-sm leading-relaxed text-[#8A5A00]">
-                  Esperando respuesta de {outgoingAdminDelegation.to_nombre || outgoingAdminDelegation.to_email || "el integrante"}. La solicitud expira a las {new Date(outgoingAdminDelegation.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+                  Esperando respuesta de{" "}
+                  {outgoingAdminDelegation.to_nombre ||
+                    outgoingAdminDelegation.to_email ||
+                    "el integrante"}
+                  . La solicitud expira a las{" "}
+                  {new Date(
+                    outgoingAdminDelegation.expires_at,
+                  ).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  .
                 </p>
               </div>
             )}
@@ -882,7 +1020,11 @@ export function GroupPanelPage() {
                   Tienes una solicitud para ser organizador
                 </p>
                 <p className="mt-1 font-body text-sm leading-relaxed text-[#1E40AF]">
-                  {incomingAdminDelegation.from_nombre || incomingAdminDelegation.from_email || "El organizador"} quiere delegarte la administración de este viaje. Puedes aceptarla o rechazarla desde el aviso emergente.
+                  {incomingAdminDelegation.from_nombre ||
+                    incomingAdminDelegation.from_email ||
+                    "El organizador"}{" "}
+                  quiere delegarte la administración de este viaje. Puedes
+                  aceptarla o rechazarla desde el aviso emergente.
                 </p>
               </div>
             )}
@@ -936,7 +1078,8 @@ export function GroupPanelPage() {
                     const isSelf =
                       String(member.usuario_id) ===
                       String(localUser?.id_usuario);
-                    const memberName = member.nombre || member.email || "Usuario";
+                    const memberName =
+                      member.nombre || member.email || "Usuario";
                     const memberInitials = getInitials(memberName) || "U";
 
                     return (
@@ -951,14 +1094,20 @@ export function GroupPanelPage() {
                             {memberInitials}
                           </div>
                           <div className="min-w-0">
-                            <p className="truncate font-body text-sm font-bold text-[#1E0A4E]" title={memberName}>
+                            <p
+                              className="truncate font-body text-sm font-bold text-[#1E0A4E]"
+                              title={memberName}
+                            >
                               {memberName}{" "}
                               {isSelf && (
                                 <span className="text-[#7A8799]">(tú)</span>
                               )}
                             </p>
 
-                            <p className="truncate font-body text-xs text-[#7A8799]" title={member.email || ""}>
+                            <p
+                              className="truncate font-body text-xs text-[#7A8799]"
+                              title={member.email || ""}
+                            >
                               {member.email}
                             </p>
                           </div>
@@ -985,7 +1134,7 @@ export function GroupPanelPage() {
                               </button>
 
                               <button
-                                onClick={() => handleRemove(member)}
+                                onClick={() => setRemoveTarget(member)}
                                 className="whitespace-nowrap rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-50"
                               >
                                 Expulsar
@@ -1012,7 +1161,8 @@ export function GroupPanelPage() {
                           Invitación del grupo
                         </h2>
                         <p className="mt-1 font-body text-sm text-[#7A8799]">
-                          Comparte el QR, el enlace o envía invitaciones por correo.
+                          Comparte el QR, el enlace o envía invitaciones por
+                          correo.
                         </p>
                       </div>
                       <HelpButton
@@ -1054,133 +1204,143 @@ export function GroupPanelPage() {
                       </button>
                     </div>
 
-                  {isPrivateGroup && (
-                    <div className="mt-6 rounded-3xl border border-[#FFE2A8] bg-[#FFFBF0] p-4">
-                      <div className="flex items-start justify-between gap-3">
+                    {isPrivateGroup && (
+                      <div className="mt-6 rounded-3xl border border-[#FFE2A8] bg-[#FFFBF0] p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#A86B00]">
+                              <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B]" />
+                              Privado
+                            </p>
+                            <h3 className="mt-2 font-heading text-base font-bold text-[#1E0A4E]">
+                              Solicitudes de unión
+                            </h3>
+                          </div>
+                          <span className="rounded-full bg-[#FFF4D6] px-3 py-1 text-xs font-bold text-[#A86B00]">
+                            {joinRequests.length}
+                          </span>
+                        </div>
+                        <p className="mt-2 font-body text-xs leading-relaxed text-[#7A8799]">
+                          En grupos privados, quienes usen el código quedan
+                          pendientes hasta que el administrador apruebe o
+                          rechace la solicitud.
+                        </p>
+
+                        {joinRequests.length === 0 ? (
+                          <p className="mt-3 rounded-2xl border border-[#FFE2A8] bg-white px-4 py-3 font-body text-sm font-medium text-[#A86B00]">
+                            No hay solicitudes pendientes.
+                          </p>
+                        ) : (
+                          <div className="mt-3 space-y-2">
+                            {joinRequests.map((request) => (
+                              <div
+                                key={request.id}
+                                className="rounded-2xl border border-[#FFE2A8] bg-white px-4 py-3"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-body text-sm font-medium text-[#1E0A4E]">
+                                      {request.nombre ||
+                                        request.email ||
+                                        `Usuario ${request.usuario_id}`}
+                                    </p>
+                                    {request.email && (
+                                      <p className="font-body text-xs text-[#7A8799]">
+                                        {request.email}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <span className="rounded-full bg-[#FFF4D6] px-3 py-1 text-xs font-semibold text-[#A86B00]">
+                                    Pendiente
+                                  </span>
+                                </div>
+                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={joinRequestActionLoading !== null}
+                                    onClick={() =>
+                                      handleResolveJoinRequest(
+                                        request,
+                                        "approve",
+                                      )
+                                    }
+                                    className="rounded-xl bg-[#35C56A] px-3 py-2 text-xs font-bold text-white hover:bg-[#2FB95F] disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {joinRequestActionLoading ===
+                                    `${request.id}:approve`
+                                      ? "Aprobando..."
+                                      : "Aprobar"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={joinRequestActionLoading !== null}
+                                    onClick={() =>
+                                      handleResolveJoinRequest(
+                                        request,
+                                        "reject",
+                                      )
+                                    }
+                                    className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {joinRequestActionLoading ===
+                                    `${request.id}:reject`
+                                      ? "Rechazando..."
+                                      : "Rechazar"}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="mt-6 rounded-3xl border border-[#D8C8FF] bg-[#FBF8FF] p-4">
+                      <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#A86B00]">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#F59E0B]" />
-                            Privado
+                          <p className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#7A4FD6]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#7A4FD6]" />
+                            Enviadas
                           </p>
                           <h3 className="mt-2 font-heading text-base font-bold text-[#1E0A4E]">
-                            Solicitudes de unión
+                            Invitaciones pendientes
                           </h3>
                         </div>
-                        <span className="rounded-full bg-[#FFF4D6] px-3 py-1 text-xs font-bold text-[#A86B00]">
-                          {joinRequests.length}
+                        <span className="rounded-full bg-[#F3EEFF] px-3 py-1 text-xs font-bold text-[#7A4FD6]">
+                          {pendingInvitations.length}
                         </span>
                       </div>
-                      <p className="mt-2 font-body text-xs leading-relaxed text-[#7A8799]">
-                        En grupos privados, quienes usen el código quedan pendientes hasta que el administrador apruebe o rechace la solicitud.
-                      </p>
 
-                      {joinRequests.length === 0 ? (
-                        <p className="mt-3 rounded-2xl border border-[#FFE2A8] bg-white px-4 py-3 font-body text-sm font-medium text-[#A86B00]">
-                          No hay solicitudes pendientes.
+                      {pendingInvitations.length === 0 ? (
+                        <p className="mt-3 rounded-2xl border border-[#D8C8FF] bg-white px-4 py-3 font-body text-sm font-medium text-[#7A4FD6]">
+                          Todavía no hay invitaciones pendientes.
                         </p>
                       ) : (
                         <div className="mt-3 space-y-2">
-                          {joinRequests.map((request) => (
+                          {pendingInvitations.map((invitation) => (
                             <div
-                              key={request.id}
-                              className="rounded-2xl border border-[#FFE2A8] bg-white px-4 py-3"
+                              key={invitation.id}
+                              className="flex items-center justify-between gap-3 rounded-2xl border border-[#D8C8FF] bg-white px-4 py-3"
                             >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="font-body text-sm font-medium text-[#1E0A4E]">
-                                    {request.nombre ||
-                                      request.email ||
-                                      `Usuario ${request.usuario_id}`}
-                                  </p>
-                                  {request.email && (
-                                    <p className="font-body text-xs text-[#7A8799]">
-                                      {request.email}
-                                    </p>
-                                  )}
-                                </div>
-                                <span className="rounded-full bg-[#FFF4D6] px-3 py-1 text-xs font-semibold text-[#A86B00]">
-                                  Pendiente
-                                </span>
+                              <div className="min-w-0">
+                                <p className="break-words font-body text-sm font-medium text-[#1E0A4E]">
+                                  {invitation.email}
+                                </p>
+
+                                <p className="font-body text-xs text-[#7A8799]">
+                                  Pendiente de aceptar
+                                </p>
                               </div>
-                              <div className="mt-3 grid grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  disabled={joinRequestActionLoading !== null}
-                                  onClick={() =>
-                                    handleResolveJoinRequest(request, "approve")
-                                  }
-                                  className="rounded-xl bg-[#35C56A] px-3 py-2 text-xs font-bold text-white hover:bg-[#2FB95F] disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  {joinRequestActionLoading === `${request.id}:approve`
-                                    ? "Aprobando..."
-                                    : "Aprobar"}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={joinRequestActionLoading !== null}
-                                  onClick={() =>
-                                    handleResolveJoinRequest(request, "reject")
-                                  }
-                                  className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  {joinRequestActionLoading === `${request.id}:reject`
-                                    ? "Rechazando..."
-                                    : "Rechazar"}
-                                </button>
-                              </div>
+
+                              <span className="rounded-full bg-[#FFF4D6] px-3 py-1 text-xs font-semibold text-[#A86B00]">
+                                Pendiente
+                              </span>
                             </div>
                           ))}
                         </div>
                       )}
                     </div>
-                  )}
-
-                  <div className="mt-6 rounded-3xl border border-[#D8C8FF] bg-[#FBF8FF] p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#7A4FD6]">
-                          <span className="h-1.5 w-1.5 rounded-full bg-[#7A4FD6]" />
-                          Enviadas
-                        </p>
-                        <h3 className="mt-2 font-heading text-base font-bold text-[#1E0A4E]">
-                          Invitaciones pendientes
-                        </h3>
-                      </div>
-                      <span className="rounded-full bg-[#F3EEFF] px-3 py-1 text-xs font-bold text-[#7A4FD6]">
-                        {pendingInvitations.length}
-                      </span>
-                    </div>
-
-                    {pendingInvitations.length === 0 ? (
-                      <p className="mt-3 rounded-2xl border border-[#D8C8FF] bg-white px-4 py-3 font-body text-sm font-medium text-[#7A4FD6]">
-                        Todavía no hay invitaciones pendientes.
-                      </p>
-                    ) : (
-                      <div className="mt-3 space-y-2">
-                        {pendingInvitations.map((invitation) => (
-                          <div
-                            key={invitation.id}
-                            className="flex items-center justify-between gap-3 rounded-2xl border border-[#D8C8FF] bg-white px-4 py-3"
-                          >
-                            <div className="min-w-0">
-                              <p className="break-words font-body text-sm font-medium text-[#1E0A4E]">
-                                {invitation.email}
-                              </p>
-
-                              <p className="font-body text-xs text-[#7A8799]">
-                                Pendiente de aceptar
-                              </p>
-                            </div>
-
-                            <span className="rounded-full bg-[#FFF4D6] px-3 py-1 text-xs font-semibold text-[#A86B00]">
-                              Pendiente
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                </div>
                 </div>
               )}
             </div>
@@ -1266,7 +1426,11 @@ export function GroupPanelPage() {
                 onClick={() => handleToggleRole(roleChangeTarget)}
                 className="rounded-lg bg-[#1E6FD9] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2C8BE6] disabled:opacity-60"
               >
-                {roleChangeLoading ? "Procesando..." : roleChangeTarget.rol === "admin" ? "Confirmar" : "Enviar solicitud"}
+                {roleChangeLoading
+                  ? "Procesando..."
+                  : roleChangeTarget.rol === "admin"
+                    ? "Confirmar"
+                    : "Enviar solicitud"}
               </button>
             </div>
           </div>
@@ -1280,34 +1444,93 @@ export function GroupPanelPage() {
               ¿Aceptar administración del viaje?
             </h3>
             <p className="mt-2 font-body text-sm leading-relaxed text-[#475569]">
-              {incomingAdminDelegation.from_nombre || incomingAdminDelegation.from_email || "El organizador"} quiere transferirte el rol de organizador. Si aceptas, tendrás permisos de administración y el organizador actual pasará a viajero.
+              {incomingAdminDelegation.from_nombre ||
+                incomingAdminDelegation.from_email ||
+                "El organizador"}{" "}
+              quiere transferirte el rol de organizador. Si aceptas, tendrás
+              permisos de administración y el organizador actual pasará a
+              viajero.
             </p>
             <p className="mt-2 font-body text-xs text-[#64748B]">
-              Esta solicitud expira a las {new Date(incomingAdminDelegation.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.
+              Esta solicitud expira a las{" "}
+              {new Date(incomingAdminDelegation.expires_at).toLocaleTimeString(
+                [],
+                { hour: "2-digit", minute: "2-digit" },
+              )}
+              .
             </p>
 
             <div className="mt-5 grid grid-cols-2 gap-2">
               <button
                 type="button"
                 disabled={delegationActionLoading !== null}
-                onClick={() => handleResolveAdminDelegation(incomingAdminDelegation, "reject")}
+                onClick={() =>
+                  handleResolveAdminDelegation(
+                    incomingAdminDelegation,
+                    "reject",
+                  )
+                }
                 className="rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs font-semibold text-[#1E0A4E] hover:bg-[#F8FAFC] disabled:opacity-60"
               >
-                {delegationActionLoading === `${incomingAdminDelegation.id}:reject` ? "Rechazando..." : "Rechazar"}
+                {delegationActionLoading ===
+                `${incomingAdminDelegation.id}:reject`
+                  ? "Rechazando..."
+                  : "Rechazar"}
               </button>
               <button
                 type="button"
                 disabled={delegationActionLoading !== null}
-                onClick={() => handleResolveAdminDelegation(incomingAdminDelegation, "accept")}
+                onClick={() =>
+                  handleResolveAdminDelegation(
+                    incomingAdminDelegation,
+                    "accept",
+                  )
+                }
                 className="rounded-lg bg-[#1E6FD9] px-3 py-2 text-xs font-semibold text-white hover:bg-[#2C8BE6] disabled:opacity-60"
               >
-                {delegationActionLoading === `${incomingAdminDelegation.id}:accept` ? "Aceptando..." : "Aceptar"}
+                {delegationActionLoading ===
+                `${incomingAdminDelegation.id}:accept`
+                  ? "Aceptando..."
+                  : "Aceptar"}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      <ToastContainer toasts={toast.toasts} onDismiss={toast.dismiss} />
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        title="Expulsar integrante"
+        description="Esta acción revocará su acceso al viaje y se notificará a los integrantes conectados."
+        details={
+          removeTarget ? removeTarget.nombre || removeTarget.email : undefined
+        }
+        confirmLabel="Expulsar integrante"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={removeTarget ? removeLoadingId === removeTarget.id : false}
+        onCancel={() => {
+          if (removeLoadingId === null) setRemoveTarget(null);
+        }}
+        onConfirm={() => {
+          if (removeTarget) void handleRemove(removeTarget);
+        }}
+      />
+
+      <ConfirmDialog
+        open={forcedNotice !== null}
+        title={forcedNotice?.title ?? "Aviso del viaje"}
+        description={
+          forcedNotice?.description ?? "Te regresaremos a Mis viajes."
+        }
+        confirmLabel="Ir a Mis viajes"
+        cancelLabel="Cerrar"
+        variant="warning"
+        onCancel={() => navigate("/my-trips")}
+        onConfirm={() => navigate("/my-trips")}
+      />
     </>
   );
 }

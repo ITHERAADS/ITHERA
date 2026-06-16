@@ -344,6 +344,7 @@ const createCheckoutExpense = async (data: {
         category: data.category,
         split_type: 'equitativa',
         expense_date: today,
+        created_by_user_id: data.localUserId,
       })
       .select('id')
       .single();

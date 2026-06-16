@@ -3493,13 +3493,13 @@ export function SubgroupSchedulePanel({
                           <button
                             key={suggestion.placeId || suggestion.description}
                             type="button"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() =>
+                            onMouseDown={(event) => {
+                              event.preventDefault();
                               void onSelectSuggestion(
                                 subgroupModalSlot.id,
                                 suggestion,
-                              )
-                            }
+                              );
+                            }}
                             className="block w-full rounded-xl px-4 py-3 text-left transition hover:bg-[#F8FAFC]"
                           >
                             <p className="text-sm font-semibold text-[#1E0A4E]">

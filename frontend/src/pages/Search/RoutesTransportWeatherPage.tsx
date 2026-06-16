@@ -359,8 +359,11 @@ function AutoInput({ label, value, onChange, placeholder, suggestions, onSelect 
             <button
               key={suggestion.placeId}
               type="button"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => { setFocused(false); onSelect(suggestion) }}
+              onMouseDown={(event) => {
+                event.preventDefault()
+                setFocused(false)
+                onSelect(suggestion)
+              }}
               className="w-full rounded-xl px-4 py-3 text-left transition-colors hover:bg-[#F4F8FC]"
             >
               <p className="text-sm font-semibold text-[#1E0A4E]">{suggestion.mainText}</p>

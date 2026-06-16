@@ -54,6 +54,7 @@ interface Props {
   tripEndDate?: string | null;
   onOpenBudget?: () => void;
   onOpenVault?: () => void;
+  onOpenGeneralChat?: () => void;
   socket?: Socket | null;
   isSocketConnected?: boolean;
   currentUserId?: string | null;
@@ -503,6 +504,7 @@ export function SubgroupSchedulePanel({
   editSlotRequest = null,
   focusRequest = null,
   onScheduleChanged,
+  onOpenGeneralChat,
 }: Props) {
   const { accessToken } = useAuth();
   const [slots, setSlots] = useState<SubgroupSlot[]>([]);
@@ -4369,6 +4371,14 @@ export function SubgroupSchedulePanel({
         <SubgroupChatDrawer
           open={chatSubgroup !== null}
           onClose={() => setChatSubgroup(null)}
+          onBackToGeneral={
+            onOpenGeneralChat
+              ? () => {
+                  setChatSubgroup(null);
+                  onOpenGeneralChat();
+                }
+              : undefined
+          }
           groupId={groupId}
           slotId={chatSubgroup.slotId}
           subgroupId={chatSubgroup.subgroupId}

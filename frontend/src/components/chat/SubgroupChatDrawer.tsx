@@ -20,6 +20,8 @@ interface SubgroupChatAck {
 export interface SubgroupChatDrawerProps {
   open: boolean
   onClose: () => void
+  /** Vuelve al chat general del viaje (cierra este chat de subgrupo). */
+  onBackToGeneral?: () => void
   groupId: string | null
   slotId: string | number | null
   subgroupId: string | number | null
@@ -119,6 +121,7 @@ function Avatar({
 export function SubgroupChatDrawer({
   open,
   onClose,
+  onBackToGeneral,
   groupId,
   slotId,
   subgroupId,
@@ -315,6 +318,16 @@ export function SubgroupChatDrawer({
               </span>
             </div>
           </div>
+
+          {onBackToGeneral && (
+            <button
+              onClick={onBackToGeneral}
+              className="flex items-center gap-1 rounded-lg bg-white/15 px-2.5 py-1.5 font-body text-[11px] font-semibold text-white transition-colors hover:bg-white/25"
+              aria-label="Volver al chat general del viaje"
+            >
+              <span aria-hidden="true">←</span> Chat general
+            </button>
+          )}
 
           <button
             onClick={onClose}

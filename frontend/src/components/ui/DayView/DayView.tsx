@@ -922,8 +922,8 @@ function ActivityCardConfirmed({
     String(activity.createdBy ?? "") === String(currentUserId ?? "");
   const isAdmin =
     currentUserRole === "admin" || currentUserRole === "organizador";
-  const canEdit = isOwner;
-  const canDelete = isOwner || isAdmin;
+  const canEdit = Boolean(onEdit) && isOwner;
+  const canDelete = Boolean(onDelete) && (isOwner || isAdmin);
   const routeUrl = getGoogleMapsRouteUrl(activity);
 
   return (
@@ -1092,8 +1092,8 @@ function ActivityCardPending({
     String(activity.createdBy ?? "") === String(currentUserId ?? "");
   const isAdmin =
     currentUserRole === "admin" || currentUserRole === "organizador";
-  const canEdit = isExpired ? isAdmin : isOwner;
-  const canDelete = isExpired ? false : isOwner || isAdmin;
+  const canEdit = Boolean(onEdit) && (isExpired ? isAdmin : isOwner);
+  const canDelete = Boolean(onDelete) && (isExpired ? false : isOwner || isAdmin);
   const myVote = activity.myVote ?? null;
   const routeUrl = getGoogleMapsRouteUrl(activity);
   const isCompetition = competitionSize > 1;

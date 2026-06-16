@@ -50,6 +50,10 @@ const MONTH_NAMES_ES = [
   "enero","febrero","marzo","abril","mayo","junio",
   "julio","agosto","septiembre","octubre","noviembre","diciembre",
 ];
+const TOTAL_BUDGET_INTEGER_DIGITS = 10;
+const TOTAL_BUDGET_DECIMAL_DIGITS = 2;
+const MAX_TOTAL_BUDGET = Number(`${"9".repeat(TOTAL_BUDGET_INTEGER_DIGITS)}.${"9".repeat(TOTAL_BUDGET_DECIMAL_DIGITS)}`);
+
 
 function isoFromYMD(y: number, m: number, d: number) {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -575,8 +579,9 @@ const daysBetweenISO = (startDate: string, endDate: string) => {
 
 const sanitizePositiveDecimal = (value: string) => {
   const cleaned = value.replace(/[^0-9.]/g, "");
-  const [integerPart, ...decimalParts] = cleaned.split(".");
-  const decimals = decimalParts.join("").slice(0, 2);
+  const [rawIntegerPart, ...decimalParts] = cleaned.split(".");
+  const integerPart = rawIntegerPart.slice(0, TOTAL_BUDGET_INTEGER_DIGITS);
+  const decimals = decimalParts.join("").slice(0, TOTAL_BUDGET_DECIMAL_DIGITS);
   return decimalParts.length > 0 ? `${integerPart}.${decimals}` : integerPart;
 };
 
@@ -623,6 +628,8 @@ const getValidationErrors = (form: FormData) => {
   } else if (!Number.isFinite(totalBudget) || totalBudget <= 0) {
     e.totalBudget =
       "El monto del presupuesto debe ser un número positivo mayor a cero.";
+  } else if (totalBudget > MAX_TOTAL_BUDGET) {
+    e.totalBudget = `El presupuesto máximo permitido es ${MAX_TOTAL_BUDGET.toLocaleString("es-MX")} MXN.`;
   }
 
   return e;
@@ -1134,14 +1141,13 @@ export function CreateGroupPage() {
               <div className="mt-4">
                 <InputField
                   label="Presupuesto total (MXN)"
-                  type="number"
+                  type="text"
                   placeholder="Ej: 25000"
                   value={form.totalBudget}
-                  min="0.01"
-                  step="0.01"
+                  maxLength={TOTAL_BUDGET_INTEGER_DIGITS + TOTAL_BUDGET_DECIMAL_DIGITS + 1}
                   onChange={set("totalBudget") as (v: string) => void}
                   error={errors.totalBudget}
-                  hint="Requisito obligatorio para iniciar el viaje. Debe ser mayor a cero."
+                  hint={`Máximo ${TOTAL_BUDGET_INTEGER_DIGITS} dígitos enteros y ${TOTAL_BUDGET_DECIMAL_DIGITS} decimales. Debe ser mayor a cero.`}
                 />
               </div>
             </div>

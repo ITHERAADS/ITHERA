@@ -18,6 +18,7 @@ import {
   type ContextLinkOptions,
 } from '../../services/context-links'
 import { ExpenseDraftForm } from '../budget/ExpenseDraftForm'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 
 const ACCEPTED_FILES = '.pdf,.png,.jpg,.jpeg,.webp'
 
@@ -224,6 +225,8 @@ export const DocumentVaultPanel: FC<Props> = ({
   const [editingActivityKeys, setEditingActivityKeys] = useState<string[]>([])
   const [savingLinksDocId, setSavingLinksDocId] = useState<string | null>(null)
   const [actionModal, setActionModal] = useState<VaultActionModalState>(null)
+  const [documentPendingDelete, setDocumentPendingDelete] = useState<TripDocument | null>(null)
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null)
   const [expenseFilter, setExpenseFilter] = useState('')
   const [draftExpenseDescription, setDraftExpenseDescription] = useState('')
   const [draftExpenseAmount, setDraftExpenseAmount] = useState('')
@@ -605,15 +608,41 @@ export const DocumentVaultPanel: FC<Props> = ({
     }
   }
 
-  const handleDelete = async (docId: string) => {
+  const requestDeleteDocument = (document: TripDocument) => {
     if (isReadOnly) return
-    if (!groupId || !accessToken) return
     setError(null)
+    setDocumentPendingDelete(document)
+  }
+
+  const confirmDeleteDocument = async () => {
+    if (isReadOnly) return
+    if (!groupId || !accessToken || !documentPendingDelete) return
+    const docId = documentPendingDelete.id
+    setError(null)
+    setDeletingDocumentId(docId)
     try {
       await documentsService.remove(groupId, docId, accessToken)
-      setItems((prev) => prev.filter((item) => item.id !== docId))
+      setItems((prev) => {
+        const nextItems = prev.filter((item) => item.id !== docId)
+        if (groupId) {
+          const cached = getVaultCache(String(groupId))
+          vaultDataCache.set(String(groupId), {
+            items: nextItems,
+            links: (cached?.links ?? contextLinks).filter(
+              (link) => otherEntityForDocument(link, docId) === null,
+            ),
+            options: cached?.options ?? linkOptions,
+            savedAt: Date.now(),
+          })
+        }
+        return nextItems
+      })
+      setContextLinks((prev) => prev.filter((link) => otherEntityForDocument(link, docId) === null))
+      setDocumentPendingDelete(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo eliminar el documento')
+    } finally {
+      setDeletingDocumentId(null)
     }
   }
 
@@ -898,7 +927,7 @@ export const DocumentVaultPanel: FC<Props> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => void handleDelete(item.id)}
+                        onClick={() => requestDeleteDocument(item)}
                         className="rounded-xl border border-[#FBC7C7] px-3 py-2 font-body text-xs font-semibold text-[#C03535] hover:bg-[#FFF5F5]"
                       >
                         Eliminar
@@ -912,6 +941,25 @@ export const DocumentVaultPanel: FC<Props> = ({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={documentPendingDelete !== null}
+        title="Eliminar documento"
+        description="Esta acción es irreversible. El documento se eliminará de la bóveda del viaje solo si confirmas la operación."
+        details={documentPendingDelete?.file_name ?? 'Documento seleccionado'}
+        confirmLabel="Eliminar documento"
+        cancelLabel="Conservar"
+        variant="danger"
+        loading={
+          documentPendingDelete !== null && deletingDocumentId === documentPendingDelete.id
+        }
+        onCancel={() => {
+          if (deletingDocumentId === null) setDocumentPendingDelete(null)
+        }}
+        onConfirm={() => {
+          void confirmDeleteDocument()
+        }}
+      />
 
       <ActionModal
         open={showUploadModal && !isReadOnly}

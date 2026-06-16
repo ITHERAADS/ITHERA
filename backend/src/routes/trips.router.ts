@@ -14,6 +14,7 @@ const isValidISODate = (value?: string) => Boolean(value && /^\d{4}-\d{2}-\d{2}$
 const GROUP_NAME_MAX_LENGTH = 60;
 const GROUP_DESCRIPTION_MAX_LENGTH = 300;
 const MAX_TRIP_DURATION_DAYS = 60;
+const MAX_TOTAL_BUDGET = 9999999999.99;
 
 type RouteError = Error & {
   statusCode?: number;
@@ -135,8 +136,14 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    if (!Number.isFinite(Number(presupuesto_total)) || Number(presupuesto_total) <= 0) {
+    const parsedBudget = Number(presupuesto_total);
+    if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) {
       res.status(400).json({ ok: false, error: 'ERR-23-004: El monto del presupuesto debe ser un número positivo mayor a cero' });
+      return;
+    }
+
+    if (parsedBudget > MAX_TOTAL_BUDGET) {
+      res.status(400).json({ ok: false, error: 'ERR-23-004: El presupuesto máximo permitido es 9,999,999,999.99 MXN' });
       return;
     }
 
@@ -163,7 +170,7 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
       fecha_fin,
       maximo_miembros,
       es_publico: es_publico === true,
-      presupuesto_total: Number(presupuesto_total),
+      presupuesto_total: parsedBudget,
     });
 
     res.status(201).json({ ok: true, message: 'Grupo creado correctamente', group: grupo });

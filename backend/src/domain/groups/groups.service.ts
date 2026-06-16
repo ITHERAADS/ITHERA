@@ -19,6 +19,7 @@ import * as NotificationsService from '../notifications/notifications.service';
 
 const GROUP_NAME_MAX_LENGTH = 60;
 const GROUP_DESCRIPTION_MAX_LENGTH = 300;
+const MAX_TOTAL_BUDGET = 9999999999.99;
 const MAX_TRIP_DURATION_DAYS = 60;
 
 const normalizeRequiredText = (value: unknown, fieldLabel: string, maxLength: number): string => {
@@ -863,6 +864,13 @@ export const createGroup = async (authUserId: string, payload: CreateGroupPayloa
   if (!Number.isFinite(presupuestoTotal) || presupuestoTotal <= 0) {
     throw Object.assign(
       new Error('ERR-23-004: El monto del presupuesto debe ser un número positivo mayor a cero'),
+      { statusCode: 400 }
+    );
+  }
+
+  if (presupuestoTotal > MAX_TOTAL_BUDGET) {
+    throw Object.assign(
+      new Error('ERR-23-004: El presupuesto máximo permitido es 9,999,999,999.99 MXN'),
       { statusCode: 400 }
     );
   }

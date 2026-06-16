@@ -623,7 +623,7 @@ const MapPlacesPage = () => {
               {showSuggestions && suggestions.length > 0 && (
                 <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-72 overflow-y-auto rounded-2xl border border-gray-100 bg-white p-1 shadow-2xl">
                   {suggestions.map((suggestion) => (
-                    <button key={suggestion.placeId} onMouseDown={(event) => event.preventDefault()} onClick={() => void handleSuggestion(suggestion)} className="w-full rounded-xl px-4 py-3 text-left transition-colors hover:bg-[#F4F8FC]">
+                    <button key={suggestion.placeId} onMouseDown={(event) => { event.preventDefault(); void handleSuggestion(suggestion) }} className="w-full rounded-xl px-4 py-3 text-left transition-colors hover:bg-[#F4F8FC]">
                       <p className="text-sm font-semibold text-[#1E0A4E]">{suggestion.mainText}</p>
                       <p className="text-xs text-gray-500">{suggestion.secondaryText}</p>
                     </button>

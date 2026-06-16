@@ -469,7 +469,7 @@ export function ActivityProposalModal({
       setQuickExpenseAmount('')
       setQuickExpenseDescription('')
       setQuickExpenseCategory('actividad')
-      setQuickExpenseDate(selectedActivityDate ?? todayValue())
+      setQuickExpenseDate(todayValue())
       setQuickExpensePaidBy(defaultExpensePayer)
       setQuickExpenseSplitType('equitativa')
       setQuickExpenseSplitAmounts({})
@@ -510,7 +510,7 @@ export function ActivityProposalModal({
     void hydrate()
 
     return () => { cancelled = true }
-  }, [defaultExpensePayer, editingActivity, group?.id, open, safeMemberOptions, selectedActivityDate, token])
+  }, [defaultExpensePayer, editingActivity, group?.id, open, safeMemberOptions, token])
 
   const enrichPlaceWithRoute = useCallback(async (place: EnrichedPlaceResult): Promise<EnrichedPlaceResult> => {
     const enrichedPlace = { ...place }
@@ -1220,8 +1220,10 @@ export function ActivityProposalModal({
                     <button
                       key={suggestion.placeId || suggestion.description}
                       type="button"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => void handleSelectSuggestion(suggestion)}
+                      onMouseDown={(event) => {
+                        event.preventDefault()
+                        void handleSelectSuggestion(suggestion)
+                      }}
                       className="block w-full rounded-lg px-4 py-3 text-left transition hover:bg-[#F8FAFC]"
                     >
                       <p className="font-body text-sm font-semibold text-purpleNavbar">

@@ -1105,7 +1105,7 @@ function BottomNavbar({
     },
     {
       id: "boveda",
-      label: "Bóveda",
+      label: "Archivos",
       color: "#DB2777",
       bg: "#FCE7F3",
       icon: (
@@ -1139,6 +1139,7 @@ function BottomNavbar({
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
+            aria-current={isActive ? "page" : undefined}
             className={[
               "rounded-xl px-3 py-1 font-body text-xs font-semibold transition-colors",
               isActive
@@ -1771,7 +1772,16 @@ export function DashboardPage() {
 
   const [activeDay, setActiveDay] = useState<number | null>(null);
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState(routeState?.activeTab ?? "inicio");
+  // El tab inicial puede venir del state del router o de un query param `tab`
+  // (usado por los enlaces de notificaciones para llevar al módulo relacionado).
+  const tabFromQuery = searchParams.get("tab");
+  const VALID_DASHBOARD_TABS = ["inicio", "pagar", "boveda"];
+  const [activeTab, setActiveTab] = useState(
+    routeState?.activeTab ??
+      (tabFromQuery && VALID_DASHBOARD_TABS.includes(tabFromQuery)
+        ? tabFromQuery
+        : "inicio"),
+  );
   const [dashboardView, setDashboardView] = useState<"general" | "subgrupos">(
     "general",
   );
@@ -3523,6 +3533,7 @@ export function DashboardPage() {
             tripEndDate={group?.fecha_fin ?? null}
             onOpenBudget={() => setActiveTab("pagar")}
             onOpenVault={() => setActiveTab("boveda")}
+            onOpenGeneralChat={() => setChatOpen(true)}
             socket={socket}
             isSocketConnected={isSocketConnected}
             currentUserId={

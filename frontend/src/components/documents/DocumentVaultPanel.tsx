@@ -206,6 +206,10 @@ export const DocumentVaultPanel: FC<Props> = ({
   const [items, setItems] = useState<TripDocument[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  // Lock síncrono para evitar subidas duplicadas: el estado isUploading se
+  // actualiza de forma asíncrona, así que un doble clic rápido podía disparar
+  // handleUpload dos veces antes de re-renderizar y subir el documento dos veces.
+  const uploadingRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [category, setCategory] = useState<TripDocumentCategory>('otro')
   const [activeFilter, setActiveFilter] = useState<'todos' | TripDocumentCategory>('todos')
@@ -504,6 +508,7 @@ export const DocumentVaultPanel: FC<Props> = ({
 
   const handleUpload = async (file: File | null) => {
     if (isReadOnly) return
+    if (uploadingRef.current) return
     if (!file || !groupId || !accessToken) return
     if (!notes.trim()) {
       setError('La nota es obligatoria para subir el documento a la boveda.')
@@ -529,6 +534,7 @@ export const DocumentVaultPanel: FC<Props> = ({
       setError(draftExpenseSplitError)
       return
     }
+    uploadingRef.current = true
     setIsUploading(true)
     setError(null)
     try {
@@ -594,6 +600,7 @@ export const DocumentVaultPanel: FC<Props> = ({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo subir el documento')
     } finally {
+      uploadingRef.current = false
       setIsUploading(false)
     }
   }
@@ -681,7 +688,7 @@ export const DocumentVaultPanel: FC<Props> = ({
       <div className="rounded-2xl border border-[#E2E8F0] bg-white p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl">
-            <h2 className="font-heading text-[28px] font-bold text-[#1E0A4E]">Bóveda de documentos</h2>
+            <h2 className="font-heading text-[28px] font-bold text-[#1E0A4E]">Archivos del viaje</h2>
             <p className="mt-2 font-body text-sm text-[#64748B]">
               Ten a la mano tus boletos, reservas y comprobantes para que el viaje fluya sin estar buscando entre fotos,
               chats o correos. Guarda cada archivo con una nota y, si te sirve, relaciónalo después con un gasto o una actividad.

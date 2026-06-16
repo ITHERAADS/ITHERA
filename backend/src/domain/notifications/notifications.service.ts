@@ -216,6 +216,32 @@ export const emitGroupDashboardUpdated = (
   }
 };
 
+/**
+ * Deriva un enlace de navegación (actionUrl + actionLabel) a partir del grupo y
+ * el tipo de notificación, para que al tocar la notificación el usuario llegue
+ * al módulo relacionado (finanzas, archivos o el itinerario del viaje). Si el
+ * llamador ya proporcionó un actionUrl en metadata, se respeta y no se sobrescribe.
+ */
+const buildNotificationAction = (
+  payload: CreateNotificationPayload,
+): { actionUrl?: string; actionLabel?: string } => {
+  if (payload.metadata?.actionUrl) return {};
+  if (!payload.grupoId) return {};
+
+  const base = `/dashboard?groupId=${encodeURIComponent(String(payload.grupoId))}`;
+  const tipo = payload.tipo ?? '';
+
+  if (tipo.startsWith('gasto_') || tipo.includes('finanza')) {
+    return { actionUrl: `${base}&tab=pagar`, actionLabel: 'Ver gasto' };
+  }
+  if (tipo.startsWith('documento_')) {
+    return { actionUrl: `${base}&tab=boveda`, actionLabel: 'Ver archivos' };
+  }
+  // Propuestas, votos, comentarios, vuelos, hospedajes, subgrupos, itinerario,
+  // invitaciones y solicitudes de unión se atienden desde el inicio del viaje.
+  return { actionUrl: base, actionLabel: 'Abrir viaje' };
+};
+
 export const createNotification = async (payload: CreateNotificationPayload): Promise<void> => {
   try {
     const { data: pref } = await supabase
@@ -228,6 +254,9 @@ export const createNotification = async (payload: CreateNotificationPayload): Pr
 
     if (!shouldNotifyByPreferences(payload.tipo, preferences)) return;
 
+    const action = buildNotificationAction(payload);
+    const metadata = { ...action, ...(payload.metadata ?? {}) };
+
     const { data, error } = await supabase
       .from('notificaciones')
       .insert({
@@ -238,7 +267,7 @@ export const createNotification = async (payload: CreateNotificationPayload): Pr
         mensaje: payload.mensaje,
         entidad_tipo: payload.entidadTipo ?? null,
         entidad_id: payload.entidadId ?? null,
-        metadata: payload.metadata ?? {},
+        metadata,
       })
       .select('*')
       .single();

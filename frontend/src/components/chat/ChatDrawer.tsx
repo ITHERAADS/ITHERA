@@ -148,29 +148,36 @@ export function ChatDrawer({
 
   const onlineCount = participants.filter((p) => onlineUserIds.includes(p.id)).length
 
-  // Load messages when group changes — no synchronous setState in effect body
-  useEffect(() => {
-    if (!groupId || !accessToken) return
-
-    let isMounted = true
-    void chatService
-      .getMessages(groupId, accessToken, 50)
-      .then((res) => {
-        if (isMounted) {
+  // Carga / recarga de mensajes. Se ejecuta no solo al cambiar de grupo, sino
+  // también cada vez que se abre el drawer, para traer los mensajes que el
+  // usuario se perdió mientras el chat estaba cerrado o estuvo ausente.
+  const reloadMessages = useCallback(
+    (signal?: { cancelled: boolean }) => {
+      if (!groupId || !accessToken) return
+      void chatService
+        .getMessages(groupId, accessToken, 50)
+        .then((res) => {
+          if (signal?.cancelled) return
           setMessages(res.messages)
           setChatError(null)
           setLoadedGroupId(groupId)
-        }
-      })
-      .catch((err: unknown) => {
-        if (isMounted) {
+        })
+        .catch((err: unknown) => {
+          if (signal?.cancelled) return
           setMessages([])
           setChatError(err instanceof Error ? err.message : 'No se pudo cargar el chat')
           setLoadedGroupId(groupId)
-        }
-      })
-    return () => { isMounted = false }
-  }, [groupId, accessToken])
+        })
+    },
+    [groupId, accessToken]
+  )
+
+  useEffect(() => {
+    if (!open) return
+    const signal = { cancelled: false }
+    reloadMessages(signal)
+    return () => { signal.cancelled = true }
+  }, [open, reloadMessages])
 
   // Socket: join room + all chat/presence listeners
   useEffect(() => {
@@ -195,18 +202,27 @@ export function ChatDrawer({
       setChatError(payload.message ?? 'Error de conexión del chat')
     }
 
+    // Al reconectar (p. ej. tras estar ausente), volvemos a entrar a la sala y
+    // recargamos el historial para no perder mensajes recibidos sin conexión.
+    const handleReconnect = () => {
+      socket.emit('join_room', { tripId: groupId })
+      reloadMessages()
+    }
+
     socket.on('chat_message', handleMessage)
     socket.on('presence_update', handlePresence)
     socket.on('error_event', handleError)
+    socket.on('connect', handleReconnect)
 
     return () => {
       socket.emit('leave_room', { tripId: groupId })
       socket.off('chat_message', handleMessage)
       socket.off('presence_update', handlePresence)
       socket.off('error_event', handleError)
+      socket.off('connect', handleReconnect)
       setOnlineUserIds([])
     }
-  }, [socket, groupId])
+  }, [socket, groupId, reloadMessages])
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

@@ -638,9 +638,9 @@ function DashboardNavContent({
                   {unreadCount > 0 && (
                     <button
                       onClick={(e) => { e.stopPropagation(); markAllAsRead(); }}
-                      className="text-[10px] text-gray500 hover:text-bluePrimary underline"
+                      className="text-[10px] text-gray500 hover:text-bluePrimary underline whitespace-nowrap"
                     >
-                      Marcar todas
+                      Marcar todas como leídas
                     </button>
                   )}
                   {unreadCount > 0 && (
@@ -670,7 +670,7 @@ function DashboardNavContent({
                             {formatRelativeTime(n.created_at)}
                           </span>
                         </div>
-                        <p className="font-body text-xs text-gray600 leading-snug mt-1">{n.mensaje}</p>
+                        <p className="font-body text-xs text-gray700 leading-snug mt-1">{n.mensaje}</p>
                         {formatScheduledInfo(n.metadata) && (
                           <p className="font-body text-[11px] text-[#1E6FD9] bg-[#1E6FD9]/10 rounded-md px-2 py-1 mt-2 line-clamp-2">
                             {formatScheduledInfo(n.metadata)}

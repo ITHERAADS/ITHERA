@@ -18,8 +18,10 @@ function buildDashboardPath(group?: Group | null) {
   return group?.id ? `/dashboard?groupId=${encodeURIComponent(String(group.id))}` : '/dashboard'
 }
 
-function buildSearchState(group?: Group | null) {
-  return group ? { groupId: group.id, group, activeTab: 'buscar' } : { activeTab: 'buscar' }
+type DashboardTabId = 'inicio' | 'buscar' | 'comparar' | 'mapas' | 'pagar' | 'boveda'
+
+function buildDashboardState(group?: Group | null, activeTab: DashboardTabId = 'inicio') {
+  return group ? { groupId: group.id, group, activeTab } : { activeTab }
 }
 
 function IconHome() {
@@ -54,15 +56,14 @@ function SearchBottomNavbar({ group }: { group?: Group | null }) {
   const navigate = useNavigate()
   const location = useLocation()
   const dashboardPath = buildDashboardPath(group)
-  const dashboardState = buildSearchState(group)
-  const tabs = [
-    { id: 'inicio', label: 'Inicio', icon: <IconHome />, to: dashboardPath },
-    { id: 'buscar', label: 'Vuelos y Hoteles', icon: <IconPlane />, to: '/search/flights-hotels' },
-    { id: 'guardados', label: 'Guardados', icon: <IconHistory />, to: '/search/history' },
-    { id: 'comparar', label: 'Comparar', icon: <IconCompare />, to: dashboardPath },
-    { id: 'mapas', label: 'Mapas', icon: <IconMap />, to: '/search/map-places' },
-    { id: 'pagar', label: 'Finanzas', icon: <IconMoney />, to: dashboardPath },
-    { id: 'boveda', label: 'Archivos', icon: <IconVault />, to: dashboardPath },
+    const tabs = [
+    { id: 'inicio', label: 'Inicio', icon: <IconHome />, to: dashboardPath, dashboardTab: 'inicio' as DashboardTabId },
+    { id: 'buscar', label: 'Vuelos y Hoteles', icon: <IconPlane />, to: '/search/flights-hotels', dashboardTab: 'buscar' as DashboardTabId },
+    { id: 'guardados', label: 'Guardados', icon: <IconHistory />, to: '/search/history', dashboardTab: 'buscar' as DashboardTabId },
+    { id: 'comparar', label: 'Comparar', icon: <IconCompare />, to: dashboardPath, dashboardTab: 'comparar' as DashboardTabId },
+    { id: 'mapas', label: 'Mapas', icon: <IconMap />, to: '/search/map-places', dashboardTab: 'mapas' as DashboardTabId },
+    { id: 'pagar', label: 'Finanzas', icon: <IconMoney />, to: dashboardPath, dashboardTab: 'pagar' as DashboardTabId },
+    { id: 'boveda', label: 'Archivos', icon: <IconVault />, to: dashboardPath, dashboardTab: 'boveda' as DashboardTabId },
   ]
 
   return (
@@ -80,7 +81,7 @@ function SearchBottomNavbar({ group }: { group?: Group | null }) {
             aria-current={active ? 'page' : undefined}
             onClick={() => {
               if (!tab.to) return
-              navigate(tab.to, { state: dashboardState })
+              navigate(tab.to, { state: buildDashboardState(group, tab.dashboardTab) })
             }}
             className={`rounded-lg px-3 py-1.5 font-body text-[11px] font-semibold transition-colors ${active ? 'bg-bluePrimary/10 text-bluePrimary' : 'text-gray500 hover:text-gray700'}`}
           >
@@ -160,7 +161,7 @@ export function SearchIntegratedShell({ children, group, user }: { children: Rea
         onDayChange={(dayNumber) => {
           setActiveDay(dayNumber)
           navigate(buildDashboardPath(group), {
-            state: { ...buildSearchState(group), activeTab: 'inicio', activeDay: dayNumber },
+            state: { ...buildDashboardState(group, 'inicio'), activeDay: dayNumber },
           })
         }}
         onOpenGroupPanel={() =>

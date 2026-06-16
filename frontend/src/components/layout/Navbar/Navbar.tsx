@@ -5,6 +5,7 @@ import { useAuth } from '../../../context/useAuth'
 import { useNotifications } from '../../../hooks/useNotifications'
 import { groupsService, saveCurrentGroup } from '../../../services/groups'
 import type { Group, GroupHistoryItem } from '../../../types/groups'
+import type { NotificationItem } from '../../../services/notifications'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -353,14 +354,52 @@ function readMetadataString(metadata: Record<string, unknown>, key: string): str
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
-function getNotificationAction(metadata: Record<string, unknown>): { label: string; url: string } | null {
+function getNotificationAction(notification: NotificationItem): { label: string; url: string } | null {
+  const metadata = notification.metadata ?? {}
   const actionUrl = readMetadataString(metadata, 'actionUrl')
-  if (!actionUrl) return null
-
-  return {
-    label: readMetadataString(metadata, 'actionLabel') ?? 'Abrir',
-    url: actionUrl,
+  if (actionUrl) {
+    return {
+      label: readMetadataString(metadata, 'actionLabel') ?? 'Abrir',
+      url: actionUrl,
+    }
   }
+
+  const groupId = notification.grupo_id
+  if (!groupId) return null
+
+  const baseUrl = `/dashboard?groupId=${encodeURIComponent(String(groupId))}`
+  const tipo = String(notification.tipo ?? '').toLowerCase()
+  const entidadTipo = String(notification.entidad_tipo ?? '').toLowerCase()
+
+  if (tipo.includes('gasto') || tipo.includes('finanza') || tipo.includes('presupuesto') || entidadTipo === 'expense') {
+    return { label: 'Ver finanzas', url: `${baseUrl}&tab=pagar` }
+  }
+
+  if (tipo.includes('documento') || entidadTipo === 'document') {
+    return { label: 'Ver archivos', url: `${baseUrl}&tab=boveda` }
+  }
+
+  if (tipo.includes('vuelo') || tipo.includes('hospedaje') || tipo.includes('hotel')) {
+    return { label: 'Ver propuesta', url: baseUrl }
+  }
+
+  if (
+    tipo.includes('actividad') ||
+    tipo.includes('propuesta') ||
+    tipo.includes('voto') ||
+    tipo.includes('comentario') ||
+    tipo.includes('subgrupo') ||
+    tipo.includes('itinerario') ||
+    tipo.includes('solicitud_union') ||
+    tipo.includes('invitacion') ||
+    tipo.includes('miembro') ||
+    tipo.includes('delegacion') ||
+    tipo.includes('grupo')
+  ) {
+    return { label: 'Abrir viaje', url: baseUrl }
+  }
+
+  return null
 }
 
 function getTodayIsoDate(): string {
@@ -822,7 +861,7 @@ function DashboardNavContent({
                 </div>
               ) : (
                 notifications.map((n) => {
-                  const action = getNotificationAction(n.metadata)
+                  const action = getNotificationAction(n)
 
                   return (
                     <div

@@ -132,8 +132,8 @@ export function ProposalCard({
   const isError = proposalStatus === 'error'
   const isOwner = String(activity.createdBy ?? '') === String(currentUserId ?? '')
   const isAdmin = currentUserRole === 'admin' || currentUserRole === 'organizador'
-  const canEdit = isOwner && !isBlocked
-  const canDelete = (isOwner || isAdmin) && !isBlocked
+  const canEdit = Boolean(onEdit) && isOwner && !isBlocked
+  const canDelete = Boolean(onDelete) && (isOwner || isAdmin) && !isBlocked
 
   return (
     <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden w-full">

@@ -26,8 +26,8 @@ function IconHome() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M9 22V12h6v10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
 }
 
-function IconSearch() {
-  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+function IconPlane() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5L21 16z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>
 }
 
 function IconCompare() {
@@ -57,7 +57,7 @@ function SearchBottomNavbar({ group }: { group?: Group | null }) {
   const dashboardState = buildSearchState(group)
   const tabs = [
     { id: 'inicio', label: 'Inicio', icon: <IconHome />, to: dashboardPath },
-    { id: 'buscar', label: 'Buscar', icon: <IconSearch />, to: '/search/flights-hotels' },
+    { id: 'buscar', label: 'Vuelos y Hoteles', icon: <IconPlane />, to: '/search/flights-hotels' },
     { id: 'guardados', label: 'Guardados', icon: <IconHistory />, to: '/search/history' },
     { id: 'comparar', label: 'Comparar', icon: <IconCompare />, to: dashboardPath },
     { id: 'mapas', label: 'Mapas', icon: <IconMap />, to: '/search/map-places' },

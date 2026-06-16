@@ -988,7 +988,7 @@ function BottomNavbar({
     },
     {
       id: "buscar",
-      label: "Buscar",
+      label: "Vuelos y Hoteles",
       color: "#7A4FD6",
       bg: "#F3EEFF",
       icon: (
@@ -999,12 +999,11 @@ function BottomNavbar({
           fill="none"
           aria-hidden="true"
         >
-          <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
           <path
-            d="M21 21l-4.35-4.35"
+            d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5L21 16z"
             stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
           />
         </svg>
       ),
@@ -3325,14 +3324,14 @@ export function DashboardPage() {
             event.stopPropagation();
             void openChatModal(activity);
           }}
-          className="inline-flex h-9 min-w-[86px] items-center justify-center gap-1.5 rounded-xl border border-[#CFE0FF] bg-white px-3 font-body text-xs font-semibold text-bluePrimary transition-colors hover:bg-[#EEF4FF] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 min-w-[120px] items-center justify-center gap-1.5 rounded-xl border border-[#CFE0FF] bg-white px-3 font-body text-xs font-semibold text-bluePrimary transition-colors hover:bg-[#EEF4FF] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loadingCommentsProposalId === activity.proposalId && (
             <IconSpinner size={13} />
           )}
           {loadingCommentsProposalId === activity.proposalId
             ? "Abriendo..."
-            : "Chat"}
+            : "Comentarios"}
           <span className="rounded-full bg-bluePrimary/10 px-1.5 py-0.5 text-[10px] font-bold text-bluePrimary">
             {commentsByProposal[activity.proposalId]?.length ?? 0}
           </span>
@@ -3387,6 +3386,11 @@ export function DashboardPage() {
           group={group}
           isLoading={isLoading}
           socket={socket}
+          onOpenChat={() => {
+            setChatOpen(true);
+            setChatUnread(0);
+          }}
+          chatUnreadCount={chatUnread}
           onOpenBudget={() => setActiveTab("pagar")}
           onOpenMap={() => setActiveTab("mapas")}
           isMapViewActive={activeTab === "mapas"}
@@ -4317,20 +4321,20 @@ export function DashboardPage() {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={`Chat de propuesta ${chatProposalActivity.title}`}
+            aria-label={`Comentarios de ${chatProposalActivity.title}`}
             className="fixed right-0 top-0 z-[80] flex h-full w-[420px] max-w-full flex-col bg-[#FAF9FD] shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between gap-3 bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] px-5 py-4">
               <div className="min-w-0">
                 <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
-                  Chat de propuesta
+                  Comentarios
                 </p>
                 <h3 className="mt-1 truncate font-heading text-sm font-bold text-white">
                   {chatProposalActivity.title}
                 </h3>
                 <p className="mt-0.5 font-body text-[11px] text-white/70">
-                  {isSocketConnected ? "Chat de propuesta" : "Reconectando..."}
+                  {isSocketConnected ? "Comentarios de la actividad" : "Reconectando..."}
                 </p>
               </div>
               <div className="flex items-center gap-2">

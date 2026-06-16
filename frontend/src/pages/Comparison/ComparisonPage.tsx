@@ -2019,7 +2019,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                     type="button"
                     className="absolute inset-0 cursor-default"
                     onClick={() => setOpenCommentsFor(null)}
-                    aria-label="Cerrar chat de propuesta"
+                    aria-label="Cerrar comentarios de propuesta"
                   />
 
                   <aside className="relative z-10 flex h-full w-[min(430px,calc(100vw-24px))] max-w-[430px] flex-col overflow-hidden border-l border-[#DDD6FE] bg-[#F8FAFC] shadow-2xl shadow-[#1E0A4E]/25">
@@ -2027,7 +2027,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="font-body text-xs font-extrabold uppercase tracking-[0.24em] text-white/70">
-                            Chat de propuesta
+                            Comentarios
                           </p>
                           <h3 className="mt-2 truncate font-heading text-xl font-extrabold">
                             {activeProposal?.titulo ?? "Propuesta"}
@@ -2044,7 +2044,7 @@ export function ComparisonPage({ onBack }: ComparisonPageProps) {
                         <button
                           onClick={() => setOpenCommentsFor(null)}
                           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white/75 transition-colors hover:bg-white/20 hover:text-white"
-                          aria-label="Cerrar chat"
+                          aria-label="Cerrar comentarios"
                           title="Cerrar chat"
                         >
                           <IconX size={11} />

@@ -206,6 +206,10 @@ export const DocumentVaultPanel: FC<Props> = ({
   const [items, setItems] = useState<TripDocument[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  // Lock síncrono para evitar subidas duplicadas: el estado isUploading se
+  // actualiza de forma asíncrona, así que un doble clic rápido podía disparar
+  // handleUpload dos veces antes de re-renderizar y subir el documento dos veces.
+  const uploadingRef = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [category, setCategory] = useState<TripDocumentCategory>('otro')
   const [activeFilter, setActiveFilter] = useState<'todos' | TripDocumentCategory>('todos')
@@ -504,6 +508,7 @@ export const DocumentVaultPanel: FC<Props> = ({
 
   const handleUpload = async (file: File | null) => {
     if (isReadOnly) return
+    if (uploadingRef.current) return
     if (!file || !groupId || !accessToken) return
     if (!notes.trim()) {
       setError('La nota es obligatoria para subir el documento a la boveda.')
@@ -529,6 +534,7 @@ export const DocumentVaultPanel: FC<Props> = ({
       setError(draftExpenseSplitError)
       return
     }
+    uploadingRef.current = true
     setIsUploading(true)
     setError(null)
     try {
@@ -594,6 +600,7 @@ export const DocumentVaultPanel: FC<Props> = ({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo subir el documento')
     } finally {
+      uploadingRef.current = false
       setIsUploading(false)
     }
   }

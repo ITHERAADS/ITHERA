@@ -1441,6 +1441,14 @@ const FlightHotelSearchPage = () => {
               Busca, compara y propone opciones para tu itinerario
             </p>
 
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-white/25 bg-white/10 px-4 py-2.5 backdrop-blur-sm">
+              <span aria-hidden="true" className="mt-0.5 text-base leading-none">💡</span>
+              <p className="font-body text-xs leading-relaxed text-white/90">
+                <span className="font-semibold">Proponer no reserva ni cobra nada.</span>{" "}
+                Tus compañeros podrán ver la opción y votar antes de confirmarla.
+              </p>
+            </div>
+
             <div className="mt-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="inline-flex overflow-hidden rounded-xl bg-white/15 p-1 backdrop-blur-sm">
                 <button
@@ -1989,7 +1997,7 @@ Debe ser posterior al check-in y puede quedar hasta 3 día(s) después del fin d
                           </button>
                           <p className="mt-2 text-[10px] text-gray-400">
                             {currentGroup?.id
-                              ? "Se guarda en Comparar/Propuestas"
+                              ? "Aparecerá como propuesta para que el grupo vote"
                               : "Sin grupo actual: solo selección local"}
                           </p>
                         </div>

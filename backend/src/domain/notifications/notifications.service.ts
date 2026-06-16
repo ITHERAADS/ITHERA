@@ -231,15 +231,32 @@ const buildNotificationAction = (
   const base = `/dashboard?groupId=${encodeURIComponent(String(payload.grupoId))}`;
   const tipo = payload.tipo ?? '';
 
-  if (tipo.startsWith('gasto_') || tipo.includes('finanza')) {
-    return { actionUrl: `${base}&tab=pagar`, actionLabel: 'Ver gasto' };
+  if (tipo.includes('gasto') || tipo.includes('finanza') || tipo.includes('presupuesto')) {
+    return { actionUrl: `${base}&tab=pagar`, actionLabel: 'Ver finanzas' };
   }
-  if (tipo.startsWith('documento_')) {
+  if (tipo.includes('documento')) {
     return { actionUrl: `${base}&tab=boveda`, actionLabel: 'Ver archivos' };
   }
-  // Propuestas, votos, comentarios, vuelos, hospedajes, subgrupos, itinerario,
-  // invitaciones y solicitudes de unión se atienden desde el inicio del viaje.
-  return { actionUrl: base, actionLabel: 'Abrir viaje' };
+  if (tipo.includes('vuelo') || tipo.includes('hospedaje') || tipo.includes('hotel')) {
+    return { actionUrl: base, actionLabel: 'Ver propuesta' };
+  }
+  if (
+    tipo.includes('actividad') ||
+    tipo.includes('propuesta') ||
+    tipo.includes('voto') ||
+    tipo.includes('comentario') ||
+    tipo.includes('subgrupo') ||
+    tipo.includes('itinerario') ||
+    tipo.includes('solicitud_union') ||
+    tipo.includes('invitacion') ||
+    tipo.includes('miembro') ||
+    tipo.includes('delegacion') ||
+    tipo.includes('grupo')
+  ) {
+    return { actionUrl: base, actionLabel: 'Abrir viaje' };
+  }
+
+  return {};
 };
 
 export const createNotification = async (payload: CreateNotificationPayload): Promise<void> => {

@@ -688,7 +688,7 @@ export const DocumentVaultPanel: FC<Props> = ({
       <div className="rounded-2xl border border-[#E2E8F0] bg-white p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl">
-            <h2 className="font-heading text-[28px] font-bold text-[#1E0A4E]">Bóveda de documentos</h2>
+            <h2 className="font-heading text-[28px] font-bold text-[#1E0A4E]">Archivos del viaje</h2>
             <p className="mt-2 font-body text-sm text-[#64748B]">
               Ten a la mano tus boletos, reservas y comprobantes para que el viaje fluya sin estar buscando entre fotos,
               chats o correos. Guarda cada archivo con una nota y, si te sirve, relaciónalo después con un gasto o una actividad.

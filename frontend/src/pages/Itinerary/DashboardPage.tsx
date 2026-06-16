@@ -965,7 +965,7 @@ function BottomNavbar({
     },
     {
       id: "boveda",
-      label: "Bóveda",
+      label: "Archivos",
       icon: (
         <svg
           width="18"
@@ -990,16 +990,17 @@ function BottomNavbar({
     : tabs;
 
   return (
-    <div className="flex h-14 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4">
+    <div className="flex h-16 shrink-0 items-center justify-around border-t-2 border-bluePrimary/20 bg-white px-4 shadow-[0_-2px_8px_rgba(30,111,217,0.06)]">
       {visibleTabs.map((tab) => {
         const isActive = tab.id === activeTab;
         return (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
+            aria-current={isActive ? "page" : undefined}
             className={[
-              "rounded-lg px-3 py-1 font-body text-[10px] font-medium transition-colors",
-              isActive ? "text-bluePrimary" : "text-gray500 hover:text-gray700",
+              "rounded-lg px-3 py-1.5 font-body text-[11px] font-semibold transition-colors",
+              isActive ? "bg-bluePrimary/10 text-bluePrimary" : "text-gray500 hover:text-gray700",
             ].join(" ")}
           >
             <span className="flex flex-col items-center gap-0.5">
@@ -1539,7 +1540,16 @@ export function DashboardPage() {
 
   const [activeDay, setActiveDay] = useState<number | null>(null);
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState(routeState?.activeTab ?? "inicio");
+  // El tab inicial puede venir del state del router o de un query param `tab`
+  // (usado por los enlaces de notificaciones para llevar al módulo relacionado).
+  const tabFromQuery = searchParams.get("tab");
+  const VALID_DASHBOARD_TABS = ["inicio", "pagar", "boveda"];
+  const [activeTab, setActiveTab] = useState(
+    routeState?.activeTab ??
+      (tabFromQuery && VALID_DASHBOARD_TABS.includes(tabFromQuery)
+        ? tabFromQuery
+        : "inicio"),
+  );
   const [dashboardView, setDashboardView] = useState<"general" | "subgrupos">(
     "general",
   );
@@ -3167,6 +3177,7 @@ export function DashboardPage() {
             tripEndDate={group?.fecha_fin ?? null}
             onOpenBudget={() => setActiveTab("pagar")}
             onOpenVault={() => setActiveTab("boveda")}
+            onOpenGeneralChat={() => setChatOpen(true)}
             socket={socket}
             isSocketConnected={isSocketConnected}
             currentUserId={

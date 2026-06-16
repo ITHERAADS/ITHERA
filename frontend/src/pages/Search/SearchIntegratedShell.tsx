@@ -54,22 +54,23 @@ function SearchBottomNavbar({ group }: { group?: Group | null }) {
     { id: 'comparar', label: 'Comparar', icon: <IconCompare />, to: dashboardPath },
     { id: 'mapas', label: 'Mapas', icon: <IconMap />, to: '/search/map-places' },
     { id: 'pagar', label: 'Finanzas', icon: <IconMoney />, to: dashboardPath },
-    { id: 'boveda', label: 'Bóveda', icon: <IconVault />, to: dashboardPath },
+    { id: 'boveda', label: 'Archivos', icon: <IconVault />, to: dashboardPath },
   ]
 
   return (
-    <div className="flex h-14 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4">
+    <div className="flex h-16 shrink-0 items-center justify-around border-t-2 border-bluePrimary/20 bg-white px-4 shadow-[0_-2px_8px_rgba(30,111,217,0.06)]">
       {tabs.map((tab) => {
         const active = tab.id === 'buscar'
         return (
           <button
             key={tab.id}
             type="button"
+            aria-current={active ? 'page' : undefined}
             onClick={() => {
               if (!tab.to) return
               navigate(tab.to, { state: dashboardState })
             }}
-            className={`rounded-lg px-3 py-1 font-body text-[10px] font-medium transition-colors ${active ? 'text-bluePrimary' : 'text-gray500 hover:text-gray700'}`}
+            className={`rounded-lg px-3 py-1.5 font-body text-[11px] font-semibold transition-colors ${active ? 'bg-bluePrimary/10 text-bluePrimary' : 'text-gray500 hover:text-gray700'}`}
           >
             <span className="flex flex-col items-center gap-0.5">{tab.icon}{tab.label}</span>
           </button>

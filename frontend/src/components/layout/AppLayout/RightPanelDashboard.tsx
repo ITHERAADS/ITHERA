@@ -168,6 +168,8 @@ export function RightPanelDashboard({
   onOpenBudget,
   onOpenGroupPanel,
   onOpenMap,
+  onOpenChat,
+  chatUnreadCount = 0,
   isMapViewActive = false,
   totalBudget,
   committedBudget,
@@ -179,6 +181,8 @@ export function RightPanelDashboard({
   onOpenBudget?: () => void
   onOpenGroupPanel?: () => void
   onOpenMap?: () => void
+  onOpenChat?: () => void
+  chatUnreadCount?: number
   isMapViewActive?: boolean
   totalBudget?: number
   committedBudget?: number
@@ -352,6 +356,32 @@ export function RightPanelDashboard({
 
   return (
     <>
+      {/* Chat del grupo — acceso destacado */}
+      {onOpenChat && (
+        <section className="shrink-0 px-1 pb-1">
+          <button
+            type="button"
+            onClick={onOpenChat}
+            className="group relative flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-[#1E0A4E] to-[#7A4FD6] px-4 py-3.5 text-left text-white shadow-md transition-transform hover:scale-[1.01]"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/20">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span className="flex-1 min-w-0">
+              <span className="block font-heading text-sm font-bold leading-tight">Chat del grupo</span>
+              <span className="block font-body text-[11px] text-white/75">Coordina con todos en tiempo real</span>
+            </span>
+            {chatUnreadCount > 0 && (
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[#35C56A] px-1.5 font-body text-xs font-bold text-white">
+                {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
+              </span>
+            )}
+          </button>
+        </section>
+      )}
+
       {/* Participants */}
       <section className="shrink-0">
         <SectionDivider label="Participantes" color="#1E6FD9" background="#EEF4FF" />

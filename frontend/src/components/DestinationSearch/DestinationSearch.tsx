@@ -156,7 +156,13 @@ export function DestinationSearch({
             <button
               key={suggestion.placeId || suggestion.description}
               type="button"
-              onClick={() => handleSelectSuggestion(suggestion)}
+              // Usamos onMouseDown + preventDefault para que la selección ocurra
+              // antes del onBlur del input. Con onClick, el blur cerraba el
+              // dropdown antes de registrar el clic y obligaba a hacer doble clic.
+              onMouseDown={(event) => {
+                event.preventDefault()
+                handleSelectSuggestion(suggestion)
+              }}
               className="block w-full border-b border-[#F1F5F9] px-4 py-3 text-left transition hover:bg-[#F8FAFC] last:border-b-0"
             >
               <p className="text-sm font-semibold text-[#1E0A4E]">
@@ -167,6 +173,9 @@ export function DestinationSearch({
               </p>
             </button>
           ))}
+          <p className="bg-[#F8FAFC] px-4 py-2 text-[11px] text-[#7A8799]">
+            Toca una opción de la lista para confirmar tu destino.
+          </p>
         </div>
       )}
 

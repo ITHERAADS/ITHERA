@@ -160,6 +160,52 @@ function roundedCoord(value?: number): string {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(4) : '';
 }
 
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function distanceMetersBetween(
+  originLat?: number,
+  originLng?: number,
+  destinationLat?: number | null,
+  destinationLng?: number | null,
+): number | null {
+  if (
+    originLat === undefined ||
+    originLng === undefined ||
+    destinationLat == null ||
+    destinationLng == null ||
+    !Number.isFinite(originLat) ||
+    !Number.isFinite(originLng) ||
+    !Number.isFinite(destinationLat) ||
+    !Number.isFinite(destinationLng)
+  ) {
+    return null;
+  }
+
+  const earthRadiusMeters = 6371000;
+  const deltaLat = toRadians(destinationLat - originLat);
+  const deltaLng = toRadians(destinationLng - originLng);
+  const lat1 = toRadians(originLat);
+  const lat2 = toRadians(destinationLat);
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(earthRadiusMeters * c);
+}
+
+function sortPlacesByProximity(places: PlaceResult[], latitude?: number, longitude?: number): PlaceResult[] {
+  if (latitude === undefined || longitude === undefined) return places;
+
+  return places.slice().sort((left, right) => {
+    const leftDistance = distanceMetersBetween(latitude, longitude, left.latitude, left.longitude) ?? Infinity;
+    const rightDistance = distanceMetersBetween(latitude, longitude, right.latitude, right.longitude) ?? Infinity;
+    return leftDistance - rightDistance;
+  });
+}
+
 async function resolvePhotoUrl(photoName?: string | null): Promise<string | null> {
   if (!photoName) return null;
 
@@ -367,7 +413,7 @@ function buildTextSearchBody(params: {
   longitude?: number;
   radius?: number;
   maxResultCount?: number;
-}, useLocationBias: boolean): Record<string, unknown> {
+}, locationMode: 'restriction' | 'bias' | 'none'): Record<string, unknown> {
   const body: Record<string, unknown> = {
     textQuery: params.textQuery,
     languageCode: 'es-MX',
@@ -375,8 +421,8 @@ function buildTextSearchBody(params: {
     maxResultCount: params.maxResultCount ?? 10,
   };
 
-  if (useLocationBias && params.latitude !== undefined && params.longitude !== undefined) {
-    body.locationBias = {
+  if (locationMode !== 'none' && params.latitude !== undefined && params.longitude !== undefined) {
+    body[locationMode === 'restriction' ? 'locationRestriction' : 'locationBias'] = {
       circle: {
         center: {
           latitude: params.latitude,
@@ -408,25 +454,31 @@ export async function searchPlacesByText(params: {
   const cached = getCache(textSearchCache, cacheKey);
   if (cached !== null) return cached;
 
-  const localizedQuery = params.latitude !== undefined && params.longitude !== undefined
-    ? `${normalizedQuery} cerca del destino`
-    : normalizedQuery;
+  const hasLocation = params.latitude !== undefined && params.longitude !== undefined;
+  const attempts: Array<'restriction' | 'bias' | 'none'> = hasLocation
+    ? ['restriction', 'bias', 'none']
+    : ['none'];
 
-  try {
-    const response = await googleTextSearchPlaces<GoogleTextSearchResponse>(
-      buildTextSearchBody({ ...params, textQuery: localizedQuery }, true)
-    );
-    const places = await mapGooglePlacesResponse(response);
-    if (places.length > 0) return setCache(textSearchCache, cacheKey, places);
-  } catch {
-    // Si Google rechaza el sesgo por ubicación o la consulta genérica falla, hacemos un segundo intento sin filtro.
+  for (const mode of attempts) {
+    try {
+      const response = await googleTextSearchPlaces<GoogleTextSearchResponse>(
+        buildTextSearchBody({ ...params, textQuery: normalizedQuery }, mode),
+      );
+      const places = sortPlacesByProximity(
+        await mapGooglePlacesResponse(response),
+        params.latitude,
+        params.longitude,
+      );
+
+      if (places.length > 0) {
+        return setCache(textSearchCache, cacheKey, places);
+      }
+    } catch {
+      // Se intenta el siguiente modo para mantener resiliencia ante restricciones rechazadas por la API.
+    }
   }
 
-  const fallbackResponse = await googleTextSearchPlaces<GoogleTextSearchResponse>(
-    buildTextSearchBody({ ...params, textQuery: normalizedQuery }, false)
-  );
-
-  return setCache(textSearchCache, cacheKey, await mapGooglePlacesResponse(fallbackResponse));
+  return setCache(textSearchCache, cacheKey, []);
 }
 
 

@@ -1,3 +1,5 @@
+import { supabase } from "../lib/supabase";
+
 const API_URL = import.meta.env.VITE_API_URL as string;
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -53,6 +55,33 @@ export function isNetworkError(err: unknown): boolean {
   );
 }
 
+/**
+ * Obtiene un access token fresco desde Supabase. Supabase mantiene la sesión
+ * con autoRefreshToken activo, por lo que getSession() devuelve un token
+ * renovado cuando el anterior expiró. Si la sesión está vencida, forzamos un
+ * refresh explícito. Devuelve null si no hay sesión recuperable.
+ *
+ * Esto resuelve el caso en que el access token guardado en memoria/estado de la
+ * app queda obsoleto durante sesiones largas (>1h) y provoca respuestas 401
+ * "Token inválido o expirado" en acciones como enviar invitaciones.
+ */
+async function getFreshToken(previousToken?: string): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    let token = data.session?.access_token ?? null;
+
+    // Si getSession devolvió el mismo token que ya falló, forzamos refresh.
+    if (!token || token === previousToken) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      token = refreshed.session?.access_token ?? token;
+    }
+
+    return token && token !== previousToken ? token : null;
+  } catch {
+    return null;
+  }
+}
+
 async function parseResponseBody(response: Response): Promise<ParsedBody> {
   const contentType = response.headers.get("content-type") ?? "";
   const isJson = contentType.toLowerCase().includes("application/json");
@@ -96,6 +125,7 @@ async function request<T>(
   method: HttpMethod,
   body?: unknown,
   token?: string,
+  isRetry = false,
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -110,6 +140,16 @@ async function request<T>(
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+
+  // Reintento automático ante token expirado: si la petición venía autenticada
+  // y el backend responde 401, intentamos obtener un token fresco de Supabase y
+  // repetimos la llamada una sola vez.
+  if (response.status === 401 && token && !isRetry) {
+    const freshToken = await getFreshToken(token);
+    if (freshToken) {
+      return request<T>(path, method, body, freshToken, true);
+    }
+  }
 
   const parsed = await parseResponseBody(response);
 
@@ -130,6 +170,7 @@ async function upload<T>(
   path: string,
   formData: FormData,
   token?: string,
+  isRetry = false,
 ): Promise<T> {
   const headers: Record<string, string> = {};
 
@@ -142,6 +183,13 @@ async function upload<T>(
     headers,
     body: formData,
   });
+
+  if (response.status === 401 && token && !isRetry) {
+    const freshToken = await getFreshToken(token);
+    if (freshToken) {
+      return upload<T>(path, formData, freshToken, true);
+    }
+  }
 
   const parsed = await parseResponseBody(response);
 

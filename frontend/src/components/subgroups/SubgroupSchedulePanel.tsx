@@ -1709,6 +1709,44 @@ export function SubgroupSchedulePanel({
       return;
     }
 
+    // Validamos el gasto rápido ANTES de crear nada en el backend. Antes estas
+    // validaciones corrían dentro de runAction, después de crear el subgrupo y
+    // la actividad, así que un error en el gasto dejaba datos huérfanos y al
+    // usuario con la sensación de que se borró el formulario / hubo que repetir.
+    {
+      const shouldCreateExpense =
+        draft.quickExpenseAmount.trim().length > 0 ||
+        draft.quickExpenseDescription.trim().length > 0;
+      if (shouldCreateExpense) {
+        const quickExpenseValue = Number(draft.quickExpenseAmount);
+        const payerId =
+          draft.quickExpensePaidBy ||
+          currentUserId ||
+          (myUserId != null ? String(myUserId) : null);
+        if (!payerId) {
+          setError("No se encontro tu usuario para registrar el gasto rapido.");
+          return;
+        }
+        if (!Number.isFinite(quickExpenseValue) || quickExpenseValue <= 0) {
+          setError("El monto del gasto rapido debe ser mayor a 0.");
+          return;
+        }
+        if (!draft.quickExpenseDescription.trim()) {
+          setError("La descripcion del gasto es obligatoria.");
+          return;
+        }
+        if ((draft.quickExpenseMemberIds ?? []).length === 0) {
+          setError("Selecciona al menos una persona para el gasto.");
+          return;
+        }
+        const splitError = getDraftExpenseSplitError(draft);
+        if (splitError) {
+          setError(splitError);
+          return;
+        }
+      }
+    }
+
     await runAction(async () => {
       const response = await subgroupScheduleService.createSubgroup(
         groupId,

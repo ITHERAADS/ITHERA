@@ -170,6 +170,40 @@ function Toggle({
   )
 }
 
+type TravelStats = {
+  tripsAsAdmin: number
+  tripsAsTraveler: number
+  acceptedProposals: number
+  totalSpent: number
+  countriesVisited: number
+  destinations: string[]
+  recentTrips: Array<{
+    id: number
+    nombre: string
+    destino: string | null
+    estado: string | null
+    fecha_inicio: string | null
+    fecha_fin: string | null
+    rol: string
+  }>
+}
+
+function formatMoney(value: number): string {
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(value) ? value : 0)
+}
+
+function formatTripDateRange(start?: string | null, end?: string | null): string {
+  if (!start && !end) return 'Fechas sin definir'
+  const formatter = new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
+  const startText = start ? formatter.format(new Date(`${start}T00:00:00`)) : 'Inicio sin definir'
+  const endText = end ? formatter.format(new Date(`${end}T00:00:00`)) : 'Fin sin definir'
+  return `${startText} - ${endText}`
+}
+
 // ── ProfilePage ───────────────────────────────────────────────────────────────
 
 export function ProfilePage() {
@@ -185,6 +219,37 @@ export function ProfilePage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [travelStats, setTravelStats] = useState<TravelStats | null>(null)
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [statsError, setStatsError] = useState('')
+  const [statsExpanded, setStatsExpanded] = useState(false)
+
+  useEffect(() => {
+    if (!accessToken) return
+
+    let cancelled = false
+    setStatsLoading(true)
+    setStatsError('')
+
+    apiClient
+      .get<{ ok: boolean; stats: TravelStats }>('/auth/me/stats', accessToken)
+      .then((response) => {
+        if (!cancelled) setTravelStats(response.stats)
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setStatsError(error instanceof Error ? error.message : 'No se pudieron cargar tus estadísticas.')
+          setTravelStats(null)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setStatsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [accessToken])
 
   const handleDeleteAccount = async () => {
     if (!accessToken) return
@@ -557,6 +622,114 @@ export function ProfilePage() {
               </button>
             )}
           </div>
+
+          {/* ── Travel statistics ─────────────────────────────────────────────── */}
+          <section className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setStatsExpanded((current) => !current)}
+              className="w-full px-6 py-4 flex items-center justify-between gap-3 text-left transition-colors hover:bg-[#F8FAFC]"
+              aria-expanded={statsExpanded}
+              aria-controls="travel-statistics-panel"
+            >
+              <div>
+                <h2 className="font-heading font-bold text-[#1E0A4E] text-base">Mis estadísticas de viaje</h2>
+                <p className="mt-0.5 font-body text-xs text-[#64748B]">
+                  Resumen acumulado de tus viajes, propuestas aceptadas y gasto registrado.
+                </p>
+              </div>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#EEF4FF] text-[#1E6FD9]">
+                <IconChevron open={statsExpanded} />
+              </span>
+            </button>
+            {statsExpanded && (
+              <div id="travel-statistics-panel" className="border-t border-[#E2E8F0] px-6 py-5">
+                {statsLoading ? (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {[0, 1, 2, 3].map((item) => (
+                      <div key={item} className="h-24 animate-pulse rounded-2xl bg-[#F1F5F9]" />
+                    ))}
+                  </div>
+                ) : statsError ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-body text-sm text-red-700">
+                    {statsError}
+                  </div>
+                ) : !travelStats || (travelStats.tripsAsAdmin + travelStats.tripsAsTraveler === 0) ? (
+                  <div className="rounded-2xl border border-dashed border-[#D7DEEA] bg-[#F8FAFC] px-4 py-8 text-center">
+                    <p className="font-body text-sm font-semibold text-[#1E0A4E]">Aún no tienes estadísticas.</p>
+                    <p className="mt-1 font-body text-xs text-[#64748B]">
+                      Crea o únete a tu primer viaje para empezar a construir tu historial.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/my-trips')}
+                      className="mt-4 rounded-xl bg-[#1E6FD9] px-4 py-2 font-body text-sm font-semibold text-white transition hover:bg-[#1a5fc2]"
+                    >
+                      Ir a mis viajes
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
+                        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#64748B]">Como Admin</p>
+                        <p className="mt-2 font-heading text-2xl font-extrabold text-[#1E0A4E]">{travelStats.tripsAsAdmin}</p>
+                      </div>
+                      <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
+                        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#64748B]">Como Viajero</p>
+                        <p className="mt-2 font-heading text-2xl font-extrabold text-[#1E0A4E]">{travelStats.tripsAsTraveler}</p>
+                      </div>
+                      <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
+                        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#64748B]">Propuestas aceptadas</p>
+                        <p className="mt-2 font-heading text-2xl font-extrabold text-[#1E0A4E]">{travelStats.acceptedProposals}</p>
+                      </div>
+                      <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-4">
+                        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#64748B]">Gasto registrado</p>
+                        <p className="mt-2 font-heading text-xl font-extrabold text-[#1E0A4E]">{formatMoney(travelStats.totalSpent)}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                      <div className="rounded-2xl border border-[#E2E8F0] px-4 py-4">
+                        <p className="font-body text-sm font-semibold text-[#1E0A4E]">Destinos registrados</p>
+                        <p className="mt-1 font-body text-xs text-[#64748B]">
+                          {travelStats.countriesVisited} destino(s) detectado(s) en tu historial.
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {travelStats.destinations.slice(0, 6).map((destination) => (
+                            <span key={destination} className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-xs font-semibold text-[#1E6FD9]">
+                              {destination}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="rounded-2xl border border-[#E2E8F0] px-4 py-4">
+                        <p className="font-body text-sm font-semibold text-[#1E0A4E]">Viajes recientes</p>
+                        <div className="mt-3 divide-y divide-[#E2E8F0]">
+                          {travelStats.recentTrips.length === 0 ? (
+                            <p className="py-3 font-body text-sm text-[#64748B]">Sin viajes recientes.</p>
+                          ) : (
+                            travelStats.recentTrips.map((trip) => (
+                              <div key={`${trip.id}-${trip.rol}`} className="py-3 first:pt-0 last:pb-0">
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="font-body text-sm font-semibold text-[#1E0A4E]">{trip.nombre}</p>
+                                  <span className="rounded-full bg-[#F1F5F9] px-2.5 py-1 font-body text-[11px] font-semibold text-[#64748B]">
+                                    {trip.rol}
+                                  </span>
+                                </div>
+                                <p className="mt-0.5 font-body text-xs text-[#64748B]">{trip.destino || 'Destino sin definir'}</p>
+                                <p className="mt-0.5 font-body text-[11px] text-[#94A3B8]">{formatTripDateRange(trip.fecha_inicio, trip.fecha_fin)}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
 
           {/* ── Personal data ────────────────────────────────────────────────── */}
           <section className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">

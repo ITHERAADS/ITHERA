@@ -79,6 +79,20 @@ type EnrichedPlaceResult = PlaceResult & RoutePreview;
 
 type EnrichedPlaceAutocompleteResult = PlaceAutocompleteResult & RoutePreview;
 
+function placeResultToAutocompleteSuggestion(place: EnrichedPlaceResult): EnrichedPlaceAutocompleteResult | null {
+  if (!place.id) return null;
+  return {
+    placeId: place.id,
+    description: [place.name, place.formattedAddress].filter(Boolean).join(' · ') || place.id,
+    mainText: place.name || 'Lugar sin nombre',
+    secondaryText: place.formattedAddress || 'Direccion no disponible',
+    routeDistanceText: place.routeDistanceText,
+    routeDurationText: place.routeDurationText,
+    routeDistanceMeters: place.routeDistanceMeters,
+    routeDurationSeconds: place.routeDurationSeconds,
+  };
+}
+
 type ActivityDraft = {
   query: string;
   description: string;
@@ -985,35 +999,6 @@ export function SubgroupSchedulePanel({
       return enrichedPlace;
     },
     [accessToken, routeOrigin],
-  );
-
-  const enrichAutocompleteSuggestionWithRoute = useCallback(
-    async (suggestion: PlaceAutocompleteResult): Promise<EnrichedPlaceAutocompleteResult> => {
-      if (!accessToken || !routeOrigin || !suggestion.placeId) {
-        return suggestion;
-      }
-
-      try {
-        const detailResponse = await mapsService.getPlaceDetails(
-          suggestion.placeId,
-          accessToken,
-        );
-        const place = detailResponse.data;
-        if (!place) return suggestion;
-
-        const enrichedPlace = await enrichPlaceWithRoute(place);
-        return {
-          ...suggestion,
-          routeDistanceText: enrichedPlace.routeDistanceText ?? null,
-          routeDurationText: enrichedPlace.routeDurationText ?? null,
-          routeDistanceMeters: enrichedPlace.routeDistanceMeters ?? null,
-          routeDurationSeconds: enrichedPlace.routeDurationSeconds ?? null,
-        };
-      } catch {
-        return suggestion;
-      }
-    },
-    [accessToken, enrichPlaceWithRoute, routeOrigin],
   );
 
   const buildEmptyDraft = useCallback(
@@ -2273,17 +2258,30 @@ export function SubgroupSchedulePanel({
         }
 
         setActivityDraft(slotId, { suggestionsLoading: true });
-        const response = await mapsService.autocompletePlaces(
-          trimmedQuery,
-          accessToken,
+        const response = await mapsService.searchPlacesByText(
           {
+            textQuery: trimmedQuery,
             latitude: routeOrigin?.lat,
             longitude: routeOrigin?.lng,
             radius: PLACE_SEARCH_RADIUS_METERS,
+            maxResultCount: 8,
           },
+          accessToken,
         );
-        const rawSuggestions = response.data ?? [];
-        const nextSuggestions: EnrichedPlaceAutocompleteResult[] = rawSuggestions.slice(0, 6);
+        const places: EnrichedPlaceResult[] = routeOrigin
+          ? await Promise.all(
+              (response.data ?? []).slice(0, 8).map((place) => enrichPlaceWithRoute(place)),
+            )
+          : (response.data ?? []).slice(0, 8);
+        places.sort(
+          (left, right) =>
+            (left.routeDistanceMeters ?? Infinity) -
+            (right.routeDistanceMeters ?? Infinity),
+        );
+        const nextSuggestions = places
+          .map((place) => placeResultToAutocompleteSuggestion(place))
+          .filter((suggestion): suggestion is EnrichedPlaceAutocompleteResult => Boolean(suggestion))
+          .slice(0, 6);
         placeAutocompleteCache.set(autocompleteCacheKey, {
           items: nextSuggestions,
           savedAt: Date.now(),
@@ -2294,31 +2292,6 @@ export function SubgroupSchedulePanel({
           showSuggestions: nextSuggestions.length > 0,
           suggestionsLoading: false,
         });
-
-        if (routeOrigin && nextSuggestions.length > 0) {
-          void Promise.all(
-            nextSuggestions
-              .slice(0, 4)
-              .map((suggestion) => enrichAutocompleteSuggestionWithRoute(suggestion)),
-          ).then((enrichedSuggestions) => {
-            if (cancelled) return;
-            const mergedSuggestions = nextSuggestions.map((suggestion) => {
-              const enriched = enrichedSuggestions.find(
-                (item) => item.placeId === suggestion.placeId,
-              );
-              return enriched ?? suggestion;
-            });
-            placeAutocompleteCache.set(autocompleteCacheKey, {
-              items: mergedSuggestions,
-              savedAt: Date.now(),
-            });
-            setActivityDraft(slotId, {
-              suggestions: mergedSuggestions,
-              showSuggestions: mergedSuggestions.length > 0,
-              suggestionsLoading: false,
-            });
-          });
-        }
       } catch {
         if (cancelled) return;
         setActivityDraft(slotId, {
@@ -2336,7 +2309,7 @@ export function SubgroupSchedulePanel({
   }, [
     accessToken,
     buildEmptyDraft,
-    enrichAutocompleteSuggestionWithRoute,
+    enrichPlaceWithRoute,
     routeOrigin,
     setActivityDraft,
     subgroupModal?.mode,

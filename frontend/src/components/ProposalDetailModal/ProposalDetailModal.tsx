@@ -336,7 +336,7 @@ export function ProposalDetailModal({
       .then((res) => setComments(res.comments ?? []))
       .catch(() => setComments([]))
       .finally(() => setLoading(false));
-  }, [proposal.proposalId, tripId, accessToken]);
+  }, [proposal.proposalId, tripId, accessToken, isOnline]);
 
   useEffect(() => {
     if (!socket || !proposal.proposalId) return;

@@ -643,4 +643,21 @@ router.delete(
   }
 );
 
+
+router.get('/me/stats', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const stats = await AuthService.getUserTravelStatsByAuthId(req.user!.id);
+    res.status(200).json({ ok: true, stats });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido';
+    const statusCode = err instanceof Error && 'statusCode' in err ? Number((err as any).statusCode) : 500;
+    res.status(statusCode).json({
+      ok: false,
+      code: statusCode === 404 ? 'ERR-84-001' : 'ERR-84-002',
+      error: statusCode === 404 ? 'Aún no tienes estadísticas.' : 'No se pudieron cargar tus estadísticas. Inténtalo de nuevo.',
+      details: msg,
+    });
+  }
+});
+
 export default router;

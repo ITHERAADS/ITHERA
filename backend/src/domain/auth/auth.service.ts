@@ -235,3 +235,131 @@ export const deleteAccountByAuthId = async (authUserId: string) => {
 
   return { data: { deleted: true }, error: null };
 };
+
+
+export interface UserTravelStats {
+  tripsAsAdmin: number;
+  tripsAsTraveler: number;
+  acceptedProposals: number;
+  totalSpent: number;
+  countriesVisited: number;
+  destinations: string[];
+  recentTrips: Array<{
+    id: number;
+    nombre: string;
+    destino: string | null;
+    estado: string | null;
+    fecha_inicio: string | null;
+    fecha_fin: string | null;
+    rol: string;
+  }>;
+}
+
+function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value ?? '').trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+export const getUserTravelStatsByAuthId = async (authUserId: string): Promise<UserTravelStats> => {
+  const { data: localUser, error: userError } = await getUserByAuthId(authUserId);
+
+  if (userError || !localUser?.id_usuario) {
+    throw Object.assign(new Error('Usuario no encontrado en tabla local'), { statusCode: 404 });
+  }
+
+  const userId = Number(localUser.id_usuario);
+
+  const { data: memberships, error: membershipsError } = await supabaseAdmin
+    .from('grupo_miembros')
+    .select('rol, grupos_viaje(id, nombre, destino, destino_formatted_address, estado, fecha_inicio, fecha_fin)')
+    .eq('usuario_id', userId);
+
+  if (membershipsError) {
+    throw membershipsError;
+  }
+
+  const normalizedMemberships = (memberships ?? [])
+    .map((membership: any) => {
+      const group = Array.isArray(membership.grupos_viaje)
+        ? membership.grupos_viaje[0]
+        : membership.grupos_viaje;
+      if (!group) return null;
+      return {
+        rol: String(membership.rol ?? 'viajero').toLowerCase(),
+        group,
+      };
+    })
+    .filter(Boolean) as Array<{ rol: string; group: any }>;
+
+  const tripsAsAdmin = normalizedMemberships.filter((item) => item.rol === 'admin').length;
+  const tripsAsTraveler = normalizedMemberships.filter((item) => item.rol !== 'admin').length;
+  const groupIds = normalizedMemberships
+    .map((item) => Number(item.group.id))
+    .filter((id) => Number.isFinite(id));
+
+  let acceptedProposals = 0;
+  if (groupIds.length > 0) {
+    const { count, error } = await supabaseAdmin
+      .from('propuestas')
+      .select('id_propuesta', { count: 'exact', head: true })
+      .in('grupo_id', groupIds)
+      .eq('estado', 'aprobada');
+
+    if (error) throw error;
+    acceptedProposals = count ?? 0;
+  }
+
+  const { data: paidExpenses, error: paidExpensesError } = await supabaseAdmin
+    .from('expenses')
+    .select('amount')
+    .eq('paid_by_user_id', userId);
+
+  if (paidExpensesError) {
+    throw paidExpensesError;
+  }
+
+  const totalSpent = (paidExpenses ?? []).reduce((sum: number, expense: any) => {
+    const amount = Number(expense.amount ?? 0);
+    return Number.isFinite(amount) ? sum + amount : sum;
+  }, 0);
+
+  const destinations = uniqueNonEmpty(
+    normalizedMemberships.flatMap((item) => [
+      item.group.destino,
+      item.group.destino_formatted_address,
+    ]),
+  );
+
+  const recentTrips = normalizedMemberships
+    .slice()
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.group.fecha_inicio ?? left.group.created_at ?? '') || 0;
+      const rightTime = Date.parse(right.group.fecha_inicio ?? right.group.created_at ?? '') || 0;
+      return rightTime - leftTime;
+    })
+    .slice(0, 5)
+    .map((item) => ({
+      id: Number(item.group.id),
+      nombre: String(item.group.nombre ?? 'Viaje sin nombre'),
+      destino: item.group.destino ?? item.group.destino_formatted_address ?? null,
+      estado: item.group.estado ?? null,
+      fecha_inicio: item.group.fecha_inicio ?? null,
+      fecha_fin: item.group.fecha_fin ?? null,
+      rol: item.rol === 'admin' ? 'Admin' : 'Viajero',
+    }));
+
+  return {
+    tripsAsAdmin,
+    tripsAsTraveler,
+    acceptedProposals,
+    totalSpent,
+    countriesVisited: destinations.length,
+    destinations,
+    recentTrips,
+  };
+};

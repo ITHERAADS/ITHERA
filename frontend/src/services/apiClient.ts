@@ -42,44 +42,23 @@ export class ApiError extends Error {
  * Usado para implementar el comportamiento ERR-NET-02.
  */
 export function isNetworkError(err: unknown): boolean {
+  if (typeof navigator !== "undefined" && !navigator.onLine) return true;
   if (!(err instanceof Error)) return false;
-  // TypeError es lo que lanza fetch cuando no hay red ("Failed to fetch", "NetworkError", etc.)
-  if (!(err instanceof TypeError)) return false;
-  // Verificación adicional por nombre de mensaje para mayor robustez entre navegadores
   const msg = err.message.toLowerCase();
   return (
+    err instanceof TypeError ||
     msg.includes("failed to fetch") ||
     msg.includes("network") ||
-    msg.includes("networkerror") ||
-    !navigator.onLine
+    msg.includes("networkerror")
   );
 }
 
-/**
- * Obtiene un access token fresco desde Supabase. Supabase mantiene la sesión
- * con autoRefreshToken activo, por lo que getSession() devuelve un token
- * renovado cuando el anterior expiró. Si la sesión está vencida, forzamos un
- * refresh explícito. Devuelve null si no hay sesión recuperable.
- *
- * Esto resuelve el caso en que el access token guardado en memoria/estado de la
- * app queda obsoleto durante sesiones largas (>1h) y provoca respuestas 401
- * "Token inválido o expirado" en acciones como enviar invitaciones.
- */
-async function getFreshToken(previousToken?: string): Promise<string | null> {
-  try {
-    const { data } = await supabase.auth.getSession();
-    let token = data.session?.access_token ?? null;
-
-    // Si getSession devolvió el mismo token que ya falló, forzamos refresh.
-    if (!token || token === previousToken) {
-      const { data: refreshed } = await supabase.auth.refreshSession();
-      token = refreshed.session?.access_token ?? token;
-    }
-
-    return token && token !== previousToken ? token : null;
-  } catch {
-    return null;
-  }
+function buildNetworkError(): ApiError {
+  return new ApiError(
+    "Sin conexión. Verifica tu red e inténtalo de nuevo.",
+    0,
+    { ok: false, code: "ERR-NET", error: "Sin conexión. Verifica tu red e inténtalo de nuevo." },
+  );
 }
 
 async function parseResponseBody(response: Response): Promise<ParsedBody> {
@@ -120,12 +99,29 @@ function buildHttpError(
   return new ApiError(sanitizeApiMessage(message), response.status, payload);
 }
 
+function isExpiredTokenResponse(response: Response, parsed: ParsedBody): boolean {
+  if (response.status !== 401) return false;
+  const payload = (parsed.data ?? null) as ApiErrorPayload | null;
+  const message = `${payload?.error ?? ""} ${payload?.details ?? ""} ${parsed.raw ?? ""}`.toLowerCase();
+  return message.includes("token") && (message.includes("expir") || message.includes("invalid"));
+}
+
+async function getFreshAccessToken(currentToken?: string): Promise<string | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const freshToken = session?.access_token ?? null;
+  if (!freshToken || freshToken === currentToken) return null;
+  return freshToken;
+}
+
 async function request<T>(
   path: string,
   method: HttpMethod,
   body?: unknown,
   token?: string,
-  isRetry = false,
+  retryOnExpiredToken = true,
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -135,23 +131,27 @@ async function request<T>(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response: Response;
 
-  // Reintento automático ante token expirado: si la petición venía autenticada
-  // y el backend responde 401, intentamos obtener un token fresco de Supabase y
-  // repetimos la llamada una sola vez.
-  if (response.status === 401 && token && !isRetry) {
-    const freshToken = await getFreshToken(token);
-    if (freshToken) {
-      return request<T>(path, method, body, freshToken, true);
-    }
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    if (isNetworkError(err)) throw buildNetworkError();
+    throw err;
   }
 
   const parsed = await parseResponseBody(response);
+
+  if (retryOnExpiredToken && token && isExpiredTokenResponse(response, parsed)) {
+    const freshToken = await getFreshAccessToken(token);
+    if (freshToken) {
+      return request<T>(path, method, body, freshToken, false);
+    }
+  }
 
   if (!response.ok) {
     throw buildHttpError(response, parsed, "Error en la peticion");
@@ -170,7 +170,7 @@ async function upload<T>(
   path: string,
   formData: FormData,
   token?: string,
-  isRetry = false,
+  retryOnExpiredToken = true,
 ): Promise<T> {
   const headers: Record<string, string> = {};
 
@@ -178,20 +178,27 @@ async function upload<T>(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    method: "PATCH",
-    headers,
-    body: formData,
-  });
+  let response: Response;
 
-  if (response.status === 401 && token && !isRetry) {
-    const freshToken = await getFreshToken(token);
-    if (freshToken) {
-      return upload<T>(path, formData, freshToken, true);
-    }
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method: "PATCH",
+      headers,
+      body: formData,
+    });
+  } catch (err) {
+    if (isNetworkError(err)) throw buildNetworkError();
+    throw err;
   }
 
   const parsed = await parseResponseBody(response);
+
+  if (retryOnExpiredToken && token && isExpiredTokenResponse(response, parsed)) {
+    const freshToken = await getFreshAccessToken(token);
+    if (freshToken) {
+      return upload<T>(path, formData, freshToken, false);
+    }
+  }
 
   if (!response.ok) {
     throw buildHttpError(response, parsed, "Error al subir archivo");

@@ -31,6 +31,8 @@ export interface GrupoViaje {
   punto_partida_hospedaje_id?: number | null;
   punto_partida_propuesta_id?: number | null;
   punto_partida_actualizado_at?: string | null;
+  modulo_itinerario_bloqueado?: boolean;
+  modulo_presupuesto_bloqueado?: boolean;
 }
 
 export interface GrupoMiembro {
@@ -64,6 +66,8 @@ export interface CreateGroupPayload {
   punto_partida_hospedaje_id?: number | null;
   punto_partida_propuesta_id?: number | null;
   punto_partida_actualizado_at?: string | null;
+  modulo_itinerario_bloqueado?: boolean;
+  modulo_presupuesto_bloqueado?: boolean;
 }
 
 export interface UpdateGroupPayload {
@@ -89,10 +93,13 @@ export interface UpdateGroupPayload {
   punto_partida_hospedaje_id?: number | null;
   punto_partida_propuesta_id?: number | null;
   punto_partida_actualizado_at?: string | null;
+  modulo_itinerario_bloqueado?: boolean;
+  modulo_presupuesto_bloqueado?: boolean;
 }
 
 export interface JoinGroupPayload {
   codigo: string;
+  invitationToken?: string;
 }
 
 export interface CreateGroupInvitationsPayload {
@@ -125,6 +132,8 @@ export interface GroupInvitePreview {
   canJoin: boolean;
   cannotJoinReason?: 'GROUP_CAPACITY_REACHED' | string | null;
   requiresApproval?: boolean;
+  emailInvitation?: boolean;
+  invitedEmail?: string | null;
 }
 
 export interface GroupJoinRequest {

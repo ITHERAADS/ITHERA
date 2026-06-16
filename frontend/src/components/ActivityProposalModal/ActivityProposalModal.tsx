@@ -38,6 +38,7 @@ type ActivityProposalModalProps = {
   group: Group | null
   token?: string | null
   selectedDayNumber?: number | null
+  onSelectedDayChange?: (dayNumber: number) => void
   editingActivity?: Activity | null
   isCurrentUserAdmin?: boolean
   currentUserId?: string | null
@@ -66,7 +67,84 @@ const documentCategoryLabels: Record<TripDocumentCategory, string> = {
   otro: 'Otro',
 }
 
-const todayValue = () => new Date().toISOString().split('T')[0]
+const todayValue = () => {
+  const now = new Date()
+  const yyyy = now.getFullYear()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+const dateKeyToLocalDate = (dateKey?: string | null): Date | null => {
+  if (!dateKey) return null
+  const match = String(dateKey).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return null
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0)
+  return Number.isFinite(date.getTime()) ? date : null
+}
+
+const toDateKey = (date: Date): string => {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+const toLocalDateTimeWithOffset = (dateKey: string, timeKey: string): string => {
+  const localDate = new Date(`${dateKey}T${timeKey}:00`)
+  if (!Number.isFinite(localDate.getTime())) return `${dateKey}T${timeKey}:00`
+
+  const offsetMinutes = -localDate.getTimezoneOffset()
+  const sign = offsetMinutes >= 0 ? '+' : '-'
+  const absoluteOffset = Math.abs(offsetMinutes)
+  const hours = String(Math.floor(absoluteOffset / 60)).padStart(2, '0')
+  const minutes = String(absoluteOffset % 60).padStart(2, '0')
+
+  return `${dateKey}T${timeKey}:00${sign}${hours}:${minutes}`
+}
+
+const formatDayOptionDate = (dateKey: string): string => {
+  const date = dateKeyToLocalDate(dateKey)
+  if (!date) return dateKey
+  return new Intl.DateTimeFormat('es-MX', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date)
+}
+
+const getTodayLocalDateKey = (): string => {
+  const now = new Date()
+  return toDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0))
+}
+
+const getTripDayOptions = (group: Group | null): Array<{ dayNumber: number; dateKey: string; isPast: boolean }> => {
+  const start = dateKeyToLocalDate(group?.fecha_inicio)
+  const end = dateKeyToLocalDate(group?.fecha_fin ?? group?.fecha_inicio ?? null)
+  if (!start || !end || end < start) return []
+
+  const today = getTodayLocalDateKey()
+  const options: Array<{ dayNumber: number; dateKey: string; isPast: boolean }> = []
+  const cursor = new Date(start)
+  let dayNumber = 1
+
+  while (cursor <= end && dayNumber <= 60) {
+    const dateKey = toDateKey(cursor)
+    options.push({
+      dayNumber,
+      dateKey,
+      isPast: dateKey < today,
+    })
+    cursor.setDate(cursor.getDate() + 1)
+    dayNumber += 1
+  }
+
+  return options
+}
+
 const activityContextKey = (entity: { type: 'expense' | 'document'; id: string }) => `${entity.type}:${entity.id}`
 
 const pickCreatedExpenseId = (
@@ -179,6 +257,7 @@ export function ActivityProposalModal({
   group,
   token,
   selectedDayNumber,
+  onSelectedDayChange,
   editingActivity,
   isCurrentUserAdmin = false,
   currentUserId = null,
@@ -188,6 +267,7 @@ export function ActivityProposalModal({
 }: ActivityProposalModalProps) {
   const [query, setQuery] = useState('')
   const [description, setDescription] = useState('')
+  const [assignedDayNumber, setAssignedDayNumber] = useState<number | null>(selectedDayNumber ?? null)
   const [timeValue, setTimeValue] = useState('12:00')
   const [results, setResults] = useState<EnrichedPlaceResult[]>([])
   const [suggestions, setSuggestions] = useState<EnrichedPlaceAutocompleteResult[]>([])
@@ -217,6 +297,7 @@ export function ActivityProposalModal({
   const [activeContextModal, setActiveContextModal] = useState<ActivityContextModalMode>(null)
   const [expenseModalTab, setExpenseModalTab] = useState<ContextModalTab>('associate')
   const [documentModalTab, setDocumentModalTab] = useState<ContextModalTab>('associate')
+  const [contextSaving, setContextSaving] = useState(false)
   const [longRouteConfirmation, setLongRouteConfirmation] = useState<{ asAdminDirect: boolean } | null>(null)
   const [scheduleConflictMessage, setScheduleConflictMessage] = useState<string | null>(null)
   const autocompleteBoxRef = useRef<HTMLDivElement | null>(null)
@@ -248,18 +329,42 @@ export function ActivityProposalModal({
     return safeMemberOptions[0]?.id ?? ''
   }, [currentUserId, safeMemberOptions])
 
-  const selectedActivityDate = useMemo(() => {
-    const startDate = group?.fecha_inicio
-    if (!startDate || !selectedDayNumber) return null
+  const dayOptions = useMemo(() => getTripDayOptions(group), [group])
 
-    const selectedDate = new Date(
-      new Date(`${startDate}T12:00:00`).getTime() + (selectedDayNumber - 1) * 86400000
-    )
-    const yyyy = selectedDate.getFullYear()
-    const mm = String(selectedDate.getMonth() + 1).padStart(2, '0')
-    const dd = String(selectedDate.getDate()).padStart(2, '0')
-    return `${yyyy}-${mm}-${dd}`
-  }, [group?.fecha_inicio, selectedDayNumber])
+  const selectedActivityDate = useMemo(() => {
+    const selectedOption = dayOptions.find((option) => option.dayNumber === assignedDayNumber)
+    if (selectedOption) return selectedOption.dateKey
+
+    const startDate = dateKeyToLocalDate(group?.fecha_inicio)
+    if (!startDate || !assignedDayNumber) return null
+
+    const selectedDate = new Date(startDate)
+    selectedDate.setDate(startDate.getDate() + (assignedDayNumber - 1))
+    return toDateKey(selectedDate)
+  }, [assignedDayNumber, dayOptions, group?.fecha_inicio])
+
+  const selectedDayIsPast = useMemo(() => {
+    if (!selectedActivityDate) return false
+    return selectedActivityDate < getTodayLocalDateKey()
+  }, [selectedActivityDate])
+
+  useEffect(() => {
+    if (!open) return
+
+    const requestedDay = selectedDayNumber ?? null
+    const requestedOption = requestedDay != null
+      ? dayOptions.find((option) => option.dayNumber === requestedDay)
+      : undefined
+    const fallbackOption = dayOptions.find((option) => !option.isPast) ?? dayOptions[0]
+    const nextDay = requestedOption && !requestedOption.isPast
+      ? requestedOption.dayNumber
+      : fallbackOption?.dayNumber ?? requestedDay
+
+    setAssignedDayNumber(nextDay ?? null)
+    if (nextDay && nextDay !== requestedDay) {
+      onSelectedDayChange?.(nextDay)
+    }
+  }, [dayOptions, onSelectedDayChange, open, selectedDayNumber])
 
   const routeOrigin = useMemo(() => {
     if (group?.punto_partida_latitud != null && group.punto_partida_longitud != null) {
@@ -293,7 +398,7 @@ export function ActivityProposalModal({
 
   const getActivityDate = useCallback(() => {
     if (!selectedActivityDate) return null
-    return `${selectedActivityDate}T${timeValue}:00`
+    return toLocalDateTimeWithOffset(selectedActivityDate, timeValue)
   }, [selectedActivityDate, timeValue])
 
   const resetContextDraft = () => {
@@ -508,6 +613,29 @@ export function ActivityProposalModal({
     }
   }, [enrichPlaceWithRoute, open, query, routeOrigin, selectedPlace?.name, token])
 
+  const refreshContextOptions = useCallback(async () => {
+    if (!group?.id || !token) return
+    const [optionsResponse, linksResponse] = await Promise.all([
+      contextLinksService.options(String(group.id), token),
+      editingActivity
+        ? contextLinksService.list(String(group.id), token, { type: 'activity', id: editingActivity.id })
+        : Promise.resolve({ ok: true, links: [] }),
+    ])
+
+    setLinkOptions(optionsResponse.options)
+
+    if (!editingActivity) return
+
+    const linkedEntities = linksResponse.links
+      .map((link) => otherEntityForActivity(link, editingActivity.id))
+      .filter((entity): entity is ContextEntitySummary =>
+        entity !== null && (entity.type === 'expense' || entity.type === 'document')
+      )
+
+    setSelectedExpenseIds(linkedEntities.filter((entity) => entity.type === 'expense').map((entity) => entity.id))
+    setSelectedDocumentIds(linkedEntities.filter((entity) => entity.type === 'document').map((entity) => entity.id))
+  }, [editingActivity, group?.id, token])
+
   if (!open) return null
 
   const handleSearch = async () => {
@@ -611,6 +739,8 @@ export function ActivityProposalModal({
         latitude: selectedPlace.latitude,
         longitude: selectedPlace.longitude,
         selectedTime: timeValue,
+        selectedDayNumber: assignedDayNumber,
+        selectedDate: selectedActivityDate,
         primaryCategory: selectedPlace.primaryCategory,
         photoName: selectedPlace.photoName ?? null,
         photoUrl: selectedPlace.photoUrl ?? null,
@@ -663,6 +793,18 @@ export function ActivityProposalModal({
     }
     if (!selectedPlace) {
       setError('Selecciona un lugar para proponer la actividad.')
+      return
+    }
+    if (!assignedDayNumber || !selectedActivityDate) {
+      setError('Selecciona el dia del itinerario donde se agregara la actividad.')
+      return
+    }
+    if (selectedDayIsPast) {
+      setError('No puedes agregar actividades en dias anteriores al actual.')
+      return
+    }
+    if (!/^([01]\d|2[0-3]):(00|30)$/.test(timeValue)) {
+      setError('La hora debe estar en intervalos de 30 minutos, por ejemplo 09:00 o 09:30.')
       return
     }
     if (selectedPlaceIsLongRoute && !skipLongRouteConfirmation) {
@@ -744,21 +886,7 @@ export function ActivityProposalModal({
         const previousExpenseIds = new Set(linkOptions.expenses.map((item) => item.id))
         const createdExpenseId = shouldCreateExpense
           ? await budgetService.createExpense(String(group.id), {
-            paid_by_user_id: quickExpensePaidBy,
-            amount: quickExpenseValue,
-            description: quickExpenseDescription.trim(),
-            category: quickExpenseCategory,
-            split_type: quickExpenseSplitType,
-            member_ids: quickExpenseMemberIds,
-            split_amounts: quickExpenseSplitType === 'personalizada'
-              ? Object.fromEntries(
-                quickExpenseMemberIds.map((memberId) => [
-                  memberId,
-                  parseFloat(quickExpenseSplitAmounts[memberId] ?? '0') || 0,
-                ])
-              )
-              : undefined,
-            expense_date: quickExpenseDate || (getActivityDate()?.slice(0, 10) ?? null),
+            ...createQuickExpensePayload(quickExpenseValue),
           }, token).then((response) => {
             return pickCreatedExpenseId(
               response.expenses,
@@ -850,8 +978,61 @@ export function ActivityProposalModal({
     onClose()
   }
 
-  const confirmExpenseModal = () => {
+  const createQuickExpensePayload = (amount: number) => ({
+    paid_by_user_id: quickExpensePaidBy,
+    amount,
+    description: quickExpenseDescription.trim(),
+    category: quickExpenseCategory,
+    split_type: quickExpenseSplitType,
+    member_ids: quickExpenseMemberIds,
+    split_amounts: quickExpenseSplitType === 'personalizada'
+      ? Object.fromEntries(
+        quickExpenseMemberIds.map((memberId) => [
+          memberId,
+          parseFloat(quickExpenseSplitAmounts[memberId] ?? '0') || 0,
+        ])
+      )
+      : undefined,
+    expense_date: quickExpenseDate || (getActivityDate()?.slice(0, 10) ?? null),
+  })
+
+  const confirmExpenseModal = async () => {
     if (expenseModalTab === 'associate') {
+      if (editingActivity?.id && group?.id && token) {
+        try {
+          setContextSaving(true)
+          const currentResponse = await contextLinksService.list(String(group.id), token, {
+            type: 'activity',
+            id: editingActivity.id,
+          })
+          const currentExpenseLinks = currentResponse.links
+            .map((link) => ({ link, entity: otherEntityForActivity(link, editingActivity.id) }))
+            .filter((item): item is { link: ContextLink; entity: ContextEntitySummary } =>
+              item.entity !== null && item.entity.type === 'expense'
+            )
+          const desiredExpenseIds = new Set(selectedExpenseIds)
+
+          await Promise.all([
+            ...currentExpenseLinks
+              .filter(({ entity }) => !desiredExpenseIds.has(entity.id))
+              .map(({ link }) => contextLinksService.remove(String(group.id), link.id, token)),
+            ...selectedExpenseIds
+              .filter((expenseId) => !currentExpenseLinks.some(({ entity }) => entity.id === expenseId))
+              .map((expenseId) => contextLinksService.create(String(group.id), {
+                source: { type: 'activity', id: editingActivity.id },
+                target: { type: 'expense', id: expenseId },
+              }, token)),
+          ])
+
+          await refreshContextOptions()
+          await onCreated()
+        } catch (err) {
+          setError(err instanceof Error ? err.message : 'No se pudo asociar el gasto.')
+          return
+        } finally {
+          setContextSaving(false)
+        }
+      }
       setActiveContextModal(null)
       return
     }
@@ -881,6 +1062,44 @@ export function ActivityProposalModal({
       setError(quickExpenseSplitError)
       return
     }
+
+    if (editingActivity?.id && group?.id && token) {
+      try {
+        setContextSaving(true)
+        const previousExpenseIds = new Set(linkOptions.expenses.map((item) => item.id))
+        const response = await budgetService.createExpense(
+          String(group.id),
+          createQuickExpensePayload(amount),
+          token
+        )
+        const createdExpenseId = pickCreatedExpenseId(
+          response.expenses,
+          previousExpenseIds,
+          quickExpenseDescription.trim(),
+          amount,
+        )
+        if (!createdExpenseId) throw new Error('No se pudo ubicar el gasto creado.')
+
+        await contextLinksService.create(String(group.id), {
+          source: { type: 'activity', id: editingActivity.id },
+          target: { type: 'expense', id: createdExpenseId },
+        }, token)
+
+        setQuickExpenseAmount('')
+        setQuickExpenseDescription('')
+        setQuickExpenseCategory('actividad')
+        setQuickExpenseSplitType('equitativa')
+        setQuickExpenseSplitAmounts({})
+        await refreshContextOptions()
+        await onCreated()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'No se pudo crear y asociar el gasto.')
+        return
+      } finally {
+        setContextSaving(false)
+      }
+    }
+
     setError('')
     setActiveContextModal(null)
   }
@@ -914,21 +1133,47 @@ export function ActivityProposalModal({
     )
   }
 
+  const canSubmitActivity = Boolean(selectedPlace && assignedDayNumber && selectedActivityDate && !selectedDayIsPast)
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-xl">
-        <div className="border-b border-[#E2E8F0] px-6 py-5">
-          <h2 className="font-heading text-xl font-bold text-purpleNavbar">
-            {editingActivity ? 'Editar propuesta' : 'Proponer actividad'}
-          </h2>
-          <p className="mt-1 font-body text-sm text-gray500">
-            Escribe y elige una sugerencia de Google Places para agregarla como propuesta al itinerario.
-          </p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0D0820]/60 px-4 backdrop-blur-sm">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-[0_32px_80px_rgba(15,23,42,0.28)]">
+        {/* Header */}
+        <div className="relative overflow-hidden rounded-t-3xl bg-gradient-to-br from-[#1E0A4E] via-[#2B1163] to-[#1E6FD9] px-7 py-6">
+          <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/[0.06] blur-2xl" />
+          <div className="absolute -bottom-8 left-8 h-28 w-28 rounded-full bg-[#7A4FD6]/25 blur-xl" />
+          <div className="relative">
+            <span className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3 py-1.5 font-body text-xs font-bold uppercase tracking-widest text-white/80 backdrop-blur-sm">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="2" />
+                <path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              Google Places
+            </span>
+            <h2 className="mt-3 font-heading text-3xl font-extrabold leading-tight text-white">
+              {editingActivity ? 'Editar propuesta' : 'Proponer actividad'}
+            </h2>
+            <p className="mt-1.5 font-body text-base text-white/70">
+              Escribe y elige una sugerencia de Google Places para agregarla como propuesta al itinerario.
+            </p>
+          </div>
+          {/* Close button */}
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={saving}
+            aria-label="Cerrar"
+            className="absolute right-5 top-5 flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/70 transition hover:bg-white/20 hover:text-white"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
 
-        <div className="space-y-4 px-6 py-5">
+        <div className="space-y-5 px-7 py-6">
           <div>
-            <label className="mb-1.5 block font-body text-xs font-semibold uppercase tracking-wide text-[#1E0A4E]/60">
+            <label className="mb-2 block font-body text-sm font-bold text-[#1E0A4E]">
               Buscar lugar o actividad
             </label>
             <div
@@ -964,7 +1209,7 @@ export function ActivityProposalModal({
                   }
                 }}
                 placeholder="Ej: restaurante, playa, museo..."
-                className="w-full rounded-xl border border-[#E2E8F0] px-4 py-3 pr-10 text-sm outline-none transition focus:border-bluePrimary focus:ring-2 focus:ring-bluePrimary/10"
+                className="w-full rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3.5 pr-10 font-body text-base text-[#1E0A4E] outline-none transition focus:border-[#1E6FD9] focus:bg-white focus:ring-4 focus:ring-[#1E6FD9]/10"
               />
               {(suggestionsLoading || loading) && (
                 <span className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-[#D7DEEA] border-t-bluePrimary" />
@@ -1004,40 +1249,87 @@ export function ActivityProposalModal({
           </div>
 
           <div>
-            <label className="mb-1.5 block font-body text-xs font-semibold uppercase tracking-wide text-[#1E0A4E]/60">
-              Descripcion opcional
+            <label className="mb-2 block font-body text-sm font-bold text-[#1E0A4E]">
+              Descripción opcional
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Ej: visitar por la tarde, revisar horarios, llevar efectivo..."
               rows={3}
-              className="w-full resize-none rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm outline-none transition focus:border-bluePrimary focus:ring-2 focus:ring-bluePrimary/10"
+              className="w-full resize-none rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3.5 font-body text-base text-[#1E0A4E] outline-none transition focus:border-[#1E6FD9] focus:bg-white focus:ring-4 focus:ring-[#1E6FD9]/10"
             />
           </div>
 
-          <div>
-            <label className="mb-1.5 block font-body text-xs font-semibold uppercase tracking-wide text-[#1E0A4E]/60">
-              Hora estimada
-            </label>
-            <input
-              type="time"
-              value={timeValue}
-              onChange={(e) => setTimeValue(e.target.value)}
-              className="w-full rounded-xl border border-[#E2E8F0] px-4 py-3 text-sm outline-none transition focus:border-bluePrimary focus:ring-2 focus:ring-bluePrimary/10"
-            />
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label className="mb-2 block font-body text-sm font-bold text-[#1E0A4E]">
+                Día de asignación
+              </label>
+              <select
+                value={assignedDayNumber ?? ''}
+                onChange={(event) => {
+                  const nextDay = Number(event.target.value)
+                  setAssignedDayNumber(Number.isFinite(nextDay) ? nextDay : null)
+                  if (Number.isFinite(nextDay)) onSelectedDayChange?.(nextDay)
+                  setError('')
+                }}
+                className="w-full rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3.5 font-body text-base text-[#1E0A4E] outline-none transition focus:border-[#1E6FD9] focus:bg-white focus:ring-4 focus:ring-[#1E6FD9]/10"
+              >
+                {dayOptions.length === 0 && <option value="">Fechas del viaje no disponibles</option>}
+                {dayOptions.map((option) => (
+                  <option key={option.dayNumber} value={option.dayNumber} disabled={option.isPast}>
+                    Día {option.dayNumber} — {formatDayOptionDate(option.dateKey)}{option.isPast ? ' (pasado)' : ''}
+                  </option>
+                ))}
+              </select>
+              {selectedActivityDate && (
+                <p className={`mt-2 font-body text-sm ${selectedDayIsPast ? 'font-semibold text-red-600' : 'text-[#64748B]'}`}>
+                  {selectedDayIsPast ? '⚠ Día pasado' : `Se guardará el ${formatDayOptionDate(selectedActivityDate)}.`}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-2 block font-body text-sm font-bold text-[#1E0A4E]">
+                Hora estimada
+              </label>
+              <input
+                type="time"
+                step={1800}
+                value={timeValue}
+                onChange={(e) => {
+                  setTimeValue(e.target.value)
+                  setError('')
+                }}
+                className="w-full rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3.5 font-body text-base text-[#1E0A4E] outline-none transition focus:border-[#1E6FD9] focus:bg-white focus:ring-4 focus:ring-[#1E6FD9]/10"
+              />
+              <p className="mt-2 font-body text-sm text-[#64748B]">
+                Intervalos de 30 min para evitar conflictos.
+              </p>
+            </div>
           </div>
 
           {selectedPlace && (
-            <div className="rounded-xl border border-bluePrimary/30 bg-bluePrimary/5 px-4 py-3">
-              <p className="font-body text-sm font-bold text-purpleNavbar">
-                Seleccionado: {selectedPlace.name || 'Lugar sin nombre'}
-              </p>
-              <p className="mt-0.5 font-body text-xs text-gray500">
-                {selectedPlace.formattedAddress || 'Direccion no disponible'}
-              </p>
+            <div className="rounded-2xl border border-[#1E6FD9]/30 bg-gradient-to-br from-[#EFF6FF] to-[#F5F3FF] px-5 py-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1E6FD9]/15">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z" stroke="#1E6FD9" strokeWidth="2" strokeLinejoin="round" />
+                    <circle cx="12" cy="10" r="2.5" stroke="#1E6FD9" strokeWidth="2" />
+                  </svg>
+                </span>
+                <div className="min-w-0">
+                  <p className="font-body text-base font-bold text-[#1E0A4E]">
+                    {selectedPlace.name || 'Lugar sin nombre'}
+                  </p>
+                  <p className="mt-0.5 font-body text-sm text-[#64748B]">
+                    {selectedPlace.formattedAddress || 'Dirección no disponible'}
+                  </p>
+                </div>
+              </div>
               {(selectedPlace.routeDistanceText || selectedPlace.routeDurationText) && (
-                <p className="mt-2 inline-flex rounded-full bg-white px-2.5 py-1 font-body text-[11px] font-semibold text-bluePrimary shadow-sm">
+                <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 font-body text-sm font-semibold text-[#1E6FD9] shadow-sm">
                   A {selectedPlace.routeDistanceText ?? 'distancia no disponible'}
                   {selectedPlace.routeDurationText ? ` · ${selectedPlace.routeDurationText}` : ''} desde {routeOriginLabel}
                 </p>
@@ -1118,10 +1410,17 @@ export function ActivityProposalModal({
             </div>
           )}
 
-          <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-              <p className="font-body text-sm font-semibold text-[#1E0A4E]">Agregar gasto o comprobante</p>
-              <p className="mt-1 font-body text-xs text-[#64748B]">
-                Aqui puedes relacionar gastos (taxi, entradas, comida) y comprobantes (tickets, reservaciones, recibos) para esta actividad.
+          <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-5 py-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#7A4FD6]/12">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 2v20M2 12h20" stroke="#7A4FD6" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </span>
+                <p className="font-body text-base font-bold text-[#1E0A4E]">Agregar gasto o comprobante</p>
+              </div>
+              <p className="mt-1.5 font-body text-sm text-[#64748B]">
+                Relaciona gastos (taxi, entradas, comida) y comprobantes (tickets, reservaciones, recibos) para esta actividad.
               </p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <button
@@ -1130,7 +1429,7 @@ export function ActivityProposalModal({
                     setExpenseModalTab('associate')
                     setActiveContextModal('expense')
                   }}
-                  className="rounded-xl border border-[#D7DEEA] bg-white px-3 py-2.5 text-left font-body text-sm font-semibold text-[#1E6FD9]"
+                  className="rounded-xl border border-[#BFDBFE] bg-white px-4 py-3 text-left font-body text-sm font-bold text-[#1E6FD9] transition hover:bg-[#EFF6FF]"
                 >
                   Agregar o elegir gasto
                 </button>
@@ -1140,7 +1439,7 @@ export function ActivityProposalModal({
                     setDocumentModalTab('associate')
                     setActiveContextModal('document')
                   }}
-                  className="rounded-xl border border-[#D7DEEA] bg-white px-3 py-2.5 text-left font-body text-sm font-semibold text-[#7A4FD6]"
+                  className="rounded-xl border border-[#DDD6FE] bg-white px-4 py-3 text-left font-body text-sm font-bold text-[#7A4FD6] transition hover:bg-[#F5F3FF]"
                 >
                   Agregar o elegir comprobante
                 </button>
@@ -1186,36 +1485,36 @@ export function ActivityProposalModal({
               </div>
             </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && (
+            <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="mt-0.5 shrink-0 text-red-500" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                <path d="M12 8v5M12 16h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              <p className="font-body text-sm font-semibold text-red-700">{error}</p>
+            </div>
+          )}
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-[#E2E8F0] px-6 py-4">
-          <button
-            type="button"
-            onClick={handleClose}
-            disabled={saving}
-            className="rounded-xl border border-[#E2E8F0] px-4 py-3 font-body text-sm font-semibold text-gray700"
-          >
-            Cancelar
-          </button>
+        <div className="flex flex-wrap justify-end gap-3 border-t border-[#E2E8F0] px-7 py-5">
           {!editingActivity && isCurrentUserAdmin && (
             <button
               type="button"
               onClick={() => void handleSave(true)}
-              disabled={saving || !selectedPlace}
+              disabled={saving || !canSubmitActivity}
               aria-busy={saving}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#1E6FD9] bg-[#EEF4FF] px-4 py-3 font-body text-sm font-semibold text-[#1E6FD9] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[#1E6FD9] bg-[#EFF6FF] px-5 py-3.5 font-body text-base font-semibold text-[#1E6FD9] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {savingMode === 'admin' && <InlineSpinner size={15} />}
-              {savingMode === 'admin' ? 'Guardando...' : 'Agregar como admin (directo)'}
+              {savingMode === 'admin' ? 'Guardando...' : 'Agregar directo (admin)'}
             </button>
           )}
           <button
             type="button"
             onClick={() => void handleSave(false)}
-            disabled={saving || !selectedPlace}
+            disabled={saving || !canSubmitActivity}
             aria-busy={saving}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-bluePrimary px-4 py-3 font-body text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-6 py-3.5 font-body text-base font-bold text-white shadow-lg shadow-[#1E6FD9]/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {savingMode === 'normal' && <InlineSpinner size={15} />}
             {savingMode === 'normal' ? 'Guardando...' : editingActivity ? 'Guardar cambios' : 'Agregar actividad'}
@@ -1239,10 +1538,25 @@ export function ActivityProposalModal({
       <ActionModal
         open={activeContextModal === 'expense'}
         title="Agregar gasto o comprobante"
-        subtitle="Relaciona un gasto existente o crea uno nuevo, por ejemplo taxi, entradas o comida."
-        confirmLabel={expenseModalTab === 'associate' ? 'Guardar seleccion' : 'Guardar gasto'}
-        onClose={() => setActiveContextModal(null)}
-        onConfirm={confirmExpenseModal}
+        subtitle={
+          editingActivity
+            ? "Relaciona un gasto existente o crea uno nuevo para esta propuesta."
+            : "Prepara un gasto para asociarlo cuando guardes la propuesta."
+        }
+        confirmLabel={
+          contextSaving
+            ? 'Guardando...'
+            : expenseModalTab === 'associate'
+              ? 'Guardar seleccion'
+              : editingActivity
+                ? 'Crear y asociar gasto'
+                : 'Guardar gasto'
+        }
+        confirmDisabled={contextSaving}
+        onClose={() => {
+          if (!contextSaving) setActiveContextModal(null)
+        }}
+        onConfirm={() => void confirmExpenseModal()}
       >
         <div className="mb-4 inline-flex rounded-lg border border-[#D7DEEA] bg-[#F8FAFC] p-1">
           <button

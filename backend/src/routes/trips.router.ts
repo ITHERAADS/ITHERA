@@ -175,14 +175,14 @@ router.post('/', requireAuth, async (req: Request, res: Response): Promise<void>
 
 router.post('/join', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { codigo } = req.body as { codigo?: string };
+    const { codigo, invitationToken } = req.body as { codigo?: string; invitationToken?: string };
 
     if (!codigo) {
       res.status(400).json({ ok: false, error: 'El código de invitación es requerido' });
       return;
     }
 
-    const grupo = await GroupsService.joinGroupByCode(req.user!.id, { codigo });
+    const grupo = await GroupsService.joinGroupByCode(req.user!.id, { codigo, invitationToken });
     res.status(200).json({
       ok: true,
       message: grupo.requiresApproval
@@ -208,7 +208,8 @@ router.get('/my-history', requireAuth, async (req: Request, res: Response): Prom
 
 router.get('/invite-preview/:code', async (req: Request, res: Response): Promise<void> => {
   try {
-    const preview = await GroupsService.getInvitePreviewByCode(req.params.code);
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined;
+    const preview = await GroupsService.getInvitePreviewByCode(req.params.code, token);
     res.status(200).json({ ok: true, preview });
   } catch (err: unknown) {
     const { status, body } = buildRouteErrorResponse(err);
@@ -376,6 +377,46 @@ router.get('/:groupId/members', requireAuth, async (req: Request, res: Response)
   }
 });
 
+
+router.get('/:groupId/admin-delegations', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const requests = await GroupsService.getAdminDelegationRequests(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, requests });
+  } catch (err: unknown) {
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
+  }
+});
+
+router.patch('/:groupId/admin-delegations/:requestId', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { action } = req.body as { action?: 'accept' | 'reject' };
+
+    if (!action || !['accept', 'reject'].includes(action)) {
+      res.status(400).json({ ok: false, error: 'Acción inválida. Usa accept o reject.' });
+      return;
+    }
+
+    const result = await GroupsService.resolveAdminDelegationRequest(
+      req.user!.id,
+      req.params.groupId,
+      req.params.requestId,
+      action
+    );
+
+    res.status(200).json({
+      ok: true,
+      message: action === 'accept'
+        ? 'Ahora eres administrador del viaje.'
+        : 'Solicitud de administración rechazada.',
+      ...result,
+    });
+  } catch (err: unknown) {
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
+  }
+});
+
 router.patch('/members/:memberId/role', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { rol } = req.body as { rol?: string };
@@ -416,6 +457,16 @@ router.delete('/:groupId/members/:memberId', requireAuth, async (req: Request, r
   }
 });
 
+router.patch('/:groupId/close', requireAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const group = await GroupsService.closeGroup(req.user!.id, req.params.groupId);
+    res.status(200).json({ ok: true, message: 'Viaje cerrado correctamente', group });
+  } catch (err: unknown) {
+    const { status, body } = buildRouteErrorResponse(err);
+    res.status(status).json(body);
+  }
+});
+
 router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const { nombre, descripcion, fecha_inicio, fecha_fin, maximo_miembros } = req.body as {
@@ -424,6 +475,8 @@ router.patch('/:groupId', requireAuth, async (req: Request, res: Response): Prom
       fecha_inicio?: string;
       fecha_fin?: string;
       maximo_miembros?: number;
+      modulo_itinerario_bloqueado?: boolean;
+      modulo_presupuesto_bloqueado?: boolean;
     };
 
     if (nombre !== undefined && (!nombre.trim() || nombre.trim().length > GROUP_NAME_MAX_LENGTH)) {

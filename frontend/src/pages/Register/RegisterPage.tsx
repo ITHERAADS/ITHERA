@@ -61,6 +61,17 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
+function toSpanishSecurityCooldownMessage(message: string) {
+  const normalized = message.trim();
+  const match = normalized.match(
+    /For security purposes, you can only request this after (\d+) seconds\.?/i,
+  );
+  if (match) {
+    return `Por seguridad, solo puedes solicitarlo de nuevo en ${match[1]} segundos.`;
+  }
+  return message;
+}
+
 const REGISTER_DRAFT_STORAGE_KEY = "ithera_register_step_1_draft";
 const REGISTER_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -417,10 +428,11 @@ export function RegisterPage() {
           7000,
         );
       } else {
-        const message =
+        const message = toSpanishSecurityCooldownMessage(
           err instanceof ApiError
             ? (err.payload?.error ?? err.message)
-            : "No se pudo registrar la cuenta. Inténtalo de nuevo.";
+            : "No se pudo registrar la cuenta. Inténtalo de nuevo.",
+        );
         setIsSuccessMessage(false);
         setServerMessage(message);
       }
@@ -439,41 +451,85 @@ export function RegisterPage() {
   const strengthColors = ["bg-[#E4E7EC]", "bg-[#EF4444]", "bg-[#F97316]", "bg-[#22C55E]", "bg-[#16A34A]"];
 
   return (
-    <div className="min-h-screen bg-[#F4F6F8] font-body">
+    <div className="h-screen overflow-hidden bg-[#F4F6F8] font-body">
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[45%_55%]">
-        <section
-          className="relative hidden overflow-hidden lg:flex"
-          style={{
-            background: "linear-gradient(135deg, #0D0820 0%, #1E0A4E 55%, #0D0820 100%)",
-          }}
-        >
-          <div className="absolute inset-0 opacity-[0.15]">
-            <div className="h-full w-full bg-[radial-gradient(circle,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:24px_24px]" />
+      <div className="grid h-screen grid-cols-1 lg:grid-cols-[45%_55%]">
+        <section className="relative hidden overflow-hidden lg:flex">
+          <div className="absolute inset-0 bg-[linear-gradient(135deg,#0D0820_0%,#1E0A4E_48%,#31136F_100%)]" />
+          <div className="absolute inset-0 opacity-20">
+            <div className="h-full w-full bg-[radial-gradient(circle,rgba(255,255,255,0.12)_1px,transparent_1px)] [background-size:26px_26px]" />
           </div>
+          <div className="landing-glow absolute left-10 top-28 h-40 w-40 rounded-full bg-[#1E6FD9]/35 blur-3xl" />
+          <div className="landing-glow absolute bottom-20 right-8 h-44 w-44 rounded-full bg-[#35C56A]/25 blur-3xl" />
 
           <div className="relative z-10 flex h-full w-full flex-col px-16 py-12">
-            <div>
-              <Link to="/">
-                <img src={logoWhite} alt="Ithera" className="h-16 w-auto cursor-pointer object-contain" />
-              </Link>
-            </div>
+            <Link to="/" className="inline-flex w-fit">
+              <img src={logoWhite} alt="Ithera" className="h-16 w-auto cursor-pointer object-contain" />
+            </Link>
 
             <div className="flex flex-1 items-center">
-              <div className="w-full max-w-[600px]">
-                <h1 className="text-[72px] font-extrabold leading-[0.95] tracking-[-0.04em] text-white">
-                  Planifica tus viajes en grupo sin el caos.
+              <div className="w-full max-w-[620px]">
+                <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[12px] font-bold uppercase tracking-[0.16em] text-[#9AF0B8] backdrop-blur">
+                  <span className="h-2 w-2 rounded-full bg-[#35C56A]" />
+                  Plataforma colaborativa
+                </div>
+                <h1 className="text-[68px] font-extrabold leading-[0.96] tracking-[-0.04em] text-white">
+                  Planea, vota y organiza viajes sin perder el control.
                 </h1>
 
-                <p className="mt-10 max-w-[520px] text-[20px] leading-[1.6] text-white/80">
-                  Organiza itinerarios, controla los gastos compartidos y reserva tu próxima aventura con amigos de forma sencilla en un solo lugar.
+                <p className="mt-8 max-w-[540px] text-[19px] leading-[1.65] text-white/75">
+                  Itinerarios, presupuesto, decisiones y documentos conectados
+                  para que cada integrante sepa qué sigue.
+                </p>
+
+                <div className="mt-10 grid max-w-[520px] grid-cols-3 gap-3">
+                  {[
+                    ["Votos", "Decisiones claras"],
+                    ["Gastos", "Balance visible"],
+                    ["Bóveda", "Todo a mano"],
+                  ].map(([title, subtitle]) => (
+                    <div
+                      key={title}
+                      className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur"
+                    >
+                      <p className="text-[13px] font-bold text-white">{title}</p>
+                      <p className="mt-1 text-[11px] leading-tight text-white/55">
+                        {subtitle}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid max-w-[560px] grid-cols-[1fr_0.9fr] gap-3">
+              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#9ED4FF]">
+                  Próximo plan
+                </p>
+                <p className="mt-2 text-[16px] font-bold text-white">
+                  Cena frente al mar
+                </p>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15">
+                  <div className="h-full w-3/4 rounded-full bg-[#35C56A]" />
+                </div>
+              </div>
+              <div className="rounded-3xl border border-white/15 bg-white/10 p-4 backdrop-blur">
+                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#D8C8FF]">
+                  Presupuesto
+                </p>
+                <p className="mt-2 text-[22px] font-extrabold text-white">
+                  $50,000
+                </p>
+                <p className="mt-1 text-[12px] text-white/55">
+                  28% comprometido
                 </p>
               </div>
             </div>
           </div>
         </section>
 
-        <section className="flex items-center justify-center bg-[#F4F6F8] px-6 py-10 sm:px-10 lg:px-16">
+        <section className="flex h-screen items-start justify-center overflow-y-auto bg-[#F4F6F8] px-6 py-10 sm:px-10 lg:px-16 lg:py-12">
           <div className="w-full max-w-[470px]">
             <Link to="/" className="mb-8 inline-flex items-center gap-1.5 text-[13px] text-[#98A2B3] transition hover:text-[#667085]">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -504,7 +560,7 @@ export function RegisterPage() {
                     setServerMessage("");
                     await loginWithGoogle();
                   } catch (err) {
-                    const message = err instanceof Error ? err.message : "No se pudo iniciar sesión con Google";
+                    const message = toSpanishSecurityCooldownMessage(err instanceof Error ? err.message : "No se pudo iniciar sesión con Google");
                     setIsSuccessMessage(false);
                     setServerMessage(message);
                   }
@@ -522,7 +578,7 @@ export function RegisterPage() {
                     setServerMessage("");
                     await loginWithFacebook();
                   } catch (err) {
-                    const message = err instanceof Error ? err.message : "No se pudo iniciar sesión con Facebook";
+                    const message = toSpanishSecurityCooldownMessage(err instanceof Error ? err.message : "No se pudo iniciar sesión con Facebook");
                     setIsSuccessMessage(false);
                     setServerMessage(message);
                   }
@@ -759,3 +815,7 @@ export function RegisterPage() {
     </div>
   );
 }
+
+
+
+

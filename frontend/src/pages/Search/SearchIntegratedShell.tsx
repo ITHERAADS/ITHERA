@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { AppLayout } from '../../components/layout/AppLayout'
 import { SidebarDashboard } from '../../components/layout/AppLayout/SidebarDashboard'
 import { useAuth } from '../../context/useAuth'
 import { groupsService, type ItineraryDay } from '../../services/groups'
+import { useNetworkMonitor } from '../../hooks/useNetworkMonitor'
+import { useSocket } from '../../hooks/useSocket'
 import type { NavUserInfo } from '../../components/layout/Navbar'
 import type { Group } from '../../types/groups'
 
 function formatTripDates(group?: Group | null) {
   if (!group?.fecha_inicio && !group?.fecha_fin) return 'Fechas sin definir'
-  return `${group?.fecha_inicio ?? '—'} – ${group?.fecha_fin ?? '—'}`
+  return `${group?.fecha_inicio ?? '-'} - ${group?.fecha_fin ?? '-'}`
 }
 
 function buildDashboardPath(group?: Group | null) {
@@ -44,13 +46,19 @@ function IconVault() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M21 8a2 2 0 00-2-2h-3l-2-2h-4L8 6H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2V8z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>
 }
 
+function IconHistory() {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.9 2.9L3 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M3 3v5h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 7v6l4 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+}
+
 function SearchBottomNavbar({ group }: { group?: Group | null }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const dashboardPath = buildDashboardPath(group)
   const dashboardState = buildSearchState(group)
   const tabs = [
     { id: 'inicio', label: 'Inicio', icon: <IconHome />, to: dashboardPath },
-    { id: 'buscar', label: 'Buscar', icon: <IconSearch />, to: null },
+    { id: 'buscar', label: 'Buscar', icon: <IconSearch />, to: '/search/flights-hotels' },
+    { id: 'guardados', label: 'Guardados', icon: <IconHistory />, to: '/search/history' },
     { id: 'comparar', label: 'Comparar', icon: <IconCompare />, to: dashboardPath },
     { id: 'mapas', label: 'Mapas', icon: <IconMap />, to: '/search/map-places' },
     { id: 'pagar', label: 'Finanzas', icon: <IconMoney />, to: dashboardPath },
@@ -60,7 +68,11 @@ function SearchBottomNavbar({ group }: { group?: Group | null }) {
   return (
     <div className="flex h-16 shrink-0 items-center justify-around border-t-2 border-bluePrimary/20 bg-white px-4 shadow-[0_-2px_8px_rgba(30,111,217,0.06)]">
       {tabs.map((tab) => {
-        const active = tab.id === 'buscar'
+        const active =
+          (tab.id === 'buscar' && location.pathname === '/search/flights-hotels') ||
+          (tab.id === 'mapas' && location.pathname === '/search/map-places') ||
+          (tab.id === 'guardados' && location.pathname === '/search/history')
+
         return (
           <button
             key={tab.id}
@@ -83,6 +95,8 @@ function SearchBottomNavbar({ group }: { group?: Group | null }) {
 export function SearchIntegratedShell({ children, group, user }: { children: ReactNode; group?: Group | null; user: NavUserInfo }) {
   const navigate = useNavigate()
   const { accessToken } = useAuth()
+  const isBrowserOnline = useNetworkMonitor()
+  const { isConnected: isSocketConnected } = useSocket(accessToken)
   const [days, setDays] = useState<ItineraryDay[]>([])
   const [activeDay, setActiveDay] = useState<number | null>(null)
 
@@ -92,7 +106,7 @@ export function SearchIntegratedShell({ children, group, user }: { children: Rea
         subtitle: group.destino_formatted_address ?? group.destino ?? 'Destino sin definir',
         dates: formatTripDates(group),
         people: group.maximo_miembros
-          ? `${group.maximo_miembros} personas máx.`
+          ? `${group.maximo_miembros} personas max.`
           : group.memberCount
             ? `${group.memberCount} participante${group.memberCount === 1 ? '' : 's'}`
             : 'Miembros por definir',
@@ -121,7 +135,7 @@ export function SearchIntegratedShell({ children, group, user }: { children: Rea
         })
       } catch (error) {
         if (!cancelled) {
-          console.error('No se pudo cargar el itinerario del panel lateral de búsqueda:', error)
+          console.error('No se pudo cargar el itinerario del panel lateral de busqueda:', error)
           setDays([])
           setActiveDay(null)
         }
@@ -166,6 +180,7 @@ export function SearchIntegratedShell({ children, group, user }: { children: Rea
       trip={tripMeta}
       user={user}
       sidebarContent={sidebarContent}
+      isOnline={isBrowserOnline && isSocketConnected}
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>

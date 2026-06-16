@@ -139,33 +139,40 @@ export function PaymentCardForm({
   }
 
   return (
-    <form onSubmit={submit} className="rounded-3xl border border-white/60 bg-white/90 p-5 shadow-xl shadow-[#1E0A4E]/10 backdrop-blur">
+    <form onSubmit={submit} className="flex flex-col gap-5 rounded-3xl border border-white/60 bg-white/90 p-6 shadow-xl shadow-[#1E0A4E]/10 backdrop-blur">
+      {/* Header */}
       <div>
-        <p className="font-body text-xs font-bold uppercase tracking-[0.2em] text-[#1E6FD9]">
+        <p className="font-body text-sm font-bold uppercase tracking-[0.18em] text-[#1E6FD9]">
           Pago seguro
         </p>
-        <h2 className="mt-1 font-heading text-xl font-bold text-[#1E0A4E]">
+        <h2 className="mt-1.5 font-heading text-2xl font-extrabold text-[#1E0A4E]">
           Confirmar {mode === 'vuelo' ? 'compra' : 'reserva'}
         </h2>
-        <p className="mt-1 font-body text-sm text-[#64748B]">{helperText}</p>
+        <p className="mt-1 font-body text-base text-[#64748B]">{helperText}</p>
       </div>
 
-      <div className="mt-5 rounded-3xl bg-gradient-to-br from-[#1E0A4E] via-[#31206E] to-[#1E6FD9] p-5 text-white shadow-lg">
-        <div className="flex items-center justify-between">
-          <span className="font-body text-xs uppercase tracking-[0.25em] text-white/70">ITHERA Card</span>
-          <span className="rounded-full bg-white/15 px-3 py-1 font-body text-[10px] font-bold uppercase tracking-wide">Pago</span>
-        </div>
-        <p className="mt-8 font-mono text-lg tracking-[0.2em]">{cardNumber || '•••• •••• •••• ••••'}</p>
-        <div className="mt-6 flex items-end justify-between gap-4">
-          <div>
-            <p className="font-body text-[10px] uppercase text-white/50">Titular</p>
-            <p className="font-body text-sm font-semibold">{cardHolder || 'Nombre del titular'}</p>
+      {/* Card preview */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#1E0A4E] via-[#31206E] to-[#1E6FD9] p-5 text-white shadow-lg">
+        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+        <div className="absolute -bottom-8 left-4 h-24 w-24 rounded-full bg-[#7A4FD6]/30 blur-xl" />
+        <div className="relative">
+          <div className="flex items-center justify-between">
+            <span className="font-body text-sm font-bold uppercase tracking-[0.2em] text-white/60">ITHERA Card</span>
+            <span className="rounded-full bg-white/15 px-3 py-1 font-body text-xs font-bold uppercase tracking-wide">Pago</span>
           </div>
-          <p className="font-mono text-sm">{expirationMonth || 'MM'}/{expirationYear || 'AA'}</p>
+          <p className="mt-7 font-mono text-xl tracking-[0.22em]">{cardNumber || '•••• •••• •••• ••••'}</p>
+          <div className="mt-5 flex items-end justify-between gap-4">
+            <div>
+              <p className="font-body text-xs uppercase text-white/45">Titular</p>
+              <p className="mt-0.5 font-body text-base font-semibold">{cardHolder || 'Nombre del titular'}</p>
+            </div>
+            <p className="font-mono text-base">{expirationMonth || 'MM'}/{expirationYear || 'AA'}</p>
+          </div>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+      {/* Form fields */}
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Titular de la tarjeta" value={cardHolder} onChange={setCardHolder} placeholder="Eduardo Pérez" required error={errors.cardHolder} />
         <Field label={mode === 'vuelo' ? 'Pasajero principal' : 'Huésped principal'} value={mainPerson} onChange={setMainPerson} placeholder="Puede ser el mismo titular" error={errors.mainPerson} />
         <Field label="Número de tarjeta" value={cardNumber} onChange={(value) => setCardNumber(formatCardNumber(value))} placeholder="4242 4242 4242 4242" required error={errors.cardNumber} inputMode="numeric" />
@@ -178,24 +185,24 @@ export function PaymentCardForm({
         <Field label="Teléfono" value={phone} onChange={setPhone} placeholder="Opcional" />
       </div>
 
-      <label className="mt-3 block font-body text-xs font-bold text-[#1E0A4E]">
+      <label className="block font-body text-sm font-bold text-[#1E0A4E]">
         Notas
         <textarea
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
           placeholder="Preferencias o comentarios para el comprobante..."
-          className="mt-1 min-h-20 w-full rounded-2xl border border-[#E2E8F0] bg-white px-3 py-2 font-body text-sm text-[#1E0A4E] outline-none transition focus:border-[#1E6FD9] focus:ring-4 focus:ring-[#1E6FD9]/10"
+          className="mt-1.5 min-h-[80px] w-full rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3 font-body text-base text-[#1E0A4E] outline-none transition focus:border-[#1E6FD9] focus:ring-4 focus:ring-[#1E6FD9]/10"
         />
       </label>
 
-      <div className="mt-4 rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 font-body text-xs text-[#64748B]">
+      <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3 font-body text-sm text-[#64748B]">
         Se valida longitud, dígito verificador Luhn, patrones repetidos, vigencia, CVV y correo antes de generar el PDF.
       </div>
 
       <button
         type="submit"
         disabled={loading}
-        className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-5 py-3 font-body text-sm font-bold text-white shadow-lg shadow-[#1E6FD9]/20 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
+        className="inline-flex w-full items-center justify-center rounded-2xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-5 py-4 font-body text-base font-bold text-white shadow-lg shadow-[#1E6FD9]/20 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-70"
       >
         {loading ? 'Procesando...' : mode === 'vuelo' ? 'Confirmar compra' : 'Confirmar reserva'}
       </button>
@@ -223,7 +230,7 @@ function Field({
   inputMode?: 'text' | 'numeric' | 'decimal' | 'tel' | 'search' | 'email' | 'url'
 }) {
   return (
-    <label className="font-body text-xs font-bold text-[#1E0A4E]">
+    <label className="font-body text-sm font-bold text-[#1E0A4E]">
       {label}
       <input
         type={type}
@@ -233,9 +240,9 @@ function Field({
         required={required}
         inputMode={inputMode}
         aria-invalid={Boolean(error)}
-        className={`mt-1 w-full rounded-2xl border bg-white px-3 py-2 font-body text-sm text-[#1E0A4E] outline-none transition focus:ring-4 ${error ? 'border-[#EF4444] focus:border-[#EF4444] focus:ring-[#EF4444]/10' : 'border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-[#1E6FD9]/10'}`}
+        className={`mt-1.5 w-full rounded-2xl border bg-white px-4 py-3 font-body text-base text-[#1E0A4E] outline-none transition focus:ring-4 ${error ? 'border-[#EF4444] focus:border-[#EF4444] focus:ring-[#EF4444]/10' : 'border-[#E2E8F0] focus:border-[#1E6FD9] focus:ring-[#1E6FD9]/10'}`}
       />
-      {error && <span className="mt-1 block font-body text-[11px] font-semibold text-[#EF4444]">{error}</span>}
+      {error && <span className="mt-1 block font-body text-xs font-semibold text-[#EF4444]">{error}</span>}
     </label>
   )
 }

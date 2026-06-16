@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { FC } from 'react'
 import type { Expense } from './BudgetDashboard'
 import type { BudgetMember } from '../../services/budget'
@@ -8,6 +8,11 @@ import type { TripDocumentCategory } from '../../services/documents'
 interface Props {
   open: boolean
   members: BudgetMember[]
+  subgroupScope?: {
+    subgroupId: string
+    memberUserIds: string[]
+    label?: string | null
+  } | null
   activityOptions?: ContextEntitySummary[]
   documentOptions?: ContextEntitySummary[]
   editingExpense?: Expense | null
@@ -114,6 +119,7 @@ function ActionModal({
 export const RegisterExpenseModal: FC<Props> = ({
   open,
   members,
+  subgroupScope = null,
   activityOptions = [],
   documentOptions = [],
   editingExpense,
@@ -141,6 +147,11 @@ export const RegisterExpenseModal: FC<Props> = ({
   const [activeContextModal, setActiveContextModal] = useState<ExpenseContextModalMode>(null)
   const [activityFilter, setActivityFilter] = useState('')
   const [documentModalTab, setDocumentModalTab] = useState<'associate' | 'create'>('associate')
+  const scopedMemberIds = useMemo(() => subgroupScope?.memberUserIds ?? [], [subgroupScope?.memberUserIds])
+  const hasScopedMembers = scopedMemberIds.length > 0
+  const effectiveMembers = hasScopedMembers
+    ? members.filter((member) => scopedMemberIds.includes(member.usuario_id))
+    : members
 
   useEffect(() => {
     if (!open) return
@@ -150,12 +161,17 @@ export const RegisterExpenseModal: FC<Props> = ({
       setDescription(editingExpense.titulo)
       setDate(editingExpense.fecha)
       setCategory(editingExpense.categoria)
-      setPaidBy(editingExpense.pagadoPorId)
+      setPaidBy(
+        hasScopedMembers && !scopedMemberIds.includes(editingExpense.pagadoPorId)
+          ? (effectiveMembers[0]?.usuario_id ?? '')
+          : editingExpense.pagadoPorId
+      )
       setSplitType(editingExpense.splitType ?? 'equitativa')
       setSelectedMemberIds(
-        editingExpense.participantIds?.length
+        (editingExpense.participantIds?.length
           ? editingExpense.participantIds
-          : members.map((member) => member.usuario_id)
+          : effectiveMembers.map((member) => member.usuario_id))
+          .filter((memberId) => !hasScopedMembers || scopedMemberIds.includes(memberId))
       )
       setSplitAmounts(
         Object.fromEntries(
@@ -173,9 +189,9 @@ export const RegisterExpenseModal: FC<Props> = ({
       setDescription('')
       setDate(new Date().toISOString().split('T')[0])
       setCategory('transporte')
-      setPaidBy(members[0]?.usuario_id ?? '')
+      setPaidBy(effectiveMembers[0]?.usuario_id ?? '')
       setSplitType('equitativa')
-      setSelectedMemberIds(members.map((member) => member.usuario_id))
+      setSelectedMemberIds(effectiveMembers.map((member) => member.usuario_id))
       setSplitAmounts({})
       setSelectedActivityKeys([])
       setSelectedDocumentIds([])
@@ -184,14 +200,14 @@ export const RegisterExpenseModal: FC<Props> = ({
       setDraftDocumentNotes('')
       setActivityFilter('')
     }
-  }, [open, editingExpense]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editingExpense, effectiveMembers, hasScopedMembers, scopedMemberIds])
 
   if (!open) return null
 
   const totalAmount = parseFloat(amount) || 0
   const splitSum =
     splitType === 'personalizada'
-      ? members
+      ? effectiveMembers
         .filter((member) => selectedMemberIds.includes(member.usuario_id))
         .reduce((sum, m) => sum + (parseFloat(splitAmounts[m.usuario_id] ?? '0') || 0), 0)
       : totalAmount
@@ -252,13 +268,13 @@ export const RegisterExpenseModal: FC<Props> = ({
     const parsedSplitAmounts: Record<string, number> | undefined =
       splitType === 'personalizada'
         ? Object.fromEntries(
-          members
+          effectiveMembers
             .filter((member) => selectedMemberIds.includes(member.usuario_id))
             .map((m) => [m.usuario_id, parseFloat(splitAmounts[m.usuario_id] ?? '0') || 0])
         )
         : undefined
 
-    const paidByMember = members.find((member) => member.usuario_id === paidBy)
+    const paidByMember = effectiveMembers.find((member) => member.usuario_id === paidBy)
     const expense: Expense = {
       id: editingExpense ? editingExpense.id : crypto.randomUUID(),
       titulo: description.trim(),
@@ -276,6 +292,7 @@ export const RegisterExpenseModal: FC<Props> = ({
         category: draftDocumentCategory,
         notes: draftDocumentNotes.trim(),
       } : null,
+      subgroupId: subgroupScope?.subgroupId ?? undefined,
       ...(parsedSplitAmounts !== undefined && { splitAmounts: parsedSplitAmounts }),
     }
 
@@ -397,7 +414,7 @@ export const RegisterExpenseModal: FC<Props> = ({
                 onChange={(e) => setPaidBy(e.target.value)}
                 className="w-full rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3 font-body text-sm text-[#3D4A5C] outline-none transition-colors focus:border-[#1E6FD9]"
               >
-                {members.filter((member) => selectedMemberIds.includes(member.usuario_id)).map((m) => (
+                {effectiveMembers.filter((member) => selectedMemberIds.includes(member.usuario_id)).map((m) => (
                   <option key={m.usuario_id} value={m.usuario_id}>{m.nombre || m.email}</option>
                 ))}
               </select>
@@ -405,8 +422,13 @@ export const RegisterExpenseModal: FC<Props> = ({
 
             <div>
               <label className="mb-1.5 block font-body text-sm font-medium text-[#3D4A5C]">Participantes</label>
+              {subgroupScope?.label && (
+                <p className="mb-1.5 font-body text-xs text-[#64748B]">
+                  Modo subgrupo: solo integrantes de {subgroupScope.label}
+                </p>
+              )}
               <div className="flex flex-wrap gap-2 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-3 py-3">
-                {members.map((member) => {
+                {effectiveMembers.map((member) => {
                   const selected = selectedMemberIds.includes(member.usuario_id)
                   return (
                     <button
@@ -451,7 +473,7 @@ export const RegisterExpenseModal: FC<Props> = ({
             {splitType === 'personalizada' && (
               <div className="flex flex-col gap-2 rounded-xl border border-[#E2E8F0] bg-[#F4F6F8] px-4 py-3">
                 <p className="font-body text-xs font-medium text-[#7A8799]">Monto por persona</p>
-                {members.filter((member) => selectedMemberIds.includes(member.usuario_id)).map((member) => (
+                {effectiveMembers.filter((member) => selectedMemberIds.includes(member.usuario_id)).map((member) => (
                   <div key={member.usuario_id} className="flex items-center gap-3">
                     <span className="w-20 shrink-0 font-body text-sm text-[#3D4A5C]">{member.nombre || member.email}</span>
                     <div className="relative flex-1">

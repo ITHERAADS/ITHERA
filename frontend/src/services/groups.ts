@@ -10,6 +10,7 @@ import type {
   GroupInvitation,
   GroupJoinRequest,
   GroupTravelContext,
+  AdminDelegationRequest,
 } from '../types/groups'
 import type { Activity } from '../components/ui/DayView/DayView'
 
@@ -59,17 +60,18 @@ export const groupsService = {
     }>('/groups/my-history', token)
   },
 
-  joinGroup: async (codigo: string, token: string) => {
+  joinGroup: async (codigo: string, token: string, invitationToken?: string | null) => {
     return apiClient.post<{ ok: boolean; message: string; group: Group & { requiresApproval?: boolean; joinRequestId?: string } }>(
       '/groups/join',
-      { codigo },
+      { codigo, ...(invitationToken ? { invitationToken } : {}) },
       token
     )
   },
 
-  getInvitePreview: async (code: string) => {
+  getInvitePreview: async (code: string, invitationToken?: string | null) => {
+    const query = invitationToken ? `?token=${encodeURIComponent(invitationToken)}` : ''
     return apiClient.get<{ ok: boolean; preview: InvitePreview }>(
-      `/groups/invite-preview/${encodeURIComponent(code)}`
+      `/groups/invite-preview/${encodeURIComponent(code)}${query}`
     )
   },
 
@@ -86,6 +88,7 @@ export const groupsService = {
       groupId: string
       codigo: string
       inviteLink: string
+      inviteSettings?: { expiresAt: string | null; maxUses: number | null; usedCount: number }
     }>(`/groups/${groupId}/invite`, token)
   },
 
@@ -96,6 +99,19 @@ export const groupsService = {
       codigo: string
       qrBase64: string
     }>(`/groups/${groupId}/qr`, token)
+  },
+
+
+  updateInviteSettings: async (
+    groupId: string,
+    payload: { expirationDays: number | null; maxUses: number | null },
+    token: string
+  ) => {
+    return apiClient.patch<{
+      ok: boolean
+      message: string
+      inviteSettings: { expiresAt: string | null; maxUses: number | null; usedCount: number }
+    }>(`/groups/${groupId}/invite-settings`, payload, token)
   },
 
   sendInvitations: async (groupId: string, emails: string[], token: string) => {
@@ -114,6 +130,14 @@ export const groupsService = {
     )
   },
 
+  closeGroup: async (groupId: string, token: string) => {
+    return apiClient.patch<{ ok: boolean; message: string; group: Group }>(
+      `/groups/${groupId}/close`,
+      {},
+      token
+    )
+  },
+
   deleteGroup: async (groupId: string, token: string) => {
     return apiClient.delete<{ ok: boolean; message: string }>(
       `/groups/${groupId}`,
@@ -122,7 +146,7 @@ export const groupsService = {
   },
 
   updateMemberRole: async (memberId: string, rol: 'admin' | 'viajero', token: string) => {
-    return apiClient.patch<{ ok: boolean }>(
+    return apiClient.patch<{ ok: boolean; member?: GroupMember & { pendingDelegation?: boolean; delegationRequest?: AdminDelegationRequest } }>(
       `/groups/members/${memberId}/role`,
       { rol },
       token
@@ -132,6 +156,27 @@ export const groupsService = {
   removeMember: async (groupId: string, memberId: string, token: string) => {
     return apiClient.delete<{ ok: boolean; message: string }>(
       `/groups/${groupId}/members/${memberId}`,
+      token
+    )
+  },
+
+
+  getAdminDelegations: async (groupId: string, token: string) => {
+    return apiClient.get<{ ok: boolean; requests: AdminDelegationRequest[] }>(
+      `/groups/${groupId}/admin-delegations`,
+      token
+    )
+  },
+
+  resolveAdminDelegation: async (
+    groupId: string,
+    requestId: string,
+    action: 'accept' | 'reject',
+    token: string
+  ) => {
+    return apiClient.patch<{ ok: boolean; message: string; request: AdminDelegationRequest; member?: GroupMember | null }>(
+      `/groups/${groupId}/admin-delegations/${requestId}`,
+      { action },
       token
     )
   },

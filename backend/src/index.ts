@@ -16,6 +16,8 @@ import notificationsRouter from './routes/notifications.router';
 import documentsRouter from './routes/documents.router';
 import checkoutRouter from './routes/checkout.router';
 import contextLinksRouter from './routes/context-links.router';
+import searchHistoryRouter from './routes/search-history.router';
+import exportRouter from './routes/export.router';
 import { initSocketServer } from './infrastructure/sockets/socket.server';
 import { startLockScheduler } from './infrastructure/sockets/lock.scheduler';
 
@@ -70,6 +72,8 @@ app.use('/api/budget', budgetRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/checkout', checkoutRouter);
+app.use('/api/search-history', searchHistoryRouter);
+app.use('/api/export', exportRouter);
 app.use(errorHandler);
 
 // ── Socket.IO + Scheduler ─────────────────────────────────────────

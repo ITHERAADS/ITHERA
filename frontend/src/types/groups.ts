@@ -32,6 +32,8 @@ export interface Group {
   punto_partida_propuesta_id?: number | string | null
   punto_partida_actualizado_at?: string | null
   presupuesto_total?: number | string | null
+  modulo_itinerario_bloqueado?: boolean
+  modulo_presupuesto_bloqueado?: boolean
 }
 
 export interface GroupHistoryItem {
@@ -63,6 +65,8 @@ export interface CreateGroupPayload {
   destino_formatted_address?: string | null
   destino_photo_name?: string | null
   destino_photo_url?: string | null
+  modulo_itinerario_bloqueado?: boolean
+  modulo_presupuesto_bloqueado?: boolean
 }
 
 export interface UpdateGroupPayload {
@@ -79,10 +83,18 @@ export interface UpdateGroupPayload {
   destino_formatted_address?: string | null
   destino_photo_name?: string | null
   destino_photo_url?: string | null
+  modulo_itinerario_bloqueado?: boolean
+  modulo_presupuesto_bloqueado?: boolean
 }
 
 export interface CreateInvitationsPayload {
   emails: string[]
+}
+
+export interface GroupInviteSettings {
+  expiresAt: string | null
+  maxUses: number | null
+  usedCount: number
 }
 
 export interface GroupInvitationResult {
@@ -115,6 +127,8 @@ export interface InvitePreview {
   canJoin: boolean
   cannotJoinReason?: 'GROUP_CAPACITY_REACHED' | string | null
   requiresApproval?: boolean
+  emailInvitation?: boolean
+  invitedEmail?: string | null
 }
 
 export interface GroupJoinRequest {
@@ -128,6 +142,22 @@ export interface GroupJoinRequest {
   nombre?: string | null
   email?: string | null
   avatar_url?: string | null
+}
+
+
+export interface AdminDelegationRequest {
+  id: string
+  group_id: string
+  from_user_id: string
+  to_user_id: string
+  status: 'pendiente' | 'aceptada' | 'rechazada' | 'expirada' | 'cancelada'
+  expires_at: string
+  created_at?: string
+  updated_at?: string
+  from_nombre?: string | null
+  from_email?: string | null
+  to_nombre?: string | null
+  to_email?: string | null
 }
 
 export interface GroupInvitation {

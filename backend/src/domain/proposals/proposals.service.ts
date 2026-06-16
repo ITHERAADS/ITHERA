@@ -22,6 +22,25 @@ const dbText = (value: string | null | undefined, max = 190): string | null => {
   return value.length > max ? value.slice(0, max) : value;
 };
 
+const getScheduleMinuteKey = (value?: string | null): string | null => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value.slice(0, 16);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const byType = Object.fromEntries(
+    parts.map((part) => [part.type, part.value]),
+  );
+  return `${byType.year}-${byType.month}-${byType.day}T${byType.hour}:${byType.minute}`;
+};
+
 const assertProposalActivityIsNotExpired = async (
   groupId: string,
   proposalId: string,
@@ -1044,12 +1063,16 @@ const applyProposalResolution = async (
     return;
   }
 
+  const resolvedActivityMinuteKey = getScheduleMinuteKey(
+    resolvedActivityDateStart,
+  );
+  if (!resolvedActivityMinuteKey) return;
+
   const { data: conflictingActivities, error: conflictingActivitiesError } =
     await supabase
       .from("actividades")
-      .select("id_actividad, propuesta_id")
+      .select("id_actividad, propuesta_id, fecha_inicio")
       .eq("itinerario_id", resolvedItineraryId)
-      .eq("fecha_inicio", resolvedActivityDateStart)
       .eq("estado", "pendiente")
       .neq("propuesta_id", proposalId)
       .not("propuesta_id", "is", null);
@@ -1057,11 +1080,18 @@ const applyProposalResolution = async (
   if (conflictingActivitiesError)
     throw createError(conflictingActivitiesError.message, 500);
 
-  if (!conflictingActivities || conflictingActivities.length === 0) {
+  const competingActivities = (conflictingActivities ?? []).filter(
+    (activity: any) =>
+      getScheduleMinuteKey(
+        activity.fecha_inicio ? String(activity.fecha_inicio) : null,
+      ) === resolvedActivityMinuteKey,
+  );
+
+  if (competingActivities.length === 0) {
     return;
   }
 
-  const conflictingActivityIds = conflictingActivities
+  const conflictingActivityIds = competingActivities
     .map((row: any) => row.id_actividad)
     .filter(Boolean);
 
@@ -1077,7 +1107,7 @@ const applyProposalResolution = async (
       throw createError(cancelConflictActivitiesError.message, 500);
   }
 
-  const conflictingProposalIds = conflictingActivities
+  const conflictingProposalIds = competingActivities
     .map((row: any) => row.propuesta_id)
     .filter(Boolean);
 

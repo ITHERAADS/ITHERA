@@ -1,93 +1,199 @@
-import { useState } from 'react'
-import type { Activity as DayActivity } from '../ui/DayView'
-import { proposalsService } from '../../services/proposals'
-import { useAuth } from '../../context/useAuth'
+import { useState } from "react";
+import type { Activity as DayActivity } from "../ui/DayView";
+import { proposalsService } from "../../services/proposals";
+import { useAuth } from "../../context/useAuth";
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
 function IconLock() {
   return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width="28"
+      height="28"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="3"
+        y="11"
+        width="18"
+        height="11"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 11V7a5 5 0 0110 0v4"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
-  )
+  );
 }
 
 function IconX() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <line
+        x1="18"
+        y1="6"
+        x2="6"
+        y2="18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="6"
+        y1="6"
+        x2="18"
+        y2="18"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
-  )
+  );
 }
 
 function IconAlertTriangle() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <line x1="12" y1="9" x2="12" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <line x1="12" y1="17" x2="12.01" y2="17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <line
+        x1="12"
+        y1="9"
+        x2="12"
+        y2="13"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <line
+        x1="12"
+        y1="17"
+        x2="12.01"
+        y2="17"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
-  )
+  );
 }
 
 function Spinner() {
   return (
-    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25" />
-      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    <svg
+      className="animate-spin"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeOpacity="0.25"
+      />
+      <path
+        d="M12 2a10 10 0 0110 10"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
     </svg>
-  )
+  );
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ModalState = 'idle' | 'processing' | 'error'
+type ModalState = "idle" | "processing" | "error";
 
 export interface ConfirmProposalModalProps {
-  proposal: DayActivity
-  onClose: () => void
-  onConfirm: () => void
+  proposal: DayActivity;
+  onClose: () => void;
+  onConfirm: () => void;
+  isOnline?: boolean;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ConfirmProposalModal({ proposal, onClose, onConfirm }: ConfirmProposalModalProps) {
-  const { accessToken } = useAuth()
-  const [state, setState]   = useState<ModalState>('idle')
-  const [errorMsg, setErrorMsg] = useState('')
+export function ConfirmProposalModal({
+  proposal,
+  onClose,
+  onConfirm,
+  isOnline = true,
+}: ConfirmProposalModalProps) {
+  const { accessToken } = useAuth();
+  const [state, setState] = useState<ModalState>("idle");
+  const [errorMsg, setErrorMsg] = useState("");
 
   async function handleConfirm() {
-    if (!proposal.proposalId || !accessToken) return
-    setState('processing')
-    setErrorMsg('')
+    if (!proposal.proposalId || !accessToken || state === "processing") return;
+    if (!isOnline) {
+      setErrorMsg(
+        "Sin conexión. Restablece tu conexión para aceptar esta propuesta.",
+      );
+      setState("error");
+      return;
+    }
+    setState("processing");
+    setErrorMsg("");
     try {
       await proposalsService.updateProposal(
         proposal.proposalId,
-        { estado: 'confirmado' },
-        accessToken
-      )
-      onConfirm()
+        { estado: "confirmado" },
+        accessToken,
+      );
+      onConfirm();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : ''
+      const msg = e instanceof Error ? e.message : "";
       setErrorMsg(
-        msg.toLowerCase().includes('already') || msg.toLowerCase().includes('confirmad')
-          ? 'Alguien más aceptó esta propuesta primero.'
-          : 'No se pudo confirmar la propuesta. Intenta de nuevo.'
-      )
-      setState('error')
+        msg.toLowerCase().includes("already") ||
+          msg.toLowerCase().includes("confirmad")
+          ? "Alguien más aceptó esta propuesta primero."
+          : "No se pudo confirmar la propuesta. Intenta de nuevo.",
+      );
+      setState("error");
     }
   }
 
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && state !== 'processing') onClose() }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && state !== "processing") onClose();
+      }}
     >
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
-
         {/* ── Header ── */}
         <div className="px-6 pt-6 pb-4 flex flex-col items-center text-center gap-3">
           <div className="w-14 h-14 rounded-2xl bg-[#7A4FD6]/10 flex items-center justify-center text-[#7A4FD6]">
@@ -97,7 +203,8 @@ export function ConfirmProposalModal({ proposal, onClose, onConfirm }: ConfirmPr
             ¿Confirmar propuesta?
           </h2>
           <p className="font-body text-sm text-[#1E0A4E]/60 leading-relaxed">
-            Esta acción es irreversible. Una vez aceptada, la propuesta quedará bloqueada y no podrá modificarse.
+            Esta acción es irreversible. Una vez aceptada, la propuesta quedará
+            bloqueada y no podrá modificarse.
           </p>
         </div>
 
@@ -108,18 +215,21 @@ export function ConfirmProposalModal({ proposal, onClose, onConfirm }: ConfirmPr
           </p>
           {proposal.price !== undefined && (
             <p className="font-heading font-bold text-[#1E6FD9] text-sm shrink-0">
-              ${proposal.price.toLocaleString('es-MX')} {proposal.currency || 'MXN'}
+              ${proposal.price.toLocaleString("es-MX")}{" "}
+              {proposal.currency || "MXN"}
             </p>
           )}
         </div>
 
         {/* ── Estado error ── */}
-        {state === 'error' && (
+        {state === "error" && (
           <div className="mx-5 mb-4 rounded-xl border border-[#EF4444]/20 bg-[#FEF2F2] px-4 py-3 flex items-start gap-2">
-            <span className="text-[#EF4444] mt-0.5 shrink-0"><IconAlertTriangle /></span>
+            <span className="text-[#EF4444] mt-0.5 shrink-0">
+              <IconAlertTriangle />
+            </span>
             <div className="flex-1">
               <p className="font-body text-xs font-semibold text-[#EF4444]">
-                {errorMsg || 'Alguien más aceptó esta propuesta primero'}
+                {errorMsg || "Alguien más aceptó esta propuesta primero"}
               </p>
               <p className="font-body text-xs text-[#EF4444]/70 mt-0.5">
                 La propuesta ya fue bloqueada por otro integrante del grupo.
@@ -129,18 +239,22 @@ export function ConfirmProposalModal({ proposal, onClose, onConfirm }: ConfirmPr
         )}
 
         {/* ── Advertencia ── */}
-        {state !== 'error' && (
+        {state !== "error" && (
           <div className="mx-5 mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-2">
-            <span className="text-amber-500 mt-0.5 shrink-0"><IconAlertTriangle /></span>
+            <span className="text-amber-500 mt-0.5 shrink-0">
+              <IconAlertTriangle />
+            </span>
             <p className="font-body text-xs text-amber-700">
-              El resto del grupo será notificado y no podrá hacer cambios en esta propuesta.
+              {isOnline
+                ? "El resto del grupo será notificado y no podrá hacer cambios en esta propuesta."
+                : "Sin conexión. No puedes aceptar esta propuesta hasta que se restablezca la conexión."}
             </p>
           </div>
         )}
 
         {/* ── Botones ── */}
         <div className="px-5 pb-5 flex flex-col gap-2">
-          {state === 'error' ? (
+          {state === "error" ? (
             <button
               onClick={onClose}
               className="w-full flex items-center justify-center gap-2 rounded-xl border border-[#E2E8F0] py-3 font-body text-sm font-semibold text-[#1E0A4E]/70 hover:bg-[#F8FAFC] transition-colors"
@@ -152,21 +266,23 @@ export function ConfirmProposalModal({ proposal, onClose, onConfirm }: ConfirmPr
             <>
               <button
                 onClick={() => void handleConfirm()}
-                disabled={state === 'processing'}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#35C56A] py-3 font-body text-sm font-semibold text-white hover:bg-[#2eae5d] transition-colors disabled:opacity-60"
+                disabled={state === "processing" || !isOnline}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#35C56A] py-3 font-body text-sm font-semibold text-white hover:bg-[#2eae5d] transition-colors disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {state === 'processing' ? (
+                {state === "processing" ? (
                   <>
                     <Spinner />
                     Confirmando...
                   </>
+                ) : isOnline ? (
+                  "Confirmar"
                 ) : (
-                  'Confirmar'
+                  "Sin conexión"
                 )}
               </button>
               <button
                 onClick={onClose}
-                disabled={state === 'processing'}
+                disabled={state === "processing"}
                 className="w-full rounded-xl border border-[#E2E8F0] py-3 font-body text-sm font-semibold text-[#1E0A4E]/70 hover:bg-[#F8FAFC] transition-colors disabled:opacity-40"
               >
                 Cancelar
@@ -174,8 +290,7 @@ export function ConfirmProposalModal({ proposal, onClose, onConfirm }: ConfirmPr
             </>
           )}
         </div>
-
       </div>
     </div>
-  )
+  );
 }

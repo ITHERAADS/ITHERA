@@ -221,6 +221,62 @@ const assertUserInGroup = (members: BudgetMember[], userId: string, message: str
   }
 };
 
+const getScopedMembersForExpense = async (
+  groupId: string,
+  payload: BudgetExpensePayload,
+  allGroupMembers: BudgetMember[],
+): Promise<{ members: BudgetMember[]; scopeLabel: 'grupo' | 'subgrupo' }> => {
+  const subgroupId = String(payload.subgroup_id ?? '').trim();
+  if (!subgroupId) {
+    return { members: allGroupMembers, scopeLabel: 'grupo' };
+  }
+
+  const { data: subgroup, error: subgroupError } = await supabaseAdmin
+    .from('subgroups')
+    .select('id, slot_id')
+    .eq('id', subgroupId)
+    .maybeSingle();
+  if (subgroupError) throw createError(subgroupError.message, 500);
+  if (!subgroup) throw createError('Subgrupo no encontrado', 404);
+
+  const slotId = Number((subgroup as { slot_id?: number | string | null }).slot_id);
+  if (!Number.isFinite(slotId)) {
+    throw createError('Subgrupo invalido', 400);
+  }
+
+  const { data: slot, error: slotError } = await supabaseAdmin
+    .from('subgroup_slots')
+    .select('id, group_id')
+    .eq('id', slotId)
+    .maybeSingle();
+  if (slotError) throw createError(slotError.message, 500);
+  if (!slot || String((slot as { group_id?: string | number | null }).group_id) !== String(groupId)) {
+    throw createError('El subgrupo no pertenece al grupo enviado', 400);
+  }
+
+  const { data: memberships, error: membershipsError } = await supabaseAdmin
+    .from('subgroup_memberships')
+    .select('user_id')
+    .eq('subgroup_id', subgroupId);
+  if (membershipsError) throw createError(membershipsError.message, 500);
+
+  const allowedUserIds = new Set(
+    (memberships ?? [])
+      .map((item: any) => String(item.user_id ?? ''))
+      .filter((id) => id.length > 0),
+  );
+
+  const scopedMembers = allGroupMembers.filter((member) =>
+    allowedUserIds.has(String(member.usuario_id)),
+  );
+
+  if (scopedMembers.length === 0) {
+    throw createError('El subgrupo no tiene integrantes para registrar gastos', 400);
+  }
+
+  return { members: scopedMembers, scopeLabel: 'subgrupo' };
+};
+
 const getGroupBudgetRecord = async (groupId: string) => {
   const { data, error } = await supabaseAdmin
     .from('grupos_viaje')
@@ -287,6 +343,7 @@ const buildSplits = (
   payload: BudgetExpensePayload,
   members: BudgetMember[],
   amount: number,
+  scopeLabel: 'grupo' | 'subgrupo' = 'grupo',
 ) => {
   const splitType = normalizeSplitType(payload.split_type);
 
@@ -295,7 +352,13 @@ const buildSplits = (
     const splits = Object.entries(splitAmounts)
       .filter(([, share]) => Number(share) > 0)
       .map(([userId, share]) => {
-        assertUserInGroup(members, userId, 'Un integrante del split no pertenece al grupo');
+        assertUserInGroup(
+          members,
+          userId,
+          scopeLabel === 'subgrupo'
+            ? 'Un integrante del split no pertenece al subgrupo seleccionado'
+            : 'Un integrante del split no pertenece al grupo',
+        );
         return {
           expense_id: expenseId,
           user_id: String(userId),
@@ -316,7 +379,13 @@ const buildSplits = (
     : members.map((member) => String(member.usuario_id));
 
   for (const memberId of selectedMemberIds) {
-    assertUserInGroup(members, memberId, 'Un integrante del split no pertenece al grupo');
+    assertUserInGroup(
+      members,
+      memberId,
+      scopeLabel === 'subgrupo'
+        ? 'Un integrante del split no pertenece al subgrupo seleccionado'
+        : 'Un integrante del split no pertenece al grupo',
+    );
   }
 
   if (selectedMemberIds.length === 0) {
@@ -374,11 +443,18 @@ const applyConfirmedPaymentsToBalances = (
   const next = { ...balances };
   for (const payment of payments) {
     if (normalizePaymentStatus(payment.status) !== 'confirmado') continue;
+
     const from = String(payment.from_user_id);
     const to = String(payment.to_user_id);
     const amount = Number(payment.amount);
-    next[from] = roundMoney((next[from] ?? 0) - amount);
-    next[to] = roundMoney((next[to] ?? 0) + amount);
+
+    /*
+      En el balance base, quien debe tiene saldo negativo y quien debe cobrar
+      tiene saldo positivo. Al confirmar una liquidacion, la deuda del pagador
+      disminuye y el saldo por cobrar del acreedor tambien disminuye.
+    */
+    next[from] = roundMoney((next[from] ?? 0) + amount);
+    next[to] = roundMoney((next[to] ?? 0) - amount);
   }
   return next;
 };
@@ -549,11 +625,18 @@ export const createExpense = async (
 ) => {
   const actor = await ensureGroupMember(authUserId, groupId);
   const members = await getMembers(groupId);
+  const { members: scopedMembers, scopeLabel } = await getScopedMembersForExpense(groupId, payload, members);
   const amount = assertPositiveAmount(payload.amount);
   const category = normalizeCategory(payload.category);
   const splitType = normalizeSplitType(payload.split_type);
   const paidByUserId = String(payload.paid_by_user_id);
-  assertUserInGroup(members, paidByUserId, 'El pagador no pertenece al grupo');
+  assertUserInGroup(
+    scopedMembers,
+    paidByUserId,
+    scopeLabel === 'subgrupo'
+      ? 'El pagador no pertenece al subgrupo seleccionado'
+      : 'El pagador no pertenece al grupo',
+  );
   const expenseDate = payload.expense_date ?? new Date().toISOString().split('T')[0];
   await assertExpenseDateWithinTripWindow(groupId, expenseDate);
 
@@ -574,7 +657,7 @@ export const createExpense = async (
 
   if (error || !expense) throw createError(error?.message ?? 'Error al registrar el gasto', 500);
 
-  const splits = buildSplits(String(expense.id), payload, members, amount);
+  const splits = buildSplits(String(expense.id), payload, scopedMembers, amount, scopeLabel);
   const { error: splitError } = await supabaseAdmin.from('expense_splits').insert(splits);
   if (splitError) throw createError(splitError.message, 500);
 
@@ -609,11 +692,18 @@ export const updateExpense = async (
   }
 
   const members = await getMembers(groupId);
+  const { members: scopedMembers, scopeLabel } = await getScopedMembersForExpense(groupId, payload, members);
   const amount = assertPositiveAmount(payload.amount);
   const category = normalizeCategory(payload.category);
   const splitType = normalizeSplitType(payload.split_type);
   const paidByUserId = String(payload.paid_by_user_id);
-  assertUserInGroup(members, paidByUserId, 'El pagador no pertenece al grupo');
+  assertUserInGroup(
+    scopedMembers,
+    paidByUserId,
+    scopeLabel === 'subgrupo'
+      ? 'El pagador no pertenece al subgrupo seleccionado'
+      : 'El pagador no pertenece al grupo',
+  );
   const expenseDate = payload.expense_date ?? new Date().toISOString().split('T')[0];
   await assertExpenseDateWithinTripWindow(groupId, expenseDate);
 
@@ -639,7 +729,7 @@ export const updateExpense = async (
     .eq('expense_id', expenseId);
   if (deleteSplitsError) throw createError(deleteSplitsError.message, 500);
 
-  const splits = buildSplits(expenseId, payload, members, amount);
+  const splits = buildSplits(expenseId, payload, scopedMembers, amount, scopeLabel);
   const { error: insertSplitsError } = await supabaseAdmin.from('expense_splits').insert(splits);
   if (insertSplitsError) throw createError(insertSplitsError.message, 500);
 
@@ -688,7 +778,12 @@ export const deleteExpense = async (authUserId: string, groupId: string, expense
 };
 
 export const getBalances = async (groupId: string): Promise<Record<string, number>> => {
-  return calculateBalances(await getExpenses(groupId));
+  const [expenses, payments] = await Promise.all([
+    getExpenses(groupId),
+    getSettlementPayments(groupId),
+  ]);
+
+  return applyConfirmedPaymentsToBalances(calculateBalances(expenses), payments);
 };
 
 export const getMinimumSettlements = async (groupId: string) => {

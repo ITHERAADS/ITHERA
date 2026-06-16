@@ -41,6 +41,8 @@ interface DashboardNavbarProps {
   onTripSelect?: () => void
   onNotifications?: () => void
   onUserMenu?: () => void
+  onOpenChat?: () => void
+  chatUnreadCount?: number
 }
 
 export type NavbarProps = LandingNavbarProps | DashboardNavbarProps
@@ -102,6 +104,14 @@ function IconLogout() {
   )
 }
 
+function IconChat() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 function IconGlobe() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -118,24 +128,120 @@ const DEFAULT_LANDING_LINKS: NavLink[] = [
   { href: '#how',      label: 'Cómo funciona' },
 ]
 
-function LandingDesktopRight() {
+function LandingDesktopRight({ isScrolled }: { isScrolled: boolean }) {
+  const { localUser, logout } = useAuth()
+  const navigate = useNavigate()
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!dropdownOpen) return
+    function handleOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [dropdownOpen])
+
+  const subtleText = isScrolled ? 'text-gray500 hover:text-purpleNavbar' : 'text-white/70 hover:text-white'
+  const loginClass = isScrolled
+    ? 'border-[#E2E8F0] bg-white text-gray700 hover:border-bluePrimary hover:text-bluePrimary'
+    : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+
+  if (localUser) {
+    const initials = (localUser.nombre || 'U')
+      .split(' ')
+      .map((w: string) => w[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase()
+
+    return (
+      <div className="ml-auto flex items-center gap-3">
+        <div ref={dropdownRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setDropdownOpen((o) => !o)}
+            className={`flex items-center gap-2.5 rounded-2xl border px-3 py-2 transition-colors ${isScrolled ? 'border-[#E2E8F0] bg-white hover:bg-[#F8FAFC]' : 'border-white/15 bg-white/10 hover:bg-white/15'}`}
+          >
+            {localUser.avatar_url ? (
+              <img src={localUser.avatar_url} alt="" className="h-7 w-7 rounded-full object-cover" />
+            ) : (
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#1E6FD9] to-[#7A4FD6] font-body text-xs font-bold text-white">
+                {initials}
+              </span>
+            )}
+            <div className="flex flex-col items-start">
+              <span className={`font-body text-xs font-semibold leading-none ${isScrolled ? 'text-[#1E0A4E]' : 'text-white'}`}>
+                {(localUser.nombre || 'Usuario').split(' ')[0]}
+              </span>
+              <span className="mt-0.5 flex items-center gap-1 font-body text-[10px] font-medium text-[#35C56A]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#35C56A]" />
+                En línea
+              </span>
+            </div>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className={`ml-1 transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''} ${isScrolled ? 'text-gray-400' : 'text-white/50'}`} aria-hidden="true">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          {dropdownOpen && (
+            <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-2xl border border-[#E2E8F0] bg-white shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
+              <div className="border-b border-[#F1F5F9] px-4 py-3">
+                <p className="font-body text-sm font-semibold text-[#1E0A4E]">{localUser.nombre || 'Usuario'}</p>
+                <p className="truncate font-body text-xs text-[#64748B]">{localUser.email}</p>
+              </div>
+              <div className="p-2">
+                <button
+                  type="button"
+                  onClick={() => { setDropdownOpen(false); navigate('/my-trips') }}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-body text-sm font-semibold text-[#1E0A4E] transition-colors hover:bg-[#F0EEF8]"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#EEF4FF] text-[#1E6FD9]">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                  Ir a la plataforma
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => { setDropdownOpen(false); await logout(); navigate('/') }}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left font-body text-sm font-semibold text-[#EF4444] transition-colors hover:bg-[#FFF5F5]"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#FFF5F5] text-[#EF4444]">
+                    <IconLogout />
+                  </span>
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="ml-auto flex items-center gap-3">
       <a
-        href="#"
-        className="hidden md:block font-body text-sm text-gray500 hover:text-purpleNavbar transition-colors"
+        href="/login"
+        className={`hidden font-body text-sm font-semibold transition-colors md:block ${subtleText}`}
       >
         Mis viajes
       </a>
       <a
         href="/login"
-        className="font-body text-sm border border-[#E2E8F0] text-gray700 rounded-lg px-4 py-1.5 hover:border-bluePrimary hover:text-bluePrimary transition-colors"
+        className={`rounded-xl border px-4 py-2 font-body text-sm font-semibold shadow-sm backdrop-blur transition-colors ${loginClass}`}
       >
         Iniciar sesión
       </a>
       <a
         href="/register"
-        className="font-body text-sm font-medium bg-bluePrimary text-white rounded-full px-4 py-1.5 hover:opacity-90 transition-opacity"
+        className="rounded-xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-4 py-2 font-body text-sm font-bold text-white shadow-[0_10px_24px_rgba(30,111,217,0.28)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(30,111,217,0.34)]"
       >
         Crear cuenta
       </a>
@@ -143,31 +249,67 @@ function LandingDesktopRight() {
   )
 }
 
-function LandingMobileMenu({ navLinks }: { navLinks: NavLink[] }) {
+function LandingMobileMenu({ navLinks, isScrolled }: { navLinks: NavLink[]; isScrolled: boolean }) {
+  const { localUser, logout } = useAuth()
+  const navigate = useNavigate()
+  const menuClass = isScrolled
+    ? 'border-[#E2E8F0] bg-white shadow-lg'
+    : 'border-white/15 bg-[#1E0A4E]/95 shadow-[0_20px_50px_rgba(9,5,28,0.34)] backdrop-blur-xl'
+  const linkClass = isScrolled
+    ? 'text-gray500 hover:text-purpleNavbar'
+    : 'text-white/70 hover:text-white'
+
   return (
-    <div className="md:hidden absolute top-full left-0 right-0 bg-white border-b border-[#E2E8F0] shadow-lg px-6 py-4 flex flex-col gap-3 z-40">
+    <div className={`absolute left-0 right-0 top-full z-40 flex flex-col gap-3 border-b px-6 py-4 md:hidden ${menuClass}`}>
       {navLinks.map((link) => (
         <a
           key={link.href}
           href={link.href}
-          className="font-body text-sm text-gray500 hover:text-purpleNavbar py-1 transition-colors"
+          className={`py-1 font-body text-sm font-semibold transition-colors ${linkClass}`}
         >
           {link.label}
         </a>
       ))}
-      <div className="border-t border-[#E2E8F0] pt-3 flex flex-col gap-2">
-        <a
-          href="/login"
-          className="font-body text-sm text-center border border-[#E2E8F0] text-gray700 rounded-lg px-4 py-2 hover:border-bluePrimary hover:text-bluePrimary transition-colors"
-        >
-          Iniciar sesión
-        </a>
-        <a
-          href="/register"
-          className="font-body text-sm font-medium text-center bg-bluePrimary text-white rounded-full px-4 py-2 hover:opacity-90 transition-opacity"
-        >
-          Crear cuenta
-        </a>
+      <div className={`flex flex-col gap-2 border-t pt-3 ${isScrolled ? 'border-[#E2E8F0]' : 'border-white/10'}`}>
+        {localUser ? (
+          <>
+            <div className={`rounded-xl border px-4 py-3 ${isScrolled ? 'border-[#E2E8F0] bg-[#F8FAFC]' : 'border-white/10 bg-white/[0.07]'}`}>
+              <p className={`font-body text-sm font-semibold ${isScrolled ? 'text-[#1E0A4E]' : 'text-white'}`}>{localUser.nombre || 'Usuario'}</p>
+              <p className="mt-0.5 flex items-center gap-1 font-body text-xs text-[#35C56A]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#35C56A]" /> En línea
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('/my-trips')}
+              className={`rounded-xl border px-4 py-2 text-center font-body text-sm font-semibold transition-colors ${isScrolled ? 'border-[#E2E8F0] text-[#1E0A4E] hover:bg-[#F0EEF8]' : 'border-white/20 text-white hover:bg-white/10'}`}
+            >
+              Ir a la plataforma
+            </button>
+            <button
+              type="button"
+              onClick={async () => { await logout(); navigate('/') }}
+              className="rounded-xl bg-[#FFF5F5] px-4 py-2 text-center font-body text-sm font-semibold text-[#EF4444] transition-opacity hover:opacity-80"
+            >
+              Cerrar sesión
+            </button>
+          </>
+        ) : (
+          <>
+            <a
+              href="/login"
+              className={`rounded-xl border px-4 py-2 text-center font-body text-sm font-semibold transition-colors ${isScrolled ? 'border-[#E2E8F0] text-gray700 hover:border-bluePrimary hover:text-bluePrimary' : 'border-white/20 text-white hover:bg-white/10'}`}
+            >
+              Iniciar sesión
+            </a>
+            <a
+              href="/register"
+              className="rounded-xl bg-gradient-to-r from-[#1E6FD9] to-[#7A4FD6] px-4 py-2 text-center font-body text-sm font-bold text-white transition-opacity hover:opacity-90"
+            >
+              Crear cuenta
+            </a>
+          </>
+        )}
       </div>
     </div>
   )
@@ -176,25 +318,31 @@ function LandingMobileMenu({ navLinks }: { navLinks: NavLink[] }) {
 function LandingNavContent({
   navLinks,
   mobileOpen,
+  isScrolled,
 }: {
   navLinks: NavLink[]
   mobileOpen: boolean
+  isScrolled: boolean
 }) {
+  const linkClass = isScrolled
+    ? 'text-gray500 hover:text-purpleNavbar'
+    : 'text-white/75 hover:text-white'
+
   return (
     <>
-      <div className="hidden md:flex items-center gap-6 ml-8">
+      <div className={`ml-8 hidden items-center gap-1 rounded-2xl border px-2 py-1.5 backdrop-blur md:flex ${isScrolled ? 'border-[#E2E8F0] bg-[#F8FAFC]' : 'border-white/15 bg-white/10'}`}>
         {navLinks.map((link) => (
           <a
             key={link.href}
             href={link.href}
-            className="font-body text-sm text-gray500 hover:text-purpleNavbar transition-colors"
+            className={`rounded-xl px-4 py-2 font-body text-sm font-semibold transition-all duration-200 hover:bg-white/10 ${linkClass}`}
           >
             {link.label}
           </a>
         ))}
       </div>
-      <LandingDesktopRight />
-      {mobileOpen && <LandingMobileMenu navLinks={navLinks} />}
+      <LandingDesktopRight isScrolled={isScrolled} />
+      {mobileOpen && <LandingMobileMenu navLinks={navLinks} isScrolled={isScrolled} />}
     </>
   )
 }
@@ -382,6 +530,8 @@ interface DashboardContentProps {
   centerTitle: string
   onTripSelect?: () => void
   onUserMenu?: () => void
+  onOpenChat?: () => void
+  chatUnreadCount?: number
 }
 
 function DashboardNavContent({
@@ -392,6 +542,8 @@ function DashboardNavContent({
   showTripSelector,
   centerTitle,
   onTripSelect,
+  onOpenChat,
+  chatUnreadCount = 0,
 }: DashboardContentProps) {
   const navigate = useNavigate()
   const { logout, localUser, accessToken } = useAuth()
@@ -614,6 +766,22 @@ function DashboardNavContent({
 
       {/* Right section */}
       <div className="ml-auto flex items-center gap-1">
+        {/* Chat button */}
+        {onOpenChat && (
+          <button
+            onClick={onOpenChat}
+            className="relative hidden md:flex items-center justify-center w-9 h-9 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label={`Chat del grupo${chatUnreadCount > 0 ? ` — ${chatUnreadCount} sin leer` : ''}`}
+          >
+            <IconChat />
+            {chatUnreadCount > 0 && (
+              <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-[#DB2777] font-body text-[10px] font-bold leading-none text-white">
+                {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
+              </span>
+            )}
+          </button>
+        )}
+
         {/* Notifications bell */}
         <div ref={notifRef} className="relative hidden md:flex">
           <button
@@ -703,15 +871,22 @@ function DashboardNavContent({
         <span className="hidden md:block w-px h-5 bg-white/10 mx-1" />
 
         {/* Online chip */}
-        {isOnline && (
-          <div className="hidden md:flex items-center gap-1.5 bg-greenAccent/20 border border-greenAccent/30 rounded-full px-3 py-1">
-            <span className="relative flex w-2 h-2 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-greenAccent opacity-75" />
-              <span className="relative inline-flex rounded-full w-2 h-2 bg-greenAccent" />
-            </span>
-            <span className="font-body text-xs font-medium text-greenAccent">En línea</span>
-          </div>
-        )}
+        <div
+          className={`hidden md:flex items-center gap-1.5 rounded-full border px-3 py-1 ${
+            isOnline
+              ? 'border-greenAccent/30 bg-greenAccent/20'
+              : 'border-red-300/40 bg-red-500/15'
+          }`}
+          title={isOnline ? 'Conectado y sincronizando en tiempo real' : 'Sin conexión o WebSocket desconectado'}
+        >
+          <span className="relative flex w-2 h-2 shrink-0">
+            {isOnline && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-greenAccent opacity-75" />}
+            <span className={`relative inline-flex h-2 w-2 rounded-full ${isOnline ? 'bg-greenAccent' : 'bg-red-400'}`} />
+          </span>
+          <span className={`font-body text-xs font-medium ${isOnline ? 'text-greenAccent' : 'text-red-100'}`}>
+            {isOnline ? 'En línea' : 'Sin conexión'}
+          </span>
+        </div>
 
         {/* Divider */}
         <span className="hidden md:block w-px h-5 bg-white/10 mx-1" />
@@ -797,30 +972,37 @@ export function Navbar(props: NavbarProps) {
 
   const isDashboard = props.variant === 'dashboard'
 
-  const navBase = 'fixed top-0 left-0 right-0 z-50 h-20 px-6 flex items-center transition-shadow duration-300'
+  const navBase = 'fixed top-0 left-0 right-0 z-50 h-20 px-6 flex items-center transition-all duration-300'
   const navTheme = isDashboard
-    ? 'bg-purpleNavbar border-b border-white/10'
-    : 'bg-white border-b border-[#E2E8F0]'
+    ? 'border-b border-white/10 bg-[linear-gradient(90deg,#24105E_0%,#2B1163_44%,#5B2BC0_100%)]'
+    : scrolled
+      ? 'bg-white/90 border-b border-[#E2E8F0] shadow-sm backdrop-blur-xl'
+      : 'bg-[#1E0A4E]/20 border-b border-white/10 backdrop-blur-xl'
   const navShadow = scrolled
-    ? isDashboard ? 'shadow-[0_2px_12px_rgba(0,0,0,0.4)]' : 'shadow-sm'
+    ? isDashboard ? 'shadow-[0_2px_12px_rgba(0,0,0,0.4)]' : 'shadow-[0_18px_44px_rgba(15,23,42,0.08)]'
     : ''
 
   const hamburgerTheme = isDashboard
     ? 'text-white/70 hover:text-white hover:bg-white/10'
-    : 'text-gray700 hover:bg-neutralBg'
+    : scrolled
+      ? 'text-gray700 hover:bg-neutralBg'
+      : 'text-white/75 hover:bg-white/10 hover:text-white'
 
   return (
     <nav className={[navBase, navTheme, navShadow].join(' ')}>
       {/* Logo */}
-      <a href={isDashboard ? '/my-trips' : '/'} className="shrink-0" aria-label="Ithera">
-        <Logo variant={isDashboard ? 'white' : 'color'} height={64} />
+      <a href="/" className="shrink-0" aria-label="Ithera">
+        <Logo
+          variant={isDashboard || !scrolled ? 'white' : 'color'}
+          height={isDashboard ? 64 : scrolled ? 54 : 58}
+        />
       </a>
 
-      {/* Sidebar toggle — dashboard only, always visible */}
+      {/* Sidebar toggle — dashboard only on tablet/desktop; mobile uses its own menu button */}
       {isDashboard && (
         <button
           onClick={(props as DashboardNavbarProps).onToggleSidebar}
-          className="p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors ml-2 shrink-0"
+          className="ml-2 hidden shrink-0 rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white md:flex"
           aria-label="Alternar sidebar"
         >
           <IconMenu />
@@ -837,11 +1019,14 @@ export function Navbar(props: NavbarProps) {
           showTripSelector={props.showTripSelector ?? true}
           centerTitle={props.centerTitle ?? ''}
           onTripSelect={props.onTripSelect}
+          onOpenChat={props.onOpenChat}
+          chatUnreadCount={props.chatUnreadCount}
         />
       ) : (
         <LandingNavContent
           navLinks={props.navLinks ?? DEFAULT_LANDING_LINKS}
           mobileOpen={mobileOpen}
+          isScrolled={scrolled}
         />
       )}
 

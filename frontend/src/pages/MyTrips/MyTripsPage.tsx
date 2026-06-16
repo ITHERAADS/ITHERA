@@ -4,6 +4,7 @@ import { AppLayout } from '../../components/layout/AppLayout/AppLayout'
 import { useAuth } from '../../context/useAuth'
 import { useSocket } from '../../hooks/useSocket'
 import { groupsService, saveCurrentGroup } from '../../services/groups'
+import { isNetworkError } from '../../services/apiClient'
 import type { GroupHistoryItem } from '../../types/groups'
 
 // ── Date helper ───────────────────────────────────────────────────────────────
@@ -27,6 +28,32 @@ import type { GroupHistoryItem } from '../../types/groups'
   const sameYear  = startYear === endYear
 
   return `${fmt(start!, !sameYear)} – ${fmt(end, true)}`
+}
+
+function formatTripDate(
+  start: string | null | undefined,
+  end: string | null | undefined,
+): string {
+  if (!start && !end) return 'Fechas por definir'
+
+  const dayMonth = (iso: string) =>
+    new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long' }).format(new Date(iso))
+  const dayMonthYear = (iso: string) =>
+    new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(iso))
+
+  if (!end) return `Desde el ${dayMonthYear(start!)}`
+
+  const s = new Date(start!)
+  const e = new Date(end)
+  const days = Math.round((e.getTime() - s.getTime()) / 86400000)
+  const dur = days > 0 ? ` · ${days} ${days === 1 ? 'día' : 'días'}` : ''
+
+  if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+    const monthYear = new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric' }).format(e)
+    return `${s.getDate()} al ${e.getDate()} de ${monthYear}${dur}`
+  }
+
+  return `${dayMonth(start!)} → ${dayMonthYear(end)}${dur}`
 }
 
 function getFirstName(nombre: string | null | undefined): string {
@@ -134,6 +161,15 @@ function IconLuggage() {
   )
 }
 
+function IconPlaneBadge() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M21 3L9.5 14.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <path d="M21 3l-7 18-4.5-6.5L3 10l18-7z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 function IconWifiOff() {
   return (
     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -162,9 +198,22 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
   const [info, setInfo]       = useState('')
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine)
   const { accessToken }       = useAuth()
 
+  useEffect(() => {
+    const updateOnlineState = () => setIsOffline(typeof navigator !== 'undefined' && !navigator.onLine)
+    window.addEventListener('online', updateOnlineState)
+    window.addEventListener('offline', updateOnlineState)
+    updateOnlineState()
+    return () => {
+      window.removeEventListener('online', updateOnlineState)
+      window.removeEventListener('offline', updateOnlineState)
+    }
+  }, [])
+
   const handleJoin = async () => {
+    if (isOffline) return setError('Sin conexión. Podrás unirte con código cuando recuperes internet.')
     if (!code.trim()) return setError('Ingresa un código de invitación.')
     setError('')
     setInfo('')
@@ -186,7 +235,7 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
       saveCurrentGroup(response.group)
       onJoined()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Código inválido o expirado.')
+      setError(isNetworkError(e) ? 'Sin conexión. Podrás unirte con código cuando recuperes internet.' : e instanceof Error ? e.message : 'Código inválido o expirado.')
     } finally {
       setLoading(false)
     }
@@ -199,19 +248,25 @@ function JoinCodePanel({ onJoined }: { onJoined: () => void }) {
           type="text"
           value={code}
           onChange={(e) => { setCode(e.target.value.toUpperCase()); setError(''); setInfo('') }}
-          onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+          onKeyDown={(e) => e.key === 'Enter' && !isOffline && handleJoin()}
+          disabled={isOffline}
           placeholder="Ej: ABCD1234"
           maxLength={8}
           className="flex-1 font-body text-sm text-[#1E0A4E] placeholder-gray-400 border border-[#E2E8F0] rounded-xl px-4 py-2.5 outline-none focus:border-[#1E6FD9] focus:ring-2 focus:ring-[#1E6FD9]/10 tracking-widest uppercase bg-white"
         />
         <button
           onClick={handleJoin}
-          disabled={loading}
+          disabled={loading || isOffline}
           className="font-body text-sm font-semibold bg-[#1E0A4E] text-white rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity disabled:opacity-50 whitespace-nowrap"
         >
           {loading ? 'Uniéndome…' : 'Unirme'}
         </button>
       </div>
+      {isOffline && (
+        <p className="rounded-xl bg-[#FFFBEB] px-4 py-3 font-body text-xs text-[#92400E]">
+          Sin conexión — modo lectura activo. Esta acción estará disponible al recuperar conexión.
+        </p>
+      )}
       {error && <p className="font-body text-xs text-red-500">{error}</p>}
       {info && (
         <p className="rounded-xl bg-[#FFF8E6] px-4 py-3 font-body text-xs text-[#8A5A00]">
@@ -315,34 +370,63 @@ function RolBadge({ rol, dark = false }: { rol: string; dark?: boolean }) {
 
 function FeaturedCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => void }) {
   const g = item.grupos_viaje
+  const photoUrl = g.destino_photo_url ?? null
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-[#2D1266] bg-[#1E0A4E] p-5 shadow-lg">
-      <div className="mb-3 flex items-center justify-between">
-        <StatusChip estado="activo"/>
-        <RolBadge rol={item.rol} dark />
-      </div>
-      <h2 className="font-heading text-xl font-bold text-white leading-tight mb-1">
-        {g.nombre}
-      </h2>
-      {g.destino && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className="text-white/50"><IconMap /></span>
-          <p className="font-body text-[13px] text-white/70">{g.destino}</p>
-        </div>
+    <div className="relative overflow-hidden rounded-3xl shadow-[0_22px_46px_rgba(30,10,78,0.28)]">
+      {/* Destination photo */}
+      {photoUrl && (
+        <img
+          src={photoUrl}
+          alt={g.nombre}
+          className="absolute inset-0 h-full w-full object-cover"
+          loading="lazy"
+        />
       )}
-      <div className="flex items-center gap-1.5 mb-4">
-        <span className="text-white/50"><IconClock /></span>
-        <p className="font-body text-[12px] text-white/50">
-          {formatRange(g.fecha_inicio, g.fecha_fin)}
-        </p>
-      </div>
-      <div className="flex justify-end">
-        <button
-          onClick={onClick}
-          className="inline-flex min-w-[132px] items-center justify-center rounded-full border border-white/80 bg-white px-5 py-2.5 font-body text-[13px] font-semibold text-[#1E0A4E] shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md"
-        >
-          Abrir viaje →
-        </button>
+
+      {/* Purple gradient overlay — photo bleeds through */}
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(30,10,78,0.90)_0%,rgba(79,36,168,0.80)_50%,rgba(122,79,214,0.88)_100%)]" />
+
+      {/* Ambient glow blobs */}
+      <div className="absolute -bottom-24 left-10 h-56 w-56 rounded-full bg-[#1E6FD9]/25 blur-3xl" />
+      <div className="absolute -right-20 top-8 h-48 w-48 rounded-full bg-[#D8C8FF]/20 blur-3xl" />
+
+      {/* Content */}
+      <div className="relative z-10 p-5 sm:p-6">
+        <div className="mb-5 flex items-center justify-between">
+          <StatusChip estado="activo" />
+          <RolBadge rol={item.rol} dark />
+        </div>
+
+        <h2 className="font-heading text-2xl font-extrabold leading-tight text-white sm:text-3xl">
+          {g.nombre}
+        </h2>
+
+        <div className="mt-4 grid gap-3">
+          {g.destino && (
+            <div className="flex min-w-0 items-start gap-2.5">
+              <span className="mt-0.5 shrink-0 text-[#FFD166]"><IconMap /></span>
+              <p className="min-w-0 break-words font-body text-sm font-semibold leading-snug text-[#FFD166] [overflow-wrap:anywhere]">
+                {g.destino}
+              </p>
+            </div>
+          )}
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span className="mt-0.5 shrink-0 text-[#9AF0B8]"><IconClock /></span>
+            <p className="font-body text-sm font-semibold leading-snug text-[#9AF0B8]">
+              {formatTripDate(g.fecha_inicio, g.fecha_fin)}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-8 flex justify-end">
+          <button
+            onClick={onClick}
+            className="inline-flex min-w-[132px] items-center justify-center rounded-full border border-white/80 bg-white px-5 py-2.5 font-body text-[13px] font-bold text-[#1E0A4E] shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md"
+          >
+            Abrir viaje →
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -353,65 +437,85 @@ function FeaturedCard({ item, onClick }: { item: GroupHistoryItem; onClick: () =
 function TripCard({ item, onClick }: { item: GroupHistoryItem; onClick: () => void }) {
   const g = item.grupos_viaje
   const isAdmin = item.rol === 'admin'
+  const photoUrl = g.destino_photo_url ?? null
 
   return (
     <button
       onClick={onClick}
-      className={`w-full overflow-hidden rounded-2xl border p-5 text-left shadow-sm transition-all hover:shadow-md ${
-        isAdmin
-          ? 'border-[#2D1266] bg-[#1E0A4E] text-white'
-          : 'border-[#C3D3EC] bg-white text-[#1E0A4E] shadow-[0_8px_22px_rgba(30,10,78,0.08)] hover:border-[#1E6FD9]/50'
-      }`}
+      className="relative w-full overflow-hidden rounded-3xl text-left shadow-lg transition-all hover:-translate-y-0.5 hover:shadow-xl"
     >
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <StatusChip estado={g.estado} />
-        <RolBadge rol={item.rol} />
-      </div>
-
-      <h2 className={`font-heading text-lg font-bold leading-tight mb-1 ${
-        isAdmin ? 'text-white' : 'text-[#1E0A4E]'
-      }`}>
-        {g.nombre}
-      </h2>
-
-      {g.destino && (
-        <div className="flex items-center gap-1.5 mb-1">
-          <span className={isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'}>
-            <IconMap />
-          </span>
-          <p className={`font-body text-[13px] ${
-            isAdmin ? 'text-white/70' : 'text-[#6B7280]'
-          }`}>
-            {g.destino}
-          </p>
-        </div>
+      {/* Destination photo layer */}
+      {photoUrl && (
+        <img
+          src={photoUrl}
+          alt={g.nombre}
+          className="absolute inset-0 h-full w-full object-cover"
+          loading="lazy"
+        />
       )}
 
-      <div className="flex items-center gap-1.5 mb-4">
-        <span className={isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'}>
-          <IconClock />
-        </span>
-        <p className={`font-body text-[12px] ${
-          isAdmin ? 'text-white/50' : 'text-[#9CA3AF]'
-        }`}>
-          {formatRange(g.fecha_inicio, g.fecha_fin)}
-        </p>
-      </div>
+      {/* Gradient overlay */}
+      <div className={`absolute inset-0 ${
+        isAdmin
+          ? photoUrl
+            ? 'bg-[linear-gradient(135deg,rgba(30,10,78,0.88)_0%,rgba(91,43,192,0.80)_55%,rgba(59,31,168,0.86)_100%)]'
+            : 'bg-[linear-gradient(135deg,#1E0A4E,#5B2BC0)]'
+          : photoUrl
+            ? 'bg-[linear-gradient(135deg,rgba(255,255,255,0.93)_0%,rgba(240,238,248,0.91)_100%)]'
+            : 'bg-white'
+      }`} />
 
-      <div className="flex items-center justify-between">
-        <span className={`font-body text-xs ${
-          isAdmin ? 'text-white/60' : 'text-[#6B7280]'
-        }`}>
-          {isAdmin ? 'Tú organizas este viaje' : 'Participas como viajero'}
-        </span>
+      {/* Content */}
+      <div className="relative z-10 p-5">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <StatusChip estado={g.estado} />
+          <RolBadge rol={item.rol} dark={isAdmin} />
+        </div>
 
-        <span className={`inline-flex min-w-[132px] items-center justify-center rounded-full border px-5 py-2.5 font-body text-[13px] font-semibold shadow-sm transition-all ${
-          isAdmin
-            ? 'border-white/80 bg-white text-[#1E0A4E]'
-            : 'border-[#9FC0F4] bg-[#EAF2FF] text-[#1E6FD9]'
+        <h2 className={`mb-4 break-words font-heading text-xl font-extrabold leading-tight [overflow-wrap:anywhere] ${
+          isAdmin ? 'text-white' : 'text-[#1E0A4E]'
         }`}>
-          Abrir viaje →
-        </span>
+          {g.nombre}
+        </h2>
+
+        <div className="grid gap-2.5">
+          {g.destino && (
+            <div className="flex min-w-0 items-start gap-2">
+              <span className={`mt-0.5 shrink-0 ${isAdmin ? 'text-[#FFD166]' : 'text-[#D97706]'}`}>
+                <IconMap />
+              </span>
+              <p className={`min-w-0 line-clamp-2 break-words font-body text-sm font-semibold leading-snug [overflow-wrap:anywhere] ${
+                isAdmin ? 'text-[#FFD166]' : 'text-[#D97706]'
+              }`}>
+                {g.destino}
+              </p>
+            </div>
+          )}
+
+          <div className="flex min-w-0 items-start gap-2">
+            <span className={`mt-0.5 shrink-0 ${isAdmin ? 'text-[#9AF0B8]' : 'text-[#059669]'}`}>
+              <IconClock />
+            </span>
+            <p className={`font-body text-sm font-semibold leading-snug ${
+              isAdmin ? 'text-[#9AF0B8]' : 'text-[#059669]'
+            }`}>
+              {formatTripDate(g.fecha_inicio, g.fecha_fin)}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className={`font-body text-xs ${isAdmin ? 'text-white/60' : 'text-[#6B7280]'}`}>
+            {isAdmin ? 'Tú organizas este viaje' : 'Participas como viajero'}
+          </span>
+          <span className={`inline-flex min-w-[132px] items-center justify-center rounded-full border px-5 py-2.5 font-body text-[13px] font-semibold shadow-sm transition-all ${
+            isAdmin
+              ? 'border-white/80 bg-white text-[#1E0A4E]'
+              : 'border-[#D8C8FF] bg-[#F3EEFF] text-[#6D45C0]'
+          }`}>
+            Abrir viaje →
+          </span>
+        </div>
       </div>
     </button>
   )
@@ -550,35 +654,67 @@ export function MyTripsPage() {
       ) : error ? (
         <ErrorState onRetry={() => { void fetchTrips() }}/>
       ) : (
-        <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
+        <div className="flex-1 overflow-y-auto bg-[linear-gradient(180deg,#FFFFFF_0%,#F8F6FF_48%,#F3EEFF_100%)]">
 
           {/* ── Header ── */}
-          <div className="bg-white border-b border-[#E2E8F0] px-6 py-5">
-            <h1 className="font-heading text-2xl font-bold text-[#1E0A4E] mb-0.5">
-              Hola, {firstName} 👋
-            </h1>
-            <p className="font-body text-sm text-[#6B7280]">
-              {hasTrips
-                ? `Tienes ${activos.length} viaje${activos.length !== 1 ? 's' : ''} activo${activos.length !== 1 ? 's' : ''}`
-                : 'Empieza creando tu primer viaje o únete a uno existente'}
-            </p>
+          <div className="border-b border-[#D9E4F7] bg-white/85 px-6 py-6 backdrop-blur">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] text-white shadow-[0_14px_28px_rgba(30,10,78,0.22)]">
+                  <IconPlaneBadge />
+                </div>
+                <div className="min-w-0">
+                  <p className="mb-1 inline-flex items-center gap-2 rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#6D45C0]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#7A4FD6]" />
+                    Centro de viajes
+                  </p>
+                  <h1 className="font-heading text-3xl font-extrabold leading-tight text-[#1E0A4E]">
+                    Hola, {firstName}
+                  </h1>
+                  <p className="mt-1 font-body text-sm text-[#64748B]">
+                    {hasTrips
+                      ? `Tienes ${activos.length} viaje${activos.length !== 1 ? 's' : ''} activo${activos.length !== 1 ? 's' : ''}`
+                      : 'Empieza creando tu primer viaje o únete a uno existente'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:w-[320px]">
+                <div className="rounded-2xl border border-[#D8C8FF] bg-[#F3EEFF] px-4 py-3">
+                  <p className="font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#6D45C0]">
+                    Activos
+                  </p>
+                  <p className="mt-1 font-heading text-2xl font-extrabold text-[#1E0A4E]">
+                    {activos.length}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-[#CFE0FF] bg-[#EEF4FF] px-4 py-3">
+                  <p className="font-body text-[10px] font-bold uppercase tracking-[0.16em] text-[#1E6FD9]">
+                    Historial
+                  </p>
+                  <p className="mt-1 font-heading text-2xl font-extrabold text-[#1E0A4E]">
+                    {pasados.length}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* ── Quick actions ── */}
-          <div className="px-6 py-4 flex gap-3">
+          <div className="grid gap-3 px-6 py-4 md:grid-cols-2">
             <button
               onClick={() => navigate('/create-group')}
-              className="flex-1 flex items-center justify-center gap-2 bg-[#1E6FD9] text-white font-body text-sm font-semibold rounded-xl py-3 hover:opacity-90 transition-opacity shadow-sm"
+              className="flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#1E0A4E,#7A4FD6)] py-3.5 font-body text-sm font-bold text-white shadow-[0_14px_28px_rgba(30,10,78,0.18)] transition hover:-translate-y-0.5"
             >
               <IconPlus/>
               Crear viaje
             </button>
             <button
               onClick={() => setShowJoin((v) => !v)}
-              className={`flex-1 flex items-center justify-center gap-2 font-body text-sm font-semibold rounded-xl py-3 border transition-all shadow-sm
+              className={`flex items-center justify-center gap-2 rounded-2xl border py-3.5 font-body text-sm font-bold shadow-sm transition-all hover:-translate-y-0.5
                 ${showJoin
                   ? 'bg-[#1E0A4E] text-white border-[#1E0A4E]'
-                  : 'bg-white text-[#1E0A4E] border-[#E2E8F0] hover:border-[#1E0A4E]/30'
+                  : 'bg-white text-[#1E0A4E] border-[#D9E4F7] hover:border-[#7A4FD6]/60'
                 }`}
             >
               <IconKey/>

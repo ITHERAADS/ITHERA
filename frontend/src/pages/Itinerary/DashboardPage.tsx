@@ -40,11 +40,13 @@ import {
 import { DocumentVaultPanel } from "../../components/documents/DocumentVaultPanel";
 import { SubgroupSchedulePanel } from "../../components/subgroups/SubgroupSchedulePanel";
 import { HelpButton } from "../../components/ui/HelpButton";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import {
   subgroupScheduleService,
   type SubgroupSlot,
 } from "../../services/subgroups";
 import { useSocket } from "../../hooks/useSocket";
+import { useNetworkMonitor } from "../../hooks/useNetworkMonitor";
 import type { Group, TravelStartLocation } from "../../types/groups";
 
 function IconDownload({ size = 14 }: { size?: number }) {
@@ -164,6 +166,54 @@ function IconInfo({ size = 16 }: { size?: number }) {
         y1="16"
         x2="12.01"
         y2="16"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function IconMapPinSmall({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="10" r="2.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function IconCalendarSmall({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect
+        x="3"
+        y="4"
+        width="18"
+        height="18"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M8 2v4M16 2v4M3 10h18"
         stroke="currentColor"
         strokeWidth="2"
         strokeLinecap="round"
@@ -327,194 +377,12 @@ function DashboardSwitchLoading({
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-bluePrimary/10">
-        <svg
-          width="36"
-          height="36"
-          viewBox="0 0 24 24"
-          fill="none"
-          className="text-bluePrimary"
-          aria-hidden="true"
-        >
-          <rect
-            x="3"
-            y="4"
-            width="18"
-            height="18"
-            rx="2"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          <line
-            x1="16"
-            y1="2"
-            x2="16"
-            y2="6"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <line
-            x1="8"
-            y1="2"
-            x2="8"
-            y2="6"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <line
-            x1="3"
-            y1="10"
-            x2="21"
-            y2="10"
-            stroke="currentColor"
-            strokeWidth="2"
-          />
-          <line
-            x1="8"
-            y1="14"
-            x2="16"
-            y2="14"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-          <line
-            x1="8"
-            y1="18"
-            x2="12"
-            y2="18"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
-      <h3 className="mb-2 font-heading text-lg font-bold text-purpleNavbar">
-        Tu itinerario está vacío
-      </h3>
-      <p className="mb-6 max-w-xs font-body text-sm leading-relaxed text-gray500">
-        Empieza proponiendo actividades, vuelos u hoteles para este día. El
-        grupo podrá votar y confirmar.
-      </p>
-      <button
-        onClick={onAdd}
-        className="inline-flex items-center gap-2 rounded-xl bg-bluePrimary px-5 py-3 font-body text-sm font-semibold text-white transition-opacity hover:opacity-90"
-      >
-        <IconPlus size={14} />
-        Proponer primera actividad
-      </button>
-    </div>
-  );
-}
-
-function HeroCard({
-  activeDay,
-  totalDays,
-  selectedDay,
-  group,
-  onAdd,
-  onExportPdf,
-  canManageSubgroups,
-  onOpenSubgroups,
-}: {
-  activeDay: number | null;
-  totalDays: number;
-  selectedDay?: ItineraryDay;
-  group: ReturnType<typeof getCurrentGroup> | null;
-  onAdd: () => void;
-  onExportPdf: () => void;
-  canManageSubgroups?: boolean;
-  onOpenSubgroups?: () => void;
-}) {
-  const activities = selectedDay?.activities ?? [];
-  const pending = activities.filter(
-    (activity) => activity.status === "pendiente",
-  ).length;
-  const destination =
-    group?.destino || group?.destino_formatted_address || "Destino pendiente";
-  const dateLabel =
-    selectedDay?.date?.toUpperCase() ||
-    group?.fecha_inicio ||
-    "Fecha pendiente";
-  const heroImage =
-    group?.destino_photo_url ||
-    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=400&fit=crop";
-
-  return (
-    <div className="relative mb-4 h-52 shrink-0 overflow-hidden rounded-2xl">
-      <img
-        src={heroImage}
-        alt={destination}
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
-      <div className="absolute left-4 top-4 flex gap-2">
-        <span className="rounded-full bg-white/20 px-3 py-1 font-body text-[11px] font-bold text-white backdrop-blur-sm">
-          {activeDay !== null
-            ? `DÍA ${activeDay} / ${totalDays}`
-            : `${destination.toUpperCase()}`}
-        </span>
-        <span className="rounded-full bg-white/20 px-3 py-1 font-body text-[11px] font-bold text-white backdrop-blur-sm">
-          {dateLabel}
-        </span>
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 px-5 pb-4">
-        <h1 className="mb-1 font-heading text-[28px] font-bold leading-tight text-white">
-          {activeDay !== null ? `Día ${activeDay}` : destination}
-        </h1>
-        <p className="mb-3 font-body text-[13px] text-white/70">
-          {activities.length} actividad{activities.length !== 1 ? "es" : ""}{" "}
-          planeada{activities.length !== 1 ? "s" : ""} · {pending} pendiente
-          {pending !== 1 ? "s" : ""} de confirmación
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={onExportPdf}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-white/10"
-          >
-            <IconDownload size={13} />
-            Exportar PDF
-          </button>
-          <button
-            onClick={onAdd}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-greenAccent px-4 py-2 font-body text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
-            <IconPlus size={13} />
-            Proponer actividad
-          </button>
-          {canManageSubgroups && onOpenSubgroups && (
-            <button
-              onClick={onOpenSubgroups}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/50 bg-white/10 px-4 py-2 font-body text-sm font-medium text-white transition-colors hover:bg-white/20"
-            >
-              Horario subgrupos
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TimelineStrip({
-  activeDay,
-  date,
-  activities = [],
-}: {
-  activeDay: number | null;
-  date?: string;
-  activities?: DayActivity[];
-}) {
-  if (activeDay === null) {
-    return (
-      <div className="mb-4 flex flex-col items-center justify-center gap-2 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-bluePrimary/10">
+    <div className="flex flex-1 items-center justify-center px-6 py-16">
+      <div className="w-full max-w-2xl rounded-2xl border border-[#D9E4F7] bg-white px-6 py-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-bluePrimary/10">
           <svg
-            width="20"
-            height="20"
+            width="36"
+            height="36"
             viewBox="0 0 24 24"
             fill="none"
             className="text-bluePrimary"
@@ -555,11 +423,245 @@ function TimelineStrip({
               stroke="currentColor"
               strokeWidth="2"
             />
+            <line
+              x1="8"
+              y1="14"
+              x2="16"
+              y2="14"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            <line
+              x1="8"
+              y1="18"
+              x2="12"
+              y2="18"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
           </svg>
         </div>
-        <p className="text-center font-body text-sm text-gray500">
-          Selecciona un día para ver su progreso
+        <h3 className="mb-2 font-heading text-xl font-bold text-purpleNavbar">
+          Aún no hay actividades en el itinerario.
+        </h3>
+        <p className="mx-auto mb-5 max-w-md font-body text-sm leading-relaxed text-gray500">
+          ¡Empieza añadiendo la primera!
         </p>
+        <div className="mb-6 grid gap-2 text-left sm:grid-cols-3">
+          {["Actividad", "Transporte", "Hospedaje"].map((label) => (
+            <span
+              key={label}
+              className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2 text-center font-body text-xs font-semibold text-[#475569]"
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+        <button
+          onClick={onAdd}
+          className="inline-flex items-center gap-2 rounded-xl bg-greenAccent px-5 py-3 font-body text-sm font-semibold text-white transition-opacity hover:opacity-90"
+        >
+          <IconPlus size={14} />
+          Proponer primer plan
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HeroCard({
+  activeDay,
+  totalDays,
+  selectedDay,
+  group,
+  onAdd,
+  onExportPdf,
+  canManageSubgroups,
+  onOpenSubgroups,
+}: {
+  activeDay: number | null;
+  totalDays: number;
+  selectedDay?: ItineraryDay;
+  group: ReturnType<typeof getCurrentGroup> | null;
+  onAdd: () => void;
+  onExportPdf: () => void;
+  canManageSubgroups?: boolean;
+  onOpenSubgroups?: () => void;
+}) {
+  const activities = selectedDay?.activities ?? [];
+  const pending = activities.filter(
+    (activity) => activity.status === "pendiente",
+  ).length;
+  const destination =
+    group?.destino || group?.destino_formatted_address || "Destino pendiente";
+  const heroTitle = group?.nombre || destination;
+  const dateLabel = formatTripDateRange(group?.fecha_inicio, group?.fecha_fin);
+  const heroImage =
+    group?.destino_photo_url ||
+    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=900&h=400&fit=crop";
+
+  return (
+    <div className="relative mb-4 min-h-[280px] shrink-0 overflow-hidden rounded-2xl">
+      <img
+        src={heroImage}
+        alt={destination}
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
+      <div className="relative flex min-h-[280px] flex-col justify-between p-5">
+        <div className="flex max-w-full flex-col items-start gap-2 sm:flex-row sm:flex-wrap">
+          <span className="inline-flex max-w-full items-center gap-2 rounded-xl border border-[#BFD7FF]/50 bg-[#1E6FD9]/45 px-3 py-2 font-body text-[13px] font-bold uppercase tracking-wide text-white shadow-sm backdrop-blur-md">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20 text-[#D9E8FF]">
+              <IconMapPinSmall />
+            </span>
+            <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+              {activeDay !== null
+                ? `DÍA ${activeDay} / ${totalDays}`
+                : `${destination.toUpperCase()}`}
+            </span>
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-xl border border-[#FFD166]/60 bg-[#F59E0B]/80 px-3 py-2 font-body text-[13px] font-bold text-white shadow-md backdrop-blur-md">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-white/20 text-[#FFF4D6]">
+              <IconCalendarSmall />
+            </span>
+            {dateLabel}
+          </span>
+        </div>
+        <div>
+          <h1
+            className="mb-3 max-w-4xl break-words font-heading text-3xl font-bold leading-tight text-white [overflow-wrap:anywhere] md:text-[36px]"
+            style={{
+              textShadow:
+                "0 2px 16px rgba(0,0,0,0.85), 0 1px 4px rgba(0,0,0,0.6)",
+            }}
+          >
+            {heroTitle}
+          </h1>
+          <div className="mb-4 flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-2 rounded-xl border border-white/25 bg-white/20 px-3 py-2 font-body text-sm font-bold text-white shadow-sm backdrop-blur-md">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#35C56A]" />
+              {activities.length} actividad{activities.length !== 1 ? "es" : ""}{" "}
+              planeada
+              {activities.length !== 1 ? "s" : ""}
+            </span>
+            <span className="inline-flex items-center gap-2 rounded-xl border border-[#E9D5FF]/40 bg-[#7A4FD6]/35 px-3 py-2 font-body text-sm font-bold text-white shadow-sm backdrop-blur-md">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#F59E0B]" />
+              {pending} pendiente{pending !== 1 ? "s" : ""} de confirmacion
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={onAdd}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-greenAccent px-4 py-2.5 font-body text-base font-semibold text-white transition-opacity hover:opacity-90"
+            >
+              <IconPlus size={14} />
+              Proponer actividad
+            </button>
+            <button
+              onClick={onExportPdf}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/45 bg-black/10 px-4 py-2.5 font-body text-base font-semibold text-white transition-colors hover:bg-white/10"
+            >
+              <IconDownload size={13} />
+              Exportar PDF
+            </button>
+            {canManageSubgroups && onOpenSubgroups && (
+              <button
+                onClick={onOpenSubgroups}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/45 bg-white/10 px-4 py-2.5 font-body text-base font-semibold text-white transition-colors hover:bg-white/20"
+              >
+                Horario subgrupos
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineStrip({
+  activeDay,
+  date,
+  activities = [],
+  onAdd,
+}: {
+  activeDay: number | null;
+  date?: string;
+  activities?: DayActivity[];
+  onAdd?: () => void;
+}) {
+  if (activeDay === null) {
+    return (
+      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-[#BCD4FF] bg-[#EEF4FF] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-bluePrimary/10">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="text-bluePrimary"
+              aria-hidden="true"
+            >
+              <rect
+                x="3"
+                y="4"
+                width="18"
+                height="18"
+                rx="2"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+              <line
+                x1="16"
+                y1="2"
+                x2="16"
+                y2="6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <line
+                x1="8"
+                y1="2"
+                x2="8"
+                y2="6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <line
+                x1="3"
+                y1="10"
+                x2="21"
+                y2="10"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+            </svg>
+          </div>
+          <div>
+            <p className="font-heading text-base font-bold text-purpleNavbar">
+              Selecciona un día para revisar el avance
+            </p>
+            <p className="font-body text-sm text-gray500">
+              También puedes empezar creando una propuesta para un día del
+              viaje.
+            </p>
+          </div>
+        </div>
+        {onAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-bluePrimary px-4 py-2 font-body text-sm font-semibold text-white hover:bg-[#1E5EEA]"
+          >
+            <IconPlus size={13} />
+            Proponer actividad
+          </button>
+        )}
       </div>
     );
   }
@@ -598,14 +700,14 @@ function TimelineStrip({
     <div className="mb-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4">
       <div className="flex items-start gap-5">
         <div className="shrink-0">
-          <span className="inline-flex rounded-full bg-bluePrimary/10 px-3 py-1 font-body text-[11px] font-bold leading-none text-bluePrimary">
+          <span className="inline-flex rounded-full bg-bluePrimary/10 px-3 py-1 font-body text-[13px] font-bold leading-none text-bluePrimary">
             DÍA {activeDay}
             {date ? ` · ${date.toUpperCase()}` : ""}
           </span>
-          <p className="mt-2 font-heading text-sm font-bold leading-none text-purpleNavbar">
+          <p className="mt-2 font-heading text-base font-bold leading-none text-purpleNavbar">
             Progreso del día
           </p>
-          <p className="mt-1 font-body text-xs leading-none text-gray500">
+          <p className="mt-1 font-body text-sm leading-none text-gray500">
             {confirmed} de {total} actividades confirmadas
           </p>
         </div>
@@ -621,11 +723,11 @@ function TimelineStrip({
             />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span className="flex items-center gap-1.5 font-body text-[11px] text-gray500">
+            <span className="flex items-center gap-1.5 font-body text-[13px] text-gray500">
               <span className="h-2 w-2 shrink-0 rounded-full bg-greenAccent" />
               Confirmadas · {confirmed}
             </span>
-            <span className="flex items-center gap-1.5 font-body text-[11px] text-gray500">
+            <span className="flex items-center gap-1.5 font-body text-[13px] text-gray500">
               <span className="h-2 w-2 shrink-0 rounded-full bg-purpleMedium" />
               Por confirmar · {pending}
             </span>
@@ -636,27 +738,27 @@ function TimelineStrip({
       {(transport > 0 || lodging > 0 || acts > 0) && (
         <div className="mt-3 flex flex-wrap gap-2">
           {transport > 0 && (
-            <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-[11px] leading-none text-bluePrimary">
+            <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-[13px] leading-none text-bluePrimary">
               {transport} traslado{transport !== 1 ? "s" : ""}
             </span>
           )}
           {lodging > 0 && (
-            <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-[11px] leading-none text-bluePrimary">
+            <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-[13px] leading-none text-bluePrimary">
               {lodging} hospedaje{lodging !== 1 ? "s" : ""}
             </span>
           )}
           {acts > 0 && (
-            <span className="rounded-full bg-surface px-3 py-1 font-body text-[11px] leading-none text-purpleMedium">
+            <span className="rounded-full bg-surface px-3 py-1 font-body text-[13px] leading-none text-purpleMedium">
               {acts} actividad{acts !== 1 ? "es" : ""}
             </span>
           )}
           {firstActivity && (
-            <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-[11px] leading-none text-bluePrimary">
+            <span className="rounded-full bg-[#EEF4FF] px-3 py-1 font-body text-[13px] leading-none text-bluePrimary">
               Primera: {firstActivity.time}
             </span>
           )}
           {lastActivity && lastActivity.id !== firstActivity?.id && (
-            <span className="rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[11px] leading-none text-purpleMedium">
+            <span className="rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[13px] leading-none text-purpleMedium">
               Ultima: {lastActivity.time}
             </span>
           )}
@@ -792,6 +894,34 @@ function isPastItineraryDay(
   return dayKey < getTodayDateKey();
 }
 
+function formatTripDateRange(
+  start?: string | null,
+  end?: string | null,
+): string {
+  if (!start || !end) return "Fechas por definir";
+  const startDate = new Date(`${toDateKey(start) ?? start}T00:00:00`);
+  const endDate = new Date(`${toDateKey(end) ?? end}T00:00:00`);
+  if (
+    !Number.isFinite(startDate.getTime()) ||
+    !Number.isFinite(endDate.getTime())
+  ) {
+    return `${start} - ${end}`;
+  }
+  const sameYear = startDate.getFullYear() === endDate.getFullYear();
+  const sameMonth = sameYear && startDate.getMonth() === endDate.getMonth();
+  const dayFormatter = new Intl.DateTimeFormat("es-MX", { day: "numeric" });
+  const fullFormatter = new Intl.DateTimeFormat("es-MX", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  if (sameMonth) {
+    return `${dayFormatter.format(startDate)} al ${fullFormatter.format(endDate)}`;
+  }
+  return `${fullFormatter.format(startDate)} al ${fullFormatter.format(endDate)}`;
+}
+
 function InfoBanner({ memberCount }: { memberCount: number }) {
   const isSoloTrip = memberCount <= 1;
 
@@ -801,12 +931,12 @@ function InfoBanner({ memberCount }: { memberCount: number }) {
         <IconInfo size={16} />
       </span>
       <div>
-        <p className="font-body text-sm font-semibold leading-tight text-gray700">
+        <p className="font-body text-base font-semibold leading-tight text-gray700">
           {isSoloTrip
             ? "Tus propuestas se confirman automaticamente"
             : "Acepta propuestas para confirmarlas"}
         </p>
-        <p className="mt-0.5 font-body text-xs leading-relaxed text-gray500">
+        <p className="mt-0.5 font-body text-sm leading-relaxed text-gray500">
           {isSoloTrip
             ? "Como eres el unico integrante, cada propuesta nueva se aprueba en cuanto la creas."
             : "Las actividades con votos necesitan tu aprobacion para ser incluidas en el itinerario final del grupo."}
@@ -829,6 +959,8 @@ function BottomNavbar({
     {
       id: "inicio",
       label: "Inicio",
+      color: "#1E6FD9",
+      bg: "#EEF4FF",
       icon: (
         <svg
           width="18"
@@ -857,6 +989,8 @@ function BottomNavbar({
     {
       id: "buscar",
       label: "Buscar",
+      color: "#7A4FD6",
+      bg: "#F3EEFF",
       icon: (
         <svg
           width="18"
@@ -878,6 +1012,8 @@ function BottomNavbar({
     {
       id: "comparar",
       label: "Comparar",
+      color: "#F59E0B",
+      bg: "#FFF7E6",
       icon: (
         <svg
           width="18"
@@ -898,6 +1034,8 @@ function BottomNavbar({
     {
       id: "mapas",
       label: "Mapas",
+      color: "#35C56A",
+      bg: "#EAFBF1",
       icon: (
         <svg
           width="18"
@@ -937,6 +1075,8 @@ function BottomNavbar({
     {
       id: "pagar",
       label: "Finanzas",
+      color: "#0F766E",
+      bg: "#E6FFFA",
       icon: (
         <svg
           width="18"
@@ -966,6 +1106,8 @@ function BottomNavbar({
     {
       id: "boveda",
       label: "Archivos",
+      color: "#DB2777",
+      bg: "#FCE7F3",
       icon: (
         <svg
           width="18"
@@ -990,7 +1132,7 @@ function BottomNavbar({
     : tabs;
 
   return (
-    <div className="flex h-16 shrink-0 items-center justify-around border-t-2 border-bluePrimary/20 bg-white px-4 shadow-[0_-2px_8px_rgba(30,111,217,0.06)]">
+    <div className="flex h-16 shrink-0 items-center justify-around border-t border-[#E2E8F0] bg-white px-4 shadow-[0_-10px_24px_rgba(15,23,42,0.04)]">
       {visibleTabs.map((tab) => {
         const isActive = tab.id === activeTab;
         return (
@@ -999,12 +1141,22 @@ function BottomNavbar({
             onClick={() => onTabChange(tab.id)}
             aria-current={isActive ? "page" : undefined}
             className={[
-              "rounded-lg px-3 py-1.5 font-body text-[11px] font-semibold transition-colors",
-              isActive ? "bg-bluePrimary/10 text-bluePrimary" : "text-gray500 hover:text-gray700",
+              "rounded-xl px-3 py-1 font-body text-xs font-semibold transition-colors",
+              isActive
+                ? "text-[#1E0A4E]"
+                : "text-gray500 hover:bg-white hover:text-gray700",
             ].join(" ")}
           >
             <span className="flex flex-col items-center gap-0.5">
-              {tab.icon}
+              <span
+                className="flex h-7 w-7 items-center justify-center rounded-xl transition-transform duration-200"
+                style={{
+                  color: tab.color,
+                  backgroundColor: isActive ? tab.bg : "transparent",
+                }}
+              >
+                {tab.icon}
+              </span>
               <span>{tab.label}</span>
             </span>
           </button>
@@ -1032,8 +1184,16 @@ function coordinateKey(lat: number, lng: number): string {
   return `${lat.toFixed(6)},${lng.toFixed(6)}`;
 }
 
-function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | null }) {
-  const [selectedActivityId, setSelectedActivityId] = useState<string | number | null>(null);
+function MapsTabView({
+  days,
+  group,
+}: {
+  days: ItineraryDay[];
+  group: Group | null;
+}) {
+  const [selectedActivityId, setSelectedActivityId] = useState<
+    string | number | null
+  >(null);
   const [dayFilter, setDayFilter] = useState<number | "all">("all");
 
   const activities = useMemo(
@@ -1057,7 +1217,10 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
   }, [activities]);
 
   const availableDays = useMemo(
-    () => Array.from(new Set(withCoords.map((activity) => activity.dayNumber))).sort((a, b) => a - b),
+    () =>
+      Array.from(
+        new Set(withCoords.map((activity) => activity.dayNumber)),
+      ).sort((a, b) => a - b),
     [withCoords],
   );
 
@@ -1070,7 +1233,8 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
   );
 
   const hubLabel =
-    (group?.punto_partida_tipo === "hotel_reservado" && group?.punto_partida_direccion) ||
+    (group?.punto_partida_tipo === "hotel_reservado" &&
+      group?.punto_partida_direccion) ||
     group?.destino ||
     "Punto de partida";
 
@@ -1104,13 +1268,15 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
 
   const selectedActivity =
     selectedActivityId != null
-      ? filteredActivities.find((activity) => activity.id === selectedActivityId) ?? null
+      ? (filteredActivities.find(
+          (activity) => activity.id === selectedActivityId,
+        ) ?? null)
       : null;
 
   if (withCoords.length === 0) {
     return (
       <div className="rounded-2xl border border-[#E2E8F0] bg-white p-6 text-center">
-        <p className="font-body text-sm text-gray500">
+        <p className="font-body text-base text-gray500">
           No hay actividades con ubicacion para mostrar en mapas.
         </p>
       </div>
@@ -1125,9 +1291,11 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
     ? { lat: Number(hubCoordinates.lat), lng: Number(hubCoordinates.lng) }
     : { lat: fallbackLat, lng: fallbackLng };
 
-  const mapCenter = Number.isFinite(normalizedCenter.lat) && Number.isFinite(normalizedCenter.lng)
-    ? `${normalizedCenter.lat},${normalizedCenter.lng}`
-    : `${fallbackLat},${fallbackLng}`;
+  const mapCenter =
+    Number.isFinite(normalizedCenter.lat) &&
+    Number.isFinite(normalizedCenter.lng)
+      ? `${normalizedCenter.lat},${normalizedCenter.lng}`
+      : `${fallbackLat},${fallbackLng}`;
 
   const normalizedPoints = filteredActivities
     .map((activity) => {
@@ -1136,27 +1304,41 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
       if (lat == null || lng == null) return null;
       const startsAtValue =
         typeof activity.startsAt === "string" ? activity.startsAt : null;
-      const startsAtMs = startsAtValue ? new Date(startsAtValue).getTime() : Number.POSITIVE_INFINITY;
+      const startsAtMs = startsAtValue
+        ? new Date(startsAtValue).getTime()
+        : Number.POSITIVE_INFINITY;
       return { lat, lng, dayNumber: activity.dayNumber, startsAtMs };
     })
     .filter(
       (
         point,
-      ): point is { lat: number; lng: number; dayNumber: number; startsAtMs: number } =>
-        point != null,
+      ): point is {
+        lat: number;
+        lng: number;
+        dayNumber: number;
+        startsAtMs: number;
+      } => point != null,
     )
     .sort((left, right) => {
-      if (left.dayNumber !== right.dayNumber) return left.dayNumber - right.dayNumber;
+      if (left.dayNumber !== right.dayNumber)
+        return left.dayNumber - right.dayNumber;
       return left.startsAtMs - right.startsAtMs;
     });
 
-  const uniqueRoutePoints = normalizedPoints.filter((point, index, allPoints) => {
-    if (index === 0) return true;
-    const prev = allPoints[index - 1];
-    return coordinateKey(point.lat, point.lng) !== coordinateKey(prev.lat, prev.lng);
-  });
+  const uniqueRoutePoints = normalizedPoints.filter(
+    (point, index, allPoints) => {
+      if (index === 0) return true;
+      const prev = allPoints[index - 1];
+      return (
+        coordinateKey(point.lat, point.lng) !==
+        coordinateKey(prev.lat, prev.lng)
+      );
+    },
+  );
 
-  const mapPoints = uniqueRoutePoints.map((point) => `${point.lat},${point.lng}`);
+  const mapPoints = uniqueRoutePoints.map(
+    (point) => `${point.lat},${point.lng}`,
+  );
   const destinationPoint = mapPoints[0] ?? mapCenter;
   const waypointPoints = mapPoints.slice(1);
 
@@ -1174,88 +1356,115 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setDayFilter("all")}
-          className={[
-            "rounded-full border px-3 py-1.5 font-body text-xs font-semibold transition",
-            dayFilter === "all"
-              ? "border-bluePrimary bg-bluePrimary text-white"
-              : "border-[#D5DEEE] bg-white text-[#334155] hover:border-[#93B3FF]",
-          ].join(" ")}
-        >
-          Todos los dias
-        </button>
-        {availableDays.map((dayNumber) => (
+      <div className="flex flex-1 flex-col gap-3 overflow-hidden px-5 py-4">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
-            key={dayNumber}
             type="button"
-            onClick={() => setDayFilter(dayNumber)}
+            onClick={() => setDayFilter("all")}
             className={[
-              "rounded-full border px-3 py-1.5 font-body text-xs font-semibold transition",
-              dayFilter === dayNumber
-                ? "border-bluePrimary bg-bluePrimary text-white"
-                : "border-[#D5DEEE] bg-white text-[#334155] hover:border-[#93B3FF]",
+              "rounded-full px-4 py-1.5 font-body text-sm font-bold transition-all",
+              dayFilter === "all"
+                ? "bg-[#1E6FD9] text-white shadow-[0_4px_12px_rgba(30,111,217,0.35)]"
+                : "border border-[#D5DEEE] bg-white text-[#334155] hover:border-[#93B3FF] hover:text-[#1E6FD9]",
             ].join(" ")}
           >
-            Dia {dayNumber}
+            Todos los dias
           </button>
-        ))}
-      </div>
+          {availableDays.map((dayNumber) => (
+            <button
+              key={dayNumber}
+              type="button"
+              onClick={() => setDayFilter(dayNumber)}
+              className={[
+                "rounded-full px-4 py-1.5 font-body text-sm font-bold transition-all",
+                dayFilter === dayNumber
+                  ? "bg-[#1E6FD9] text-white shadow-[0_4px_12px_rgba(30,111,217,0.35)]"
+                  : "border border-[#D5DEEE] bg-white text-[#334155] hover:border-[#93B3FF] hover:text-[#1E6FD9]",
+              ].join(" ")}
+            >
+              Dia {dayNumber}
+            </button>
+          ))}
+        </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <section className="lg:col-span-8">
-          <div className="rounded-2xl border border-[#E2E8F0] bg-white p-3">
-            <div className="mb-3 rounded-xl border border-[#D9E2FF] bg-[#F6F8FF] p-3">
-              <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-bluePrimary">
-                Centro del viaje
-              </p>
-              <p className="mt-1 font-heading text-base font-bold text-purpleNavbar">
-                {hubLabel}
-              </p>
-            </div>
-            <iframe
-              title="Mapa del viaje"
-              src={mapSrc}
-              className="h-[52vh] min-h-[360px] max-h-[680px] w-full rounded-xl border border-[#E2E8F0]"
-              loading="lazy"
-            />
-          </div>
-        </section>
-
-        <aside className="lg:col-span-4">
-          <div className="max-h-[52vh] min-h-[360px] space-y-3 overflow-auto pr-1">
-            {filteredActivities.map((activity) => (
-              <button
-                key={activity.id}
-                type="button"
-                onClick={() => setSelectedActivityId(activity.id)}
-                className={[
-                  "w-full rounded-2xl border bg-white p-4 text-left transition",
-                  activeCardId === activity.id
-                    ? "border-bluePrimary shadow-[0_0_0_2px_rgba(40,109,255,0.12)]"
-                    : "border-[#E2E8F0] hover:border-[#BFD0FF]",
-                ].join(" ")}
+        <div className="grid min-h-0 flex-1 grid-cols-12 gap-4 overflow-hidden">
+          <section className="col-span-8 flex min-h-0 flex-col overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-[#E2E8F0] bg-white overflow-hidden">
+              <div
+                className="shrink-0 px-4 py-3"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #1E0A4E 0%, #2D1472 60%, #1E6FD9 100%)",
+                }}
               >
-                <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-bluePrimary">
-                  Dia {activity.dayNumber} - {activity.dayDate}
+                <p className="font-body text-[11px] font-bold uppercase tracking-widest text-[#9AF0B8]">
+                  Centro del viaje
                 </p>
-                <h3 className="mt-1 font-heading text-sm font-bold text-purpleNavbar">
-                  {activity.title}
-                </h3>
-                <p className="mt-1 line-clamp-2 font-body text-xs text-gray500">
-                  {activity.location || "Ubicacion no disponible"}
+                <p className="mt-0.5 font-heading text-base font-extrabold leading-snug text-white">
+                  {hubLabel}
                 </p>
-                {activity.routeDistanceText && activity.routeDurationText && (
-                  <p className="mt-2 font-body text-xs text-gray700">
-                    {activity.routeDistanceText} - {activity.routeDurationText}
-                  </p>
-                )}
-              </button>
-            ))}
-          </div>
-        </aside>
+              </div>
+              <iframe
+                title="Mapa del viaje"
+                src={mapSrc}
+                className="min-h-0 flex-1 w-full border-t border-[#E2E8F0]"
+                loading="lazy"
+              />
+            </div>
+          </section>
+
+          <aside className="col-span-4 flex min-h-0 flex-col overflow-hidden">
+            <div className="mb-2 shrink-0 flex items-center gap-2">
+              <span className="font-body text-sm font-bold text-[#1E0A4E]">
+                Lugares
+              </span>
+              <span className="rounded-full bg-[#1E6FD9]/15 px-2 py-0.5 font-body text-xs font-bold text-[#1E6FD9]">
+                {filteredActivities.length}
+              </span>
+            </div>
+            <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
+              {filteredActivities.map((activity) => (
+                <button
+                  key={activity.id}
+                  type="button"
+                  onClick={() => setSelectedActivityId(activity.id)}
+                  className={[
+                    "w-full rounded-2xl border text-left transition-all duration-200",
+                    activeCardId === activity.id
+                      ? "border-[#1E6FD9] bg-white shadow-[0_0_0_3px_rgba(30,111,217,0.12),0_4px_16px_rgba(30,111,217,0.1)]"
+                      : "border-[#E2E8F0] bg-white hover:border-[#BFD0FF] hover:shadow-sm",
+                  ].join(" ")}
+                >
+                  <div
+                    className={`flex items-center justify-between rounded-t-2xl px-3 py-1.5 ${activeCardId === activity.id ? "bg-[#1E6FD9]" : "bg-[#F0F4FF]"}`}
+                  >
+                    <p
+                      className={`font-body text-xs font-bold uppercase tracking-widest ${activeCardId === activity.id ? "text-[#BFD7FF]" : "text-[#1E6FD9]"}`}
+                    >
+                      Dia {activity.dayNumber} · {activity.dayDate}
+                    </p>
+                    {activity.routeDistanceText &&
+                      activity.routeDurationText && (
+                        <span
+                          className={`font-body text-xs font-semibold ${activeCardId === activity.id ? "text-[#9AF0B8]" : "text-[#16794A]"}`}
+                        >
+                          {activity.routeDistanceText}
+                        </span>
+                      )}
+                  </div>
+                  <div className="px-3 py-2.5">
+                    <h3 className="font-heading text-base font-bold leading-snug text-[#1E0A4E]">
+                      {activity.title}
+                    </h3>
+                    <p className="mt-1 line-clamp-1 font-body text-sm leading-relaxed text-[#6B7280]">
+                      {activity.location || "Ubicación no disponible"}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </aside>
+        </div>
       </div>
 
       {selectedActivity ? (
@@ -1263,27 +1472,29 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
           <div className="w-full max-w-xl rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-xl">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-body text-[11px] font-semibold uppercase tracking-wide text-bluePrimary">
+                <p className="font-body text-[13px] font-semibold uppercase tracking-wide text-bluePrimary">
                   Dia {selectedActivity.dayNumber} - {selectedActivity.dayDate}
                 </p>
-                <h3 className="mt-1 font-heading text-xl font-bold text-purpleNavbar">
+                <h3 className="mt-1 font-heading text-2xl font-bold text-purpleNavbar">
                   {selectedActivity.title}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedActivityId(null)}
-                className="rounded-lg border border-[#D9E2FF] px-3 py-1.5 font-body text-xs font-semibold text-bluePrimary hover:bg-[#F3F6FF]"
+                className="rounded-lg border border-[#D9E2FF] px-3 py-1.5 font-body text-sm font-semibold text-bluePrimary hover:bg-[#F3F6FF]"
               >
                 Cerrar
               </button>
             </div>
-            <p className="mt-3 font-body text-sm text-gray600">
+            <p className="mt-3 font-body text-base text-gray600">
               {selectedActivity.location || "Ubicacion no disponible"}
             </p>
-            {selectedActivity.routeDistanceText && selectedActivity.routeDurationText ? (
+            {selectedActivity.routeDistanceText &&
+            selectedActivity.routeDurationText ? (
               <p className="mt-2 font-body text-xs text-gray700">
-                Ruta estimada: {selectedActivity.routeDistanceText} - {selectedActivity.routeDurationText}
+                Ruta estimada: {selectedActivity.routeDistanceText} -{" "}
+                {selectedActivity.routeDurationText}
               </p>
             ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
@@ -1291,7 +1502,7 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
                 href={`https://www.google.com/maps/search/?api=1&query=${selectedActivity.latitude},${selectedActivity.longitude}`}
                 target="_blank"
                 rel="noreferrer"
-                className="rounded-xl bg-bluePrimary px-3 py-2 font-body text-xs font-semibold text-white hover:bg-[#1E5EEA]"
+                className="rounded-xl bg-bluePrimary px-3 py-2 font-body text-sm font-semibold text-white hover:bg-[#1E5EEA]"
               >
                 Abrir en Google Maps
               </a>
@@ -1300,7 +1511,7 @@ function MapsTabView({ days, group }: { days: ItineraryDay[]; group: Group | nul
                   href={`https://www.google.com/maps/dir/?api=1&origin=${hubCoordinates.lat},${hubCoordinates.lng}&destination=${selectedActivity.latitude},${selectedActivity.longitude}&travelmode=driving`}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-xl border border-[#BFD0FF] px-3 py-2 font-body text-xs font-semibold text-bluePrimary hover:bg-[#F3F6FF]"
+                  className="rounded-xl border border-[#BFD0FF] px-3 py-2 font-body text-sm font-semibold text-bluePrimary hover:bg-[#F3F6FF]"
                 >
                   Ver ruta desde hospedaje
                 </a>
@@ -1457,6 +1668,18 @@ interface ProposalCommentSocketPayload {
   commentId?: number | string | null;
 }
 
+const isAccessDeniedError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const status = (error as { status?: number }).status;
+  const message = error.message.toLowerCase();
+  return (
+    status === 403 ||
+    message.includes("no perteneces") ||
+    message.includes("acceso") ||
+    message.includes("forbidden")
+  );
+};
+
 const normalizeRealtimeProposalComment = (
   raw: Record<string, unknown> | null | undefined,
 ): ProposalComment | null => {
@@ -1505,6 +1728,11 @@ const applyVoteResultsToDays = (
         ...activity,
         hasVoted: Boolean(voteResult.mi_voto),
         myVote: voteResult.mi_voto ?? null,
+        votes: voteResult.votos_a_favor ?? voteResult.votos ?? 0,
+        votesFor: voteResult.votos_a_favor ?? voteResult.votos ?? 0,
+        votesAgainst: voteResult.votos_en_contra ?? 0,
+        pendingVotes: voteResult.votos_pendientes ?? 0,
+        requiresAdminTieBreak: Boolean(voteResult.requiere_desempate_admin),
       };
     }),
   }));
@@ -1514,6 +1742,10 @@ export function DashboardPage() {
   const [searchParams] = useSearchParams();
   const { localUser, accessToken } = useAuth();
   const { socket, isConnected: isSocketConnected } = useSocket(accessToken);
+  const isBrowserOnline = useNetworkMonitor();
+  const areRealtimeActionsEnabled = isBrowserOnline && isSocketConnected;
+  const offlineActionMessage =
+    "Sin conexión. Reconecta para realizar esta acción.";
 
   const location = useLocation();
   const routeState = location.state as {
@@ -1554,6 +1786,17 @@ export function DashboardPage() {
     "general",
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [forcedNotice, setForcedNotice] = useState<{
+    title: string;
+    description: string;
+  } | null>(null);
+  const [activityPendingDelete, setActivityPendingDelete] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [deletingActivityId, setDeletingActivityId] = useState<string | null>(
+    null,
+  );
   const [days, setDays] = useState<ItineraryDay[]>([]);
   const [, setSubgroupSlots] = useState<SubgroupSlot[]>([]);
   const [editSubgroupSlotRequest, setEditSubgroupSlotRequest] = useState<{
@@ -1776,7 +2019,17 @@ export function DashboardPage() {
       : undefined;
 
   const openActivityEditor = (activity: DayActivity) => {
+    const activityDayNumber =
+      days.find(
+        (day) =>
+          Array.isArray(day.activities) &&
+          day.activities.some((item) => item.id === activity.id),
+      )?.dayNumber ??
+      selectedActivityDay ??
+      activeDay ??
+      1;
     lockProposalForActivity(activity);
+    setSelectedActivityDay(activityDayNumber);
     setEditingActivity(activity);
     setShowActivityModal(true);
   };
@@ -1799,6 +2052,11 @@ export function DashboardPage() {
     const loadDashboard = async () => {
       try {
         setIsLoading(true);
+
+        await withTimeout(
+          groupsService.getGroupDetails(resolvedGroupId, accessToken),
+          DASHBOARD_AUX_REQUEST_TIMEOUT_MS,
+        );
 
         const itineraryRes = await withTimeout(
           groupsService.getItinerary(resolvedGroupId, accessToken),
@@ -1903,6 +2161,15 @@ export function DashboardPage() {
         }
       } catch (error) {
         console.error("Error cargando dashboard:", error);
+        if (isAccessDeniedError(error)) {
+          clearCurrentGroup();
+          setForcedNotice({
+            title: "Acceso revocado",
+            description:
+              "Ya no tienes acceso a este viaje. Te regresaremos a Mis viajes.",
+          });
+          return;
+        }
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -1932,6 +2199,11 @@ export function DashboardPage() {
       (currentGroup?.id ? String(currentGroup.id) : null);
 
     if (!resolvedGroupId || !accessToken) return;
+
+    await withTimeout(
+      groupsService.getGroupDetails(resolvedGroupId, accessToken),
+      DASHBOARD_AUX_REQUEST_TIMEOUT_MS,
+    );
 
     const itineraryRes = await withTimeout(
       groupsService.getItinerary(resolvedGroupId, accessToken),
@@ -2115,12 +2387,29 @@ export function DashboardPage() {
       const tipo = String(payload?.tipo ?? "");
       if (tipo === "grupo_eliminado") {
         clearCurrentGroup();
-        alert(
-          "Este grupo fue eliminado por el administrador. Te enviaremos a Mis viajes.",
-        );
-        navigate("/my-trips");
+        setForcedNotice({
+          title: "Grupo eliminado",
+          description:
+            "Este grupo fue eliminado por el administrador. Te regresaremos a Mis viajes.",
+        });
         return;
       }
+
+      const targetUsuarioId = payload?.metadata?.targetUsuarioId;
+      if (
+        tipo === "miembro_eliminado" &&
+        targetUsuarioId !== undefined &&
+        String(targetUsuarioId) === String(localUser?.id_usuario)
+      ) {
+        clearCurrentGroup();
+        setForcedNotice({
+          title: "Fuiste removido del viaje",
+          description:
+            "Tu acceso a este viaje fue revocado. Te regresaremos a Mis viajes.",
+        });
+        return;
+      }
+
       scheduleCollaborativeRefresh(payload);
     };
 
@@ -2151,6 +2440,7 @@ export function DashboardPage() {
     expandedCommentsProposalId,
     refreshCommentsForProposal,
     navigate,
+    localUser?.id_usuario,
   ]);
 
   useEffect(() => {
@@ -2217,23 +2507,45 @@ export function DashboardPage() {
   }, [socket, resolvedGroupId]);
 
   const handleDeleteActivity = useCallback(
-    async (activityId: string) => {
-      const resolvedGroupId =
-        groupIdFromState ||
-        groupId ||
-        (currentGroup?.id ? String(currentGroup.id) : null);
+    (activityId: string) => {
+      const activityName =
+        selectedDayWithContext?.activities.find(
+          (activity) => String(activity.id) === String(activityId),
+        )?.title ?? "esta actividad";
 
-      if (!resolvedGroupId || !accessToken) return;
+      setActivityPendingDelete({ id: activityId, title: activityName });
+    },
+    [selectedDayWithContext?.activities],
+  );
 
+  const confirmDeleteActivity = useCallback(async () => {
+    const resolvedGroupId =
+      groupIdFromState ||
+      groupId ||
+      (currentGroup?.id ? String(currentGroup.id) : null);
+
+    if (!activityPendingDelete || !resolvedGroupId || !accessToken) return;
+
+    try {
+      setDeletingActivityId(activityPendingDelete.id);
       await groupsService.deleteActivity(
         String(resolvedGroupId),
-        activityId,
+        activityPendingDelete.id,
         accessToken,
       );
+      setActivityPendingDelete(null);
       await reloadDashboard();
-    },
-    [groupIdFromState, groupId, currentGroup?.id, accessToken, reloadDashboard],
-  );
+    } finally {
+      setDeletingActivityId(null);
+    }
+  }, [
+    accessToken,
+    activityPendingDelete,
+    currentGroup?.id,
+    groupId,
+    groupIdFromState,
+    reloadDashboard,
+  ]);
 
   const handleOpenSubgroupSlot = useCallback(
     (slotId: number, subgroupId?: number | null) => {
@@ -2262,7 +2574,12 @@ export function DashboardPage() {
         (currentGroup?.id ? String(currentGroup.id) : null);
       const busyKey = `slot-delete:${slotId}`;
       if (!resolvedGroupId || !accessToken || subgroupQuickBusyKey) return;
-      if (!window.confirm("Eliminar este horario de subgrupos?")) return;
+      if (
+        !window.confirm(
+          "Eliminar este horario de subgrupos y todo su contenido?",
+        )
+      )
+        return;
       try {
         setSubgroupQuickBusyKey(busyKey);
         await subgroupScheduleService.deleteSlot(
@@ -2316,6 +2633,11 @@ export function DashboardPage() {
 
       if (!resolvedGroupId || !accessToken) return;
 
+      if (!areRealtimeActionsEnabled) {
+        setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: true }));
+        return;
+      }
+
       const activity = days
         .flatMap((day) => day.activities)
         .find((item) => item.id === activityId);
@@ -2351,6 +2673,7 @@ export function DashboardPage() {
       accessToken,
       days,
       reloadDashboard,
+      areRealtimeActionsEnabled,
     ],
   );
 
@@ -2362,6 +2685,11 @@ export function DashboardPage() {
         (currentGroup?.id ? String(currentGroup.id) : null);
 
       if (!resolvedGroupId || !accessToken) return;
+
+      if (!areRealtimeActionsEnabled) {
+        setAcceptErrorActivityIds((prev) => ({ ...prev, [activityId]: true }));
+        return;
+      }
 
       const activity = days
         .flatMap((day) => day.activities)
@@ -2397,6 +2725,7 @@ export function DashboardPage() {
       accessToken,
       days,
       reloadDashboard,
+      areRealtimeActionsEnabled,
     ],
   );
 
@@ -2406,7 +2735,12 @@ export function DashboardPage() {
         groupIdFromState ||
         groupId ||
         (currentGroup?.id ? String(currentGroup.id) : null);
-      if (!resolvedGroupId || !accessToken || adminDecisionBusyProposalId)
+      if (
+        !resolvedGroupId ||
+        !accessToken ||
+        adminDecisionBusyProposalId ||
+        !areRealtimeActionsEnabled
+      )
         return;
       try {
         setAdminDecisionBusyProposalId(proposalId);
@@ -2430,6 +2764,7 @@ export function DashboardPage() {
       accessToken,
       reloadDashboard,
       adminDecisionBusyProposalId,
+      areRealtimeActionsEnabled,
     ],
   );
 
@@ -2572,7 +2907,9 @@ export function DashboardPage() {
       .filter((day) => day.activities.length > 0);
 
     if (confirmedByDay.length === 0) {
-      window.alert("No hay actividades confirmadas para exportar.");
+      window.alert(
+        "El itinerario no tiene elementos confirmados para exportar aún.",
+      );
       return;
     }
 
@@ -2888,7 +3225,10 @@ export function DashboardPage() {
             <>
               <button
                 type="button"
-                disabled={subgroupActionsBusy}
+                disabled={subgroupActionsBusy || !areRealtimeActionsEnabled}
+                title={
+                  !areRealtimeActionsEnabled ? offlineActionMessage : undefined
+                }
                 aria-busy={editBusy}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -2903,7 +3243,10 @@ export function DashboardPage() {
               </button>
               <button
                 type="button"
-                disabled={subgroupActionsBusy}
+                disabled={subgroupActionsBusy || !areRealtimeActionsEnabled}
+                title={
+                  !areRealtimeActionsEnabled ? offlineActionMessage : undefined
+                }
                 aria-busy={deleteBusy}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -2926,6 +3269,7 @@ export function DashboardPage() {
       isAdminDecisionBusy && adminDecisionBusyType === "aprobar";
     const isRejectBusy =
       isAdminDecisionBusy && adminDecisionBusyType === "rechazar";
+    const disableRealtimeMutation = !areRealtimeActionsEnabled;
 
     return activity.proposalId ? (
       <>
@@ -2943,11 +3287,13 @@ export function DashboardPage() {
           <>
             <button
               type="button"
-              disabled={isAdminDecisionBusy}
+              disabled={isAdminDecisionBusy || disableRealtimeMutation}
+              title={disableRealtimeMutation ? offlineActionMessage : undefined}
               aria-busy={isAdminDecisionBusy}
               onClick={(event) => {
                 event.stopPropagation();
-                void handleAdminDecision(activity.proposalId!, "aprobar");
+                if (!disableRealtimeMutation)
+                  void handleAdminDecision(activity.proposalId!, "aprobar");
               }}
               className="inline-flex h-9 min-w-[112px] items-center justify-center gap-1.5 rounded-xl border border-[#A8E6BF] bg-[#EAFBF1] px-3 font-body text-xs font-semibold text-[#1E7A45] transition-colors hover:bg-[#DCFCE7] disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -2956,11 +3302,13 @@ export function DashboardPage() {
             </button>
             <button
               type="button"
-              disabled={isAdminDecisionBusy}
+              disabled={isAdminDecisionBusy || disableRealtimeMutation}
+              title={disableRealtimeMutation ? offlineActionMessage : undefined}
               aria-busy={isAdminDecisionBusy}
               onClick={(event) => {
                 event.stopPropagation();
-                void handleAdminDecision(activity.proposalId!, "rechazar");
+                if (!disableRealtimeMutation)
+                  void handleAdminDecision(activity.proposalId!, "rechazar");
               }}
               className="inline-flex h-9 min-w-[112px] items-center justify-center gap-1.5 rounded-xl border border-[#FBC7C7] bg-[#FFF5F5] px-3 font-body text-xs font-semibold text-[#C03535] transition-colors hover:bg-[#FFEAEA] disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -2998,7 +3346,7 @@ export function DashboardPage() {
       trip={{
         name: group?.nombre || "Itinerario",
         subtitle: group?.destino || "Destino pendiente",
-        dates: `${group?.fecha_inicio || "—"} – ${group?.fecha_fin || "—"}`,
+        dates: formatTripDateRange(group?.fecha_inicio, group?.fecha_fin),
         people: group?.maximo_miembros
           ? `${group.maximo_miembros} personas máx.`
           : "Miembros por definir",
@@ -3009,7 +3357,12 @@ export function DashboardPage() {
         initials,
         color: "#1E6FD9",
       }}
-      isOnline
+      isOnline={isBrowserOnline && isSocketConnected}
+      onOpenChat={() => {
+        setChatOpen(true);
+        setChatUnread(0);
+      }}
+      chatUnreadCount={chatUnread}
       sidebarContent={
         <SidebarDashboard
           activeDay={activeDay}
@@ -3034,11 +3387,14 @@ export function DashboardPage() {
           group={group}
           isLoading={isLoading}
           socket={socket}
-          onOpenChat={() => {
-            setChatOpen(true);
-            setChatUnread(0);
-          }}
-          unreadCount={chatUnread}
+          onOpenBudget={() => setActiveTab("pagar")}
+          onOpenMap={() => setActiveTab("mapas")}
+          isMapViewActive={activeTab === "mapas"}
+          onOpenGroupPanel={() =>
+            navigate(
+              `/grouppanel?groupId=${encodeURIComponent(groupId || currentGroup?.id || "")}`,
+            )
+          }
           totalBudget={budgetSummary?.totalBudget}
           committedBudget={budgetSummary?.committed}
         />
@@ -3080,7 +3436,7 @@ export function DashboardPage() {
           <ComparisonPage onBack={() => setActiveTab("pagar")} />
         </div>
       ) : activeTab === "mapas" ? (
-        <div className="flex-1 overflow-y-auto bg-surface px-6 py-6">
+        <div className="flex flex-col flex-1 overflow-hidden bg-[#F0EEF8]">
           <MapsTabView days={days} group={group} />
         </div>
       ) : activeTab === "pagar" ? (
@@ -3192,23 +3548,63 @@ export function DashboardPage() {
           />
         </div>
       ) : activeTab === "buscar" ? (
-        <div className="flex-1 overflow-y-auto bg-surface px-6 py-8">
-          <div className="mb-1 flex items-center justify-between gap-3">
-          <h2 className="font-heading font-bold text-[#1E0A4E] text-xl">
-            Buscar
-          </h2>
-          <HelpButton
-            title="Búsqueda y propuestas"
-            description="Busca vuelos, hospedajes o actividades para proponerlas al grupo. En días pasados o elementos vencidos, el sistema bloquea nuevas propuestas para conservar la lógica del itinerario."
-            placement="right"
-          />
-        </div>
-          <p className="font-body text-sm text-gray-500 mb-6">
-            {group?.destino
-              ? `Opciones para ${group.destino}`
-              : "Encuentra opciones para tu viaje"}
-          </p>
-          <div className="flex flex-col gap-4">
+        <div className="flex flex-col flex-1 overflow-y-auto bg-[#F0EEF8] p-4 gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-heading text-xl font-extrabold text-[#1E0A4E] leading-tight">
+                Buscar
+              </h2>
+              {group?.destino ? (
+                <p
+                  className="mt-0.5 flex items-center gap-1.5 font-body text-sm font-semibold"
+                  style={{
+                    background: "linear-gradient(90deg, #7A4FD6, #1E6FD9)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                  }}
+                >
+                  <svg
+                    width="13"
+                    height="13"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    style={{
+                      flexShrink: 0,
+                      color: "#7A4FD6",
+                      WebkitTextFillColor: "initial",
+                    }}
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z"
+                      stroke="#7A4FD6"
+                      strokeWidth="2"
+                      strokeLinejoin="round"
+                    />
+                    <circle
+                      cx="12"
+                      cy="10"
+                      r="2.5"
+                      stroke="#7A4FD6"
+                      strokeWidth="2"
+                    />
+                  </svg>
+                  {group.destino}
+                </p>
+              ) : (
+                <p className="font-body text-sm text-[#6B7280] mt-0.5">
+                  Encuentra opciones para tu viaje
+                </p>
+              )}
+            </div>
+            <HelpButton
+              title="Búsqueda y propuestas"
+              description="Busca vuelos, hospedajes o actividades para proponerlas al grupo. En días pasados o elementos vencidos, el sistema bloquea nuevas propuestas para conservar la lógica del itinerario."
+              placement="right"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 flex-1">
             <button
               type="button"
               onClick={() =>
@@ -3216,53 +3612,59 @@ export function DashboardPage() {
                   state: { destino: group?.destino, group },
                 })
               }
-              className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#1E6FD9]/40 hover:bg-[#F0EEF8] transition-colors group"
+              className="relative flex flex-col items-start justify-between rounded-3xl p-4 text-left overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl active:scale-[0.98] shadow-[0_8px_24px_rgba(30,111,217,0.18)]"
+              style={{
+                background:
+                  "linear-gradient(145deg, #1251A3 0%, #1E6FD9 45%, #3B9AFF 100%)",
+              }}
             >
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: "linear-gradient(135deg, #1E6FD9, #2C8BE6)",
-                }}
-              >
+              <div className="absolute -right-6 -top-6 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+              <div className="absolute -bottom-8 -left-4 h-28 w-28 rounded-full bg-white/[0.07] blur-xl" />
+              <div className="relative w-full">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 shadow-lg backdrop-blur-sm">
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M3 11l18-8-8 18-2-8-8-2z"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <p className="font-heading text-xl font-extrabold leading-tight text-white">
+                  Vuelos y<br />
+                  Hoteles
+                </p>
+                <p className="mt-1.5 font-body text-sm font-medium leading-snug text-white/85">
+                  Busca y propone opciones al grupo
+                </p>
+              </div>
+              <div className="relative mt-2 flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1">
+                <span className="font-body text-xs font-bold text-white">
+                  Explorar
+                </span>
                 <svg
-                  width="22"
-                  height="22"
+                  width="12"
+                  height="12"
                   viewBox="0 0 24 24"
                   fill="none"
                   aria-hidden="true"
                 >
                   <path
-                    d="M3 11l18-8-8 18-2-8-8-2z"
+                    d="M9 18l6-6-6-6"
                     stroke="white"
-                    strokeWidth="2"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
                     strokeLinejoin="round"
                   />
                 </svg>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">
-                  Vuelos y Hoteles
-                </p>
-                <p className="font-body text-xs text-gray-500 mt-1">
-                  Busca y propone opciones al grupo
-                </p>
-              </div>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="text-gray-400 group-hover:text-[#1E6FD9] transition-colors shrink-0"
-                aria-hidden="true"
-              >
-                <path
-                  d="M9 18l6-6-6-6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
             </button>
 
             <button
@@ -3270,52 +3672,59 @@ export function DashboardPage() {
               onClick={() =>
                 navigate("/search/map-places", { state: { group } })
               }
-              className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#7A4FD6]/40 hover:bg-[#F0EEF8] transition-colors group"
+              className="relative flex flex-col items-start justify-between rounded-3xl p-4 text-left overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl active:scale-[0.98] shadow-[0_8px_24px_rgba(122,79,214,0.18)]"
+              style={{
+                background:
+                  "linear-gradient(145deg, #4A1E9E 0%, #7A4FD6 45%, #A67CF7 100%)",
+              }}
             >
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: "linear-gradient(135deg, #7A4FD6, #9B72F0)",
-                }}
-              >
+              <div className="absolute -right-6 -top-6 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+              <div className="absolute -bottom-8 -left-4 h-28 w-28 rounded-full bg-white/[0.07] blur-xl" />
+              <div className="relative w-full">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 shadow-lg backdrop-blur-sm">
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z"
+                      fill="white"
+                    />
+                    <circle cx="12" cy="10" r="2.5" fill="#7A4FD6" />
+                  </svg>
+                </div>
+                <p className="font-heading text-xl font-extrabold leading-tight text-white">
+                  Lugares de
+                  <br />
+                  interés
+                </p>
+                <p className="mt-1.5 font-body text-sm font-medium leading-snug text-white/85">
+                  Explora atracciones y actividades
+                </p>
+              </div>
+              <div className="relative mt-2 flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1">
+                <span className="font-body text-xs font-bold text-white">
+                  Explorar
+                </span>
                 <svg
-                  width="22"
-                  height="22"
+                  width="12"
+                  height="12"
                   viewBox="0 0 24 24"
                   fill="none"
                   aria-hidden="true"
                 >
                   <path
-                    d="M12 22s7-5.2 7-12a7 7 0 10-14 0c0 6.8 7 12 7 12z"
-                    fill="white"
+                    d="M9 18l6-6-6-6"
+                    stroke="white"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
-                  <circle cx="12" cy="10" r="2.5" fill="#7A4FD6" />
                 </svg>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">
-                  Lugares de interés
-                </p>
-                <p className="font-body text-xs text-gray-500 mt-1">
-                  Explora atracciones y actividades
-                </p>
-              </div>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="text-gray-400 group-hover:text-[#7A4FD6] transition-colors shrink-0"
-                aria-hidden="true"
-              >
-                <path
-                  d="M9 18l6-6-6-6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
             </button>
 
             <button
@@ -3325,72 +3734,152 @@ export function DashboardPage() {
                   state: { destino: group?.destino, group },
                 })
               }
-              className="flex items-center gap-4 rounded-2xl border border-[#E2E8F0] bg-white px-5 py-4 text-left shadow-sm hover:border-[#35C56A]/40 hover:bg-[#F0EEF8] transition-colors group"
+              className="relative flex flex-col items-start justify-between rounded-3xl p-4 text-left overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl active:scale-[0.98] shadow-[0_8px_24px_rgba(53,197,106,0.18)]"
+              style={{
+                background:
+                  "linear-gradient(145deg, #0E7A3A 0%, #22A85A 45%, #35C56A 100%)",
+              }}
             >
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: "linear-gradient(135deg, #35C56A, #22A85A)",
-                }}
-              >
+              <div className="absolute -right-6 -top-6 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+              <div className="absolute -bottom-8 -left-4 h-28 w-28 rounded-full bg-white/[0.07] blur-xl" />
+              <div className="relative w-full">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 shadow-lg backdrop-blur-sm">
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <polygon
+                      points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <line
+                      x1="8"
+                      y1="2"
+                      x2="8"
+                      y2="18"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                    <line
+                      x1="16"
+                      y1="6"
+                      x2="16"
+                      y2="22"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
+                <p className="font-heading text-xl font-extrabold leading-tight text-white">
+                  Rutas y<br />
+                  Clima
+                </p>
+                <p className="mt-1.5 font-body text-sm font-medium leading-snug text-white/85">
+                  Cómo llegar y pronóstico del tiempo
+                </p>
+              </div>
+              <div className="relative mt-2 flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1">
+                <span className="font-body text-xs font-bold text-white">
+                  Explorar
+                </span>
                 <svg
-                  width="22"
-                  height="22"
+                  width="12"
+                  height="12"
                   viewBox="0 0 24 24"
                   fill="none"
                   aria-hidden="true"
                 >
-                  <polygon
-                    points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"
+                  <path
+                    d="M9 18l6-6-6-6"
                     stroke="white"
-                    strokeWidth="2"
+                    strokeWidth="2.5"
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
-                  <line
-                    x1="8"
-                    y1="2"
-                    x2="8"
-                    y2="18"
+                </svg>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigate("/search/history", { state: { group } })}
+              className="relative flex flex-col items-start justify-between rounded-3xl p-4 text-left overflow-hidden transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl active:scale-[0.98] shadow-[0_8px_24px_rgba(245,158,11,0.18)]"
+              style={{
+                background:
+                  "linear-gradient(145deg, #92400E 0%, #D97706 45%, #F59E0B 100%)",
+              }}
+            >
+              <div className="absolute -right-6 -top-6 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+              <div className="absolute -bottom-8 -left-4 h-28 w-28 rounded-full bg-white/[0.07] blur-xl" />
+              <div className="relative w-full">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/20 shadow-lg backdrop-blur-sm">
+                  <svg
+                    width="24"
+                    height="24"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.9 2.9L3 8"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M3 3v5h5"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M12 7v6l4 2"
+                      stroke="white"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <p className="font-heading text-xl font-extrabold leading-tight text-white">
+                  Propuestas
+                  <br />
+                  guardadas
+                </p>
+                <p className="mt-1.5 font-body text-sm font-medium leading-snug text-white/85">
+                  Historial de vuelos y hospedajes guardados
+                </p>
+              </div>
+              <div className="relative mt-2 flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1">
+                <span className="font-body text-xs font-bold text-white">
+                  Ver todo
+                </span>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M9 18l6-6-6-6"
                     stroke="white"
-                    strokeWidth="2"
+                    strokeWidth="2.5"
                     strokeLinecap="round"
-                  />
-                  <line
-                    x1="16"
-                    y1="6"
-                    x2="16"
-                    y2="22"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
                 </svg>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-body text-sm font-semibold text-[#1E0A4E] leading-none">
-                  Rutas y Clima
-                </p>
-                <p className="font-body text-xs text-gray-500 mt-1">
-                  Cómo llegar y pronóstico del tiempo
-                </p>
-              </div>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                className="text-gray-400 group-hover:text-[#35C56A] transition-colors shrink-0"
-                aria-hidden="true"
-              >
-                <path
-                  d="M9 18l6-6-6-6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
             </button>
           </div>
         </div>
@@ -3464,78 +3953,220 @@ export function DashboardPage() {
               </p>
             </div>
           )}
-          <InfoBanner memberCount={uniqueMemberCount} />
-          <TimelineStrip
-            activeDay={activeDay}
-            date={selectedDayWithContext?.date}
-            activities={selectedDayWithContext?.activities}
-          />
-          <div className="flex flex-col gap-3">
-            {daysWithContext.map((day) => {
-              const isPastDay = isPastItineraryDay(
+          <div
+            className={`overflow-hidden transition-all duration-500 ease-in-out ${
+              daysWithContext.some((d) =>
+                d.activities.some((a) => a.status === "pendiente"),
+              )
+                ? "max-h-32 opacity-100"
+                : "max-h-0 opacity-0"
+            }`}
+          >
+            <InfoBanner memberCount={uniqueMemberCount} />
+          </div>
+          {/* ── Day tabs + single active day ── */}
+          {daysWithContext.length > 0 &&
+            (() => {
+              const activeDayNumber = expandedDay;
+              const activeDayData =
+                activeDayNumber !== null
+                  ? (daysWithContext.find(
+                      (d) => d.dayNumber === activeDayNumber,
+                    ) ?? null)
+                  : null;
+              const isPastActiveDay = isPastItineraryDay(
                 group?.fecha_inicio ?? currentGroup?.fecha_inicio ?? null,
-                day.dayNumber,
+                activeDayData?.dayNumber ?? 1,
               );
 
               return (
-                <DayView
-                  key={day.dayNumber}
-                  ref={(handle) => {
-                    dayRefs.current[day.dayNumber] = handle;
-                  }}
-                  dayNumber={day.dayNumber}
-                  date={day.date}
-                  activities={day.activities}
-                  currentUserId={localUser?.id_usuario}
-                  currentUserRole={currentUserRole}
-                  isActive={day.dayNumber === activeDay}
-                  isExpanded={day.dayNumber === expandedDay}
-                  onSelect={handleDayChange}
-                  onAddActivity={
-                    isReadOnly || isPastDay
-                      ? undefined
-                      : openActivityModalForDay
-                  }
-                  onManageContext={
-                    isReadOnly || isPastDay ? undefined : openActivityEditor
-                  }
-                  onOpenBudget={() => setActiveTab("pagar")}
-                  onOpenVault={() => setActiveTab("boveda")}
-                  onAccept={
-                    isReadOnly || isPastDay ? undefined : handleAcceptActivity
-                  }
-                  onReject={
-                    isReadOnly || isPastDay ? undefined : handleRejectActivity
-                  }
-                  onDelete={
-                    isReadOnly || isPastDay ? undefined : handleDeleteActivity
-                  }
-                  onEdit={
-                    isReadOnly || isPastDay
-                      ? undefined
-                      : (id) => {
-                          const activity = days
-                            .flatMap((d) => d.activities)
-                            .find((a) => a.id === id);
-                          if (!activity) return;
-                          openActivityEditor(activity);
-                        }
-                  }
-                  renderConfirmedActions={
-                    isReadOnly || isPastDay
-                      ? undefined
-                      : renderProposalQuickActions
-                  }
-                  renderPendingActions={
-                    isReadOnly || isPastDay
-                      ? undefined
-                      : renderProposalQuickActions
-                  }
-                  isPastDay={isPastDay}
-                />
+                <div className="space-y-3">
+                  {/* Tab strip */}
+                  <div className="overflow-x-auto rounded-2xl bg-[linear-gradient(135deg,#24105E_0%,#1E0A4E_52%,#2B1163_100%)] px-4 py-3 shadow-[0_8px_28px_rgba(30,10,78,0.22)]">
+                    <div className="flex gap-2">
+                      {daysWithContext.map((day) => {
+                        const isActive = day.dayNumber === activeDayNumber;
+                        const confirmed = day.activities.filter(
+                          (a) => a.status === "confirmada",
+                        ).length;
+                        const pending = day.activities.filter(
+                          (a) => a.status === "pendiente",
+                        ).length;
+                        const isEmpty = day.activities.length === 0;
+                        return (
+                          <button
+                            key={day.dayNumber}
+                            type="button"
+                            onClick={() => {
+                              const next =
+                                day.dayNumber === activeDayNumber
+                                  ? null
+                                  : day.dayNumber;
+                              setActiveDay(next);
+                              setExpandedDay(next);
+                            }}
+                            className={[
+                              "flex shrink-0 flex-col items-center gap-1.5 rounded-2xl px-5 py-3 transition-all duration-200 min-w-[110px]",
+                              isActive
+                                ? "bg-white shadow-[0_10px_28px_rgba(0,0,0,0.22)]"
+                                : "border border-white/10 bg-white/[0.07] hover:bg-white/[0.14]",
+                            ].join(" ")}
+                          >
+                            {/* Day number pill */}
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-body text-[11px] font-bold uppercase tracking-wider ${
+                                isActive
+                                  ? "bg-[#1E6FD9]/12 text-[#1E6FD9]"
+                                  : "bg-white/10 text-white/55"
+                              }`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${isActive ? "bg-[#1E6FD9]" : "bg-white/30"}`}
+                              />
+                              Día {day.dayNumber}
+                            </span>
+                            {/* Date */}
+                            <span
+                              className={`font-body text-sm font-semibold leading-tight text-center ${isActive ? "text-[#1E0A4E]" : "text-white/80"}`}
+                            >
+                              {day.date}
+                            </span>
+                            {/* Activity badges */}
+                            <div className="flex items-center gap-1">
+                              {isEmpty ? (
+                                <span
+                                  className={`rounded-full px-2 py-0.5 font-body text-xs font-medium ${isActive ? "bg-[#F1F5F9] text-[#94A3B8]" : "bg-white/10 text-white/35"}`}
+                                >
+                                  Sin actividades
+                                </span>
+                              ) : (
+                                <>
+                                  {confirmed > 0 && (
+                                    <span
+                                      className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 font-body text-xs font-semibold ${isActive ? "bg-[#D1FAE5] text-[#065F46]" : "bg-[#35C56A]/20 text-[#9AF0B8]"}`}
+                                    >
+                                      <span className="text-[10px]">✓</span>{" "}
+                                      {confirmed}
+                                    </span>
+                                  )}
+                                  {pending > 0 && (
+                                    <span
+                                      className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 font-body text-xs font-semibold ${isActive ? "bg-[#F3EEFF] text-[#7A4FD6]" : "bg-[#7A4FD6]/25 text-[#D8C8FF]"}`}
+                                    >
+                                      <span className="text-[10px]">●</span>{" "}
+                                      {pending}
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Progress of selected day */}
+                  <TimelineStrip
+                    activeDay={activeDay}
+                    date={selectedDayWithContext?.date}
+                    activities={selectedDayWithContext?.activities}
+                    onAdd={
+                      isReadOnly
+                        ? undefined
+                        : () =>
+                            openActivityModalForDay(
+                              activeDay ?? daysWithContext[0]?.dayNumber ?? 1,
+                            )
+                    }
+                  />
+
+                  {/* Active day view */}
+                  {activeDayData && (
+                    <DayView
+                      key={activeDayData.dayNumber}
+                      ref={(handle) => {
+                        dayRefs.current[activeDayData.dayNumber] = handle;
+                      }}
+                      dayNumber={activeDayData.dayNumber}
+                      date={activeDayData.date}
+                      activities={activeDayData.activities}
+                      currentUserId={localUser?.id_usuario}
+                      currentUserRole={currentUserRole}
+                      isActive={true}
+                      isExpanded={true}
+                      onSelect={(dn) => {
+                        setActiveDay(dn);
+                        setExpandedDay(dn);
+                      }}
+                      onAddActivity={
+                        isReadOnly ||
+                        isPastActiveDay ||
+                        !areRealtimeActionsEnabled
+                          ? undefined
+                          : openActivityModalForDay
+                      }
+                      onManageContext={
+                        isReadOnly ||
+                        isPastActiveDay ||
+                        !areRealtimeActionsEnabled
+                          ? undefined
+                          : openActivityEditor
+                      }
+                      onOpenBudget={() => setActiveTab("pagar")}
+                      onOpenVault={() => setActiveTab("boveda")}
+                      onAccept={
+                        isReadOnly ||
+                        isPastActiveDay ||
+                        !areRealtimeActionsEnabled
+                          ? undefined
+                          : handleAcceptActivity
+                      }
+                      onReject={
+                        isReadOnly ||
+                        isPastActiveDay ||
+                        !areRealtimeActionsEnabled
+                          ? undefined
+                          : handleRejectActivity
+                      }
+                      onDelete={
+                        isReadOnly ||
+                        isPastActiveDay ||
+                        !areRealtimeActionsEnabled
+                          ? undefined
+                          : handleDeleteActivity
+                      }
+                      onEdit={
+                        isReadOnly ||
+                        isPastActiveDay ||
+                        !areRealtimeActionsEnabled
+                          ? undefined
+                          : (id) => {
+                              const activity = days
+                                .flatMap((d) => d.activities)
+                                .find((a) => a.id === id);
+                              if (!activity) return;
+                              openActivityEditor(activity);
+                            }
+                      }
+                      renderConfirmedActions={
+                        isReadOnly || isPastActiveDay
+                          ? undefined
+                          : renderProposalQuickActions
+                      }
+                      renderPendingActions={
+                        isReadOnly || isPastActiveDay
+                          ? undefined
+                          : renderProposalQuickActions
+                      }
+                      isPastDay={isPastActiveDay}
+                      actionsDisabled={!areRealtimeActionsEnabled}
+                      actionsDisabledReason={offlineActionMessage}
+                    />
+                  )}
+                </div>
               );
-            })}
-          </div>
+            })()}
         </div>
       )}
 
@@ -3945,13 +4576,17 @@ export function DashboardPage() {
           proposal={selectedProposal}
           tripId={groupId || currentGroup?.id || ""}
           onClose={() => setSelectedProposal(null)}
-          onAccept={() => setShowConfirm(true)}
+          onAccept={() => {
+            if (areRealtimeActionsEnabled) setShowConfirm(true);
+          }}
           socket={socket}
+          isOnline={areRealtimeActionsEnabled}
         />
       )}
       {showConfirm && selectedProposal && (
         <ConfirmProposalModal
           proposal={selectedProposal}
+          isOnline={isBrowserOnline && isSocketConnected}
           onClose={() => setShowConfirm(false)}
           onConfirm={() => {
             setDays((prev) =>
@@ -3969,6 +4604,40 @@ export function DashboardPage() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={activityPendingDelete !== null}
+        title="Eliminar propuesta"
+        description="Esta acción no se puede deshacer. La propuesta se quitará del itinerario cuando el backend confirme la eliminación."
+        details={activityPendingDelete?.title}
+        confirmLabel="Eliminar propuesta"
+        cancelLabel="Conservar"
+        variant="danger"
+        loading={
+          activityPendingDelete
+            ? deletingActivityId === activityPendingDelete.id
+            : false
+        }
+        onCancel={() => {
+          if (deletingActivityId === null) setActivityPendingDelete(null);
+        }}
+        onConfirm={() => {
+          void confirmDeleteActivity();
+        }}
+      />
+
+      <ConfirmDialog
+        open={forcedNotice !== null}
+        title={forcedNotice?.title ?? "Aviso del viaje"}
+        description={
+          forcedNotice?.description ?? "Te regresaremos a Mis viajes."
+        }
+        confirmLabel="Ir a Mis viajes"
+        cancelLabel="Cerrar"
+        variant="warning"
+        onCancel={() => navigate("/my-trips")}
+        onConfirm={() => navigate("/my-trips")}
+      />
 
       <ChatDrawer
         open={chatOpen}
@@ -3988,8 +4657,3 @@ export function DashboardPage() {
     </AppLayout>
   );
 }
-
-
-
-
-

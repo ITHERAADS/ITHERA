@@ -12,6 +12,7 @@ import { hotelsService, type HotelOffer } from "../../services/hotels";
 import { getCurrentGroup } from "../../services/groups";
 import type { Group } from "../../types/groups";
 import { proposalsService } from "../../services/proposals";
+import { searchHistoryService } from "../../services/search-history";
 import { HelpButton } from "../../components/ui/HelpButton";
 
 type SearchTab = "flights" | "hotels";
@@ -1239,6 +1240,33 @@ const FlightHotelSearchPage = () => {
         accessToken,
       );
 
+      await searchHistoryService
+        .save(
+          {
+            grupoId: String(currentGroup.id),
+            tipo: "vuelo",
+            fuente: "duffel",
+            titulo: title,
+            descripcion: description,
+            searchPayload: lastFlightSearch,
+            resultPayload: {
+              provider: "duffel",
+              offerId: flight.id,
+              liveMode: flight.liveMode,
+              passengers: flight.passengers,
+              normalizedOffer: flight,
+              imageUrl: getFlightImageUrl(flight),
+            },
+          },
+          accessToken,
+        )
+        .catch((error) => {
+          console.error(
+            "No se pudo registrar historial de búsqueda de vuelo:",
+            error,
+          );
+        });
+
       setFlights((prev) =>
         prev.map((item) =>
           item.id === flight.id
@@ -1362,6 +1390,33 @@ const FlightHotelSearchPage = () => {
         },
         accessToken,
       );
+
+      await searchHistoryService
+        .save(
+          {
+            grupoId: String(currentGroup.id),
+            tipo: "hospedaje",
+            fuente: "liteapi",
+            titulo: title,
+            descripcion: description,
+            searchPayload: lastHotelSearch,
+            resultPayload: {
+              provider: "liteapi",
+              offerId: hotel.offerId,
+              prebook: prebookResponse?.data ?? null,
+              normalizedOffer: hotel,
+              googlePlaceId: hotel.googlePlaceId,
+              photoUrl: hotel.photoUrl,
+            },
+          },
+          accessToken,
+        )
+        .catch((error) => {
+          console.error(
+            "No se pudo registrar historial de búsqueda de hospedaje:",
+            error,
+          );
+        });
 
       setHotels((prev) =>
         prev.map((item) =>

@@ -25,6 +25,10 @@ export interface Activity {
   time: string;
   location?: string;
   votes?: number;
+  votesFor?: number;
+  votesAgainst?: number;
+  pendingVotes?: number;
+  requiresAdminTieBreak?: boolean;
   proposedBy?: string;
   image: string;
   externalReference?: string | null;
@@ -68,6 +72,8 @@ export interface DayViewProps {
   renderConfirmedActions?: (activity: Activity) => ReactNode;
   renderPendingActions?: (activity: Activity) => ReactNode;
   isPastDay?: boolean;
+  actionsDisabled?: boolean;
+  actionsDisabledReason?: string;
 }
 
 export interface DayViewHandle {
@@ -685,7 +691,7 @@ function TimelineNowMarker({
     <div className="relative grid grid-cols-[64px_28px_minmax(0,1fr)] gap-3">
       <div className="relative z-10 flex justify-end pt-1">
         {timeLabel && (
-          <span className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border border-[#E2D8FF] bg-white px-2.5 font-body text-[11px] font-bold text-[#7A4FD6]">
+          <span className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border border-[#E2D8FF] bg-white px-2.5 font-body text-[13px] font-bold text-[#7A4FD6]">
             {timeLabel}
           </span>
         )}
@@ -697,7 +703,7 @@ function TimelineNowMarker({
         <span className="h-7 w-7 rounded-full border-[6px] border-white bg-[#7A4FD6] shadow-[0_0_0_8px_rgba(232,222,255,0.95),0_12px_28px_rgba(122,79,214,0.28)]" />
       </div>
       <div className="flex min-h-[34px] items-center">
-        <span className="inline-flex rounded-full border border-[#E2D8FF] bg-[#F7F2FF] px-3 py-1.5 font-body text-[11px] font-bold text-[#5B35B1]">
+        <span className="inline-flex rounded-full border border-[#E2D8FF] bg-[#F7F2FF] px-3 py-1.5 font-body text-[13px] font-bold text-[#5B35B1]">
           {label}
         </span>
       </div>
@@ -722,7 +728,7 @@ function TimelineItem({
     <div className="relative grid grid-cols-[64px_28px_minmax(0,1fr)] gap-3">
       <div className="relative z-10 flex justify-end pt-1.5">
         <span
-          className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border px-2.5 font-body text-[11px] font-bold"
+          className="inline-flex h-7 min-w-[58px] items-center justify-center rounded-full border px-2.5 font-body text-[13px] font-bold"
           style={{
             color: accentColor,
             borderColor: hasConflict ? "#FECACA" : "#E2D8FF",
@@ -737,12 +743,12 @@ function TimelineItem({
 
       <div className="min-w-0">
         {hasConflict && (
-          <span className="mb-2 inline-flex items-center rounded-full bg-[#FEF2F2] px-2.5 py-1 font-body text-[11px] font-semibold text-[#B91C1C]">
+          <span className="mb-2 inline-flex items-center rounded-full bg-[#FEF2F2] px-2.5 py-1 font-body text-[13px] font-semibold text-[#B91C1C]">
             Conflicto de horario
           </span>
         )}
         {isNow && (
-          <span className="mb-2 inline-flex items-center rounded-full border border-[#E2D8FF] bg-[#F7F2FF] px-3 py-1.5 font-body text-[11px] font-bold text-[#5B35B1]">
+          <span className="mb-2 inline-flex items-center rounded-full border border-[#E2D8FF] bg-[#F7F2FF] px-3 py-1.5 font-body text-[13px] font-bold text-[#5B35B1]">
             Ahora
           </span>
         )}
@@ -758,7 +764,7 @@ function SectionLabel({ emoji, text }: { emoji: string; text: string }) {
   return (
     <div className="flex items-center gap-2 mb-3 mt-4 first:mt-0">
       <span className="text-sm leading-none">{emoji}</span>
-      <span className="font-body text-[11px] font-semibold text-gray500 uppercase tracking-wider">
+      <span className="font-body text-[13px] font-semibold text-gray500 uppercase tracking-wider">
         {text}
       </span>
     </div>
@@ -769,26 +775,33 @@ function ActivityContextBlock({
   activity,
   onOpenBudget,
   onOpenVault,
+  compact = false,
 }: {
   activity: Activity;
   onManageContext?: (activity: Activity) => void;
   onOpenBudget?: () => void;
   onOpenVault?: () => void;
+  compact?: boolean;
 }) {
   const linked = activity.linkedContext ?? [];
   const expenses = linked.filter((entity) => entity.type === "expense");
   const documents = linked.filter((entity) => entity.type === "document");
 
   return (
-    <div className="mt-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-3">
+    <div
+      className={[
+        "mt-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3",
+        compact ? "py-2" : "py-3",
+      ].join(" ")}
+    >
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="font-body text-xs font-semibold uppercase tracking-wide text-[#64748B]">
+        <p className="font-body text-sm font-semibold uppercase tracking-wide text-[#64748B]">
           Asociaciones confirmadas
         </p>
       </div>
 
       {linked.length === 0 ? (
-        <p className="font-body text-xs text-[#7A8799]">
+        <p className="font-body text-sm text-[#7A8799]">
           Aun no hay asociaciones confirmadas.
         </p>
       ) : (
@@ -798,7 +811,7 @@ function ActivityContextBlock({
               key={`${entity.type}:${entity.id}`}
               type="button"
               onClick={onOpenBudget}
-              className="max-w-full rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#1E6FD9] hover:bg-[#E2EDFF]"
+              className="max-w-full rounded-full border border-[#CFE0FF] bg-[#EEF4FF] px-2.5 py-1 font-body text-[13px] font-semibold text-[#1E6FD9] hover:bg-[#E2EDFF]"
               title={entity.label}
             >
               Gasto: <span className="font-medium">{entity.label}</span>
@@ -809,7 +822,7 @@ function ActivityContextBlock({
               key={`${entity.type}:${entity.id}`}
               type="button"
               onClick={onOpenVault}
-              className="max-w-full rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-2.5 py-1 font-body text-[11px] font-semibold text-[#5B35B1] hover:bg-[#ECE4FF]"
+              className="max-w-full rounded-full border border-[#D8C8FF] bg-[#F3EEFF] px-2.5 py-1 font-body text-[13px] font-semibold text-[#5B35B1] hover:bg-[#ECE4FF]"
               title={entity.label}
             >
               Documento: <span className="font-medium">{entity.label}</span>
@@ -837,10 +850,10 @@ function SubgroupSlotCard({
       <div className="flex flex-col gap-4 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="inline-flex rounded-full bg-[#1E0A4E] px-3 py-1 font-body text-[11px] font-bold uppercase tracking-[0.14em] text-white">
+            <span className="inline-flex rounded-full bg-[#1E0A4E] px-3 py-1 font-body text-[13px] font-bold uppercase tracking-[0.14em] text-white">
               Subgrupos
             </span>
-            <span className="inline-flex rounded-full border border-[#D8C8FF] bg-white px-3 py-1 font-body text-[11px] font-bold text-[#6D45C0]">
+            <span className="inline-flex rounded-full border border-[#D8C8FF] bg-white px-3 py-1 font-body text-[13px] font-bold text-[#6D45C0]">
               {activity.time}
             </span>
           </div>
@@ -853,10 +866,10 @@ function SubgroupSlotCard({
             </p>
           )}
           <div className="mt-4 flex flex-wrap gap-2">
-            <span className="rounded-full bg-white px-3 py-1 font-body text-xs font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
+            <span className="rounded-full bg-white px-3 py-1 font-body text-sm font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
               {slot?.groupCount ?? 0} opcion{slot?.groupCount === 1 ? "" : "es"}
             </span>
-            <span className="rounded-full bg-white px-3 py-1 font-body text-xs font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
+            <span className="rounded-full bg-white px-3 py-1 font-body text-sm font-semibold text-[#475569] ring-1 ring-[#E2E8F0]">
               {slot?.participantCount ?? 0} participante
               {slot?.participantCount === 1 ? "" : "s"}
             </span>
@@ -883,6 +896,8 @@ function ActivityCardConfirmed({
   onOpenBudget,
   onOpenVault,
   actionButtons,
+  actionsDisabled = false,
+  actionsDisabledReason,
 }: {
   activity: Activity;
   currentUserId?: string | number | null;
@@ -893,6 +908,8 @@ function ActivityCardConfirmed({
   onOpenBudget?: () => void;
   onOpenVault?: () => void;
   actionButtons?: ReactNode;
+  actionsDisabled?: boolean;
+  actionsDisabledReason?: string;
 }) {
   if (activity.kind === "subgroup-slot") {
     return (
@@ -920,7 +937,7 @@ function ActivityCardConfirmed({
           loading="lazy"
         />
         {/* Confirmed badge */}
-        <span className="absolute top-3 left-3 inline-flex items-center gap-1 font-body text-[11px] font-bold text-white bg-greenAccent rounded-full px-3 py-1 shadow-sm">
+        <span className="absolute top-3 left-3 inline-flex items-center gap-1 font-body text-[13px] font-bold text-white bg-greenAccent rounded-full px-3 py-1 shadow-sm">
           <IconCheck size={10} />
           CONFIRMADO
         </span>
@@ -935,23 +952,23 @@ function ActivityCardConfirmed({
 
       {/* Body */}
       <div className="px-5 pt-6 pb-4">
-        <h3 className="font-heading font-bold text-purpleNavbar text-[15px] mb-1 leading-snug">
+        <h3 className="font-heading font-bold text-purpleNavbar text-base mb-1 leading-snug">
           {activity.title}
         </h3>
-        <p className="font-body text-[13px] text-gray500 mb-3 leading-relaxed">
+        <p className="font-body text-sm text-gray500 mb-3 leading-relaxed">
           {activity.description}
         </p>
 
         {/* Info chips */}
         <div className="flex flex-wrap gap-2 mb-3">
-          <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+          <span className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1">
             <span className="text-bluePrimary">
               <IconClock />
             </span>
             {activity.time}
           </span>
           {activity.location && (
-            <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+            <span className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1">
               <span className="text-bluePrimary">
                 <IconMapPin />
               </span>
@@ -969,7 +986,7 @@ function ActivityCardConfirmed({
               onClick={(event) => {
                 if (!routeUrl) event.preventDefault();
               }}
-              className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
+              className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
             >
               <span className="text-bluePrimary">
                 <IconMapPin />
@@ -982,7 +999,7 @@ function ActivityCardConfirmed({
         {/* Confirmation status */}
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-greenAccent shrink-0" />
-          <span className="font-body text-xs text-greenAccent font-medium">
+          <span className="font-body text-sm text-greenAccent font-medium">
             Reservación confirmada
           </span>
         </div>
@@ -997,10 +1014,17 @@ function ActivityCardConfirmed({
             {actionButtons}
             {canEdit && (
               <button
-                onClick={() => onEdit?.(activity.id)}
-                className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0"
+                onClick={() => {
+                  if (!actionsDisabled) onEdit?.(activity.id);
+                }}
+                disabled={actionsDisabled}
+                title={
+                  actionsDisabled
+                    ? actionsDisabledReason
+                    : "Editar (volverá a votación)"
+                }
+                className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label="Editar actividad confirmada"
-                title="Editar (volverá a votación)"
               >
                 <IconEdit size={14} />
               </button>
@@ -1008,8 +1032,12 @@ function ActivityCardConfirmed({
 
             {canDelete && (
               <button
-                onClick={() => onDelete?.(activity.id)}
-                className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0"
+                onClick={() => {
+                  if (!actionsDisabled) onDelete?.(activity.id);
+                }}
+                disabled={actionsDisabled}
+                title={actionsDisabled ? actionsDisabledReason : undefined}
+                className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                 aria-label="Eliminar actividad confirmada"
               >
                 <IconTrash size={14} />
@@ -1037,6 +1065,10 @@ function ActivityCardPending({
   onOpenVault,
   actionButtons,
   isExpired = false,
+  actionsDisabled = false,
+  actionsDisabledReason,
+  competitionSize = 1,
+  compact = false,
 }: {
   activity: Activity;
   currentUserId?: string | number | null;
@@ -1050,6 +1082,10 @@ function ActivityCardPending({
   onOpenVault?: () => void;
   actionButtons?: ReactNode;
   isExpired?: boolean;
+  actionsDisabled?: boolean;
+  actionsDisabledReason?: string;
+  competitionSize?: number;
+  compact?: boolean;
 }) {
   const iconColor = getCategoryColor(activity.category);
   const isOwner =
@@ -1060,16 +1096,19 @@ function ActivityCardPending({
   const canDelete = isExpired ? false : isOwner || isAdmin;
   const myVote = activity.myVote ?? null;
   const routeUrl = getGoogleMapsRouteUrl(activity);
+  const isCompetition = competitionSize > 1;
+  const isCompactCompetition = compact && isCompetition;
   const [busyAction, setBusyAction] = useState<
     "accept" | "reject" | "delete" | null
   >(null);
   const isActionBusy = busyAction !== null;
+  const isDisabledByState = isActionBusy || actionsDisabled;
 
   const runCardAction = async (
     action: "accept" | "reject" | "delete",
     callback?: (id: string) => void | Promise<void>,
   ) => {
-    if (!callback || isActionBusy) return;
+    if (!callback || isActionBusy || actionsDisabled) return;
     try {
       setBusyAction(action);
       await Promise.resolve(callback(activity.id));
@@ -1079,9 +1118,20 @@ function ActivityCardPending({
   };
 
   return (
-    <div className="bg-white rounded-2xl border-2 border-dashed border-[#E2E8F0] overflow-hidden">
+    <div
+      className={
+        isCompactCompetition
+          ? "overflow-hidden rounded-2xl border border-[#E6DBFF] bg-white shadow-[0_10px_24px_rgba(30,10,78,0.06)] lg:grid lg:grid-cols-[220px_minmax(0,1fr)]"
+          : "overflow-hidden rounded-2xl border-2 border-dashed border-[#E2E8F0] bg-white"
+      }
+    >
       {/* Image */}
-      <div className="relative h-36 overflow-hidden">
+      <div
+        className={[
+          "relative overflow-hidden",
+          isCompactCompetition ? "h-32 lg:h-[190px]" : "h-36",
+        ].join(" ")}
+      >
         <img
           src={activity.image}
           alt={activity.title}
@@ -1091,7 +1141,7 @@ function ActivityCardPending({
         {/* Pending badge */}
         <span
           className={[
-            "absolute top-3 left-3 font-body text-[11px] font-bold text-white rounded-full px-3 py-1",
+            "absolute top-3 left-3 font-body text-[13px] font-bold text-white rounded-full px-3 py-1",
             isExpired ? "bg-[#BE123C]" : "bg-purpleMedium",
           ].join(" ")}
         >
@@ -1099,7 +1149,10 @@ function ActivityCardPending({
         </span>
         {/* Category icon circle */}
         <div
-          className="absolute left-4 -bottom-4 w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center border border-[#E2E8F0] shrink-0"
+          className={[
+            "absolute flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#E2E8F0] bg-white shadow-md",
+            isCompactCompetition ? "bottom-3 left-3" : "-bottom-4 left-4",
+          ].join(" ")}
           style={{ color: iconColor }}
         >
           <CategoryIcon category={activity.category} size={14} />
@@ -1107,24 +1160,29 @@ function ActivityCardPending({
       </div>
 
       {/* Body */}
-      <div className="px-5 pt-6 pb-4">
-        <h3 className="font-heading font-bold text-purpleNavbar text-[15px] mb-1 leading-snug">
+      <div className={isCompactCompetition ? "px-4 py-4" : "px-5 pt-6 pb-4"}>
+        <h3 className="font-heading font-bold text-purpleNavbar text-base mb-1 leading-snug">
           {activity.title}
         </h3>
-        <p className="font-body text-[13px] text-gray500 mb-3 leading-relaxed">
+        <p
+          className={[
+            "font-body text-sm text-gray500 leading-relaxed",
+            isCompactCompetition ? "mb-2 line-clamp-2" : "mb-3",
+          ].join(" ")}
+        >
           {activity.description}
         </p>
 
         {/* Info chips */}
         <div className="flex flex-wrap gap-2 mb-2">
-          <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+          <span className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1">
             <span className="text-bluePrimary">
               <IconClock />
             </span>
             {activity.time}
           </span>
           {activity.location && (
-            <span className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1">
+            <span className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1">
               <span className="text-bluePrimary">
                 <IconMapPin />
               </span>
@@ -1142,7 +1200,7 @@ function ActivityCardPending({
               onClick={(event) => {
                 if (!routeUrl) event.preventDefault();
               }}
-              className="inline-flex items-center gap-1.5 font-body text-xs text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
+              className="inline-flex items-center gap-1.5 font-body text-sm text-gray700 bg-neutralBg rounded-full px-3 py-1 hover:bg-[#E7F0FF] transition-colors"
             >
               <span className="text-bluePrimary">
                 <IconMapPin />
@@ -1150,46 +1208,47 @@ function ActivityCardPending({
               {activity.routeDistanceText} · {activity.routeDurationText}
             </a>
           )}
-          {activity.votes !== undefined && (
-            <span className="inline-flex items-center gap-1 font-body text-xs text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 font-medium">
+          {activity.votes !== undefined && !isCompactCompetition && (
+            <span className="inline-flex items-center gap-1 font-body text-sm text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 font-medium">
               ↑ {activity.votes} votos
             </span>
           )}
         </div>
 
         {activity.proposedBy && (
-          <p className="font-body text-xs text-gray500 italic mt-1 mb-3">
+          <p className="font-body text-sm text-gray500 italic mt-1 mb-3">
             Propuesto por {activity.proposedBy}
           </p>
         )}
-        {activity.adminDecisionType === "A" && (
-          <p className="font-body text-xs text-[#1E6FD9] font-semibold mt-1 mb-3">
-            Puesta por el admin directamente (Tipo A)
-          </p>
-        )}
         {isExpired && (
-          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 font-body text-xs font-semibold text-red-700">
+          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 font-body text-sm font-semibold text-red-700">
             Esta propuesta ya vencio porque su hora programada paso. Solo el
             administrador puede editarla para reprogramarla.
           </div>
         )}
-
         <ActivityContextBlock
           activity={activity}
           onManageContext={onManageContext}
           onOpenBudget={onOpenBudget}
           onOpenVault={onOpenVault}
+          compact={isCompactCompetition}
         />
 
         {/* Accept / Delete row */}
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#EEF2FF] pt-3">
+        <div
+          className={[
+            "flex flex-wrap items-center gap-2 border-t border-[#EEF2FF] pt-3",
+            isCompactCompetition ? "mt-3" : "mt-4",
+          ].join(" ")}
+        >
           {!isExpired && (
             <div className="grid h-11 flex-1 grid-cols-2 overflow-hidden rounded-xl border border-[#D9E2F2] bg-white">
               <button
                 type="button"
                 onClick={() => void runCardAction("accept", onAccept)}
-                disabled={isActionBusy}
+                disabled={isDisabledByState}
                 aria-busy={busyAction === "accept"}
+                title={actionsDisabled ? actionsDisabledReason : undefined}
                 className={`inline-flex items-center justify-center gap-1.5 border-r border-[#D9E2F2] px-3 font-body text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   myVote === "a_favor"
                     ? "bg-[#16A34A] text-white hover:bg-[#15803D]"
@@ -1206,8 +1265,9 @@ function ActivityCardPending({
               <button
                 type="button"
                 onClick={() => void runCardAction("reject", onReject)}
-                disabled={isActionBusy}
+                disabled={isDisabledByState}
                 aria-busy={busyAction === "reject"}
+                title={actionsDisabled ? actionsDisabledReason : undefined}
                 className={`inline-flex items-center justify-center gap-1.5 px-3 font-body text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                   myVote === "en_contra"
                     ? "bg-[#BE123C] text-white hover:bg-[#9F1239]"
@@ -1227,8 +1287,9 @@ function ActivityCardPending({
                 <button
                   type="button"
                   onClick={() => void runCardAction("delete", onDelete)}
-                  disabled={isActionBusy}
+                  disabled={isDisabledByState}
                   aria-busy={busyAction === "delete"}
+                  title={actionsDisabled ? actionsDisabledReason : undefined}
                   className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-gray500 hover:text-red-500 hover:border-red-200 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Eliminar propuesta"
                 >
@@ -1244,7 +1305,8 @@ function ActivityCardPending({
                 <button
                   type="button"
                   onClick={() => onEdit?.(activity.id)}
-                  disabled={isActionBusy}
+                  disabled={isDisabledByState}
+                  title={actionsDisabled ? actionsDisabledReason : undefined}
                   className="h-9 w-9 flex items-center justify-center rounded-xl border border-[#D9E2F2] bg-white text-bluePrimary hover:bg-blue-50 hover:border-bluePrimary/30 transition-colors shrink-0 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="Editar propuesta"
                 >
@@ -1271,7 +1333,7 @@ function AddActivityRow({ onClick }: { onClick?: () => void }) {
       <span className="text-gray500 group-hover:text-bluePrimary transition-colors">
         <IconSearch size={16} />
       </span>
-      <span className="font-body text-[13px] font-semibold text-gray500 group-hover:text-bluePrimary transition-colors">
+      <span className="font-body text-sm font-semibold text-gray500 group-hover:text-bluePrimary transition-colors">
         Buscar y proponer actividad
       </span>
     </button>
@@ -1282,12 +1344,16 @@ function AddActivityRow({ onClick }: { onClick?: () => void }) {
 
 function EmptyDayState({ onClick }: { onClick?: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-8 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-bluePrimary/10 flex items-center justify-center mb-3">
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-[#BFD0FF] bg-[#F8FAFF] px-5 py-8 text-center">
+      <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-bluePrimary/10">
         <IconCalendarEmpty size={28} />
       </div>
-      <p className="font-body text-sm text-gray500 mb-4">
-        No hay actividades para este día aún
+      <p className="font-heading text-base font-bold text-purpleNavbar">
+        Aún no hay actividades para este día
+      </p>
+      <p className="mb-4 mt-1 max-w-sm font-body text-sm leading-relaxed text-gray500">
+        Agrega una propuesta para reservar tiempo en el itinerario y abrir la
+        votación del grupo.
       </p>
       <button
         type="button"
@@ -1295,7 +1361,7 @@ function EmptyDayState({ onClick }: { onClick?: () => void }) {
         className="inline-flex items-center gap-1.5 font-body text-sm font-semibold text-white bg-bluePrimary rounded-xl px-4 py-2.5 hover:bg-bluePrimary/90 transition-colors"
       >
         <IconPlus size={14} />
-        Agregar primera actividad
+        Proponer actividad
       </button>
     </div>
   );
@@ -1318,6 +1384,8 @@ function ActivitiesBody({
   renderConfirmedActions,
   renderPendingActions,
   isPastDay = false,
+  actionsDisabled = false,
+  actionsDisabledReason,
 }: {
   activities: Activity[];
   currentUserId?: string | number | null;
@@ -1333,6 +1401,8 @@ function ActivitiesBody({
   renderConfirmedActions?: (activity: Activity) => ReactNode;
   renderPendingActions?: (activity: Activity) => ReactNode;
   isPastDay?: boolean;
+  actionsDisabled?: boolean;
+  actionsDisabledReason?: string;
 }) {
   const [activeSection, setActiveSection] = useState<
     "confirmadas" | "pendientes"
@@ -1364,6 +1434,8 @@ function ActivitiesBody({
       ? confirmedActivities
       : [...activePendingActivities, ...expiredPendingActivities];
   const nowPosition = getTimelineNowPosition(visibleActivities);
+  const pendingCompetitionGroups =
+    groupPendingActivitiesByStart(visibleActivities);
 
   const renderConfirmedTimeline = () =>
     confirmedActivities.length > 0 ? (
@@ -1397,6 +1469,8 @@ function ActivitiesBody({
               onOpenBudget={onOpenBudget}
               onOpenVault={onOpenVault}
               actionButtons={renderConfirmedActions?.(a)}
+              actionsDisabled={actionsDisabled}
+              actionsDisabledReason={actionsDisabledReason}
             />
           </TimelineItem>
         ))}
@@ -1409,7 +1483,7 @@ function ActivitiesBody({
       </div>
     ) : (
       <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-        <p className="font-body text-xs text-gray500">
+        <p className="font-body text-sm text-gray500">
           Aun no hay actividades confirmadas para este dia.
         </p>
       </div>
@@ -1428,33 +1502,61 @@ function ActivitiesBody({
             timeLabel={nowPosition.timeLabel}
           />
         )}
-        {visibleActivities.map((a) => {
-          const isExpired = isPendingActivityExpired(a);
+        {pendingCompetitionGroups.map((group) => {
+          const anchor = group.activities[0];
+          if (!anchor) return null;
+          const isCompetition = group.activities.length > 1;
           return (
             <TimelineItem
-              key={`pending-${a.id}`}
-              activity={a}
-              hasConflict={conflictActivityIds.has(a.id)}
+              key={`pending-group-${group.key}`}
+              activity={anchor}
+              hasConflict={
+                !isCompetition &&
+                group.activities.some((activity) =>
+                  conflictActivityIds.has(activity.id),
+                )
+              }
               isNow={
-                nowPosition?.type === "on" && nowPosition.activityId === a.id
+                nowPosition?.type === "on" &&
+                group.activities.some(
+                  (activity) => nowPosition.activityId === activity.id,
+                )
               }
             >
-              <ActivityCardPending
-                activity={a}
-                currentUserId={currentUserId}
-                currentUserRole={currentUserRole}
-                onAccept={onAccept}
-                onReject={onReject}
-                onDelete={onDelete}
-                onEdit={onEdit}
-                onManageContext={onManageContext}
-                onOpenBudget={onOpenBudget}
-                onOpenVault={onOpenVault}
-                actionButtons={
-                  isExpired ? undefined : renderPendingActions?.(a)
-                }
-                isExpired={isExpired}
-              />
+              <PendingCompetitionFrame
+                time={anchor.time}
+                isCompetition={isCompetition}
+                activities={group.activities}
+              >
+                <div className={isCompetition ? "space-y-3" : undefined}>
+                  {group.activities.map((a) => {
+                    const isExpired = isPendingActivityExpired(a);
+                    return (
+                      <ActivityCardPending
+                        key={a.id}
+                        activity={a}
+                        currentUserId={currentUserId}
+                        currentUserRole={currentUserRole}
+                        onAccept={onAccept}
+                        onReject={onReject}
+                        onDelete={onDelete}
+                        onEdit={onEdit}
+                        onManageContext={onManageContext}
+                        onOpenBudget={onOpenBudget}
+                        onOpenVault={onOpenVault}
+                        actionButtons={
+                          isExpired ? undefined : renderPendingActions?.(a)
+                        }
+                        isExpired={isExpired}
+                        actionsDisabled={actionsDisabled}
+                        actionsDisabledReason={actionsDisabledReason}
+                        competitionSize={group.activities.length}
+                        compact={isCompetition}
+                      />
+                    );
+                  })}
+                </div>
+              </PendingCompetitionFrame>
             </TimelineItem>
           );
         })}
@@ -1467,7 +1569,7 @@ function ActivitiesBody({
       </div>
     ) : (
       <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-        <p className="font-body text-xs text-gray500">
+        <p className="font-body text-sm text-gray500">
           No hay propuestas pendientes para este dia.
         </p>
       </div>
@@ -1523,7 +1625,7 @@ function ActivitiesBody({
           />
           <span
             className={[
-              "rounded-full px-3 py-1 font-body text-[11px] font-semibold",
+              "rounded-full px-3 py-1 font-body text-[13px] font-semibold",
               visibleSection === "confirmadas"
                 ? "bg-greenAccent/10 text-greenAccent"
                 : "bg-purpleMedium/10 text-purpleMedium",
@@ -1583,16 +1685,16 @@ function DaySectionSwitcher({
           {icon}
         </span>
         <span>
-          <span className="block font-body text-[11px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
+          <span className="block font-body text-[13px] font-semibold uppercase tracking-[0.16em] text-[#64748B]">
             Seccion
           </span>
-          <span className="mt-0.5 block font-heading text-sm font-bold">
+          <span className="mt-0.5 block font-heading text-base font-bold">
             {label}
           </span>
         </span>
       </span>
       <span
-        className={`rounded-full px-2.5 py-1 font-body text-xs font-semibold ${badgeStyles}`}
+        className={`rounded-full px-2.5 py-1 font-body text-sm font-semibold ${badgeStyles}`}
       >
         {count}
       </span>
@@ -1606,6 +1708,108 @@ function isPendingActivityExpired(activity: Activity): boolean {
   if (!value) return false;
   const date = new Date(value);
   return Number.isFinite(date.getTime()) && date.getTime() < Date.now();
+}
+
+function pendingCompetitionKey(activity: Activity): string {
+  if (activity.time) return `time-${activity.time}`;
+  if (!activity.startsAt) return `activity-${activity.id}`;
+  const date = new Date(activity.startsAt);
+  if (!Number.isFinite(date.getTime())) return activity.startsAt.slice(0, 16);
+  return date.toISOString().slice(0, 16);
+}
+
+function groupPendingActivitiesByStart(activities: Activity[]) {
+  const groups = new Map<string, { key: string; activities: Activity[] }>();
+
+  activities.forEach((activity) => {
+    const key = pendingCompetitionKey(activity);
+    const group = groups.get(key) ?? { key, activities: [] };
+    group.activities.push(activity);
+    groups.set(key, group);
+  });
+
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    activities: [...group.activities].sort(
+      (left, right) =>
+        (right.votesFor ?? right.votes ?? 0) -
+          (left.votesFor ?? left.votes ?? 0) ||
+        left.title.localeCompare(right.title),
+    ),
+  }));
+}
+
+function PendingCompetitionFrame({
+  time,
+  isCompetition,
+  activities,
+  children,
+}: {
+  time: string;
+  isCompetition: boolean;
+  activities: Activity[];
+  children: ReactNode;
+}) {
+  if (!isCompetition) return <>{children}</>;
+  const competitionStatus = getCompetitionStatus(activities);
+
+  return (
+    <div className="overflow-hidden rounded-[24px] border border-[#D9C8FF] bg-[linear-gradient(135deg,#FFFFFF_0%,#FBF8FF_45%,#F4EEFF_100%)] p-3 shadow-[0_18px_36px_rgba(122,79,214,0.10)]">
+      <div className="mb-3 rounded-2xl border border-white/80 bg-white/80 px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-body text-[13px] font-bold uppercase tracking-[0.16em] text-[#7A4FD6]">
+              Bloque de votacion por horario
+            </p>
+            <p className="mt-0.5 font-heading text-sm font-bold text-[#1E0A4E]">
+              Se elegira 1 actividad para las {time}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-[#F3EEFF] px-3 py-1 font-body text-[13px] font-semibold text-[#7A4FD6]">
+              {activities.length} opciones
+            </span>
+            <span className="rounded-full bg-[#1E0A4E] px-3 py-1 font-body text-[13px] font-bold text-white">
+              gana 1
+            </span>
+          </div>
+        </div>
+        <div className="mx-auto mt-3 max-w-2xl rounded-2xl border border-[#D9C8FF] bg-[#F3EEFF] px-4 py-2 text-center shadow-[0_10px_22px_rgba(122,79,214,0.08)]">
+          <p className="font-heading text-sm font-bold text-[#5B35B1]">
+            {competitionStatus}
+          </p>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function getCompetitionStatus(activities: Activity[]): string {
+  const ranked = [...activities].sort(
+    (left, right) =>
+      (right.votesFor ?? right.votes ?? 0) -
+        (left.votesFor ?? left.votes ?? 0) ||
+      left.title.localeCompare(right.title),
+  );
+  const leader = ranked[0];
+  if (!leader) return "Sin votos todavia.";
+
+  const leaderVotes = leader.votesFor ?? leader.votes ?? 0;
+  const tiedLeaders = ranked.filter(
+    (activity) => (activity.votesFor ?? activity.votes ?? 0) === leaderVotes,
+  );
+
+  if (tiedLeaders.length > 1) {
+    return leaderVotes > 0
+      ? `Empate entre ${tiedLeaders.length} opciones con ${leaderVotes} voto${leaderVotes === 1 ? "" : "s"}.`
+      : "Empate: ninguna opcion lleva votos todavia.";
+  }
+
+  const secondVotes = ranked[1]?.votesFor ?? ranked[1]?.votes ?? 0;
+  const margin = Math.max(leaderVotes - secondVotes, 0);
+  if (margin === 0) return `${leader.title} va ganando.`;
+  return `${leader.title} va ganando por ${margin} voto${margin === 1 ? "" : "s"}.`;
 }
 
 function DaySectionModal({
@@ -1635,7 +1839,7 @@ function DaySectionModal({
         <div className="border-b border-[#E2E8F0] px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="font-body text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
+              <p className="font-body text-[13px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
                 Vista del día
               </p>
               <h3 className="mt-2 font-heading text-2xl font-bold text-[#1E0A4E]">
@@ -1685,6 +1889,8 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
     renderConfirmedActions,
     renderPendingActions,
     isPastDay = false,
+    actionsDisabled = false,
+    actionsDisabledReason,
   },
   ref,
 ) {
@@ -1709,6 +1915,9 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
     (a) => a.status === "pendiente" && !isPendingActivityExpired(a),
   ).length;
   const isEmpty = activities.length === 0;
+  const confirmedCount = activities.filter(
+    (a) => a.status === "confirmada",
+  ).length;
 
   return (
     <div ref={rootRef} className="rounded-2xl shadow-sm scroll-mt-4">
@@ -1725,26 +1934,34 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
         {/* Left side */}
         <div className="flex items-center gap-3">
           {/* Day badge */}
-          <span className="font-body text-[11px] font-bold text-bluePrimary bg-bluePrimary/10 rounded-full px-3 py-1 shrink-0 leading-none">
+          <span className="font-body text-[13px] font-bold text-bluePrimary bg-bluePrimary/10 rounded-full px-3 py-1 shrink-0 leading-none">
             DÍA {dayNumber}
           </span>
 
           <div className="flex flex-col items-start gap-0.5">
-            <span className="font-body text-sm font-bold text-gray700 leading-none">
+            <span className="font-body text-base font-bold text-gray700 leading-none">
               {date}
             </span>
-            <span className="font-body text-[13px] text-gray500 leading-none">
+            <span className="font-body text-sm text-gray500 leading-none">
               {isEmpty
-                ? "Sin actividades"
-                : `${activities.length} actividad${activities.length !== 1 ? "es" : ""}`}
+                ? "Sin actividades · listo para planear"
+                : `${confirmedCount} confirmada${confirmedCount !== 1 ? "s" : ""} · ${pendingCount} por confirmar`}
             </span>
           </div>
         </div>
 
         {/* Right side */}
         <div className="flex items-center gap-2 shrink-0">
+          {isEmpty && !isPastDay && onAddActivity && (
+            <span
+              className="hidden rounded-xl bg-greenAccent/10 px-3 py-1.5 font-body text-[13px] font-bold text-greenAccent sm:inline-flex"
+              aria-hidden="true"
+            >
+              Agregar
+            </span>
+          )}
           {pendingCount > 0 && (
-            <span className="font-body text-[11px] text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 leading-none">
+            <span className="font-body text-[13px] text-purpleMedium bg-purpleMedium/10 rounded-full px-3 py-1 leading-none">
               {pendingCount} por confirmar
             </span>
           )}
@@ -1769,7 +1986,7 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
           {isEmpty ? (
             isPastDay ? (
               <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-                <p className="font-body text-xs text-gray500">
+                <p className="font-body text-sm text-gray500">
                   Este dia ya paso. Solo puedes consultar la linea del tiempo
                   confirmada.
                 </p>
@@ -1794,6 +2011,8 @@ export const DayView = forwardRef<DayViewHandle, DayViewProps>(function DayView(
                 isPastDay ? undefined : renderPendingActions
               }
               isPastDay={isPastDay}
+              actionsDisabled={actionsDisabled}
+              actionsDisabledReason={actionsDisabledReason}
               onAddActivity={() => onAddActivity?.(dayNumber)}
             />
           )}

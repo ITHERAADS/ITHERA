@@ -763,40 +763,6 @@ export const joinSubgroup = async (
   return data;
 };
 
-const ensureSubgroupActivityHasNoTimeCollision = async (
-  slotId: string,
-  startsAt?: string | null,
-  excludeActivityId?: string | null,
-) => {
-  const candidateMinuteKey = getScheduleMinuteKey(startsAt);
-  if (!candidateMinuteKey) return;
-
-  const { data: activities, error } = await supabase
-    .from("subgroup_activities")
-    .select("id, title, starts_at")
-    .eq("slot_id", slotId);
-  if (error) throw new Error(error.message);
-
-  const conflictingActivity = (activities ?? []).find((activity: any) => {
-    if (excludeActivityId && String(activity.id) === String(excludeActivityId))
-      return false;
-    return (
-      getScheduleMinuteKey(
-        activity.starts_at ? String(activity.starts_at) : null,
-      ) === candidateMinuteKey
-    );
-  });
-
-  if (conflictingActivity) {
-    throw Object.assign(
-      new Error(
-        `Ya existe una actividad en este horario: "${String((conflictingActivity as any).title ?? "Actividad existente")}"`,
-      ),
-      { statusCode: 409 },
-    );
-  }
-};
-
 export const createSubgroupActivity = async (
   authUserId: string,
   groupId: string,
@@ -853,7 +819,6 @@ export const createSubgroupActivity = async (
         { statusCode: 400 },
       );
     }
-    await ensureSubgroupActivityHasNoTimeCollision(slotId, startsAt);
   }
 
   const { data, error } = await supabase
@@ -957,11 +922,6 @@ export const updateSubgroupActivity = async (
           { statusCode: 400 },
         );
       }
-      await ensureSubgroupActivityHasNoTimeCollision(
-        slotId,
-        nextStartsAt,
-        activityId,
-      );
     }
   }
 

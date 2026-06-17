@@ -383,8 +383,6 @@ const toLocalInputValue = (value?: string | null) => {
 const toLocalTimeValue = (value?: string | null) =>
   toLocalInputValue(value).slice(11, 16) || "12:00";
 
-const toLocalMinuteKey = (value?: string | null) =>
-  toLocalInputValue(value).slice(0, 16);
 
 const isSameLocalDay = (first?: string | null, second?: string | null) =>
   toLocalInputValue(first).slice(0, 10) !== "" &&
@@ -827,7 +825,7 @@ export function SubgroupSchedulePanel({
   }, [groupId, load, loadContextLinks, socket]);
 
   useEffect(() => {
-    if (!accessToken || slots.length === 0 || group?.destino_photo_url) return;
+    if (!accessToken || slots.length === 0) return;
     const missingActivities = slots
       .flatMap((slot) => slot.subgroups)
       .map((subgroup) => primaryActivity(subgroup))
@@ -1116,33 +1114,6 @@ export function SubgroupSchedulePanel({
     return Math.abs(splitSum - totalAmount) > 0.01
       ? "La division personalizada debe sumar el monto total."
       : null;
-  };
-
-  const findSubgroupActivityTimeConflict = (
-    slot: SubgroupSlot,
-    startsAt: string | Date | null,
-    excludeActivityId?: number | string | null,
-  ) => {
-    const candidateKey = startsAt
-      ? toLocalMinuteKey(
-          startsAt instanceof Date ? startsAt.toISOString() : startsAt,
-        )
-      : "";
-    if (!candidateKey) return null;
-
-    for (const subgroup of slot.subgroups) {
-      for (const activity of subgroup.activities) {
-        if (
-          excludeActivityId != null &&
-          String(activity.id) === String(excludeActivityId)
-        )
-          continue;
-        if (toLocalMinuteKey(activity.starts_at) === candidateKey)
-          return activity;
-      }
-    }
-
-    return null;
   };
 
   const closeDraftActionModal = () => setDraftActionModal(null);
@@ -1734,14 +1705,6 @@ export function SubgroupSchedulePanel({
       );
       return;
     }
-    const timeConflict = findSubgroupActivityTimeConflict(slot, startsAt);
-    if (timeConflict) {
-      setScheduleConflictMessage(
-        "Ya hay una actividad en ese horario. Necesitas cambiar el horario de la otra actividad o el de esta para poder continuar.",
-      );
-      setError(null);
-      return;
-    }
     if (draft.quickDocumentFile && !draft.quickDocumentNotes.trim()) {
       setError(
         "La nota del documento es obligatoria para subirlo a la boveda.",
@@ -2085,21 +2048,6 @@ export function SubgroupSchedulePanel({
     const startsAt = slotDate
       ? new Date(`${slotDate}T${subgroupFormTime || "12:00"}:00`)
       : null;
-    if (slot && startsAt) {
-      const timeConflict = findSubgroupActivityTimeConflict(
-        slot,
-        startsAt,
-        details?.id ?? null,
-      );
-      if (timeConflict) {
-        setScheduleConflictMessage(
-          "Ya hay una actividad en ese horario. Necesitas cambiar el horario de la otra actividad o el de esta para poder continuar.",
-        );
-        setError(null);
-        return;
-      }
-    }
-
     await runAction(async () => {
       await subgroupScheduleService.updateSubgroup(
         groupId,
@@ -2796,13 +2744,11 @@ export function SubgroupSchedulePanel({
                                             entity.type === "document",
                                         );
                                       const coverImage =
-                                        (details?.id != null
+                                        details?.id != null
                                           ? subgroupPhotoByActivityId[
                                               details.id
-                                            ]
-                                          : null) ||
-                                        group?.destino_photo_url ||
-                                        fallbackSubgroupImage;
+                                            ] || fallbackSubgroupImage
+                                          : fallbackSubgroupImage;
                                       const openEditWithContext = () =>
                                         openEditSubgroupModal(slot, subgroup);
                                       const openExpenseAssociationModal =

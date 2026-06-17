@@ -60,7 +60,7 @@ function SearchBottomNavbar({ group }: { group?: Group | null }) {
     { id: 'inicio', label: 'Inicio', icon: <IconHome />, to: dashboardPath, dashboardTab: 'inicio' as DashboardTabId },
     { id: 'buscar', label: 'Vuelos y Hoteles', icon: <IconPlane />, to: '/search/flights-hotels', dashboardTab: 'buscar' as DashboardTabId },
     { id: 'guardados', label: 'Guardados', icon: <IconHistory />, to: '/search/history', dashboardTab: 'buscar' as DashboardTabId },
-    { id: 'comparar', label: 'Comparar', icon: <IconCompare />, to: dashboardPath, dashboardTab: 'comparar' as DashboardTabId },
+    { id: 'comparar', label: 'Comparar y Reservar', icon: <IconCompare />, to: dashboardPath, dashboardTab: 'comparar' as DashboardTabId },
     { id: 'mapas', label: 'Mapas', icon: <IconMap />, to: '/search/map-places', dashboardTab: 'mapas' as DashboardTabId },
     { id: 'pagar', label: 'Finanzas', icon: <IconMoney />, to: dashboardPath, dashboardTab: 'pagar' as DashboardTabId },
     { id: 'boveda', label: 'Archivos', icon: <IconVault />, to: dashboardPath, dashboardTab: 'boveda' as DashboardTabId },

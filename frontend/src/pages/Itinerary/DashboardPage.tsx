@@ -1010,7 +1010,7 @@ function BottomNavbar({
     },
     {
       id: "comparar",
-      label: "Comparar",
+      label: "Comparar y Reservar",
       color: "#F59E0B",
       bg: "#FFF7E6",
       icon: (
